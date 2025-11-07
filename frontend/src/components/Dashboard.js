@@ -821,20 +821,6 @@ const Dashboard = ({ user, onLogout }) => {
                                       <span className="lesson-icon">📖</span>
                                       <span className="lesson-name">Lesson {idx + 1}: {lesson}</span>
                                       <span className="lesson-status">✓</span>
-                                      <div className="lesson-video">
-                                        <video 
-                                          controls 
-                                          width="100%" 
-                                          height="200"
-                                          style={{ borderRadius: '8px', marginTop: '10px' }}
-                                        >
-                                          <source 
-                                            src="https://firebasestorage.googleapis.com/v0/b/cricket-wallpapers-296e2.appspot.com/o/Student%20testimonials.mp4?alt=media&token=531d69e0-8e70-42f9-9f4b-e484ec380cfa" 
-                                            type="video/mp4" 
-                                          />
-                                          Your browser does not support the video tag.
-                                        </video>
-                                      </div>
                                     </div>
                                   ))}
                                 </div>
