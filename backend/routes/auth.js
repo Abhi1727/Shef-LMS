@@ -2,12 +2,11 @@ const express = require('express');
 const router = express.Router();
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
-const User = require('../models/User');
+const { db } = require('../config/firebase');
 
 // Demo Credentials
-// Email: lqdeleon@gmail.com
-// Password: Admin@123
-// Name: Leonardo De Leon
+// Student: lqdeleon@gmail.com / Admin@123
+// Admin: admin@sheflms.com / SuperAdmin@123
 
 // @route   POST /api/auth/register
 // @desc    Register user
@@ -15,29 +14,32 @@ router.post('/register', async (req, res) => {
   try {
     const { name, email, password, role } = req.body;
 
-    let user = await User.findOne({ email });
-    if (user) {
+    // Check if user exists
+    const usersSnapshot = await db.collection('users').where('email', '==', email).get();
+    if (!usersSnapshot.empty) {
       return res.status(400).json({ message: 'User already exists' });
     }
 
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
 
-    user = new User({
+    const userData = {
       name,
       email,
       password: hashedPassword,
-      role: role || 'student'
-    });
+      role: role || 'student',
+      status: 'active',
+      createdAt: new Date().toISOString()
+    };
 
-    await user.save();
+    const docRef = await db.collection('users').add(userData);
 
     const payload = {
       user: {
-        id: user.id,
-        name: user.name,
-        email: user.email,
-        role: user.role
+        id: docRef.id,
+        name,
+        email,
+        role: role || 'student'
       }
     };
 
@@ -62,7 +64,7 @@ router.post('/login', async (req, res) => {
   try {
     const { email, password } = req.body;
 
-    // Check for Leonardo De Leon credentials
+    // Check for demo student credentials
     if (email === 'lqdeleon@gmail.com' && password === 'Admin@123') {
       const demoUser = {
         id: 'leonardo_deleon_user_id',
@@ -75,10 +77,7 @@ router.post('/login', async (req, res) => {
         courseDuration: '6 months'
       };
 
-      const payload = {
-        user: demoUser
-      };
-
+      const payload = { user: demoUser };
       const token = jwt.sign(
         payload,
         process.env.JWT_SECRET || 'shef_lms_secret_key_2025',
@@ -88,22 +87,50 @@ router.post('/login', async (req, res) => {
       return res.json({ token, user: demoUser });
     }
 
-    let user = await User.findOne({ email });
-    if (!user) {
+    // Check for demo admin credentials
+    if (email === 'admin@sheflms.com' && password === 'SuperAdmin@123') {
+      const adminUser = {
+        id: 'super_admin_user_id',
+        name: 'Super Admin',
+        email: 'admin@sheflms.com',
+        role: 'admin'
+      };
+
+      const payload = { user: adminUser };
+      const token = jwt.sign(
+        payload,
+        process.env.JWT_SECRET || 'shef_lms_secret_key_2025',
+        { expiresIn: '7d' }
+      );
+
+      return res.json({ token, user: adminUser });
+    }
+
+    // Check Firebase for user
+    const usersSnapshot = await db.collection('users').where('email', '==', email).get();
+    
+    if (usersSnapshot.empty) {
       return res.status(400).json({ message: 'Invalid credentials' });
     }
 
-    const isMatch = await bcrypt.compare(password, user.password);
+    let userData;
+    let userId;
+    usersSnapshot.forEach(doc => {
+      userId = doc.id;
+      userData = doc.data();
+    });
+
+    const isMatch = await bcrypt.compare(password, userData.password);
     if (!isMatch) {
       return res.status(400).json({ message: 'Invalid credentials' });
     }
 
     const payload = {
       user: {
-        id: user.id,
-        name: user.name,
-        email: user.email,
-        role: user.role
+        id: userId,
+        name: userData.name,
+        email: userData.email,
+        role: userData.role
       }
     };
 

@@ -1,11 +1,14 @@
 import React, { useState, useEffect } from 'react';
-import axios from 'axios';
+import { firebaseService, COLLECTIONS } from '../services/firebaseService';
 import './Dashboard.css';
 
 const Dashboard = ({ user, onLogout }) => {
   const [stats, setStats] = useState(null);
   const [courses, setCourses] = useState([]);
   const [activities, setActivities] = useState([]);
+  const [projects, setProjects] = useState([]);
+  const [jobs, setJobs] = useState([]);
+  const [mentors, setMentors] = useState([]);
   const [loading, setLoading] = useState(true);
   const [activeSection, setActiveSection] = useState('overview');
   const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -318,33 +321,75 @@ const Dashboard = ({ user, onLogout }) => {
       // Set minimum loading time to 2 seconds
       const startTime = Date.now();
       
-      const [statsRes, coursesRes, activitiesRes] = await Promise.all([
-        axios.get('/api/dashboard/stats'),
-        axios.get('/api/courses'),
-        axios.get('/api/dashboard/activity')
+      // Fetch all data from Firebase
+      const [coursesRes, modulesRes, lessonsRes, projectsRes, jobsRes, mentorsRes, contentRes] = await Promise.all([
+        firebaseService.getAll(COLLECTIONS.COURSES),
+        firebaseService.getAll(COLLECTIONS.MODULES),
+        firebaseService.getAll(COLLECTIONS.LESSONS),
+        firebaseService.getAll(COLLECTIONS.PROJECTS),
+        firebaseService.getAll(COLLECTIONS.JOBS),
+        firebaseService.getAll(COLLECTIONS.MENTORS),
+        firebaseService.getAll(COLLECTIONS.CONTENT)
       ]);
 
-      // Reset all stats to 0 for fresh start
-      const resetStats = {
-        enrolled: 0,
+      // Extract data
+      const coursesData = coursesRes.success ? coursesRes.data : [];
+      const modulesData = modulesRes.success ? modulesRes.data : [];
+      const lessonsData = lessonsRes.success ? lessonsRes.data : [];
+      const projectsData = projectsRes.success ? projectsRes.data : [];
+      const jobsData = jobsRes.success ? jobsRes.data : [];
+      const mentorsData = mentorsRes.success ? mentorsRes.data : [];
+      const contentData = contentRes.success ? contentRes.data : [];
+
+      // Calculate stats from real data
+      const calculatedStats = {
+        enrolled: coursesData.length,
         completed: 0,
-        inProgress: 0,
-        totalHours: 0,
+        inProgress: coursesData.length,
+        totalHours: coursesData.length * 40, // Estimate 40 hours per course
         certificates: 0,
-        upcomingClasses: 0
+        upcomingClasses: lessonsData.length
       };
 
-      // Reset all courses progress to 0
-      const resetCourses = (statsRes.data && Array.isArray(statsRes.data)) ? 
-        statsRes.data.map(course => ({ ...course, progress: 0 })) : 
-        coursesRes.data.map(course => ({ ...course, progress: 0 })) || [];
+      // Map courses with real data
+      const mappedCourses = coursesData.map(course => ({
+        ...course,
+        progress: 0,
+        modules: modulesData.filter(m => m.courseId === course.id).length,
+        lessons: lessonsData.filter(l => {
+          const module = modulesData.find(m => m.id === l.moduleId);
+          return module && module.courseId === course.id;
+        }).length
+      }));
 
-      // Reset activities to empty
-      const resetActivities = [];
+      // Create recent activities from content
+      const recentActivities = contentData
+        .filter(c => c.type === 'announcement')
+        .slice(0, 5)
+        .map(announcement => ({
+          type: 'announcement',
+          title: announcement.title,
+          description: announcement.content,
+          time: announcement.createdAt ? new Date(announcement.createdAt.seconds * 1000).toLocaleDateString() : 'Recently'
+        }));
 
-      setStats(resetStats);
-      setCourses(resetCourses);
-      setActivities(resetActivities);
+      setStats(calculatedStats);
+      setCourses(mappedCourses);
+      setActivities(recentActivities);
+      setProjects(projectsData);
+      setJobs(jobsData.filter(j => j.status === 'active'));
+      setMentors(mentorsData);
+      
+      // Store additional data for other sections
+      window.dashboardData = {
+        courses: coursesData,
+        modules: modulesData,
+        lessons: lessonsData,
+        projects: projectsData,
+        jobs: jobsData,
+        mentors: mentorsData,
+        content: contentData
+      };
       
       // Ensure loading animation shows for at least 2 seconds
       const elapsedTime = Date.now() - startTime;
@@ -404,7 +449,7 @@ const Dashboard = ({ user, onLogout }) => {
             onClick={() => setActiveSection('courses')}
             title="Learn"
           >
-            <span className="icon">�</span>
+            <span className="icon">📖</span>
             <span>Learn</span>
           </button>
           <button 
@@ -420,7 +465,7 @@ const Dashboard = ({ user, onLogout }) => {
             onClick={() => setActiveSection('projects')}
             title="Projects"
           >
-            <span className="icon">�</span>
+            <span className="icon">📁</span>
             <span>Projects</span>
           </button>
           <button 
@@ -436,7 +481,7 @@ const Dashboard = ({ user, onLogout }) => {
             onClick={() => setActiveSection('mentorship')}
             title="Mentorship"
           >
-            <span className="icon">�</span>
+            <span className="icon">👨‍🏫</span>
             <span>Mentorship</span>
           </button>
           <button 
@@ -517,12 +562,12 @@ const Dashboard = ({ user, onLogout }) => {
                   
                   <div className="course-modules">
                     <div className="module-item">
-                      <span className="module-icon">�</span>
+                      <span className="module-icon">📚</span>
                       <span className="module-name">First Module</span>
                       <span className="module-desc">Introduction to Cyber Security and Ethical Hacking</span>
                     </div>
                     <div className="module-item">
-                      <span className="module-icon">�</span>
+                      <span className="module-icon">📖</span>
                       <span className="module-name">First Lesson</span>
                       <span className="module-desc">What is Cyber Security?</span>
                     </div>
@@ -617,7 +662,7 @@ const Dashboard = ({ user, onLogout }) => {
 
                   <div className="assessment-card">
                     <div className="assessment-header">
-                      <div className="assessment-icon microsoft-icon">�</div>
+                      <div className="assessment-icon microsoft-icon">🔒</div>
                     </div>
                     <div className="assessment-content">
                       <h4>CompTIA Security+ Practice Test</h4>
@@ -647,7 +692,7 @@ const Dashboard = ({ user, onLogout }) => {
                 </div>
                 <div className="capstone-projects-grid">
                   <div className="capstone-card">
-                    <div className="capstone-icon" style={{ background: '#ffe6e6' }}>�</div>
+                    <div className="capstone-icon" style={{ background: '#ffe6e6' }}>🔐</div>
                     <h4>Enterprise Network Penetration Test</h4>
                     <p className="capstone-course">End-to-End Security Assessment</p>
                     <button className="btn-start">Start now →</button>
@@ -661,7 +706,7 @@ const Dashboard = ({ user, onLogout }) => {
                     <button className="btn-share">⬆️</button>
                   </div>
                   <div className="capstone-card">
-                    <div className="capstone-icon" style={{ background: '#e6f0ff' }}>�️</div>
+                    <div className="capstone-icon" style={{ background: '#e6f0ff' }}>📡</div>
                     <h4>Wireless Network Security Analysis</h4>
                     <p className="capstone-course">Wi-Fi Penetration Testing & Security</p>
                     <button className="btn-start">Start now →</button>
@@ -938,7 +983,7 @@ const Dashboard = ({ user, onLogout }) => {
 
                   <div className="assessment-card">
                     <div className="assessment-header">
-                      <div className="assessment-icon microsoft-icon">�</div>
+                      <div className="assessment-icon microsoft-icon">🔒</div>
                     </div>
                     <div className="assessment-content">
                       <h4>CompTIA Security+ Practice Test</h4>
@@ -972,79 +1017,46 @@ const Dashboard = ({ user, onLogout }) => {
               {/* Capstone Projects */}
               <div className="projects-section">
                 <h3>Capstone Projects</h3>
-                <div className="capstone-projects-grid">
-                  <div className="capstone-card">
-                    <div className="capstone-icon" style={{ background: '#ffe6e6' }}>�</div>
-                    <h4>Enterprise Network Penetration Test</h4>
-                    <p className="capstone-course">End-to-End Security Assessment</p>
-                    <p className="project-desc">Conduct a full penetration test on a simulated enterprise network, identify vulnerabilities, and provide remediation recommendations.</p>
-                    <div className="project-meta">
-                      <span>⏱️ 4 weeks</span>
-                      <span>🎯 Advanced</span>
-                    </div>
-                    <button className="btn-start">Start Project →</button>
+                {projects.length > 0 ? (
+                  <div className="capstone-projects-grid">
+                    {projects.map((project, index) => {
+                      const colors = ['#ffe6e6', '#fff0e6', '#e6f0ff', '#e6ffe6', '#f0e6ff', '#ffe6f0'];
+                      const icons = ['🔐', '🌐', '📡', '🦠', '☁️', '🔴', '🎯', '🛡️'];
+                      return (
+                        <div key={project.id} className="capstone-card">
+                          <div className="capstone-icon" style={{ background: colors[index % colors.length] }}>
+                            {icons[index % icons.length]}
+                          </div>
+                          <h4>{project.title}</h4>
+                          <p className="capstone-course">{project.difficulty || 'Intermediate'} Level Project</p>
+                          <p className="project-desc">{project.description}</p>
+                          {project.requirements && (
+                            <p className="project-requirements"><strong>Requirements:</strong> {project.requirements}</p>
+                          )}
+                          {project.deliverables && (
+                            <p className="project-deliverables"><strong>Deliverables:</strong> {project.deliverables}</p>
+                          )}
+                          <div className="project-meta">
+                            {project.duration && <span>⏱️ {project.duration}</span>}
+                            {project.difficulty && <span>🎯 {project.difficulty}</span>}
+                          </div>
+                          {project.skills && project.skills.length > 0 && (
+                            <div className="project-skills">
+                              {project.skills.slice(0, 3).map((skill, i) => (
+                                <span key={i} className="skill-tag">{skill}</span>
+                              ))}
+                            </div>
+                          )}
+                          <button className="btn-start">Start Project →</button>
+                        </div>
+                      );
+                    })}
                   </div>
-
-                  <div className="capstone-card">
-                    <div className="capstone-icon" style={{ background: '#fff0e6' }}>🌐</div>
-                    <h4>Web Application Security Audit</h4>
-                    <p className="capstone-course">OWASP Top 10 Vulnerability Assessment</p>
-                    <p className="project-desc">Audit a web application for OWASP Top 10 vulnerabilities and create a comprehensive security report.</p>
-                    <div className="project-meta">
-                      <span>⏱️ 3 weeks</span>
-                      <span>🎯 Intermediate</span>
-                    </div>
-                    <button className="btn-start">Start Project →</button>
+                ) : (
+                  <div className="empty-state">
+                    <p>📁 No projects available yet. Admin will add projects soon!</p>
                   </div>
-
-                  <div className="capstone-card">
-                    <div className="capstone-icon" style={{ background: '#e6f0ff' }}>�️</div>
-                    <h4>Wireless Network Security Analysis</h4>
-                    <p className="capstone-course">Wi-Fi Penetration Testing & Security</p>
-                    <p className="project-desc">Analyze wireless network security, perform WPA2 cracking, and set up secure wireless infrastructure.</p>
-                    <div className="project-meta">
-                      <span>⏱️ 2 weeks</span>
-                      <span>🎯 Intermediate</span>
-                    </div>
-                    <button className="btn-start">Start Project →</button>
-                  </div>
-
-                  <div className="capstone-card">
-                    <div className="capstone-icon" style={{ background: '#e6ffe6' }}>🦠</div>
-                    <h4>Malware Analysis Lab</h4>
-                    <p className="capstone-course">Reverse Engineering & Detection</p>
-                    <p className="project-desc">Set up a malware analysis lab and reverse engineer malicious software to understand attack vectors.</p>
-                    <div className="project-meta">
-                      <span>⏱️ 3 weeks</span>
-                      <span>🎯 Advanced</span>
-                    </div>
-                    <button className="btn-start">Start Project →</button>
-                  </div>
-
-                  <div className="capstone-card">
-                    <div className="capstone-icon" style={{ background: '#f0e6ff' }}>☁️</div>
-                    <h4>Cloud Security Assessment</h4>
-                    <p className="capstone-course">AWS/Azure Security Audit</p>
-                    <p className="project-desc">Assess cloud infrastructure security, identify misconfigurations, and implement security best practices.</p>
-                    <div className="project-meta">
-                      <span>⏱️ 3 weeks</span>
-                      <span>🎯 Advanced</span>
-                    </div>
-                    <button className="btn-start">Start Project →</button>
-                  </div>
-
-                  <div className="capstone-card">
-                    <div className="capstone-icon" style={{ background: '#ffe6f0' }}>🔴</div>
-                    <h4>Red Team Operation</h4>
-                    <p className="capstone-course">Full-Scale Attack Simulation</p>
-                    <p className="project-desc">Execute a complete red team operation including reconnaissance, exploitation, and post-exploitation.</p>
-                    <div className="project-meta">
-                      <span>⏱️ 5 weeks</span>
-                      <span>🎯 Expert</span>
-                    </div>
-                    <button className="btn-start">Start Project →</button>
-                  </div>
-                </div>
+                )}
               </div>
             </div>
           )}
