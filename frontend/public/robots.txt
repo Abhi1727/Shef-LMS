@@ -1,0 +1,6 @@
+# robots.txt for SHEF LMS
+User-agent: *
+Allow: /
+
+# Sitemap location
+Sitemap: https://learnwithshef.com/sitemap.xml

@@ -16,6 +16,46 @@ const Dashboard = ({ user, onLogout }) => {
   const [selectedModule, setSelectedModule] = useState(1);
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [showHelpMenu, setShowHelpMenu] = useState(false);
+  const [selectedVideo, setSelectedVideo] = useState(null);
+
+  // Classroom Videos - Recorded Sessions
+  // Videos are stored in: /frontend/public/videos/
+  // Add your video files there and update this array
+  const classroomVideos = [
+    {
+      id: 1,
+      title: 'Class 1: Introduction to Cyber Security',
+      description: 'Overview of cybersecurity fundamentals, threat landscape, and career opportunities in the field.',
+      date: '2025-11-15',
+      duration: '1h 30m',
+      videoUrl: '/videos/class1.mp4', // Place video in public/videos/class1.mp4
+      thumbnail: '🎬',
+      instructor: 'SHEF Instructor',
+      topics: ['Cyber Security Basics', 'CIA Triad', 'Types of Threats']
+    },
+    {
+      id: 2,
+      title: 'Class 2: Networking Fundamentals',
+      description: 'Understanding network protocols, OSI model, and how data travels across networks.',
+      date: '2025-11-18',
+      duration: '1h 45m',
+      videoUrl: '/videos/class2.mp4', // Place video in public/videos/class2.mp4
+      thumbnail: '🎬',
+      instructor: 'SHEF Instructor',
+      topics: ['OSI Model', 'TCP/IP', 'Network Devices']
+    },
+    {
+      id: 3,
+      title: 'Class 3: Linux Basics for Hackers',
+      description: 'Getting started with Linux command line, essential commands for security professionals.',
+      date: '2025-11-22',
+      duration: '2h 00m',
+      videoUrl: '/videos/class3.mp4', // Place video in public/videos/class3.mp4
+      thumbnail: '🎬',
+      instructor: 'SHEF Instructor',
+      topics: ['Linux Commands', 'File System', 'Permissions']
+    }
+  ];
 
   // Complete Course Curriculum - Cyber Security & Ethical Hacking
   const courseData = {
@@ -505,6 +545,14 @@ const Dashboard = ({ user, onLogout }) => {
           >
             <span className="icon">💼</span>
             <span>Job Board</span>
+          </button>
+          <button 
+            className={`nav-item ${activeSection === 'classroom' ? 'active' : ''}`}
+            onClick={() => { setActiveSection('classroom'); if (window.innerWidth <= 1024) setSidebarOpen(false); }}
+            title="Classroom"
+          >
+            <span className="icon">🎥</span>
+            <span>Classroom</span>
           </button>
         </nav>
 
@@ -1497,6 +1545,119 @@ const Dashboard = ({ user, onLogout }) => {
                   <button className="btn-primary">Apply Now</button>
                 </div>
               </div>
+            </div>
+          )}
+
+          {/* Classroom Section */}
+          {activeSection === 'classroom' && (
+            <div className="section classroom-section">
+              <div className="section-header">
+                <h2>🎥 Classroom</h2>
+                <p className="section-subtitle">Watch your recorded class sessions</p>
+              </div>
+
+              {selectedVideo ? (
+                /* Video Player View */
+                <div className="video-player-container">
+                  <button 
+                    className="back-to-videos-btn"
+                    onClick={() => setSelectedVideo(null)}
+                  >
+                    ← Back to Videos
+                  </button>
+                  
+                  <div className="video-player-wrapper">
+                    <video 
+                      controls 
+                      autoPlay
+                      className="video-player"
+                      key={selectedVideo.id}
+                    >
+                      <source src={selectedVideo.videoUrl} type="video/mp4" />
+                      Your browser does not support the video tag.
+                    </video>
+                  </div>
+
+                  <div className="video-info-panel">
+                    <h3>{selectedVideo.title}</h3>
+                    <div className="video-meta">
+                      <span>📅 {selectedVideo.date}</span>
+                      <span>⏱️ {selectedVideo.duration}</span>
+                      <span>👨‍🏫 {selectedVideo.instructor}</span>
+                    </div>
+                    <p className="video-description">{selectedVideo.description}</p>
+                    <div className="video-topics">
+                      <h4>Topics Covered:</h4>
+                      <div className="topics-list">
+                        {selectedVideo.topics.map((topic, index) => (
+                          <span key={index} className="topic-tag">{topic}</span>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                /* Video List View */
+                <div className="classroom-content">
+                  <div className="classroom-stats">
+                    <div className="stat-box">
+                      <span className="stat-icon">🎬</span>
+                      <div className="stat-info">
+                        <h4>{classroomVideos.length}</h4>
+                        <p>Total Sessions</p>
+                      </div>
+                    </div>
+                    <div className="stat-box">
+                      <span className="stat-icon">⏱️</span>
+                      <div className="stat-info">
+                        <h4>5h 15m</h4>
+                        <p>Total Duration</p>
+                      </div>
+                    </div>
+                    <div className="stat-box">
+                      <span className="stat-icon">📚</span>
+                      <div className="stat-info">
+                        <h4>Module 1-3</h4>
+                        <p>Covered Topics</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="videos-grid">
+                    {classroomVideos.map((video) => (
+                      <div 
+                        key={video.id} 
+                        className="video-card"
+                        onClick={() => setSelectedVideo(video)}
+                      >
+                        <div className="video-thumbnail">
+                          <span className="play-icon">▶️</span>
+                          <span className="duration-badge">{video.duration}</span>
+                        </div>
+                        <div className="video-card-content">
+                          <h4>{video.title}</h4>
+                          <p className="video-date">📅 {video.date}</p>
+                          <p className="video-desc">{video.description}</p>
+                          <div className="video-topics-preview">
+                            {video.topics.slice(0, 2).map((topic, idx) => (
+                              <span key={idx} className="mini-topic">{topic}</span>
+                            ))}
+                            {video.topics.length > 2 && (
+                              <span className="mini-topic">+{video.topics.length - 2} more</span>
+                            )}
+                          </div>
+                        </div>
+                        <button className="watch-btn">Watch Now</button>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="classroom-info-box">
+                    <h4>📢 Note for Students</h4>
+                    <p>New class recordings are added within 24 hours after each live session. Make sure to watch and take notes!</p>
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>

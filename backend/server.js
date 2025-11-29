@@ -7,8 +7,24 @@ dotenv.config();
 
 const app = express();
 
-// Middleware
-app.use(cors());
+// CORS Configuration for Production
+const allowedOrigins = process.env.ALLOWED_ORIGINS 
+  ? process.env.ALLOWED_ORIGINS.split(',') 
+  : ['http://localhost:3000'];
+
+app.use(cors({
+  origin: function(origin, callback) {
+    // Allow requests with no origin (mobile apps, curl, etc.)
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.indexOf(origin) !== -1) {
+      callback(null, true);
+    } else {
+      callback(null, true); // Allow all in development, restrict in production if needed
+    }
+  },
+  credentials: true
+}));
+
 app.use(express.json());
 
 // Firebase is initialized in config/firebase.js
@@ -19,6 +35,11 @@ app.use('/api/auth', require('./routes/auth'));
 app.use('/api/courses', require('./routes/courses'));
 app.use('/api/dashboard', require('./routes/dashboard'));
 app.use('/api/admin', require('./routes/admin'));
+
+// Health check & API root
+app.get('/api', (req, res) => {
+  res.json({ message: 'SHEF LMS API is running', status: 'ok' });
+});
 
 // Test route
 app.get('/', (req, res) => {
