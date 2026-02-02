@@ -3,7 +3,7 @@
     "admin1": {
       "name": "Super Admin",
       "email": "admin@sheflms.com",
-      "password": "$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcg7b3XeKeUxWDeBlkxiRlO.J4m",
+      "password": "$2b$10$1c7z1iAMraS3lW.ZlBXS1ezsvX9TH7wvMKoGZzGPgx5XoaRVTHtp6",
       "role": "admin",
       "status": "active",
       "createdAt": "2025-11-01T00:00:00Z",
@@ -47,6 +47,20 @@
       "address": "789 Pine Rd, Austin, TX",
       "createdAt": "2025-11-09T00:00:00Z",
       "updatedAt": "2025-11-09T00:00:00Z"
+    },
+    "teacher1": {
+      "name": "Dr. Sarah Mitchell",
+      "email": "teacher@sheflms.com",
+      "password": "$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcg7b3XeKeUxWDeBlkxiRlO.J4m",
+      "role": "teacher",
+      "status": "active",
+      "age": 35,
+      "domain": "Cyber Security & Ethical Hacking",
+      "experience": "8 years in cybersecurity education",
+      "phone": "+1-555-0123",
+      "address": "789 University Ave, Boston, MA",
+      "createdAt": "2025-10-20T00:00:00Z",
+      "updatedAt": "2025-11-01T00:00:00Z"
     }
   },
   "courses": {

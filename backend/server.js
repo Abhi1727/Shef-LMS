@@ -3,6 +3,7 @@ const cors = require('cors');
 const dotenv = require('dotenv');
 const { db } = require('./config/firebase');
 const { startRecordingSync } = require('./jobs/syncRecordings');
+const videoProcessor = require('./middleware/videoProcessor');
 
 dotenv.config();
 
@@ -35,9 +36,15 @@ console.log('Firebase Firestore ready');
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/courses', require('./routes/courses'));
 app.use('/api/dashboard', require('./routes/dashboard'));
-app.use('/api/admin', require('./routes/admin'));
 app.use('/api/content', require('./routes/content'));
 app.use('/api/zoom', require('./routes/zoom'));
+app.use('/api/classroom', require('./routes/classroom'));
+
+// Apply video processor middleware for automatic URL/passcode extraction
+// This must come BEFORE the admin routes
+app.use('/api/admin', videoProcessor);
+app.use('/api/admin', require('./routes/admin'));
+app.use('/api/video', require('./routes/video'));
 app.use('/api/teacher', require('./routes/teacher'));
 app.use('/api/batches', require('./routes/batches'));
 

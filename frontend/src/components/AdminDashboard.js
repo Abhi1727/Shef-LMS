@@ -3,6 +3,7 @@ import { firebaseService, COLLECTIONS } from '../services/firebaseService';
 import { where } from 'firebase/firestore';
 import bcrypt from 'bcryptjs';
 import { ToastContainer, showToast } from './Toast';
+import fallbackData from '../data/fallbackData';
 import './AdminDashboard.css';
 
 const AdminDashboard = ({ user, onLogout }) => {
@@ -12,6 +13,7 @@ const AdminDashboard = ({ user, onLogout }) => {
   
   // Data states
   const [students, setStudents] = useState([]);
+  const [teachers, setTeachers] = useState([]);
   const [courses, setCourses] = useState([]);
   const [modules, setModules] = useState([]);
   const [lessons, setLessons] = useState([]);
@@ -22,6 +24,7 @@ const AdminDashboard = ({ user, onLogout }) => {
   const [classroomVideos, setClassroomVideos] = useState([]);
   const [liveClasses, setLiveClasses] = useState([]);
   const [stats, setStats] = useState({});
+  const [domains, setDomains] = useState([]);
   
   // Modal states
   const [showModal, setShowModal] = useState(false);
@@ -34,11 +37,27 @@ const AdminDashboard = ({ user, onLogout }) => {
     loadAllData();
   }, []);
 
+  // Reset form when modal type changes to prevent data leakage
+  useEffect(() => {
+    if (modalType && !editingItem) {
+      // Only reset if we're not editing an existing item
+      const cleanDefaults = getDefaultFormData(modalType);
+      cleanDefaults.email = '';
+      cleanDefaults.password = '';
+      setFormData(cleanDefaults);
+    }
+  }, [modalType]);
+
   const loadAllData = async () => {
     setLoading(true);
     try {
+      const token = localStorage.getItem('token');
+      const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
+
+      // Load all data via API calls
       const [
         studentsRes,
+        teachersRes,
         coursesRes,
         modulesRes,
         lessonsRes,
@@ -49,33 +68,70 @@ const AdminDashboard = ({ user, onLogout }) => {
         classroomRes,
         liveClassesRes
       ] = await Promise.all([
-        firebaseService.getAll(COLLECTIONS.USERS, [where('role', '==', 'student')]),
-        firebaseService.getAll(COLLECTIONS.COURSES),
-        firebaseService.getAll(COLLECTIONS.MODULES),
-        firebaseService.getAll(COLLECTIONS.LESSONS),
-        firebaseService.getAll(COLLECTIONS.PROJECTS),
-        firebaseService.getAll(COLLECTIONS.ASSESSMENTS),
-        firebaseService.getAll(COLLECTIONS.JOBS),
-        firebaseService.getAll(COLLECTIONS.MENTORS),
-        firebaseService.getAll(COLLECTIONS.CLASSROOM),
-        firebaseService.getAll(COLLECTIONS.LIVE_CLASSES)
+        fetch(`${apiUrl}/api/admin/users`, { headers: { 'Authorization': `Bearer ${token}` } }),
+        fetch(`${apiUrl}/api/admin/teachers`, { headers: { 'Authorization': `Bearer ${token}` } }),
+        fetch(`${apiUrl}/api/admin/courses`, { headers: { 'Authorization': `Bearer ${token}` } }),
+        fetch(`${apiUrl}/api/admin/modules`, { headers: { 'Authorization': `Bearer ${token}` } }),
+        fetch(`${apiUrl}/api/admin/lessons`, { headers: { 'Authorization': `Bearer ${token}` } }),
+        fetch(`${apiUrl}/api/admin/projects`, { headers: { 'Authorization': `Bearer ${token}` } }),
+        fetch(`${apiUrl}/api/admin/assessments`, { headers: { 'Authorization': `Bearer ${token}` } }),
+        fetch(`${apiUrl}/api/admin/jobs`, { headers: { 'Authorization': `Bearer ${token}` } }),
+        fetch(`${apiUrl}/api/admin/mentors`, { headers: { 'Authorization': `Bearer ${token}` } }),
+        fetch(`${apiUrl}/api/admin/classroom`, { headers: { 'Authorization': `Bearer ${token}` } })
       ]);
 
-      if (studentsRes.success) setStudents(studentsRes.data); else setStudents([]);
-      if (coursesRes.success) setCourses(coursesRes.data); else setCourses([]);
-      if (modulesRes.success) setModules(modulesRes.data); else setModules([]);
-      if (lessonsRes.success) setLessons(lessonsRes.data); else setLessons([]);
-      if (projectsRes.success) setProjects(projectsRes.data); else setProjects([]);
-      if (assessmentsRes.success) setAssessments(assessmentsRes.data); else setAssessments([]);
-      if (jobsRes.success) setJobs(jobsRes.data); else setJobs([]);
-      if (mentorsRes.success) setMentors(mentorsRes.data); else setMentors([]);
-      if (classroomRes.success) setClassroomVideos(classroomRes.data); else setClassroomVideos([]);
-      if (liveClassesRes.success) setLiveClasses(liveClassesRes.data); else setLiveClasses([]);
+      const studentsData = studentsRes.ok ? await studentsRes.json() : fallbackData.users;
+      const teachersData = teachersRes.ok ? await teachersRes.json() : fallbackData.teachers;
+      const coursesData = coursesRes.ok ? await coursesRes.json() : fallbackData.courses;
+      const modulesData = modulesRes.ok ? await modulesRes.json() : [];
+      const lessonsData = lessonsRes.ok ? await lessonsRes.json() : [];
+      const projectsData = projectsRes.ok ? await projectsRes.json() : [];
+      const assessmentsData = assessmentsRes.ok ? await assessmentsRes.json() : [];
+      const jobsData = jobsRes.ok ? await jobsRes.json() : [];
+      const mentorsData = mentorsRes.ok ? await mentorsRes.json() : [];
+      const classroomData = classroomRes.ok ? await classroomRes.json() : fallbackData.classroom;
+
+      setStudents(studentsData);
+      setTeachers(teachersData);
+      setCourses(coursesData);
+      setModules(modulesData);
+      setLessons(lessonsData);
+      setProjects(projectsData);
+      setAssessments(assessmentsData);
+      setJobs(jobsData);
+      setMentors(mentorsData);
+      setClassroomVideos(classroomData);
 
       // Calculate stats using safe fallbacks
-      calculateStats(studentsRes.success ? studentsRes.data : [], coursesRes.success ? coursesRes.data : [], jobsRes.success ? jobsRes.data : []);
+      calculateStats(studentsData, coursesData, jobsData);
+
+      // Set domains for teacher selection based on available courses
+      const courseTitles = coursesData.map(course => course.title || course.name);
+      setDomains(courseTitles);
+
+      // Show warning if using fallback data
+      if (!studentsRes.ok || !teachersRes.ok || !coursesRes.ok) {
+        showToast('⚠️ Using demo data - Firebase quota exceeded. Contact admin to upgrade Firebase plan.', 'warning');
+      }
+
     } catch (error) {
       console.error('Error loading admin data:', error);
+      
+      // Use fallback data on complete failure
+      setStudents(fallbackData.users);
+      setTeachers(fallbackData.teachers);
+      setCourses(fallbackData.courses);
+      setModules([]);
+      setLessons([]);
+      setProjects([]);
+      setAssessments([]);
+      setJobs([]);
+      setMentors([]);
+      setClassroomVideos(fallbackData.classroom);
+      
+      calculateStats(fallbackData.users, fallbackData.courses, []);
+      
+      showToast('⚠️ Using demo data - Firebase quota exceeded. Contact admin to upgrade Firebase plan.', 'warning');
     } finally {
       setLoading(false);
     }
@@ -101,7 +157,18 @@ const AdminDashboard = ({ user, onLogout }) => {
   const openModal = (type, item = null) => {
     setModalType(type);
     setEditingItem(item);
-    setFormData(item || getDefaultFormData(type));
+    
+    // Force clean form data for new items (no editing)
+    if (!item) {
+      const cleanDefaults = getDefaultFormData(type);
+      // Ensure email and password are always empty for new users
+      cleanDefaults.email = '';
+      cleanDefaults.password = '';
+      setFormData(cleanDefaults);
+    } else {
+      setFormData(item);
+    }
+    
     setShowModal(true);
   };
 
@@ -109,22 +176,42 @@ const AdminDashboard = ({ user, onLogout }) => {
     setShowModal(false);
     setModalType('');
     setEditingItem(null);
-    setFormData({});
+    // Force complete form reset
+    setFormData({
+      name: '',
+      email: '',
+      password: '',
+      enrollmentNumber: '',
+      course: '',
+      status: 'active',
+      role: 'student',
+      phone: '',
+      address: '',
+      age: '',
+      domain: '',
+      experience: '',
+      title: '',
+      company: '',
+      linkedin: '',
+      bio: '',
+      skills: []
+    });
   };
 
   const getDefaultFormData = (type) => {
     const defaults = {
       student: { name: '', email: '', password: '', enrollmentNumber: '', course: '', status: 'active', role: 'student', phone: '', address: '' },
+      teacher: { name: '', email: '', password: '', age: '', domain: '', experience: '', status: 'active', role: 'teacher', phone: '', address: '' },
       course: { title: '', description: '', duration: '', modules: 0, status: 'active', instructor: '', price: '' },
       module: { name: '', courseId: '', description: '', duration: '', lessons: 0, order: 1 },
   lesson: { title: '', moduleId: '', content: '', duration: '', videoUrl: '', classLink: '', order: 1, resources: '' },
       project: { title: '', description: '', difficulty: 'Intermediate', duration: '', skills: [], requirements: '', deliverables: '' },
       assessment: { title: '', description: '', questions: 0, duration: '', difficulty: 'Medium', passingScore: 70 },
       job: { title: '', company: '', location: 'Remote', salary: '', type: 'Full-time', status: 'active', skills: [], description: '' },
-      mentor: { name: '', title: '', company: '', experience: '', skills: [], bio: '', email: '', linkedin: '' },
+      mentor: { name: '', title: '', company: '', experience: '', skills: [], bio: '', email: '', password: '', domain: '', linkedin: '' },
       content: { type: 'announcement', title: '', content: '', targetAudience: 'all', priority: 'normal' },
-      classroom: { title: '', date: '', instructor: '', duration: '', driveId: '', courseType: 'Cyber Security', type: 'Live Class' },
-      liveClass: { title: '', course: 'Data Science', scheduledDate: '', scheduledTime: '', duration: '60 mins', instructor: '', meetingType: 'auto', status: 'scheduled', description: '' }
+      classroom: { title: '', date: '', instructor: '', duration: '', zoomUrl: '', zoomPasscode: '', driveId: '', courseType: 'Data Science & AI', type: 'Live Class', videoSource: 'firebase' },
+      liveClass: { title: '', course: 'Data Science & AI', scheduledDate: '', scheduledTime: '', duration: '60 mins', instructor: '', meetingType: 'auto', status: 'scheduled', description: '' }
     };
     return defaults[type] || {};
   };
@@ -134,8 +221,8 @@ const AdminDashboard = ({ user, onLogout }) => {
       setSaving(true);
       // Validate required fields
       if (modalType === 'student') {
-        if (!formData.name || !formData.email || (!editingItem && !formData.password) || !formData.enrollmentNumber) {
-          alert('Please fill in all required fields (Name, Email, Password, Enrollment Number)');
+        if (!formData.name || !formData.email || (!editingItem && !formData.password) || !formData.enrollmentNumber || !formData.course) {
+          showToast('Please fill in all required fields (Name, Email, Password, Enrollment Number, Course)', 'warning');
           return;
         }
 
@@ -143,22 +230,25 @@ const AdminDashboard = ({ user, onLogout }) => {
         if (!editingItem) {
           // Creating new student - hash password before storing
           try {
-            // Check if email already exists
-            const existingUsers = await firebaseService.getAll(COLLECTIONS.USERS, [where('email', '==', formData.email)]);
-            if (existingUsers.success && existingUsers.data.length > 0) {
-              alert('A student with this email already exists!');
-              return;
+            // Check if email already exists via API
+            const token = localStorage.getItem('token');
+            const usersResponse = await fetch('/api/admin/users', {
+              headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (usersResponse.ok) {
+              const existingUsers = await usersResponse.json();
+              const emailExists = existingUsers.some(user => user.email === formData.email);
+              if (emailExists) {
+                showToast('A student with this email already exists!', 'error');
+                return;
+              }
             }
 
-            // Hash the password
-            const salt = await bcrypt.genSalt(10);
-            const hashedPassword = await bcrypt.hash(formData.password, salt);
-
-            // Prepare student data with hashed password
+            // Prepare student data (password will be hashed on backend)
             const studentData = {
               name: formData.name,
               email: formData.email,
-              password: hashedPassword,
+              password: formData.password, // Send plain text, backend will hash
               enrollmentNumber: formData.enrollmentNumber,
               phone: formData.phone || '',
               address: formData.address || '',
@@ -167,18 +257,26 @@ const AdminDashboard = ({ user, onLogout }) => {
               role: 'student'
             };
 
-            const result = await firebaseService.create(COLLECTIONS.USERS, studentData);
+            const createResponse = await fetch('/api/admin/users', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+              },
+              body: JSON.stringify(studentData)
+            });
             
-            if (result.success) {
+            if (createResponse.ok) {
               showToast('Student created successfully! Email: ' + formData.email, 'success');
               closeModal();
               await loadAllData();
             } else {
-              showToast('Error: ' + result.error, 'error');
+              const errorData = await createResponse.json();
+              showToast('Error: ' + (errorData.message || 'Failed to create student'), 'error');
             }
             return;
           } catch (error) {
-            alert('Failed to create student: ' + error.message);
+            showToast('Failed to create student: ' + error.message, 'error');
             return;
           }
         } else {
@@ -196,13 +294,216 @@ const AdminDashboard = ({ user, onLogout }) => {
           // Password cannot be updated during edit for security
           // User should use password reset feature
           
-          const result = await firebaseService.update(COLLECTIONS.USERS, editingItem.id, updateData);
-          if (result.success) {
+          const token = localStorage.getItem('token');
+          const updateResponse = await fetch(`/api/admin/users/${editingItem.id}`, {
+            method: 'PUT',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify(updateData)
+          });
+
+          if (updateResponse.ok) {
             showToast('Student updated successfully!', 'success');
             closeModal();
             await loadAllData();
           } else {
-            showToast('Error: ' + result.error, 'error');
+            const errorData = await updateResponse.json();
+            showToast('Error: ' + (errorData.message || 'Failed to update student'), 'error');
+          }
+          return;
+        }
+      } else if (modalType === 'teacher') {
+        if (!formData.name || !formData.email || (!editingItem && !formData.password) || !formData.domain) {
+          showToast('Please fill in all required fields (Name, Email, Password, Domain)', 'warning');
+          return;
+        }
+
+        // Special handling for teacher creation/update with password
+        if (!editingItem) {
+          // Creating new teacher - hash password before storing
+          try {
+            // Check if email already exists via API
+            const token = localStorage.getItem('token');
+            const teachersResponse = await fetch('/api/admin/teachers', {
+              headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (teachersResponse.ok) {
+              const existingTeachers = await teachersResponse.json();
+              const emailExists = existingTeachers.some(teacher => teacher.email === formData.email);
+              if (emailExists) {
+                showToast('A teacher with this email already exists!', 'error');
+                return;
+              }
+            }
+
+            // Prepare teacher data (password will be hashed on backend)
+            const teacherData = {
+              name: formData.name,
+              email: formData.email,
+              password: formData.password, // Send plain text, backend will hash
+              age: formData.age || null,
+              domain: formData.domain,
+              experience: formData.experience || '',
+              phone: formData.phone || '',
+              address: formData.address || '',
+              status: formData.status || 'active',
+              role: 'teacher'
+            };
+
+            const createResponse = await fetch('/api/admin/teachers', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+              },
+              body: JSON.stringify(teacherData)
+            });
+
+            if (createResponse.ok) {
+              showToast('Teacher created successfully!', 'success');
+              closeModal();
+              await loadAllData();
+            } else {
+              const errorData = await createResponse.json();
+              showToast('Error: ' + (errorData.message || 'Failed to create teacher'), 'error');
+            }
+            return;
+          } catch (error) {
+            console.error('Error creating teacher:', error);
+            showToast('Error creating teacher. Please try again.', 'error');
+            return;
+          }
+        } else {
+          // Updating existing teacher
+          const updateData = {
+            name: formData.name,
+            email: formData.email,
+            age: formData.age || null,
+            domain: formData.domain,
+            experience: formData.experience || '',
+            phone: formData.phone || '',
+            address: formData.address || '',
+            status: formData.status || 'active'
+          };
+
+          // Password cannot be updated during edit for security
+          // User should use password reset feature
+
+          const token = localStorage.getItem('token');
+          const updateResponse = await fetch(`/api/admin/teachers/${editingItem.id}`, {
+            method: 'PUT',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify(updateData)
+          });
+
+          if (updateResponse.ok) {
+            showToast('Teacher updated successfully!', 'success');
+            closeModal();
+            await loadAllData();
+          } else {
+            const errorData = await updateResponse.json();
+            showToast('Error: ' + (errorData.message || 'Failed to update teacher'), 'error');
+          }
+          return;
+        }
+      } else if (modalType === 'mentor') {
+        if (!formData.name || !formData.title || !formData.company || !formData.email || (!editingItem && !formData.password) || !formData.domain) {
+          showToast('Please fill in all required fields (Name, Job Title, Company, Email, Password, Domain)', 'warning');
+          return;
+        }
+
+        // Special handling for mentor creation/update with password
+        if (!editingItem) {
+          // Creating new mentor - hash password before storing
+          try {
+            // Check if email already exists via API
+            const token = localStorage.getItem('token');
+            const mentorsResponse = await fetch('/api/admin/mentors', {
+              headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (mentorsResponse.ok) {
+              const existingMentors = await mentorsResponse.json();
+              const emailExists = existingMentors.some(mentor => mentor.email === formData.email);
+              if (emailExists) {
+                showToast('A mentor with this email already exists!', 'error');
+                return;
+              }
+            }
+
+            // Prepare mentor data (password will be hashed on backend)
+            const mentorData = {
+              name: formData.name,
+              email: formData.email,
+              password: formData.password, // Send plain text, backend will hash
+              title: formData.title,
+              company: formData.company,
+              domain: formData.domain,
+              bio: formData.bio || '',
+              linkedin: formData.linkedin || '',
+              status: formData.status || 'active',
+              role: 'mentor'
+            };
+
+            const createResponse = await fetch('/api/admin/mentors', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+              },
+              body: JSON.stringify(mentorData)
+            });
+            
+            if (createResponse.ok) {
+              showToast('Mentor created successfully! Email: ' + formData.email, 'success');
+              closeModal();
+              await loadAllData();
+            } else {
+              const errorData = await createResponse.json();
+              showToast('Error: ' + (errorData.message || 'Failed to create mentor'), 'error');
+            }
+            return;
+          } catch (error) {
+            showToast('Failed to create mentor: ' + error.message, 'error');
+            return;
+          }
+        } else {
+          // Editing existing mentor
+          const updateData = {
+            name: formData.name,
+            email: formData.email,
+            title: formData.title,
+            company: formData.company,
+            domain: formData.domain,
+            bio: formData.bio || '',
+            linkedin: formData.linkedin || '',
+            status: formData.status || 'active'
+          };
+          
+          // Password cannot be updated during edit for security
+          // User should use password reset feature
+          
+          const token = localStorage.getItem('token');
+          const updateResponse = await fetch(`/api/admin/mentors/${editingItem.id}`, {
+            method: 'PUT',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify(updateData)
+          });
+
+          if (updateResponse.ok) {
+            showToast('Mentor updated successfully!', 'success');
+            closeModal();
+            await loadAllData();
+          } else {
+            const errorData = await updateResponse.json();
+            showToast('Error: ' + (errorData.message || 'Failed to update mentor'), 'error');
           }
           return;
         }
@@ -237,8 +538,8 @@ const AdminDashboard = ({ user, onLogout }) => {
           return;
         }
       } else if (modalType === 'mentor') {
-        if (!formData.name || !formData.title || !formData.company) {
-          showToast('Please fill in all required fields (Name, Job Title, Company)', 'warning');
+        if (!formData.name || !formData.title || !formData.company || !formData.email || (!editingItem && !formData.password) || !formData.domain) {
+          showToast('Please fill in all required fields (Name, Job Title, Company, Email, Password, Domain)', 'warning');
           return;
         }
       } else if (modalType === 'content') {
@@ -250,8 +551,14 @@ const AdminDashboard = ({ user, onLogout }) => {
 
       // Validate classroom fields
       if (modalType === 'classroom') {
-        if (!formData.title || !formData.driveId || !formData.instructor) {
-          showToast('Please fill in required fields (Title, Google Drive ID, Instructor)', 'warning');
+        if (!formData.title || !formData.instructor || !formData.courseType) {
+          showToast('Please fill in required fields (Title, Instructor, Course Type)', 'warning');
+          return;
+        }
+        
+        // Validate Firebase Storage requirements
+        if (!formData.videoFile || !formData.courseId) {
+          showToast('Please provide video file and course ID for Firebase Storage uploads', 'warning');
           return;
         }
       }
@@ -271,8 +578,7 @@ const AdminDashboard = ({ user, onLogout }) => {
             const duration = parseInt(formData.duration) || 60;
             
             const token = localStorage.getItem('token');
-            const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
-            const zoomResponse = await fetch(`${apiUrl}/api/zoom/meetings`, {
+            const zoomResponse = await fetch('/api/zoom/meetings', {
               method: 'POST',
               headers: {
                 'Content-Type': 'application/json',
@@ -307,25 +613,163 @@ const AdminDashboard = ({ user, onLogout }) => {
         }
       }
 
-      const collection = {
-        student: COLLECTIONS.USERS,
-        course: COLLECTIONS.COURSES,
-        module: COLLECTIONS.MODULES,
-        lesson: COLLECTIONS.LESSONS,
-        project: COLLECTIONS.PROJECTS,
-        assessment: COLLECTIONS.ASSESSMENTS,
-        job: COLLECTIONS.JOBS,
-        mentor: COLLECTIONS.MENTORS,
-        content: COLLECTIONS.CONTENT,
-        classroom: COLLECTIONS.CLASSROOM,
-        liveClass: COLLECTIONS.LIVE_CLASSES
-      }[modalType];
+      // Special handling for classroom videos - Firebase Storage, YouTube Upload, or Manual URL
+      if (modalType === 'classroom') {
+        try {
+          const token = localStorage.getItem('token');
+          const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
+          
+          if (formData.videoSource === 'youtube-url') {
+            // Handle manual YouTube URL
+            if (!formData.youtubeUrl) {
+              showToast('YouTube URL is required for manual YouTube URL option', 'error');
+              return;
+            }
 
+            // Import YouTube utility
+            const { YouTubeUtils } = require('../utils/youtubeUtils');
+            const videoId = YouTubeUtils.extractVideoId(formData.youtubeUrl);
+            
+            if (!videoId) {
+              showToast('Invalid YouTube URL. Please use a valid YouTube video URL.', 'error');
+              return;
+            }
+
+            // Create lecture data for manual YouTube URL via API
+            const lectureData = {
+              title: formData.title,
+              instructor: formData.instructor,
+              description: formData.description || '',
+              courseId: formData.courseId,
+              batchId: formData.batchId || '',
+              domain: formData.domain || '',
+              duration: formData.duration || '',
+              courseType: formData.courseType || '',
+              type: formData.type || 'Lecture',
+              date: formData.date || new Date().toISOString().split('T')[0],
+              videoSource: 'youtube-url',
+              youtubeVideoId: videoId,
+              youtubeVideoUrl: formData.youtubeUrl,
+              youtubeEmbedUrl: YouTubeUtils.getEmbedUrl(videoId)
+            };
+
+            // Save via API
+            const response = await fetch(`${apiUrl}/api/admin/classroom/youtube-url`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+              },
+              body: JSON.stringify(lectureData)
+            });
+
+            const data = await response.json();
+
+            if (response.ok) {
+              showToast('YouTube video added successfully!', 'success');
+              closeModal();
+              await loadAllData();
+              return;
+            } else {
+              showToast('Error: ' + (data.message || 'Failed to save YouTube video'), 'error');
+              return;
+            }
+
+          } else {
+            // Handle file uploads (Firebase or YouTube Upload)
+            const formDataObj = new FormData();
+            formDataObj.append('video', formData.videoFile);
+            formDataObj.append('title', formData.title);
+            formDataObj.append('description', formData.description || '');
+            formDataObj.append('courseId', formData.courseId);
+            formDataObj.append('batchId', formData.batchId || '');
+            formDataObj.append('domain', formData.domain || '');
+            formDataObj.append('duration', formData.duration || '');
+            formDataObj.append('courseType', formData.courseType || '');
+            formDataObj.append('instructor', formData.instructor || '');
+            
+            // Choose endpoint based on video source
+            const uploadEndpoint = formData.videoSource === 'youtube' 
+              ? `${apiUrl}/api/admin/classroom/youtube-upload`
+              : `${apiUrl}/api/admin/classroom/upload`;
+            
+            const response = await fetch(uploadEndpoint, {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${token}`
+              },
+              body: formDataObj
+            });
+
+            const data = await response.json();
+
+            if (response.ok) {
+              const successMessage = formData.videoSource === 'youtube'
+                ? 'YouTube video uploaded successfully! Video is set to private.'
+                : 'Firebase Storage video uploaded successfully!';
+              showToast(successMessage, 'success');
+              closeModal();
+              await loadAllData();
+              return;
+            } else {
+              const errorMessage = formData.videoSource === 'youtube'
+                ? (data.message || 'Failed to upload video to YouTube')
+                : (data.message || 'Failed to upload video to Firebase Storage');
+              showToast('Error: ' + errorMessage, 'error');
+              return;
+            }
+          }
+        } catch (error) {
+          console.error('Error saving classroom video:', error);
+          const errorMessage = formData.videoSource === 'youtube-url'
+            ? 'Failed to save YouTube video. Please check the URL and try again.'
+            : (formData.videoSource === 'youtube'
+              ? 'Failed to upload video to YouTube. Please check your API configuration.'
+              : 'Failed to save classroom video. Please try again.');
+          showToast(errorMessage, 'error');
+          return;
+        }
+      }
+
+      const collectionMap = {
+        student: 'users',
+        course: 'courses',
+        module: 'modules',
+        lesson: 'lessons',
+        project: 'projects',
+        assessment: 'assessments',
+        job: 'jobs',
+        mentor: 'mentors',
+        content: 'content',
+        classroom: 'classroom',
+        liveClass: 'liveClasses'
+      };
+      const collection = collectionMap[modalType];
+
+      const token = localStorage.getItem('token');
+      const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
       let result;
+
       if (editingItem?.id) {
-        result = await firebaseService.update(collection, editingItem.id, formData);
+        const updateResponse = await fetch(`${apiUrl}/api/admin/${collection}/${editingItem.id}`, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify(formData)
+        });
+        result = { success: updateResponse.ok, error: updateResponse.ok ? null : (await updateResponse.json()).message };
       } else {
-        result = await firebaseService.create(collection, formData);
+        const createResponse = await fetch(`${apiUrl}/api/admin/${collection}`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify(formData)
+        });
+        result = { success: createResponse.ok, error: createResponse.ok ? null : (await createResponse.json()).message };
       }
 
       if (result.success) {
@@ -346,12 +790,48 @@ const AdminDashboard = ({ user, onLogout }) => {
 
   const handleDelete = async (collection, id) => {
     if (window.confirm('Are you sure you want to delete this item?')) {
-      const result = await firebaseService.delete(collection, id);
-      if (result.success) {
-        alert('Deleted successfully!');
-        await loadAllData();
-      } else {
-        alert('Failed to delete: ' + result.error);
+      try {
+        const token = localStorage.getItem('token');
+        
+        // Map collection names to API endpoints
+        const collectionMap = {
+          [COLLECTIONS.USERS]: 'users',
+          'teachers': 'teachers',
+          [COLLECTIONS.COURSES]: 'courses',
+          [COLLECTIONS.MODULES]: 'modules',
+          [COLLECTIONS.LESSONS]: 'lessons',
+          [COLLECTIONS.PROJECTS]: 'projects',
+          [COLLECTIONS.ASSESSMENTS]: 'assessments',
+          [COLLECTIONS.JOBS]: 'jobs',
+          [COLLECTIONS.MENTORS]: 'mentors',
+          [COLLECTIONS.CONTENT]: 'content',
+          [COLLECTIONS.CLASSROOM]: 'classroom',
+          [COLLECTIONS.LIVE_CLASSES]: 'liveClasses'
+        };
+        
+        const apiEndpoint = collectionMap[collection];
+        if (!apiEndpoint) {
+          showToast('Unknown collection type', 'error');
+          return;
+        }
+
+        const response = await fetch(`/api/admin/${apiEndpoint}/${id}`, {
+          method: 'DELETE',
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        });
+
+        if (response.ok) {
+          showToast('Deleted successfully!', 'success');
+          await loadAllData();
+        } else {
+          const data = await response.json();
+          showToast('Error: ' + (data.message || 'Failed to delete item'), 'error');
+        }
+      } catch (error) {
+        console.error('Error deleting item:', error);
+        showToast('Failed to delete item. Please try again.', 'error');
       }
     }
   };
@@ -362,8 +842,7 @@ const AdminDashboard = ({ user, onLogout }) => {
       setSaving(true);
       showToast('Syncing Zoom recordings...', 'info');
 
-      const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
-      const response = await fetch(`${apiUrl}/api/zoom/sync-recordings`, {
+      const response = await fetch('/api/zoom/sync-recordings', {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('token')}`,
@@ -389,19 +868,6 @@ const AdminDashboard = ({ user, onLogout }) => {
   };
 
   const handleInputChange = (field, value) => {
-    // Special handling for Drive ID - extract ID from full URL if pasted
-    if (field === 'driveId' && value) {
-      // Check if it's a full Google Drive URL
-      const driveUrlPattern = /\/file\/d\/([a-zA-Z0-9_-]+)/;
-      const match = value.match(driveUrlPattern);
-      if (match) {
-        // Extract just the ID from the URL
-        value = match[1];
-      }
-      // Also handle if user pastes URL with /view at the end
-      value = value.replace('/view', '').trim();
-    }
-    
     setFormData(prev => ({ ...prev, [field]: value }));
   };
 
@@ -420,7 +886,7 @@ const AdminDashboard = ({ user, onLogout }) => {
       <aside className="admin-sidebar open">
         <div className="sidebar-header">
           <div className="logo">
-            <img src="/Shef_logo.png" alt="SHEF" className="logo-image" />
+            <h2>LMS</h2>
           </div>
         </div>
 
@@ -438,6 +904,13 @@ const AdminDashboard = ({ user, onLogout }) => {
           >
             <span className="icon">👥</span>
             <span>Students</span>
+          </button>
+          <button 
+            className={`nav-item ${activeSection === 'teachers' ? 'active' : ''}`}
+            onClick={() => setActiveSection('teachers')}
+          >
+            <span className="icon">👨‍🏫</span>
+            <span>Teachers</span>
           </button>
           <button 
             className={`nav-item ${activeSection === 'courses' ? 'active' : ''}`}
@@ -533,7 +1006,7 @@ const AdminDashboard = ({ user, onLogout }) => {
         {/* Top Header */}
         <header className="admin-top-header">
           <div className="header-left">
-            <h1 className="page-title">Admin Dashboard</h1>
+            <h1 className="page-title">LMS Admin Dashboard</h1>
           </div>
           <div className="header-right">
             <div className="user-menu">
@@ -597,6 +1070,10 @@ const AdminDashboard = ({ user, onLogout }) => {
                   <button onClick={() => openModal('student')} className="action-btn">
                     <span className="icon">➕</span>
                     <span>Add Student</span>
+                  </button>
+                  <button onClick={() => openModal('teacher')} className="action-btn">
+                    <span className="icon">👨‍🏫</span>
+                    <span>Add Teacher</span>
                   </button>
                   <button onClick={() => openModal('course')} className="action-btn">
                     <span className="icon">➕</span>
@@ -705,6 +1182,57 @@ const AdminDashboard = ({ user, onLogout }) => {
                   </tbody>
                 </table>
                 {students.length === 0 && <p className="no-data">No students found. Add your first student!</p>}
+              </div>
+            </div>
+          )}
+
+          {/* Teachers Section */}
+          {activeSection === 'teachers' && (
+            <div className="admin-section">
+              <div className="section-header">
+                <h2>Manage Teachers</h2>
+                <button onClick={() => openModal('teacher')} className="btn-add">
+                  ➕ Add Teacher
+                </button>
+              </div>
+
+              <div className="data-table-container">
+                <table className="data-table">
+                  <thead>
+                    <tr>
+                      <th>Name</th>
+                      <th>Email</th>
+                      <th>Age</th>
+                      <th>Domain</th>
+                      <th>Experience</th>
+                      <th>Phone</th>
+                      <th>Status</th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {teachers.map(teacher => (
+                      <tr key={teacher.id}>
+                        <td>{teacher.name}</td>
+                        <td>{teacher.email}</td>
+                        <td>{teacher.age || 'N/A'}</td>
+                        <td>{teacher.domain || 'N/A'}</td>
+                        <td>{teacher.experience || 'N/A'}</td>
+                        <td>{teacher.phone || 'N/A'}</td>
+                        <td>
+                          <span className={`status-badge ${teacher.status}`}>
+                            {teacher.status}
+                          </span>
+                        </td>
+                        <td>
+                          <button onClick={() => openModal('teacher', teacher)} className="btn-edit">✏️</button>
+                          <button onClick={() => handleDelete('teachers', teacher.id)} className="btn-delete">🗑️</button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {teachers.length === 0 && <p className="no-data">No teachers found. Add your first teacher!</p>}
               </div>
             </div>
           )}
@@ -1002,8 +1530,9 @@ const AdminDashboard = ({ user, onLogout }) => {
               </div>
 
               <div className="info-box">
-                <p>📹 Add live class recordings from Google Drive. Students can watch these videos in their Classroom section.</p>
-                <p><strong>How to get Drive ID:</strong> Open your video in Google Drive → Click Share → Copy the ID from the URL (e.g., https://drive.google.com/file/d/<strong>YOUR_DRIVE_ID</strong>/view)</p>
+                <p>📹 Add live class recordings from Zoom or Google Drive. Students can watch these videos in their Classroom section.</p>
+                <p><strong>Zoom Recording:</strong> Open your recording in Zoom → Click "Share" → Copy the complete shareable link (includes passcode).</p>
+                <p><strong>Google Drive:</strong> Upload video to Drive → Get shareable link → Copy the file ID from the URL.</p>
               </div>
 
               <div className="data-table">
@@ -1015,7 +1544,7 @@ const AdminDashboard = ({ user, onLogout }) => {
                       <th>Instructor</th>
                       <th>Duration</th>
                       <th>Course</th>
-                      <th>Drive ID</th>
+                      <th>Video Source</th>
                       <th>Actions</th>
                     </tr>
                   </thead>
@@ -1043,18 +1572,74 @@ const AdminDashboard = ({ user, onLogout }) => {
                               </span>
                             </td>
                             <td>
-                              <code className="drive-id">{video.driveId?.substring(0, 15)}...</code>
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                                <span className={`source-badge firebase`}>
+                                  🔥 Firebase
+                                </span>
+                                <code className="drive-id">
+                                  {video.firebaseStoragePath?.substring(0, 25)}...
+                                </code>
+                              </div>
                             </td>
                             <td>
                               <div className="action-btns">
                                 <button onClick={() => openModal('classroom', video)} className="btn-edit" title="Edit">✏️</button>
                                 <button onClick={() => handleDelete(COLLECTIONS.CLASSROOM, video.id)} className="btn-delete" title="Delete">🗑️</button>
                                 <a 
-                                  href={`https://drive.google.com/file/d/${video.driveId}/view`} 
-                                  target="_blank" 
-                                  rel="noopener noreferrer"
+                                  href="#"
                                   className="btn-view"
-                                  title="Preview"
+                                  title="View in player"
+                                  onClick={(e) => {
+                                    e.preventDefault();
+                                    // Create a simple video player modal
+                                    const modal = document.createElement('div');
+                                    modal.style.cssText = `
+                                      position: fixed;
+                                      top: 0;
+                                      left: 0;
+                                      width: 100vw;
+                                      height: 100vh;
+                                      background: rgba(0,0,0,0.9);
+                                      z-index: 10000;
+                                      display: flex;
+                                      align-items: center;
+                                      justify-content: center;
+                                    `;
+                                    
+                                    const content = document.createElement('div');
+                                    content.style.cssText = `
+                                      background: white;
+                                      padding: 20px;
+                                      border-radius: 8px;
+                                      max-width: 500px;
+                                      text-align: center;
+                                    `;
+                                    
+                                    content.innerHTML = `
+                                      <h3>🔥 Firebase Storage Video</h3>
+                                      <p><strong>${video.title}</strong></p>
+                                      <p>This video is stored in Firebase Storage and can be played by students in their Dashboard.</p>
+                                      <p style="color: #666; font-size: 14px;">To preview: Go to Student Dashboard → Classroom → Select this video</p>
+                                      <button style="
+                                        background: #007bff;
+                                        color: white;
+                                        border: none;
+                                        padding: 10px 20px;
+                                        border-radius: 4px;
+                                        cursor: pointer;
+                                        margin-top: 15px;
+                                      " onclick="this.closest('div[style*=fixed]').remove()">Close</button>
+                                    `;
+                                    
+                                    modal.appendChild(content);
+                                    document.body.appendChild(modal);
+                                    
+                                    modal.addEventListener('click', (e) => {
+                                      if (e.target === modal) {
+                                        modal.remove();
+                                      }
+                                    });
+                                  }}
                                 >
                                   👁️
                                 </a>
@@ -1424,7 +2009,7 @@ const AdminDashboard = ({ user, onLogout }) => {
       {/* Modal */}
       {showModal && (
         <div className="modal-overlay" onClick={closeModal}>
-          <div className="modal" onClick={(e) => e.stopPropagation()}>
+          <div className="modal" onClick={(e) => e.stopPropagation()} key={`${modalType}-${editingItem ? 'edit' : 'new'}-${Date.now()}`}>
             <div className="modal-header">
               <h2>{editingItem ? 'Edit' : 'Add'} {modalType.charAt(0).toUpperCase() + modalType.slice(1)}</h2>
               <button className="close-btn" onClick={closeModal}>✕</button>
@@ -1446,25 +2031,33 @@ const AdminDashboard = ({ user, onLogout }) => {
                   )}
                   <input
                     type="text"
-                    placeholder="Name *"
+                    placeholder="Student full name *"
                     value={formData.name || ''}
                     onChange={(e) => handleInputChange('name', e.target.value)}
                     required
                   />
                   <input
                     type="email"
-                    placeholder="Email *"
+                    placeholder="Enter student email address *"
                     value={formData.email || ''}
                     onChange={(e) => handleInputChange('email', e.target.value)}
                     required
+                    autoComplete="off"
+                    readOnly
+                    onFocus={(e) => e.target.removeAttribute('readonly')}
+                    onBlur={(e) => e.target.setAttribute('readonly', true)}
                   />
                   {!editingItem && (
                     <input
                       type="password"
-                      placeholder="Password *"
+                      placeholder="Create password for student *"
                       value={formData.password || ''}
                       onChange={(e) => handleInputChange('password', e.target.value)}
                       required
+                      autoComplete="off"
+                      readOnly
+                      onFocus={(e) => e.target.removeAttribute('readonly')}
+                      onBlur={(e) => e.target.setAttribute('readonly', true)}
                     />
                   )}
                   <input
@@ -1489,11 +2082,11 @@ const AdminDashboard = ({ user, onLogout }) => {
                   <select
                     value={formData.course || ''}
                     onChange={(e) => handleInputChange('course', e.target.value)}
+                    required
                   >
-                    <option value="">Select Course</option>
-                    {courses.map(course => (
-                      <option key={course.id} value={course.title}>{course.title}</option>
-                    ))}
+                    <option value="">Select Course *</option>
+                    <option value="Data Science & AI">Data Science & AI</option>
+                    <option value="Cyber Security & Ethical Hacking">Cyber Security & Ethical Hacking</option>
                   </select>
                   <select
                     value={formData.status || 'active'}
@@ -1503,6 +2096,85 @@ const AdminDashboard = ({ user, onLogout }) => {
                     <option value="inactive">Inactive</option>
                     <option value="graduated">Graduated</option>
                     <option value="suspended">Suspended</option>
+                  </select>
+                </>
+              )}
+
+              {modalType === 'teacher' && (
+                <>
+                  <input
+                    type="text"
+                    placeholder="Teacher full name *"
+                    value={formData.name || ''}
+                    onChange={(e) => handleInputChange('name', e.target.value)}
+                    required
+                  />
+                  <input
+                    type="email"
+                    placeholder="Enter teacher email address *"
+                    value={formData.email || ''}
+                    onChange={(e) => handleInputChange('email', e.target.value)}
+                    required
+                    autoComplete="off"
+                    readOnly
+                    onFocus={(e) => e.target.removeAttribute('readonly')}
+                    onBlur={(e) => e.target.setAttribute('readonly', true)}
+                  />
+                  {!editingItem && (
+                    <input
+                      type="password"
+                      placeholder="Create password for teacher *"
+                      value={formData.password || ''}
+                      onChange={(e) => handleInputChange('password', e.target.value)}
+                      required
+                      autoComplete="off"
+                      readOnly
+                      onFocus={(e) => e.target.removeAttribute('readonly')}
+                      onBlur={(e) => e.target.setAttribute('readonly', true)}
+                    />
+                  )}
+                  <input
+                    type="number"
+                    placeholder="Age"
+                    value={formData.age || ''}
+                    onChange={(e) => handleInputChange('age', parseInt(e.target.value) || '')}
+                    min="18"
+                    max="80"
+                  />
+                  <select
+                    value={formData.domain || ''}
+                    onChange={(e) => handleInputChange('domain', e.target.value)}
+                    required
+                  >
+                    <option value="">Select Domain *</option>
+                    <option value="Data Science & AI">Data Science & AI</option>
+                    <option value="Cyber Security & Ethical Hacking">Cyber Security & Ethical Hacking</option>
+                  </select>
+                  <input
+                    type="text"
+                    placeholder="Experience (e.g., 5 years, 3+ years in teaching)"
+                    value={formData.experience || ''}
+                    onChange={(e) => handleInputChange('experience', e.target.value)}
+                  />
+                  <input
+                    type="tel"
+                    placeholder="Phone Number"
+                    value={formData.phone || ''}
+                    onChange={(e) => handleInputChange('phone', e.target.value)}
+                  />
+                  <textarea
+                    placeholder="Address"
+                    value={formData.address || ''}
+                    onChange={(e) => handleInputChange('address', e.target.value)}
+                    rows="2"
+                  />
+                  <select
+                    value={formData.status || 'active'}
+                    onChange={(e) => handleInputChange('status', e.target.value)}
+                  >
+                    <option value="active">Active</option>
+                    <option value="inactive">Inactive</option>
+                    <option value="on-leave">On Leave</option>
                   </select>
                 </>
               )}
@@ -1573,9 +2245,8 @@ const AdminDashboard = ({ user, onLogout }) => {
                     required
                   >
                     <option value="">Select Course *</option>
-                    {courses.map(course => (
-                      <option key={course.id} value={course.id}>{course.title}</option>
-                    ))}
+                    <option value="1">Data Science & AI</option>
+                    <option value="2">Cyber Security & Ethical Hacking</option>
                   </select>
                   <textarea
                     placeholder="Module Description"
@@ -1619,11 +2290,15 @@ const AdminDashboard = ({ user, onLogout }) => {
                     required
                   >
                     <option value="">Select Module *</option>
-                    {modules.map(module => (
-                      <option key={module.id} value={module.id}>
-                        {module.name} {module.courseId && courses.find(c => c.id === module.courseId) ? `(${courses.find(c => c.id === module.courseId).title})` : ''}
-                      </option>
-                    ))}
+                    {modules.map(module => {
+                      const courseName = module.courseId === '1' ? 'Data Science & AI' : 
+                                       module.courseId === '2' ? 'Cyber Security & Ethical Hacking' : '';
+                      return (
+                        <option key={module.id} value={module.id}>
+                          {module.name} {courseName ? `(${courseName})` : ''}
+                        </option>
+                      );
+                    })}
                   </select>
                   <textarea
                     placeholder="Lesson Content *"
@@ -1827,7 +2502,7 @@ const AdminDashboard = ({ user, onLogout }) => {
                 <>
                   <input
                     type="text"
-                    placeholder="Name *"
+                    placeholder="Mentor full name *"
                     value={formData.name || ''}
                     onChange={(e) => handleInputChange('name', e.target.value)}
                     required
@@ -1848,10 +2523,37 @@ const AdminDashboard = ({ user, onLogout }) => {
                   />
                   <input
                     type="email"
-                    placeholder="Email"
+                    placeholder="Enter mentor email address *"
                     value={formData.email || ''}
                     onChange={(e) => handleInputChange('email', e.target.value)}
+                    required
+                    autoComplete="off"
+                    readOnly
+                    onFocus={(e) => e.target.removeAttribute('readonly')}
+                    onBlur={(e) => e.target.setAttribute('readonly', true)}
                   />
+                  {!editingItem && (
+                    <input
+                      type="password"
+                      placeholder="Create password for mentor *"
+                      value={formData.password || ''}
+                      onChange={(e) => handleInputChange('password', e.target.value)}
+                      required
+                      autoComplete="off"
+                      readOnly
+                      onFocus={(e) => e.target.removeAttribute('readonly')}
+                      onBlur={(e) => e.target.setAttribute('readonly', true)}
+                    />
+                  )}
+                  <select
+                    value={formData.domain}
+                    onChange={(e) => handleInputChange('domain', e.target.value)}
+                    required
+                  >
+                    <option value="">Select Domain *</option>
+                    <option value="Data Science & AI">Data Science & AI</option>
+                    <option value="Cyber Security & Ethical Hacking">Cyber Security & Ethical Hacking</option>
+                  </select>
                   <input
                     type="url"
                     placeholder="LinkedIn Profile URL"
@@ -1890,24 +2592,121 @@ const AdminDashboard = ({ user, onLogout }) => {
                   />
                   <input
                     type="text"
-                    placeholder="Google Drive Video ID or Full URL *"
-                    value={formData.driveId || ''}
-                    onChange={(e) => handleInputChange('driveId', e.target.value)}
-                    required
-                  />
-                  <small style={{color: '#888', marginTop: '-10px', display: 'block'}}>
-                    Paste the full Google Drive URL (e.g., https://drive.google.com/file/d/1ABC.../view) or just the file ID
-                  </small>
-                  <input
-                    type="text"
                     placeholder="Instructor Name *"
                     value={formData.instructor || ''}
                     onChange={(e) => handleInputChange('instructor', e.target.value)}
                     required
                   />
+                  
+                  <div style={{ marginBottom: '15px' }}>
+                    <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>Video Source *</label>
+                    <select
+                      value={formData.videoSource || 'firebase'}
+                      onChange={(e) => handleInputChange('videoSource', e.target.value)}
+                      style={{ width: '100%', padding: '8px', border: '1px solid #ddd', borderRadius: '4px' }}
+                    >
+                      <option value="firebase">Firebase Storage</option>
+                      <option value="youtube">YouTube Private Upload</option>
+                      <option value="youtube-url">Manual YouTube URL</option>
+                    </select>
+                  </div>
+                  
+                  {/* Video Input Form - Dynamic based on source */}
+                  {formData.videoSource === 'youtube-url' ? (
+                    // Manual YouTube URL Input
+                    <div style={{ marginBottom: '15px' }}>
+                      <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>
+                        YouTube Video URL *
+                      </label>
+                      <input
+                        type="url"
+                        placeholder="https://www.youtube.com/watch?v=..."
+                        value={formData.youtubeUrl || ''}
+                        onChange={(e) => handleInputChange('youtubeUrl', e.target.value)}
+                        required
+                        style={{ width: '100%', padding: '8px', border: '1px solid #ddd', borderRadius: '4px' }}
+                      />
+                      <small style={{color: '#888', marginTop: '-10px', display: 'block'}}>
+                        Paste the YouTube video URL. Video should be uploaded as "Private" or "Unlisted" on YouTube.
+                      </small>
+                      <div style={{ marginTop: '10px', padding: '10px', backgroundColor: '#fff3cd', borderRadius: '4px', border: '1px solid #ffc107' }}>
+                        <strong>📺 Manual YouTube URL:</strong><br/>
+                        • Upload video to YouTube as Private/Unlisted first<br/>
+                        • Copy the YouTube video URL here<br/>
+                        • Students will only see videos for their enrolled course<br/>
+                        • No API configuration needed
+                      </div>
+                    </div>
+                  ) : (
+                    // File Upload for Firebase and YouTube Upload
+                    <div style={{ marginBottom: '15px' }}>
+                      <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>
+                        Upload Video File *
+                      </label>
+                      <input
+                        type="file"
+                        accept="video/*"
+                        onChange={(e) => handleInputChange('videoFile', e.target.files[0])}
+                        required
+                        style={{ width: '100%', padding: '8px', border: '1px solid #ddd', borderRadius: '4px' }}
+                      />
+                      <small style={{color: '#888', marginTop: '-10px', display: 'block'}}>
+                        {formData.videoSource === 'youtube' 
+                          ? 'Select a video file to upload to YouTube as private. Max size: 2GB.'
+                          : 'Select a video file (MP4, MOV, AVI, etc.). Max size: 2GB.'
+                        }
+                      </small>
+                      {formData.videoSource === 'youtube' && (
+                        <div style={{ marginTop: '10px', padding: '10px', backgroundColor: '#e3f2fd', borderRadius: '4px', border: '1px solid #2196f3' }}>
+                          <strong>📺 YouTube Upload:</strong><br/>
+                          • Video will be uploaded as <strong>Private</strong><br/>
+                          • Only accessible with the embed URL<br/>
+                          • Requires YouTube API configuration<br/>
+                          • Processing may take a few minutes
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  
                   <input
                     type="text"
-                    placeholder="Video Duration (e.g., 45 mins)"
+                    placeholder="Course ID *"
+                    value={formData.courseId || ''}
+                    onChange={(e) => handleInputChange('courseId', e.target.value)}
+                    required
+                    style={{ marginBottom: '15px' }}
+                  />
+                  <small style={{color: '#888', marginTop: '-10px', display: 'block'}}>
+                    Enter the course identifier (e.g., data-science-101, cyber-security-001)
+                  </small>
+                  
+                  <textarea
+                    placeholder="Video Description (optional)"
+                    value={formData.description || ''}
+                    onChange={(e) => handleInputChange('description', e.target.value)}
+                    rows={3}
+                    style={{resize: 'vertical', minHeight: '60px', marginBottom: '15px'}}
+                  />
+                  
+                  <input
+                    type="text"
+                    placeholder="Batch ID (optional)"
+                    value={formData.batchId || ''}
+                    onChange={(e) => handleInputChange('batchId', e.target.value)}
+                    style={{ marginBottom: '15px' }}
+                  />
+                  
+                  <input
+                    type="text"
+                    placeholder="Domain (optional)"
+                    value={formData.domain || ''}
+                    onChange={(e) => handleInputChange('domain', e.target.value)}
+                    style={{ marginBottom: '15px' }}
+                  />
+                  
+                  <input
+                    type="text"
+                    placeholder="Video Duration (e.g., 1 hr 45 min)"
                     value={formData.duration || ''}
                     onChange={(e) => handleInputChange('duration', e.target.value)}
                   />
@@ -1918,24 +2717,22 @@ const AdminDashboard = ({ user, onLogout }) => {
                     onChange={(e) => handleInputChange('date', e.target.value)}
                   />
                   <select
-                    value={formData.courseType || 'Cyber Security'}
+                    value={formData.courseType || 'Data Science & AI'}
                     onChange={(e) => handleInputChange('courseType', e.target.value)}
                   >
-                    <option value="Cyber Security">Cyber Security</option>
-                    <option value="Data Science">Data Science</option>
-                    <option value="Web Development">Web Development</option>
-                    <option value="Machine Learning">Machine Learning</option>
-                    <option value="General">General</option>
+                    <option value="Data Science & AI">Data Science & AI</option>
+                    <option value="Cyber Security & Ethical Hacking">Cyber Security & Ethical Hacking</option>
                   </select>
                   <select
-                    value={formData.type || 'lecture'}
+                    value={formData.type || 'Live Class'}
                     onChange={(e) => handleInputChange('type', e.target.value)}
                   >
-                    <option value="lecture">Lecture</option>
-                    <option value="workshop">Workshop</option>
-                    <option value="qa">Q&A Session</option>
-                    <option value="demo">Demo</option>
-                    <option value="review">Review Session</option>
+                    <option value="Live Class">Live Class</option>
+                    <option value="Lecture">Lecture</option>
+                    <option value="Workshop">Workshop</option>
+                    <option value="Q&A Session">Q&A Session</option>
+                    <option value="Demo">Demo</option>
+                    <option value="Review Session">Review Session</option>
                   </select>
                 </>
               )}
@@ -1950,14 +2747,12 @@ const AdminDashboard = ({ user, onLogout }) => {
                     required
                   />
                   <select
-                    value={formData.course || 'Data Science'}
+                    value={formData.course || 'Data Science & AI'}
                     onChange={(e) => handleInputChange('course', e.target.value)}
                   >
                     <option value="">Select Course *</option>
-                    <option value="Data Science">Data Science</option>
-                    <option value="Cyber Security">Cyber Security</option>
-                    <option value="Web Development">Web Development</option>
-                    <option value="Machine Learning">Machine Learning</option>
+                    <option value="Data Science & AI">Data Science & AI</option>
+                    <option value="Cyber Security & Ethical Hacking">Cyber Security & Ethical Hacking</option>
                   </select>
                   <input
                     type="date"

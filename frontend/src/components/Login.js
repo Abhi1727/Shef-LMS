@@ -69,7 +69,7 @@ const Login = ({ onLogin }) => {
       <div className="login-card">
         <div className="login-header">
           <div className="logo">
-            <img src="/Shef_logo.png" alt="SHEF" className="login-logo" />
+            <h2>LMS</h2>
           </div>
           <h2>Welcome Back! 👋</h2>
           <p>Sign in to continue your learning journey</p>
@@ -114,7 +114,7 @@ const Login = ({ onLogin }) => {
         </form>
 
         <div className="login-footer">
-          <p>&copy; 2025 SHEF LMS. All rights reserved.</p>
+          <p>&copy; 2025 LMS. All rights reserved.</p>
         </div>
       </div>
     </div>
