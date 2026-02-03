@@ -1099,14 +1099,15 @@ const Dashboard = ({ user, onLogout }) => {
             <span className="nav-icon">🏠</span>
             <span>Home</span>
           </button>
-          <button 
+          {/* Commented out - Live Classes option disabled */}
+          {/* <button 
             className={`nav-item ${activeSection === 'liveClasses' ? 'active' : ''}`}
             onClick={() => { setActiveSection('liveClasses'); if (window.innerWidth <= 1024) setSidebarOpen(false); }}
             title="Live Classes"
           >
             <span className="nav-icon">📡</span>
             <span>Live Classes</span>
-          </button>
+          </button> */}
           <button 
             className={`nav-item ${activeSection === 'classroom' ? 'active' : ''}`}
             onClick={() => { setActiveSection('classroom'); if (window.innerWidth <= 1024) setSidebarOpen(false); }}
@@ -1312,7 +1313,8 @@ const Dashboard = ({ user, onLogout }) => {
                   </div>
                 </div>
 
-                <div className="stats-grid">
+                {/* Commented out - Bottom action cards disabled */}
+                {/* <div className="stats-grid">
                   <button 
                     className="stat-card"
                     onClick={() => setActiveSection('liveClasses')}
@@ -1349,7 +1351,7 @@ const Dashboard = ({ user, onLogout }) => {
                     <div className="stat-value">Visit</div>
                     <div className="stat-label">SkyStates.com</div>
                   </button>
-                </div>
+                </div> */}
               </div>
             </div>
           )}
@@ -1369,34 +1371,100 @@ const Dashboard = ({ user, onLogout }) => {
                   <div className="section-header">
                     <div className="section-title">
                       <div className="section-icon">📹</div>
-                      Available Recordings
+                      Available Recordings ({classroomVideos.length})
                     </div>
                   </div>
 
-                  <div className="video-grid">
+                  <div className="cards-grid">
                     {classroomVideos.map((video) => (
                       <div 
                         key={video.id} 
-                        className="video-card"
+                        className="project-card"
+                        style={{ cursor: 'pointer' }}
                         onClick={() => setSelectedVideo(video)}
                       >
-                        <div className="video-thumbnail">
-                          {video.videoSource === 'youtube-url' ? '📺' : 
-                           video.videoSource === 'youtube' ? '📺' : '🎥'}
-                        </div>
-                        <div className="video-info">
-                          <div className="video-title">{video.title}</div>
-                          <div className="video-meta">
-                            <span>👨‍🏫 {video.instructor}</span>
-                            <span>⏱️ {video.duration}</span>
+                        <div style={{ 
+                          background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                          borderRadius: '12px',
+                          padding: '20px',
+                          marginBottom: '15px',
+                          textAlign: 'center',
+                          color: 'white'
+                        }}>
+                          <div style={{ fontSize: '48px', marginBottom: '10px' }}>
+                            {video.videoSource === 'youtube-url' ? '📺' : 
+                             video.videoSource === 'youtube' ? '📺' : '🎥'}
                           </div>
-                          <div className="video-meta">
-                            <span>📅 {new Date(video.date || video.createdAt).toLocaleDateString()}</span>
-                            <span>
-                              {video.videoSource === 'youtube-url' ? '📺 YouTube' :
-                               video.videoSource === 'youtube' ? '📺 YouTube' : '🔥 Firebase'}
+                          <div style={{ fontSize: '12px', opacity: 0.9 }}>
+                            {video.videoSource === 'youtube-url' ? 'YouTube Video' :
+                             video.videoSource === 'youtube' ? 'YouTube Upload' : 'Classroom Recording'}
+                          </div>
+                        </div>
+                        
+                        <h3 style={{ 
+                          fontSize: '18px', 
+                          fontWeight: '600', 
+                          margin: '0 0 12px 0', 
+                          color: '#2d3748',
+                          lineHeight: '1.4'
+                        }}>
+                          {video.title}
+                        </h3>
+                        
+                        <div style={{ 
+                          color: '#718096', 
+                          fontSize: '14px', 
+                          marginBottom: '15px',
+                          lineHeight: '1.5'
+                        }}>
+                          <div style={{ marginBottom: '8px' }}>
+                            <strong>👨‍🏫 Instructor:</strong> {video.instructor || 'Not specified'}
+                          </div>
+                          <div style={{ marginBottom: '8px' }}>
+                            <strong>⏱️ Duration:</strong> {video.duration || 'Not specified'}
+                          </div>
+                          <div style={{ marginBottom: '8px' }}>
+                            <strong>📅 Date:</strong> {new Date(video.date || video.createdAt).toLocaleDateString()}
+                          </div>
+                          <div>
+                            <strong>🎬 Source:</strong> 
+                            <span style={{ 
+                              marginLeft: '5px',
+                              padding: '2px 8px',
+                              borderRadius: '12px',
+                              fontSize: '12px',
+                              background: video.videoSource === 'youtube-url' ? '#ff6b6b' :
+                                           video.videoSource === 'youtube' ? '#4ecdc4' : '#667eea',
+                              color: 'white'
+                            }}>
+                              {video.videoSource === 'youtube-url' ? 'YouTube' :
+                               video.videoSource === 'youtube' ? 'YouTube' : 'Firebase'}
                             </span>
                           </div>
+                        </div>
+                        
+                        <div className="card-actions">
+                          <button 
+                            className="btn-edit"
+                            style={{ 
+                              background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                              border: 'none',
+                              color: 'white',
+                              padding: '12px 20px',
+                              borderRadius: '8px',
+                              cursor: 'pointer',
+                              fontSize: '14px',
+                              fontWeight: '500',
+                              width: '100%',
+                              transition: 'all 0.3s ease'
+                            }}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedVideo(video);
+                            }}
+                          >
+                            ▶️ Watch Video
+                          </button>
                         </div>
                       </div>
                     ))}

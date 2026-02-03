@@ -1,11 +1,40 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, lazy, Suspense } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import Login from './components/Login';
-import Dashboard from './components/Dashboard';
-import MentorDashboard from './components/MentorDashboard';
-import TeacherDashboard from './components/TeacherDashboard';
-import AdminDashboard from './components/AdminDashboard';
 import './App.css';
+
+// Lazy load heavy dashboard components for better performance
+const Dashboard = lazy(() => import('./components/Dashboard'));
+const MentorDashboard = lazy(() => import('./components/MentorDashboard'));
+const TeacherDashboard = lazy(() => import('./components/TeacherDashboard'));
+const AdminDashboard = lazy(() => import('./components/AdminDashboard'));
+
+// Loading component for lazy loaded components
+const LoadingSpinner = () => (
+  <div style={{ 
+    display: 'flex', 
+    justifyContent: 'center', 
+    alignItems: 'center', 
+    height: '100vh',
+    flexDirection: 'column',
+    gap: '20px'
+  }}>
+    <div className="loader"></div>
+    <p>Loading dashboard...</p>
+  </div>
+);
+
+// Service Worker Registration
+const registerServiceWorker = async () => {
+  if ('serviceWorker' in navigator) {
+    try {
+      const registration = await navigator.serviceWorker.register('/service-worker.js');
+      console.log('Service Worker registered with scope:', registration.scope);
+    } catch (error) {
+      console.log('Service Worker registration failed:', error);
+    }
+  }
+};
 
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -18,6 +47,9 @@ function App() {
       setIsAuthenticated(true);
       setUser(JSON.parse(userData));
     }
+    
+    // Register service worker for performance caching
+    registerServiceWorker();
   }, []);
 
   const handleLogin = (token, userData) => {
@@ -55,51 +87,59 @@ function App() {
           <Route 
             path="/dashboard" 
             element={
-              isAuthenticated && user?.role === 'student' ? 
-              <Dashboard user={user} onLogout={handleLogout} /> : 
-              !isAuthenticated ?
-              <Navigate to="/login" replace /> :
-              user?.role === 'admin' ?
-              <Navigate to="/admin" replace /> :
-              <Navigate to="/mentor" replace />
+              <Suspense fallback={<LoadingSpinner />}>
+                {isAuthenticated && user?.role === 'student' ? 
+                <Dashboard user={user} onLogout={handleLogout} /> : 
+                !isAuthenticated ?
+                <Navigate to="/login" replace /> :
+                user?.role === 'admin' ?
+                <Navigate to="/admin" replace /> :
+                <Navigate to="/mentor" replace />}
+              </Suspense>
             } 
           />
           <Route 
             path="/mentor" 
             element={
-              isAuthenticated && user?.role === 'mentor' ? 
-              <MentorDashboard user={user} onLogout={handleLogout} /> : 
-              !isAuthenticated ?
-              <Navigate to="/login" replace /> :
-              user?.role === 'admin' ?
-              <Navigate to="/admin" replace /> :
-              <Navigate to="/dashboard" replace />
+              <Suspense fallback={<LoadingSpinner />}>
+                {isAuthenticated && user?.role === 'mentor' ? 
+                <MentorDashboard user={user} onLogout={handleLogout} /> : 
+                !isAuthenticated ?
+                <Navigate to="/login" replace /> :
+                user?.role === 'admin' ?
+                <Navigate to="/admin" replace /> :
+                <Navigate to="/dashboard" replace />}
+              </Suspense>
             } 
           />
           <Route 
             path="/teacher" 
             element={
-              isAuthenticated && user?.role === 'teacher' ? 
-              <TeacherDashboard user={user} onLogout={handleLogout} /> : 
-              !isAuthenticated ?
-              <Navigate to="/login" replace /> :
-              user?.role === 'admin' ?
-              <Navigate to="/admin" replace /> :
-              user?.role === 'mentor' ?
-              <Navigate to="/mentor" replace /> :
-              <Navigate to="/dashboard" replace />
+              <Suspense fallback={<LoadingSpinner />}>
+                {isAuthenticated && user?.role === 'teacher' ? 
+                <TeacherDashboard user={user} onLogout={handleLogout} /> : 
+                !isAuthenticated ?
+                <Navigate to="/login" replace /> :
+                user?.role === 'admin' ?
+                <Navigate to="/admin" replace /> :
+                user?.role === 'mentor' ?
+                <Navigate to="/mentor" replace /> :
+                <Navigate to="/dashboard" replace />}
+              </Suspense>
             } 
           />
           <Route 
             path="/admin" 
             element={
-              isAuthenticated && user?.role === 'admin' ? 
-              <AdminDashboard user={user} onLogout={handleLogout} /> : 
-              !isAuthenticated ?
-              <Navigate to="/login" replace /> :
-              user?.role === 'mentor' ?
-              <Navigate to="/mentor" replace /> :
-              <Navigate to="/dashboard" replace />
+              <Suspense fallback={<LoadingSpinner />}>
+                {isAuthenticated && user?.role === 'admin' ? 
+                <AdminDashboard user={user} onLogout={handleLogout} /> : 
+                !isAuthenticated ?
+                <Navigate to="/login" replace /> :
+                user?.role === 'mentor' ?
+                <Navigate to="/mentor" replace /> :
+                <Navigate to="/dashboard" replace />}
+              </Suspense>
             } 
           />
           <Route 

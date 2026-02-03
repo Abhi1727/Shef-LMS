@@ -263,6 +263,17 @@ router.post('/login', async (req, res) => {
       return res.status(400).json({ message: 'Invalid credentials' });
     }
 
+    // Check if user account is active - ONLY for students
+    // Admins and teachers can login even if account is inactive
+    if (userData.role === 'student' && userData.status !== 'active') {
+      return res.status(403).json({ message: 'Account is deactivated. Please contact administrator.' });
+    }
+
+    // Commented out: This was blocking admins and teachers from logging in
+    // if (userData.status !== 'active') {
+    //   return res.status(403).json({ message: 'Account is deactivated. Please contact administrator.' });
+    // }
+
     // Update user's last login info in Firestore
     await db.collection(collectionName).doc(userId).update({
       lastLogin: loginInfo,

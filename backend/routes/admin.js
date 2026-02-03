@@ -5,6 +5,7 @@ const auth = require('../middleware/auth');
 const { roleAuth } = require('../middleware/roleAuth');
 const multer = require('multer');
 const classroomService = require('../services/classroomService');
+const Course = require('../models/Course');
 
 // Apply auth and admin role check to all admin routes
 router.use(auth);
@@ -23,6 +24,39 @@ const upload = multer({
     } else {
       cb(new Error('Only video files are allowed'), false);
     }
+  }
+});
+
+// @route   GET /api/admin/users/search
+// @desc    Search users by email
+router.get('/users/search', async (req, res) => {
+  try {
+    const { email } = req.query;
+    
+    if (!email) {
+      return res.status(400).json({ message: 'Email parameter is required' });
+    }
+
+    // Search for users with email containing the search term (case insensitive)
+    const usersSnapshot = await db.collection('users')
+      .where('role', '==', 'student')
+      .where('email', '>=', email.toLowerCase())
+      .where('email', '<=', email.toLowerCase() + '\uf8ff')
+      .limit(10) // Limit results to prevent excessive reads
+      .get();
+
+    const users = [];
+    usersSnapshot.forEach(doc => {
+      const userData = doc.data();
+      if (userData.email && userData.email.toLowerCase().includes(email.toLowerCase())) {
+        users.push({ id: doc.id, ...userData });
+      }
+    });
+
+    res.json(users);
+  } catch (err) {
+    console.error('Error searching users:', err);
+    res.status(500).json({ message: 'Server error' });
   }
 });
 
@@ -49,7 +83,7 @@ const normalizeEmail = (e) => (e || '').trim().toLowerCase();
 // @desc    Create a new user
 router.post('/users', async (req, res) => {
   try {
-    const { name, email, password, enrollmentNumber, course, status, role, phone, address } = req.body;
+    const { name, email, password, enrollmentNumber, course, batchId, status, role, phone, address } = req.body;
 
     // Password is required for new users (needed for login)
     if (!password || !String(password).trim()) {
@@ -75,6 +109,7 @@ router.post('/users', async (req, res) => {
       password: finalPassword,
       enrollmentNumber,
       course,
+      batchId: batchId || null,
       status: status || 'active',
       role: role || 'student',
       createdAt: new Date().toISOString(),
@@ -810,6 +845,127 @@ router.get('/stats', async (req, res) => {
     console.error('Error fetching stats:', err);
     res.status(500).json({ message: 'Server error' });
   }
+});
+
+// Route to get batches by course ID
+router.get('/batches/:courseId', async (req, res) => {
+    try {
+        const batchesSnapshot = await db.collection('batches')
+            .where('course', '==', req.params.courseId)
+            .get();
+        
+        const batches = [];
+        batchesSnapshot.forEach(doc => {
+            batches.push({ id: doc.id, ...doc.data() });
+        });
+        
+        res.json(batches);
+    } catch (error) {
+        res.status(500).json({ message: 'Error fetching batches' });
+    }
+});
+
+// @route   POST /api/admin/batches
+// @desc    Create a new batch
+router.post('/batches', async (req, res) => {
+    try {
+        const { name, course, startDate, endDate, teacherId, teacherName, status } = req.body;
+        
+        // Validate required fields
+        if (!name || !course || !teacherId) {
+            return res.status(400).json({ message: 'Batch name, course, and teacher are required' });
+        }
+        
+        // Create new batch in Firebase
+        const batchData = {
+            name,
+            course,
+            startDate: startDate || null,
+            endDate: endDate || null,
+            teacherId,
+            teacherName: teacherName || '',
+            status: status || 'active',
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString()
+        };
+        
+        const docRef = await db.collection('batches').add(batchData);
+        
+        res.status(201).json({
+            success: true,
+            message: 'Batch created successfully',
+            id: docRef.id,
+            ...batchData
+        });
+    } catch (error) {
+        console.error('Error creating batch:', error);
+        res.status(500).json({ message: 'Error creating batch: ' + error.message });
+    }
+});
+
+// @route   PUT /api/admin/batches/:id
+// @desc    Update a batch
+router.put('/batches/:id', async (req, res) => {
+    try {
+        const { name, course, startDate, endDate, teacherId, teacherName, status } = req.body;
+        
+        // Update batch in Firebase
+        const updateData = {
+            name,
+            course,
+            startDate: startDate || null,
+            endDate: endDate || null,
+            teacherId,
+            teacherName: teacherName || '',
+            status: status || 'active',
+            updatedAt: new Date().toISOString()
+        };
+        
+        await db.collection('batches').doc(req.params.id).update(updateData);
+        
+        res.json({
+            success: true,
+            message: 'Batch updated successfully',
+            id: req.params.id,
+            ...updateData
+        });
+    } catch (error) {
+        console.error('Error updating batch:', error);
+        res.status(500).json({ message: 'Error updating batch: ' + error.message });
+    }
+});
+
+// @route   DELETE /api/admin/batches/:id
+// @desc    Delete a batch
+router.delete('/batches/:id', async (req, res) => {
+    try {
+        await db.collection('batches').doc(req.params.id).delete();
+        
+        res.json({
+            success: true,
+            message: 'Batch deleted successfully'
+        });
+    } catch (error) {
+        console.error('Error deleting batch:', error);
+        res.status(500).json({ message: 'Error deleting batch: ' + error.message });
+    }
+});
+
+// @route   GET /api/admin/batches
+// @desc    Get all batches
+router.get('/batches', async (req, res) => {
+    try {
+        const batchesSnapshot = await db.collection('batches').get();
+        const batches = [];
+        batchesSnapshot.forEach(doc => {
+            batches.push({ id: doc.id, ...doc.data() });
+        });
+        
+        res.json({ batches });
+    } catch (error) {
+        console.error('Error fetching batches:', error);
+        res.status(500).json({ message: 'Error fetching batches' });
+    }
 });
 
 module.exports = router;

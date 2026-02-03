@@ -1,0 +1,222 @@
+/* VideoCard Container Styles */
+.video-card-container {
+  width: 100%;
+}
+
+/* Loading Skeleton Styles */
+.video-card-grid-loading {
+  display: grid;
+  gap: 20px;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+}
+
+.video-card-skeleton {
+  display: flex;
+  background: white;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  border: 1px solid #e2e8f0;
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+.skeleton-thumbnail {
+  width: 160px;
+  height: 90px;
+  background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+}
+
+.skeleton-content {
+  flex: 1;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.skeleton-category {
+  width: 80px;
+  height: 16px;
+  background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+  border-radius: 8px;
+}
+
+.skeleton-title {
+  width: 100%;
+  height: 18px;
+  background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+  border-radius: 4px;
+}
+
+.skeleton-description {
+  width: 100%;
+  height: 14px;
+  background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+  border-radius: 4px;
+}
+
+.skeleton-metadata {
+  width: 60%;
+  height: 12px;
+  background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+  border-radius: 4px;
+}
+
+/* Empty State Styles */
+.video-card-empty {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 300px;
+  background: #f8fafc;
+  border-radius: 12px;
+  border: 2px dashed #e2e8f0;
+}
+
+.empty-state {
+  text-align: center;
+  padding: 40px;
+}
+
+.empty-icon {
+  font-size: 48px;
+  margin-bottom: 16px;
+  opacity: 0.5;
+}
+
+.empty-state h3 {
+  color: #4a5568;
+  font-size: 1.25rem;
+  margin: 0 0 8px 0;
+  font-weight: 600;
+}
+
+.empty-state p {
+  color: #718096;
+  margin: 0;
+  font-size: 1rem;
+}
+
+/* Completed Video State */
+.video-card.completed {
+  border-color: #48bb78;
+  background: linear-gradient(135deg, #f0fff4 0%, #f7fafc 100%);
+}
+
+.video-card.completed .video-title {
+  color: #22543d;
+}
+
+.video-card.completed::after {
+  content: '✓';
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  background: #48bb78;
+  color: white;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: bold;
+  z-index: 1;
+}
+
+/* Progress Indicator */
+.video-card.progress-indicator::before {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  height: 3px;
+  background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+  border-radius: 0 0 0 12px;
+  transition: width 0.3s ease;
+}
+
+/* Animations */
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.7;
+  }
+}
+
+/* Responsive Design for Loading States */
+@media (max-width: 768px) {
+  .video-card-grid-loading {
+    grid-template-columns: 1fr;
+  }
+  
+  .video-card-skeleton {
+    flex-direction: column;
+  }
+  
+  .skeleton-thumbnail {
+    width: 100%;
+    height: 180px;
+  }
+  
+  .skeleton-content {
+    padding: 16px;
+  }
+}
+
+/* Dark Mode Support */
+@media (prefers-color-scheme: dark) {
+  .video-card-skeleton {
+    background: #2d3748;
+    border-color: #4a5568;
+  }
+  
+  .skeleton-thumbnail,
+  .skeleton-category,
+  .skeleton-title,
+  .skeleton-description,
+  .skeleton-metadata {
+    background: linear-gradient(90deg, #4a5568 25%, #718096 50%, #4a5568 75%);
+    background-size: 200% 100%;
+  }
+  
+  .video-card-empty {
+    background: #2d3748;
+    border-color: #4a5568;
+  }
+  
+  .empty-state h3 {
+    color: #f7fafc;
+  }
+  
+  .empty-state p {
+    color: #e2e8f0;
+  }
+  
+  .video-card.completed {
+    background: linear-gradient(135deg, #1a202c 0%, #2d3748 100%);
+    border-color: #48bb78;
+  }
+}

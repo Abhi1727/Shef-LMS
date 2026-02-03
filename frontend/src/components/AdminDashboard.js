@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, memo } from 'react';
+import { createPortal } from 'react-dom';
 import { firebaseService, COLLECTIONS } from '../services/firebaseService';
 import { where } from 'firebase/firestore';
 import bcrypt from 'bcryptjs';
@@ -15,6 +16,7 @@ const AdminDashboard = ({ user, onLogout }) => {
   const [students, setStudents] = useState([]);
   const [teachers, setTeachers] = useState([]);
   const [courses, setCourses] = useState([]);
+  const [batches, setBatches] = useState([]);
   const [modules, setModules] = useState([]);
   const [lessons, setLessons] = useState([]);
   const [projects, setProjects] = useState([]);
@@ -26,11 +28,285 @@ const AdminDashboard = ({ user, onLogout }) => {
   const [stats, setStats] = useState({});
   const [domains, setDomains] = useState([]);
   
-  // Modal states
+  // Loading states for individual data types
+  const [dataLoading, setDataLoading] = useState({
+    students: false,
+    teachers: false,
+    courses: false,
+    batches: false,
+    modules: false,
+    lessons: false,
+    projects: false,
+    assessments: false,
+    jobs: false,
+    mentors: false,
+    classroom: false,
+    liveClasses: false
+  });
+  
+  // Cache management
+  const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
+  const getCachedData = useCallback((key) => {
+    try {
+      const cached = localStorage.getItem(`admin_cache_${key}`);
+      if (cached) {
+        const { data, timestamp } = JSON.parse(cached);
+        if (Date.now() - timestamp < CACHE_DURATION) {
+          return data;
+        }
+      }
+    } catch (error) {
+      console.error('Cache read error:', error);
+    }
+    return null;
+  }, []);
+
+  const setCachedData = useCallback((key, data) => {
+    try {
+      localStorage.setItem(`admin_cache_${key}`, JSON.stringify({
+        data,
+        timestamp: Date.now()
+      }));
+    } catch (error) {
+      console.error('Cache write error:', error);
+    }
+  }, []);
+
+  const clearCache = useCallback((key = null) => {
+    if (key) {
+      localStorage.removeItem(`admin_cache_${key}`);
+    } else {
+      Object.keys(localStorage).forEach(localStorageKey => {
+        if (localStorageKey.startsWith('admin_cache_')) {
+          localStorage.removeItem(localStorageKey);
+        }
+      });
+    }
+  }, []);
+  
+  // Search functionality with debouncing
+  const [searchEmail, setSearchEmail] = useState('');
+  const [searchResults, setSearchResults] = useState([]);
+  const [isSearching, setIsSearching] = useState(false);
+  const [showSearchResults, setShowSearchResults] = useState(false);
+
+  // Debounced search function
+  const debouncedSearch = useMemo(
+    () => debounce(async (email) => {
+      if (!email.trim()) {
+        setSearchResults([]);
+        setShowSearchResults(false);
+        return;
+      }
+
+      setIsSearching(true);
+      try {
+        const token = localStorage.getItem('token');
+        const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
+        
+        // Search in local students array first for instant results
+        const localResults = students.filter(student => 
+          student.email && student.email.toLowerCase().includes(email.toLowerCase())
+        );
+        
+        setSearchResults(localResults);
+        setShowSearchResults(true);
+        
+        // If no local results, try API search
+        if (localResults.length === 0) {
+          const response = await fetch(`${apiUrl}/api/admin/users/search?email=${encodeURIComponent(email)}`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+          });
+          
+          if (response.ok) {
+            const data = await response.json();
+            setSearchResults(data);
+            setShowSearchResults(true);
+          }
+        }
+      } catch (error) {
+        console.error('Error searching student:', error);
+        showToast('Error searching student. Please try again.', 'error');
+      } finally {
+        setIsSearching(false);
+      }
+    }, 300),
+    [students]
+  );
+
+  const searchStudentByEmail = useCallback((email) => {
+    debouncedSearch(email);
+  }, [debouncedSearch]);
+
+  // Simple debounce function
+  function debounce(func, wait) {
+    let timeout;
+    return function executedFunction(...args) {
+      const later = () => {
+        clearTimeout(timeout);
+        func(...args);
+      };
+      clearTimeout(timeout);
+      timeout = setTimeout(later, wait);
+    };
+  }
+
+  const handleSearchSubmit = (e) => {
+    e.preventDefault();
+    searchStudentByEmail(searchEmail);
+  };
+
+  const clearSearch = useCallback(() => {
+    setSearchEmail('');
+    setSearchResults([]);
+    setShowSearchResults(false);
+  }, []);
+
+  const openStudentDetails = useCallback((student) => {
+    openModal('student', student);
+    clearSearch();
+  }, [clearSearch]);
+
+  // Memoized search results component
+  const SearchResults = memo(({ results, onStudentClick }) => (
+    <div className="search-results">
+      <h4>Search Results ({results.length})</h4>
+      {results.length > 0 ? (
+        <div className="search-results-list">
+          {results.map(student => (
+            <div key={student.id} className="search-result-item">
+              <div className="student-info">
+                <strong>{student.name}</strong>
+                <span className="student-email">{student.email}</span>
+                <span className="student-course">{student.course || 'No course'}</span>
+                <span className={`status-badge ${student.status === 'inactive' ? 'inactive' : student.status}`}>
+                  {student.status === 'inactive' ? 'Deactivated' : student.status === 'active' ? 'Active' : student.status}
+                </span>
+              </div>
+              <div className="student-actions">
+                <button 
+                  onClick={() => onStudentClick(student)}
+                  className="btn-edit"
+                  title="View/Edit Student Details"
+                >
+                  📝 View Details
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="no-results">No students found with that email address.</p>
+      )}
+    </div>
+  ));
+
+  // Memoized search component with stable handlers
+  const StudentSearch = memo(({ onStudentClick }) => {
+    const handleInputChange = useCallback((e) => {
+      const value = e.target.value;
+      setSearchEmail(value);
+      if (value === '') {
+        clearSearch();
+      } else {
+        searchStudentByEmail(value);
+      }
+    }, [clearSearch, searchStudentByEmail]);
+
+    return (
+      <div className="student-search-section">
+        <h3>🔍 Search Student by Email</h3>
+        <form onSubmit={handleSearchSubmit} className="search-form">
+          <div className="search-input-group">
+            <input
+              type="email"
+              placeholder="Enter student email address..."
+              value={searchEmail}
+              onChange={handleInputChange}
+              className="search-input"
+            />
+            <button type="submit" className="btn-search" disabled={isSearching}>
+              {isSearching ? '🔄 Searching...' : '🔍 Search'}
+            </button>
+            {searchEmail && (
+              <button type="button" onClick={clearSearch} className="btn-clear">
+                ✖️ Clear
+              </button>
+            )}
+          </div>
+        </form>
+        
+        {showSearchResults && (
+          <SearchResults 
+            results={searchResults} 
+            onStudentClick={onStudentClick}
+          />
+        )}
+      </div>
+    );
+  });
+
+  // Memoized stats component
+  const StatsCards = memo(({ stats }) => (
+    <div className="stats-grid">
+      <div className="stat-card">
+        <div className="stat-icon">👥</div>
+        <div className="stat-info">
+          <h3>{stats.totalStudents || 0}</h3>
+          <p>Total Students</p>
+          <span className="stat-change positive">+{stats.activeStudents || 0} active</span>
+        </div>
+      </div>
+      
+      <div className="stat-card">
+        <div className="stat-icon">📚</div>
+        <div className="stat-info">
+          <h3>{stats.totalCourses || 0}</h3>
+          <p>Total Courses</p>
+          <span className="stat-change">Available</span>
+        </div>
+      </div>
+      
+      <div className="stat-card">
+        <div className="stat-icon">💼</div>
+        <div className="stat-info">
+          <h3>{stats.activeJobs || 0}</h3>
+          <p>Active Jobs</p>
+          <span className="stat-change positive">Open positions</span>
+        </div>
+      </div>
+      
+      <div className="stat-card">
+        <div className="stat-icon">📈</div>
+        <div className="stat-info">
+          <h3>{stats.completionRate || 0}%</h3>
+          <p>Completion Rate</p>
+          <span className="stat-change">Overall progress</span>
+        </div>
+      </div>
+    </div>
+  ));
   const [showModal, setShowModal] = useState(false);
   const [modalType, setModalType] = useState('');
   const [editingItem, setEditingItem] = useState(null);
   const [formData, setFormData] = useState({});
+
+  // Manage body scroll when modal is open
+  useEffect(() => {
+    if (showModal) {
+      document.body.style.overflow = 'hidden';
+      document.body.classList.add('modal-open');
+    } else {
+      document.body.style.overflow = '';
+      document.body.classList.remove('modal-open');
+    }
+    
+    // Cleanup on unmount
+    return () => {
+      document.body.style.overflow = '';
+      document.body.classList.remove('modal-open');
+    };
+  }, [showModal]);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -48,94 +324,426 @@ const AdminDashboard = ({ user, onLogout }) => {
     }
   }, [modalType]);
 
-  const loadAllData = async () => {
-    setLoading(true);
+  // Optimized individual data loading functions
+  const loadStudents = async (forceRefresh = false) => {
+    const cachedData = getCachedData('students');
+    if (cachedData && !forceRefresh) {
+      setStudents(cachedData);
+      return cachedData;
+    }
+
+    setDataLoading(prev => ({ ...prev, students: true }));
     try {
       const token = localStorage.getItem('token');
       const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
-
-      // Load all data via API calls
-      const [
-        studentsRes,
-        teachersRes,
-        coursesRes,
-        modulesRes,
-        lessonsRes,
-        projectsRes,
-        assessmentsRes,
-        jobsRes,
-        mentorsRes,
-        classroomRes,
-        liveClassesRes
-      ] = await Promise.all([
-        fetch(`${apiUrl}/api/admin/users`, { headers: { 'Authorization': `Bearer ${token}` } }),
-        fetch(`${apiUrl}/api/admin/teachers`, { headers: { 'Authorization': `Bearer ${token}` } }),
-        fetch(`${apiUrl}/api/admin/courses`, { headers: { 'Authorization': `Bearer ${token}` } }),
-        fetch(`${apiUrl}/api/admin/modules`, { headers: { 'Authorization': `Bearer ${token}` } }),
-        fetch(`${apiUrl}/api/admin/lessons`, { headers: { 'Authorization': `Bearer ${token}` } }),
-        fetch(`${apiUrl}/api/admin/projects`, { headers: { 'Authorization': `Bearer ${token}` } }),
-        fetch(`${apiUrl}/api/admin/assessments`, { headers: { 'Authorization': `Bearer ${token}` } }),
-        fetch(`${apiUrl}/api/admin/jobs`, { headers: { 'Authorization': `Bearer ${token}` } }),
-        fetch(`${apiUrl}/api/admin/mentors`, { headers: { 'Authorization': `Bearer ${token}` } }),
-        fetch(`${apiUrl}/api/admin/classroom`, { headers: { 'Authorization': `Bearer ${token}` } })
-      ]);
-
-      const studentsData = studentsRes.ok ? await studentsRes.json() : fallbackData.users;
-      const teachersData = teachersRes.ok ? await teachersRes.json() : fallbackData.teachers;
-      const coursesData = coursesRes.ok ? await coursesRes.json() : fallbackData.courses;
-      const modulesData = modulesRes.ok ? await modulesRes.json() : [];
-      const lessonsData = lessonsRes.ok ? await lessonsRes.json() : [];
-      const projectsData = projectsRes.ok ? await projectsRes.json() : [];
-      const assessmentsData = assessmentsRes.ok ? await assessmentsRes.json() : [];
-      const jobsData = jobsRes.ok ? await jobsRes.json() : [];
-      const mentorsData = mentorsRes.ok ? await mentorsRes.json() : [];
-      const classroomData = classroomRes.ok ? await classroomRes.json() : fallbackData.classroom;
-
-      setStudents(studentsData);
-      setTeachers(teachersData);
-      setCourses(coursesData);
-      setModules(modulesData);
-      setLessons(lessonsData);
-      setProjects(projectsData);
-      setAssessments(assessmentsData);
-      setJobs(jobsData);
-      setMentors(mentorsData);
-      setClassroomVideos(classroomData);
-
-      // Calculate stats using safe fallbacks
-      calculateStats(studentsData, coursesData, jobsData);
-
-      // Set domains for teacher selection based on available courses
-      const courseTitles = coursesData.map(course => course.title || course.name);
-      setDomains(courseTitles);
-
-      // Show warning if using fallback data
-      if (!studentsRes.ok || !teachersRes.ok || !coursesRes.ok) {
+      const response = await fetch(`${apiUrl}/api/admin/users`, { 
+        headers: { 'Authorization': `Bearer ${token}` } 
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        setStudents(data);
+        setCachedData('students', data);
+        return data;
+      } else {
+        // Use fallback data when API fails
+        console.log('Using fallback student data');
+        setStudents(fallbackData.users);
+        setCachedData('students', fallbackData.users);
         showToast('⚠️ Using demo data - Firebase quota exceeded. Contact admin to upgrade Firebase plan.', 'warning');
+        return fallbackData.users;
       }
-
     } catch (error) {
-      console.error('Error loading admin data:', error);
-      
-      // Use fallback data on complete failure
+      console.error('Error loading students:', error);
+      // Use fallback data when error occurs
+      console.log('Using fallback student data due to error');
       setStudents(fallbackData.users);
-      setTeachers(fallbackData.teachers);
-      setCourses(fallbackData.courses);
-      setModules([]);
-      setLessons([]);
-      setProjects([]);
-      setAssessments([]);
-      setJobs([]);
-      setMentors([]);
-      setClassroomVideos(fallbackData.classroom);
-      
-      calculateStats(fallbackData.users, fallbackData.courses, []);
-      
+      setCachedData('students', fallbackData.users);
       showToast('⚠️ Using demo data - Firebase quota exceeded. Contact admin to upgrade Firebase plan.', 'warning');
+      return fallbackData.users;
     } finally {
-      setLoading(false);
+      setDataLoading(prev => ({ ...prev, students: false }));
     }
   };
+
+  const loadTeachers = async (forceRefresh = false) => {
+    const cachedData = getCachedData('teachers');
+    if (cachedData && !forceRefresh) {
+      setTeachers(cachedData);
+      return cachedData;
+    }
+
+    setDataLoading(prev => ({ ...prev, teachers: true }));
+    try {
+      const token = localStorage.getItem('token');
+      const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
+      const response = await fetch(`${apiUrl}/api/admin/teachers`, { 
+        headers: { 'Authorization': `Bearer ${token}` } 
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        setTeachers(data);
+        setCachedData('teachers', data);
+        return data;
+      } else {
+        // Use fallback data when API fails
+        console.log('Using fallback teacher data');
+        setTeachers(fallbackData.teachers);
+        setCachedData('teachers', fallbackData.teachers);
+        return fallbackData.teachers;
+      }
+    } catch (error) {
+      console.error('Error loading teachers:', error);
+      // Use fallback data when error occurs
+      console.log('Using fallback teacher data due to error');
+      setTeachers(fallbackData.teachers);
+      setCachedData('teachers', fallbackData.teachers);
+      return fallbackData.teachers;
+    } finally {
+      setDataLoading(prev => ({ ...prev, teachers: false }));
+    }
+  };
+
+  const loadCourses = async (forceRefresh = false) => {
+    const cachedData = getCachedData('courses');
+    if (cachedData && !forceRefresh) {
+      setCourses(cachedData);
+      return cachedData;
+    }
+
+    setDataLoading(prev => ({ ...prev, courses: true }));
+    try {
+      const token = localStorage.getItem('token');
+      const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
+      const response = await fetch(`${apiUrl}/api/admin/courses`, { 
+        headers: { 'Authorization': `Bearer ${token}` } 
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        setCourses(data);
+        setCachedData('courses', data);
+        return data;
+      } else {
+        // Use fallback data when API fails
+        console.log('Using fallback course data');
+        setCourses(fallbackData.courses);
+        setCachedData('courses', fallbackData.courses);
+        return fallbackData.courses;
+      }
+    } catch (error) {
+      console.error('Error loading courses:', error);
+      // Use fallback data when error occurs
+      console.log('Using fallback course data due to error');
+      setCourses(fallbackData.courses);
+      setCachedData('courses', fallbackData.courses);
+      return fallbackData.courses;
+    } finally {
+      setDataLoading(prev => ({ ...prev, courses: false }));
+    }
+  };
+
+  const loadBatches = async (forceRefresh = false) => {
+    const cachedData = getCachedData('batches');
+    if (cachedData && !forceRefresh) {
+      setBatches(cachedData.batches || []);
+      return cachedData.batches || [];
+    }
+
+    setDataLoading(prev => ({ ...prev, batches: true }));
+    try {
+      const token = localStorage.getItem('token');
+      const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
+      const response = await fetch(`${apiUrl}/api/admin/batches`, { 
+        headers: { 'Authorization': `Bearer ${token}` } 
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        setBatches(data.batches || []);
+        setCachedData('batches', data);
+        return data.batches || [];
+      } else {
+        // Use fallback data when API fails
+        console.log('Using fallback batch data');
+        setBatches(fallbackData.batches);
+        setCachedData('batches', { batches: fallbackData.batches });
+        return fallbackData.batches;
+      }
+    } catch (error) {
+      console.error('Error loading batches:', error);
+      // Use fallback data when error occurs
+      console.log('Using fallback batch data due to error');
+      setBatches(fallbackData.batches);
+      setCachedData('batches', { batches: fallbackData.batches });
+      return fallbackData.batches;
+    } finally {
+      setDataLoading(prev => ({ ...prev, batches: false }));
+    }
+  };
+
+  const loadModules = async (forceRefresh = false) => {
+    const cachedData = getCachedData('modules');
+    if (cachedData && !forceRefresh) {
+      setModules(cachedData);
+      return cachedData;
+    }
+
+    setDataLoading(prev => ({ ...prev, modules: true }));
+    try {
+      const token = localStorage.getItem('token');
+      const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
+      const response = await fetch(`${apiUrl}/api/admin/modules`, { 
+        headers: { 'Authorization': `Bearer ${token}` } 
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        setModules(data);
+        setCachedData('modules', data);
+        return data;
+      } else {
+        setModules([]);
+        return [];
+      }
+    } catch (error) {
+      console.error('Error loading modules:', error);
+      setModules([]);
+      return [];
+    } finally {
+      setDataLoading(prev => ({ ...prev, modules: false }));
+    }
+  };
+
+  const loadLessons = async (forceRefresh = false) => {
+    const cachedData = getCachedData('lessons');
+    if (cachedData && !forceRefresh) {
+      setLessons(cachedData);
+      return cachedData;
+    }
+
+    setDataLoading(prev => ({ ...prev, lessons: true }));
+    try {
+      const token = localStorage.getItem('token');
+      const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
+      const response = await fetch(`${apiUrl}/api/admin/lessons`, { 
+        headers: { 'Authorization': `Bearer ${token}` } 
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        setLessons(data);
+        setCachedData('lessons', data);
+        return data;
+      } else {
+        setLessons([]);
+        return [];
+      }
+    } catch (error) {
+      console.error('Error loading lessons:', error);
+      setLessons([]);
+      return [];
+    } finally {
+      setDataLoading(prev => ({ ...prev, lessons: false }));
+    }
+  };
+
+  const loadClassroomVideos = async (forceRefresh = false) => {
+    const cachedData = getCachedData('classroom');
+    if (cachedData && !forceRefresh) {
+      setClassroomVideos(cachedData);
+      return cachedData;
+    }
+
+    setDataLoading(prev => ({ ...prev, classroom: true }));
+    try {
+      const token = localStorage.getItem('token');
+      const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
+      const response = await fetch(`${apiUrl}/api/admin/classroom`, { 
+        headers: { 'Authorization': `Bearer ${token}` } 
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        setClassroomVideos(data);
+        setCachedData('classroom', data);
+        return data;
+      } else {
+        setClassroomVideos([]);
+        return [];
+      }
+    } catch (error) {
+      console.error('Error loading classroom videos:', error);
+      setClassroomVideos([]);
+      return [];
+    } finally {
+      setDataLoading(prev => ({ ...prev, classroom: false }));
+    }
+  };
+
+  const loadMentors = async (forceRefresh = false) => {
+    const cachedData = getCachedData('mentors');
+    if (cachedData && !forceRefresh) {
+      setMentors(cachedData);
+      return cachedData;
+    }
+
+    setDataLoading(prev => ({ ...prev, mentors: true }));
+    try {
+      const token = localStorage.getItem('token');
+      const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
+      const response = await fetch(`${apiUrl}/api/admin/mentors`, { 
+        headers: { 'Authorization': `Bearer ${token}` } 
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        setMentors(data);
+        setCachedData('mentors', data);
+        return data;
+      } else {
+        setMentors([]);
+        return [];
+      }
+    } catch (error) {
+      console.error('Error loading mentors:', error);
+      setMentors([]);
+      return [];
+    } finally {
+      setDataLoading(prev => ({ ...prev, mentors: false }));
+    }
+  };
+
+  // Load data based on active section (on-demand loading)
+  const loadSectionData = async (section) => {
+    switch (section) {
+      case 'overview':
+        // Load only essential data for overview
+        await Promise.all([
+          loadStudents(),
+          loadCourses(),
+          loadTeachers()
+        ]);
+        break;
+      case 'students':
+        await loadStudents();
+        break;
+      case 'teachers':
+        await loadTeachers();
+        break;
+      case 'courses':
+        await loadCourses();
+        break;
+      case 'batches':
+        await Promise.all([
+          loadCourses(),
+          loadBatches(),
+          loadTeachers()
+        ]);
+        break;
+      case 'modules':
+        await Promise.all([
+          loadCourses(),
+          loadModules()
+        ]);
+        break;
+      case 'lessons':
+        await Promise.all([
+          loadCourses(),
+          loadModules(),
+          loadLessons()
+        ]);
+        break;
+      case 'classroom':
+        await Promise.all([
+          loadCourses(),
+          loadBatches(),
+          loadClassroomVideos()
+        ]);
+        break;
+      default:
+        // Load minimal data for other sections
+        await loadCourses();
+        break;
+    }
+    setLoading(false);
+  };
+
+  // Initial load - only load overview data
+  const loadAllData = async () => {
+    setLoading(true);
+    await loadSectionData('overview');
+  };
+
+  // Load data when section changes
+  useEffect(() => {
+    if (activeSection !== 'overview') {
+      loadSectionData(activeSection);
+    }
+  }, [activeSection]);
+
+  // Optimized refresh function - only refresh specific data types
+  const refreshData = async (dataType = null, forceRefresh = true) => {
+    if (dataType) {
+      switch (dataType) {
+        case 'students':
+          await loadStudents(forceRefresh);
+          break;
+        case 'teachers':
+          await loadTeachers(forceRefresh);
+          break;
+        case 'courses':
+          await loadCourses(forceRefresh);
+          break;
+        case 'batches':
+          await loadBatches(forceRefresh);
+          break;
+        case 'modules':
+          await loadModules(forceRefresh);
+          break;
+        case 'lessons':
+          await loadLessons(forceRefresh);
+          break;
+        case 'classroom':
+          await loadClassroomVideos(forceRefresh);
+          break;
+        case 'mentors':
+          await loadMentors(forceRefresh);
+          break;
+        default:
+          break;
+      }
+    } else {
+      // Refresh current section data
+      await loadSectionData(activeSection);
+    }
+  };
+
+  const loadBatchesByCourse = useCallback(async (courseId) => {
+    if (!courseId) {
+      setBatches([]);
+      return;
+    }
+
+    try {
+      const token = localStorage.getItem('token');
+      const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
+      const response = await fetch(`${apiUrl}/api/admin/batches/${courseId}`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        setBatches(data);
+      } else {
+        setBatches([]);
+      }
+    } catch (error) {
+      console.error('Error loading batches by course:', error);
+      setBatches([]);
+    }
+  }, []);
 
   const calculateStats = (studentData, courseData, jobData) => {
     const totalStudents = studentData.length;
@@ -165,8 +773,16 @@ const AdminDashboard = ({ user, onLogout }) => {
       cleanDefaults.email = '';
       cleanDefaults.password = '';
       setFormData(cleanDefaults);
+      // Load batches if course is selected for new student
+      if (type === 'student' && cleanDefaults.course) {
+        loadBatchesByCourse(cleanDefaults.course);
+      }
     } else {
       setFormData(item);
+      // Load batches if editing student with course
+      if (type === 'student' && item.course) {
+        loadBatchesByCourse(item.course);
+      }
     }
     
     setShowModal(true);
@@ -200,9 +816,10 @@ const AdminDashboard = ({ user, onLogout }) => {
 
   const getDefaultFormData = (type) => {
     const defaults = {
-      student: { name: '', email: '', password: '', enrollmentNumber: '', course: '', status: 'active', role: 'student', phone: '', address: '' },
+      student: { name: '', email: '', password: '', enrollmentNumber: '', course: '', batchId: '', status: 'active', role: 'student', phone: '', address: '' },
       teacher: { name: '', email: '', password: '', age: '', domain: '', experience: '', status: 'active', role: 'teacher', phone: '', address: '' },
       course: { title: '', description: '', duration: '', modules: 0, status: 'active', instructor: '', price: '' },
+      batch: { name: '', course: '', startDate: '', endDate: '', teacherId: '', status: 'active' },
       module: { name: '', courseId: '', description: '', duration: '', lessons: 0, order: 1 },
   lesson: { title: '', moduleId: '', content: '', duration: '', videoUrl: '', classLink: '', order: 1, resources: '' },
       project: { title: '', description: '', difficulty: 'Intermediate', duration: '', skills: [], requirements: '', deliverables: '' },
@@ -210,7 +827,7 @@ const AdminDashboard = ({ user, onLogout }) => {
       job: { title: '', company: '', location: 'Remote', salary: '', type: 'Full-time', status: 'active', skills: [], description: '' },
       mentor: { name: '', title: '', company: '', experience: '', skills: [], bio: '', email: '', password: '', domain: '', linkedin: '' },
       content: { type: 'announcement', title: '', content: '', targetAudience: 'all', priority: 'normal' },
-      classroom: { title: '', date: '', instructor: '', duration: '', zoomUrl: '', zoomPasscode: '', driveId: '', courseType: 'Data Science & AI', type: 'Live Class', videoSource: 'firebase' },
+      classroom: { title: '', date: '', instructor: '', duration: '', zoomUrl: '', zoomPasscode: '', driveId: '', course: '', batchId: '', domain: '', type: 'Lecture', videoSource: 'firebase' },
       liveClass: { title: '', course: 'Data Science & AI', scheduledDate: '', scheduledTime: '', duration: '60 mins', instructor: '', meetingType: 'auto', status: 'scheduled', description: '' }
     };
     return defaults[type] || {};
@@ -253,6 +870,7 @@ const AdminDashboard = ({ user, onLogout }) => {
               phone: formData.phone || '',
               address: formData.address || '',
               course: formData.course || '',
+              batchId: formData.batchId || '',
               status: formData.status || 'active',
               role: 'student'
             };
@@ -269,7 +887,7 @@ const AdminDashboard = ({ user, onLogout }) => {
             if (createResponse.ok) {
               showToast('Student created successfully! Email: ' + formData.email, 'success');
               closeModal();
-              await loadAllData();
+              await loadStudents();
             } else {
               const errorData = await createResponse.json();
               showToast('Error: ' + (errorData.message || 'Failed to create student'), 'error');
@@ -288,6 +906,7 @@ const AdminDashboard = ({ user, onLogout }) => {
             phone: formData.phone || '',
             address: formData.address || '',
             course: formData.course || '',
+            batchId: formData.batchId || '',
             status: formData.status || 'active'
           };
           
@@ -307,7 +926,7 @@ const AdminDashboard = ({ user, onLogout }) => {
           if (updateResponse.ok) {
             showToast('Student updated successfully!', 'success');
             closeModal();
-            await loadAllData();
+            await loadStudents();
           } else {
             const errorData = await updateResponse.json();
             showToast('Error: ' + (errorData.message || 'Failed to update student'), 'error');
@@ -364,7 +983,7 @@ const AdminDashboard = ({ user, onLogout }) => {
             if (createResponse.ok) {
               showToast('Teacher created successfully!', 'success');
               closeModal();
-              await loadAllData();
+              await loadTeachers();
             } else {
               const errorData = await createResponse.json();
               showToast('Error: ' + (errorData.message || 'Failed to create teacher'), 'error');
@@ -404,7 +1023,7 @@ const AdminDashboard = ({ user, onLogout }) => {
           if (updateResponse.ok) {
             showToast('Teacher updated successfully!', 'success');
             closeModal();
-            await loadAllData();
+            await loadTeachers();
           } else {
             const errorData = await updateResponse.json();
             showToast('Error: ' + (errorData.message || 'Failed to update teacher'), 'error');
@@ -461,7 +1080,7 @@ const AdminDashboard = ({ user, onLogout }) => {
             if (createResponse.ok) {
               showToast('Mentor created successfully! Email: ' + formData.email, 'success');
               closeModal();
-              await loadAllData();
+              await loadMentors();
             } else {
               const errorData = await createResponse.json();
               showToast('Error: ' + (errorData.message || 'Failed to create mentor'), 'error');
@@ -500,7 +1119,7 @@ const AdminDashboard = ({ user, onLogout }) => {
           if (updateResponse.ok) {
             showToast('Mentor updated successfully!', 'success');
             closeModal();
-            await loadAllData();
+            await loadMentors();
           } else {
             const errorData = await updateResponse.json();
             showToast('Error: ' + (errorData.message || 'Failed to update mentor'), 'error');
@@ -510,6 +1129,11 @@ const AdminDashboard = ({ user, onLogout }) => {
       } else if (modalType === 'course') {
         if (!formData.title || !formData.description) {
           showToast('Please fill in all required fields (Title, Description)', 'warning');
+          return;
+        }
+      } else if (modalType === 'batch') {
+        if (!formData.name || !formData.course || !formData.teacherId) {
+          showToast('Please fill in all required fields (Batch Name, Course, Teacher)', 'warning');
           return;
         }
       } else if (modalType === 'module') {
@@ -551,14 +1175,8 @@ const AdminDashboard = ({ user, onLogout }) => {
 
       // Validate classroom fields
       if (modalType === 'classroom') {
-        if (!formData.title || !formData.instructor || !formData.courseType) {
-          showToast('Please fill in required fields (Title, Instructor, Course Type)', 'warning');
-          return;
-        }
-        
-        // Validate Firebase Storage requirements
-        if (!formData.videoFile || !formData.courseId) {
-          showToast('Please provide video file and course ID for Firebase Storage uploads', 'warning');
+        if (!formData.title || !formData.instructor || !formData.course) {
+          showToast('Please fill in all required fields (Title, Instructor, Course)', 'warning');
           return;
         }
       }
@@ -599,7 +1217,7 @@ const AdminDashboard = ({ user, onLogout }) => {
             if (zoomData.success) {
               showToast('Zoom meeting created successfully!', 'success');
               closeModal();
-              await loadAllData();
+              await refreshData('liveClasses');
               return;
             } else {
               showToast('Error creating Zoom meeting: ' + zoomData.message, 'error');
@@ -613,120 +1231,67 @@ const AdminDashboard = ({ user, onLogout }) => {
         }
       }
 
-      // Special handling for classroom videos - Firebase Storage, YouTube Upload, or Manual URL
+      // Special handling for classroom videos - Manual YouTube URL only
       if (modalType === 'classroom') {
         try {
           const token = localStorage.getItem('token');
           const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
           
-          if (formData.videoSource === 'youtube-url') {
-            // Handle manual YouTube URL
-            if (!formData.youtubeUrl) {
-              showToast('YouTube URL is required for manual YouTube URL option', 'error');
-              return;
-            }
+          // Validate YouTube URL is provided
+          if (!formData.youtubeUrl) {
+            showToast('YouTube URL is required', 'error');
+            return;
+          }
+          
+          // Import YouTube utility
+          const { YouTubeUtils } = require('../utils/youtubeUtils');
+          const videoId = YouTubeUtils.extractVideoId(formData.youtubeUrl);
+          
+          if (!videoId) {
+            showToast('Invalid YouTube URL. Please use a valid YouTube video URL.', 'error');
+            return;
+          }
 
-            // Import YouTube utility
-            const { YouTubeUtils } = require('../utils/youtubeUtils');
-            const videoId = YouTubeUtils.extractVideoId(formData.youtubeUrl);
-            
-            if (!videoId) {
-              showToast('Invalid YouTube URL. Please use a valid YouTube video URL.', 'error');
-              return;
-            }
+          // Create lecture data for manual YouTube URL via API
+          const lectureData = {
+            title: formData.title,
+            instructor: formData.instructor,
+            description: formData.description || '',
+            course: formData.course,
+            batchId: formData.batchId || '',
+            domain: formData.domain || '',
+            duration: formData.duration || '',
+            type: formData.type || 'Lecture',
+            date: formData.date || new Date().toISOString().split('T')[0],
+            videoSource: 'youtube-url',
+            youtubeVideoId: videoId,
+            youtubeVideoUrl: formData.youtubeUrl,
+            youtubeEmbedUrl: YouTubeUtils.getEmbedUrl(videoId)
+          };
 
-            // Create lecture data for manual YouTube URL via API
-            const lectureData = {
-              title: formData.title,
-              instructor: formData.instructor,
-              description: formData.description || '',
-              courseId: formData.courseId,
-              batchId: formData.batchId || '',
-              domain: formData.domain || '',
-              duration: formData.duration || '',
-              courseType: formData.courseType || '',
-              type: formData.type || 'Lecture',
-              date: formData.date || new Date().toISOString().split('T')[0],
-              videoSource: 'youtube-url',
-              youtubeVideoId: videoId,
-              youtubeVideoUrl: formData.youtubeUrl,
-              youtubeEmbedUrl: YouTubeUtils.getEmbedUrl(videoId)
-            };
+          // Save via API
+          const response = await fetch(`${apiUrl}/api/admin/classroom/youtube-url`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify(lectureData)
+          });
 
-            // Save via API
-            const response = await fetch(`${apiUrl}/api/admin/classroom/youtube-url`, {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${token}`
-              },
-              body: JSON.stringify(lectureData)
-            });
+          const data = await response.json();
 
-            const data = await response.json();
-
-            if (response.ok) {
-              showToast('YouTube video added successfully!', 'success');
-              closeModal();
-              await loadAllData();
-              return;
-            } else {
-              showToast('Error: ' + (data.message || 'Failed to save YouTube video'), 'error');
-              return;
-            }
-
+          if (response.ok) {
+            showToast('YouTube video added successfully!', 'success');
+            closeModal();
+            await refreshData('classroom');
           } else {
-            // Handle file uploads (Firebase or YouTube Upload)
-            const formDataObj = new FormData();
-            formDataObj.append('video', formData.videoFile);
-            formDataObj.append('title', formData.title);
-            formDataObj.append('description', formData.description || '');
-            formDataObj.append('courseId', formData.courseId);
-            formDataObj.append('batchId', formData.batchId || '');
-            formDataObj.append('domain', formData.domain || '');
-            formDataObj.append('duration', formData.duration || '');
-            formDataObj.append('courseType', formData.courseType || '');
-            formDataObj.append('instructor', formData.instructor || '');
-            
-            // Choose endpoint based on video source
-            const uploadEndpoint = formData.videoSource === 'youtube' 
-              ? `${apiUrl}/api/admin/classroom/youtube-upload`
-              : `${apiUrl}/api/admin/classroom/upload`;
-            
-            const response = await fetch(uploadEndpoint, {
-              method: 'POST',
-              headers: {
-                'Authorization': `Bearer ${token}`
-              },
-              body: formDataObj
-            });
-
-            const data = await response.json();
-
-            if (response.ok) {
-              const successMessage = formData.videoSource === 'youtube'
-                ? 'YouTube video uploaded successfully! Video is set to private.'
-                : 'Firebase Storage video uploaded successfully!';
-              showToast(successMessage, 'success');
-              closeModal();
-              await loadAllData();
-              return;
-            } else {
-              const errorMessage = formData.videoSource === 'youtube'
-                ? (data.message || 'Failed to upload video to YouTube')
-                : (data.message || 'Failed to upload video to Firebase Storage');
-              showToast('Error: ' + errorMessage, 'error');
-              return;
-            }
+            showToast('Error: ' + (data.message || 'Failed to save YouTube video'), 'error');
+            return;
           }
         } catch (error) {
           console.error('Error saving classroom video:', error);
-          const errorMessage = formData.videoSource === 'youtube-url'
-            ? 'Failed to save YouTube video. Please check the URL and try again.'
-            : (formData.videoSource === 'youtube'
-              ? 'Failed to upload video to YouTube. Please check your API configuration.'
-              : 'Failed to save classroom video. Please try again.');
-          showToast(errorMessage, 'error');
+          showToast('Failed to save YouTube video. Please try again.', 'error');
           return;
         }
       }
@@ -734,6 +1299,7 @@ const AdminDashboard = ({ user, onLogout }) => {
       const collectionMap = {
         student: 'users',
         course: 'courses',
+        batch: 'batches',
         module: 'modules',
         lesson: 'lessons',
         project: 'projects',
@@ -773,9 +1339,23 @@ const AdminDashboard = ({ user, onLogout }) => {
       }
 
       if (result.success) {
-        showToast(editingItem ? 'Updated successfully!' : 'Created successfully!', 'success');
+        const successMessage = editingItem ? `${modalType.charAt(0).toUpperCase() + modalType.slice(1)} updated successfully!` : `${modalType.charAt(0).toUpperCase() + modalType.slice(1)} created successfully!`;
+        showToast(successMessage, 'success');
         closeModal();
-        await loadAllData();
+        
+        // Reload only the relevant data instead of everything
+        if (modalType === 'student') {
+          await refreshData('students');
+        } else if (modalType === 'teacher') {
+          await refreshData('teachers');
+        } else if (modalType === 'batch') {
+          await refreshData('batches');
+        } else if (modalType === 'mentor') {
+          await refreshData('mentors');
+        } else {
+          // For other types, refresh current section
+          await refreshData();
+        }
       } else {
         showToast('Error: ' + result.error, 'error');
       }
@@ -824,7 +1404,20 @@ const AdminDashboard = ({ user, onLogout }) => {
 
         if (response.ok) {
           showToast('Deleted successfully!', 'success');
-          await loadAllData();
+          
+          // Reload only the relevant data instead of everything
+          if (collection === COLLECTIONS.USERS) {
+            await refreshData('students');
+          } else if (collection === 'teachers') {
+            await refreshData('teachers');
+          } else if (collection === 'batches') {
+            await refreshData('batches');
+          } else if (collection === COLLECTIONS.MENTORS) {
+            await refreshData('mentors');
+          } else {
+            // For other types, refresh current section
+            await refreshData(collection);
+          }
         } else {
           const data = await response.json();
           showToast('Error: ' + (data.message || 'Failed to delete item'), 'error');
@@ -833,6 +1426,42 @@ const AdminDashboard = ({ user, onLogout }) => {
         console.error('Error deleting item:', error);
         showToast('Failed to delete item. Please try again.', 'error');
       }
+    }
+  };
+
+  const handleToggleAccountStatus = async (student) => {
+    const newStatus = student.status === 'active' ? 'inactive' : 'active';
+    const action = newStatus === 'active' ? 'activate' : 'deactivate';
+
+    if (!window.confirm(`Are you sure you want to ${action} this student's account?`)) {
+      return;
+    }
+
+    try {
+      const token = localStorage.getItem('token');
+      const updateData = {
+        status: newStatus
+      };
+
+      const response = await fetch(`/api/admin/users/${student.id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify(updateData)
+      });
+
+      if (response.ok) {
+        showToast(`Student account ${action}d successfully!`, 'success');
+        await refreshData('students');
+      } else {
+        const data = await response.json();
+        showToast('Error: ' + (data.message || `Failed to ${action} account`), 'error');
+      }
+    } catch (error) {
+      console.error('Error updating account status:', error);
+      showToast(`Failed to ${action} account. Please try again.`, 'error');
     }
   };
 
@@ -855,7 +1484,7 @@ const AdminDashboard = ({ user, onLogout }) => {
       if (data.success) {
         showToast(`✅ ${data.message}`, 'success');
         // Reload classroom data to show new recordings
-        await loadAllData();
+        await refreshData('classroom');
       } else {
         showToast(`❌ ${data.message}`, 'error');
       }
@@ -867,15 +1496,44 @@ const AdminDashboard = ({ user, onLogout }) => {
     }
   };
 
-  const handleInputChange = (field, value) => {
+  const handleInputChange = useCallback((field, value) => {
     setFormData(prev => ({ ...prev, [field]: value }));
-  };
+  }, []);
+
+  const handleCourseChange = useCallback((e) => {
+    const courseValue = e.target.value;
+    handleInputChange('course', courseValue);
+    loadBatchesByCourse(courseValue);
+    // Clear batch selection when course changes
+    handleInputChange('batchId', '');
+  }, [handleInputChange, loadBatchesByCourse]);
 
   if (loading) {
     return (
       <div className="loading-container">
         <div className="loader"></div>
         <p>Loading admin dashboard...</p>
+      </div>
+    );
+  }
+
+  // Check if admin account is deactivated
+  if (user && user.status === 'inactive') {
+    return (
+      <div className="admin-dashboard">
+        <div className="account-deactivated-container">
+          <div className="deactivated-card">
+            <h2>⚠️ Account Deactivated</h2>
+            <p>Your admin account has been deactivated. Please contact the system administrator to reactivate your account.</p>
+            <div className="account-info">
+              <p><strong>Email:</strong> {user.email}</p>
+              <p><strong>Status:</strong> <span className="status-badge inactive">Inactive</span></p>
+            </div>
+            <button onClick={onLogout} className="btn-logout">
+              🚪 Logout
+            </button>
+          </div>
+        </div>
       </div>
     );
   }
@@ -913,13 +1571,14 @@ const AdminDashboard = ({ user, onLogout }) => {
             <span>Teachers</span>
           </button>
           <button 
-            className={`nav-item ${activeSection === 'courses' ? 'active' : ''}`}
-            onClick={() => setActiveSection('courses')}
+            className={`nav-item ${activeSection === 'batches' ? 'active' : ''}`}
+            onClick={() => setActiveSection('batches')}
           >
             <span className="icon">📚</span>
-            <span>Courses</span>
+            <span>Batches</span>
           </button>
-          <button 
+          {/* Commented out menu items - not needed */}
+          {/* <button 
             className={`nav-item ${activeSection === 'modules' ? 'active' : ''}`}
             onClick={() => setActiveSection('modules')}
           >
@@ -932,7 +1591,7 @@ const AdminDashboard = ({ user, onLogout }) => {
           >
             <span className="icon">📝</span>
             <span>Lessons</span>
-          </button>
+          </button> */}
           <button 
             className={`nav-item ${activeSection === 'classroom' ? 'active' : ''}`}
             onClick={() => setActiveSection('classroom')}
@@ -940,7 +1599,7 @@ const AdminDashboard = ({ user, onLogout }) => {
             <span className="icon">🎥</span>
             <span>Classroom</span>
           </button>
-          <button 
+          {/* <button 
             className={`nav-item ${activeSection === 'liveClasses' ? 'active' : ''}`}
             onClick={() => setActiveSection('liveClasses')}
           >
@@ -988,7 +1647,7 @@ const AdminDashboard = ({ user, onLogout }) => {
           >
             <span className="icon">📈</span>
             <span>Analytics</span>
-          </button>
+          </button> */}
         </nav>
 
         <div className="sidebar-footer">
@@ -1009,6 +1668,24 @@ const AdminDashboard = ({ user, onLogout }) => {
             <h1 className="page-title">LMS Admin Dashboard</h1>
           </div>
           <div className="header-right">
+            <button 
+              onClick={() => {
+                clearCache();
+                showToast('Cache cleared successfully!', 'success');
+                refreshData();
+              }}
+              className="btn-secondary"
+              style={{ marginRight: '10px' }}
+            >
+              🗑️ Clear Cache
+            </button>
+            <button 
+              onClick={() => refreshData()}
+              className="btn-primary"
+              disabled={loading}
+            >
+              🔄 Refresh Data
+            </button>
             <div className="user-menu">
               <button className="notification-btn">🔔</button>
               <div className="user-avatar">
@@ -1026,43 +1703,10 @@ const AdminDashboard = ({ user, onLogout }) => {
             <div className="admin-section">
               <h2>Dashboard Overview</h2>
               
-              <div className="stats-grid">
-                <div className="stat-card">
-                  <div className="stat-icon">👥</div>
-                  <div className="stat-info">
-                    <h3>{stats.totalStudents || 0}</h3>
-                    <p>Total Students</p>
-                    <span className="stat-change positive">+{stats.activeStudents || 0} active</span>
-                  </div>
-                </div>
-                
-                <div className="stat-card">
-                  <div className="stat-icon">📚</div>
-                  <div className="stat-info">
-                    <h3>{stats.totalCourses || 0}</h3>
-                    <p>Total Courses</p>
-                    <span className="stat-change">Available</span>
-                  </div>
-                </div>
-                
-                <div className="stat-card">
-                  <div className="stat-icon">💼</div>
-                  <div className="stat-info">
-                    <h3>{stats.activeJobs || 0}</h3>
-                    <p>Active Jobs</p>
-                    <span className="stat-change positive">Open positions</span>
-                  </div>
-                </div>
-                
-                <div className="stat-card">
-                  <div className="stat-icon">📈</div>
-                  <div className="stat-info">
-                    <h3>{stats.completionRate || 0}%</h3>
-                    <p>Completion Rate</p>
-                    <span className="stat-change">Overall progress</span>
-                  </div>
-                </div>
-              </div>
+              {/* Student Search Section */}
+              <StudentSearch onStudentClick={openStudentDetails} />
+              
+              <StatsCards stats={stats} />
 
               <div className="quick-actions">
                 <h3>Quick Actions</h3>
@@ -1137,6 +1781,9 @@ const AdminDashboard = ({ user, onLogout }) => {
                 </button>
               </div>
 
+              {/* Student Search Section */}
+              <StudentSearch onStudentClick={openStudentDetails} />
+
               <div className="data-table-container">
                 <table className="data-table">
                   <thead>
@@ -1169,12 +1816,20 @@ const AdminDashboard = ({ user, onLogout }) => {
                             : 'N/A'}
                         </td>
                         <td>
-                          <span className={`status-badge ${student.status}`}>
-                            {student.status}
+                          <span className={`status-badge ${student.status === 'inactive' ? 'inactive' : student.status}`}>
+                            {student.status === 'inactive' ? 'Deactivated' : student.status === 'active' ? 'Active' : student.status}
                           </span>
                         </td>
                         <td>
                           <button onClick={() => openModal('student', student)} className="btn-edit">✏️</button>
+                          {/* Commented out - Deactivate/Activate action disabled */}
+                          {/* <button 
+                            onClick={() => handleToggleAccountStatus(student)} 
+                            className={`btn-status ${student.status === 'active' ? 'deactivate' : 'activate'}`}
+                            title={student.status === 'active' ? 'Deactivate Account (Deny Access)' : 'Activate Account (Grant Access)'}
+                          >
+                            {student.status === 'active' ? '🚫 Deactivate' : '✅ Activate'}
+                          </button> */}
                           <button onClick={() => handleDelete(COLLECTIONS.USERS, student.id)} className="btn-delete">🗑️</button>
                         </td>
                       </tr>
@@ -1238,12 +1893,12 @@ const AdminDashboard = ({ user, onLogout }) => {
           )}
 
           {/* Courses Section */}
-          {activeSection === 'courses' && (
+          {activeSection === 'batches' && (
             <div className="admin-section">
               <div className="section-header">
-                <h2>Manage Courses</h2>
-                <button onClick={() => openModal('course')} className="btn-add">
-                  ➕ Add Course
+                <h2>Manage Batches</h2>
+                <button onClick={() => openModal('batch')} className="btn-add">
+                  ➕ Add Batch
                 </button>
               </div>
 
@@ -1251,35 +1906,39 @@ const AdminDashboard = ({ user, onLogout }) => {
                 <table className="data-table">
                   <thead>
                     <tr>
-                      <th>Title</th>
-                      <th>Description</th>
-                      <th>Duration</th>
-                      <th>Modules</th>
+                      <th>Batch Name</th>
+                      <th>Course</th>
+                      <th>Start Date</th>
+                      <th>End Date</th>
+                      <th>Teacher</th>
+                      <th>Students</th>
                       <th>Status</th>
                       <th>Actions</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {courses.map(course => (
-                      <tr key={course.id}>
-                        <td>{course.title}</td>
-                        <td>{course.description?.substring(0, 50)}...</td>
-                        <td>{course.duration}</td>
-                        <td>{course.modules}</td>
+                    {batches.map(batch => (
+                      <tr key={batch.id || batch._id}>
+                        <td>{batch.name}</td>
+                        <td>{batch.course}</td>
+                        <td>{batch.startDate || 'N/A'}</td>
+                        <td>{batch.endDate || 'N/A'}</td>
+                        <td>{batch.teacherName || 'N/A'}</td>
+                        <td>{batch.students?.length || 0}</td>
                         <td>
-                          <span className={`status-badge ${course.status}`}>
-                            {course.status}
+                          <span className={`status-badge ${batch.status}`}>
+                            {batch.status}
                           </span>
                         </td>
                         <td>
-                          <button onClick={() => openModal('course', course)} className="btn-edit">✏️</button>
-                          <button onClick={() => handleDelete(COLLECTIONS.COURSES, course.id)} className="btn-delete">🗑️</button>
+                          <button onClick={() => openModal('batch', batch)} className="btn-edit">✏️</button>
+                          <button onClick={() => handleDelete('batches', batch.id || batch._id)} className="btn-delete">🗑️</button>
                         </td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
-                {courses.length === 0 && <p className="no-data">No courses found. Create your first course!</p>}
+                {batches.length === 0 && <p className="no-data">No batches found. Create your first batch!</p>}
               </div>
             </div>
           )}
@@ -1980,7 +2639,8 @@ const AdminDashboard = ({ user, onLogout }) => {
                 </div>
               </div>
 
-              <div className="insights-section">
+              {/* Commented out - Key Insights section disabled */}
+              {/* <div className="insights-section">
                 <h3>💡 Key Insights</h3>
                 <div className="insights-grid">
                   <div className="insight-card">
@@ -2000,16 +2660,16 @@ const AdminDashboard = ({ user, onLogout }) => {
                     <p>Most popular module: <strong>Penetration Testing</strong></p>
                   </div>
                 </div>
-              </div>
+              </div> */}
             </div>
           )}
         </div>
       </main>
 
-      {/* Modal */}
-      {showModal && (
+      {/* Modal - Rendered using Portal for proper centering */}
+      {showModal && createPortal(
         <div className="modal-overlay" onClick={closeModal}>
-          <div className="modal" onClick={(e) => e.stopPropagation()} key={`${modalType}-${editingItem ? 'edit' : 'new'}-${Date.now()}`}>
+          <div className="modal" onClick={(e) => e.stopPropagation()} key={`${modalType}-${editingItem ? editingItem.id : 'new'}`}>
             <div className="modal-header">
               <h2>{editingItem ? 'Edit' : 'Add'} {modalType.charAt(0).toUpperCase() + modalType.slice(1)}</h2>
               <button className="close-btn" onClick={closeModal}>✕</button>
@@ -2081,7 +2741,7 @@ const AdminDashboard = ({ user, onLogout }) => {
                   />
                   <select
                     value={formData.course || ''}
-                    onChange={(e) => handleInputChange('course', e.target.value)}
+                    onChange={handleCourseChange}
                     required
                   >
                     <option value="">Select Course *</option>
@@ -2089,13 +2749,26 @@ const AdminDashboard = ({ user, onLogout }) => {
                     <option value="Cyber Security & Ethical Hacking">Cyber Security & Ethical Hacking</option>
                   </select>
                   <select
+                    value={formData.batchId || ''}
+                    onChange={(e) => handleInputChange('batchId', e.target.value)}
+                    required
+                  >
+                    <option value="">Select Batch *</option>
+                    {batches.map(batch => (
+                      <option key={batch._id} value={batch._id}>
+                        {batch.name}
+                      </option>
+                    ))}
+                  </select>
+                  <select
                     value={formData.status || 'active'}
                     onChange={(e) => handleInputChange('status', e.target.value)}
                   >
                     <option value="active">Active</option>
-                    <option value="inactive">Inactive</option>
+                    {/* Commented out - Deactivation options disabled */}
+                    {/* <option value="inactive">Deactivated</option>
                     <option value="graduated">Graduated</option>
-                    <option value="suspended">Suspended</option>
+                    <option value="suspended">Suspended</option> */}
                   </select>
                 </>
               )}
@@ -2226,6 +2899,64 @@ const AdminDashboard = ({ user, onLogout }) => {
                     <option value="active">Active</option>
                     <option value="inactive">Inactive</option>
                     <option value="coming-soon">Coming Soon</option>
+                  </select>
+                </>
+              )}
+
+              {modalType === 'batch' && (
+                <>
+                  <input
+                    type="text"
+                    placeholder="Batch Name *"
+                    value={formData.name || ''}
+                    onChange={(e) => handleInputChange('name', e.target.value)}
+                    required
+                  />
+                  <select
+                    value={formData.course || ''}
+                    onChange={(e) => handleInputChange('course', e.target.value)}
+                    required
+                  >
+                    <option value="">Select Course *</option>
+                    <option value="Data Science & AI">Data Science & AI</option>
+                    <option value="Cyber Security & Ethical Hacking">Cyber Security & Ethical Hacking</option>
+                  </select>
+                  <input
+                    type="date"
+                    placeholder="Start Date"
+                    value={formData.startDate || ''}
+                    onChange={(e) => handleInputChange('startDate', e.target.value)}
+                  />
+                  <input
+                    type="date"
+                    placeholder="End Date"
+                    value={formData.endDate || ''}
+                    onChange={(e) => handleInputChange('endDate', e.target.value)}
+                  />
+                  <select
+                    value={formData.teacherId || ''}
+                    onChange={(e) => {
+                      const teacherId = e.target.value;
+                      const selectedTeacher = teachers.find(t => t.id === teacherId);
+                      handleInputChange('teacherId', teacherId);
+                      handleInputChange('teacherName', selectedTeacher ? selectedTeacher.name : '');
+                    }}
+                    required
+                  >
+                    <option value="">Select Teacher *</option>
+                    {teachers.map(teacher => (
+                      <option key={teacher.id} value={teacher.id}>
+                        {teacher.name}
+                      </option>
+                    ))}
+                  </select>
+                  <select
+                    value={formData.status || 'active'}
+                    onChange={(e) => handleInputChange('status', e.target.value)}
+                  >
+                    <option value="active">Active</option>
+                    <option value="inactive">Inactive</option>
+                    <option value="completed">Completed</option>
                   </select>
                 </>
               )}
@@ -2598,7 +3329,8 @@ const AdminDashboard = ({ user, onLogout }) => {
                     required
                   />
                   
-                  <div style={{ marginBottom: '15px' }}>
+                  {/* Commented out - Video Source dropdown disabled, only manual YouTube URL */}
+                  {/* <div style={{ marginBottom: '15px' }}>
                     <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>Video Source *</label>
                     <select
                       value={formData.videoSource || 'firebase'}
@@ -2609,75 +3341,70 @@ const AdminDashboard = ({ user, onLogout }) => {
                       <option value="youtube">YouTube Private Upload</option>
                       <option value="youtube-url">Manual YouTube URL</option>
                     </select>
+                  </div> */}
+                  
+                  {/* Manual YouTube URL Input - Only Option */}
+                  <div style={{ marginBottom: '15px' }}>
+                    <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>
+                      YouTube Video URL *
+                    </label>
+                    <input
+                      type="url"
+                      placeholder="https://www.youtube.com/watch?v=..."
+                      value={formData.youtubeUrl || ''}
+                      onChange={(e) => handleInputChange('youtubeUrl', e.target.value)}
+                      required
+                      style={{ width: '100%', padding: '8px', border: '1px solid #ddd', borderRadius: '4px' }}
+                    />
+                    <small style={{color: '#888', marginTop: '-10px', display: 'block'}}>
+                      Paste the YouTube video URL. Video should be uploaded as "Private" or "Unlisted" on YouTube.
+                    </small>
+                    <div style={{ marginTop: '10px', padding: '10px', backgroundColor: '#fff3cd', borderRadius: '4px', border: '1px solid #ffc107' }}>
+                      <strong>📺 Manual YouTube URL:</strong><br/>
+                      • Upload video to YouTube as Private/Unlisted first<br/>
+                      • Copy the YouTube video URL here<br/>
+                      • Students will only see videos for their enrolled course<br/>
+                      • No API configuration needed
+                    </div>
                   </div>
                   
-                  {/* Video Input Form - Dynamic based on source */}
-                  {formData.videoSource === 'youtube-url' ? (
-                    // Manual YouTube URL Input
-                    <div style={{ marginBottom: '15px' }}>
-                      <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>
-                        YouTube Video URL *
-                      </label>
-                      <input
-                        type="url"
-                        placeholder="https://www.youtube.com/watch?v=..."
-                        value={formData.youtubeUrl || ''}
-                        onChange={(e) => handleInputChange('youtubeUrl', e.target.value)}
-                        required
-                        style={{ width: '100%', padding: '8px', border: '1px solid #ddd', borderRadius: '4px' }}
-                      />
-                      <small style={{color: '#888', marginTop: '-10px', display: 'block'}}>
-                        Paste the YouTube video URL. Video should be uploaded as "Private" or "Unlisted" on YouTube.
-                      </small>
-                      <div style={{ marginTop: '10px', padding: '10px', backgroundColor: '#fff3cd', borderRadius: '4px', border: '1px solid #ffc107' }}>
-                        <strong>📺 Manual YouTube URL:</strong><br/>
-                        • Upload video to YouTube as Private/Unlisted first<br/>
-                        • Copy the YouTube video URL here<br/>
-                        • Students will only see videos for their enrolled course<br/>
-                        • No API configuration needed
-                      </div>
-                    </div>
-                  ) : (
-                    // File Upload for Firebase and YouTube Upload
-                    <div style={{ marginBottom: '15px' }}>
-                      <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>
-                        Upload Video File *
-                      </label>
-                      <input
-                        type="file"
-                        accept="video/*"
-                        onChange={(e) => handleInputChange('videoFile', e.target.files[0])}
-                        required
-                        style={{ width: '100%', padding: '8px', border: '1px solid #ddd', borderRadius: '4px' }}
-                      />
-                      <small style={{color: '#888', marginTop: '-10px', display: 'block'}}>
-                        {formData.videoSource === 'youtube' 
-                          ? 'Select a video file to upload to YouTube as private. Max size: 2GB.'
-                          : 'Select a video file (MP4, MOV, AVI, etc.). Max size: 2GB.'
-                        }
-                      </small>
-                      {formData.videoSource === 'youtube' && (
-                        <div style={{ marginTop: '10px', padding: '10px', backgroundColor: '#e3f2fd', borderRadius: '4px', border: '1px solid #2196f3' }}>
-                          <strong>📺 YouTube Upload:</strong><br/>
-                          • Video will be uploaded as <strong>Private</strong><br/>
-                          • Only accessible with the embed URL<br/>
-                          • Requires YouTube API configuration<br/>
-                          • Processing may take a few minutes
-                        </div>
-                      )}
-                    </div>
-                  )}
-                  
-                  <input
-                    type="text"
-                    placeholder="Course ID *"
-                    value={formData.courseId || ''}
-                    onChange={(e) => handleInputChange('courseId', e.target.value)}
+                  <select
+                    value={formData.course || ''}
+                    onChange={(e) => {
+                      const course = e.target.value;
+                      handleInputChange('course', course);
+                      // Reset batch when course changes
+                      handleInputChange('batchId', '');
+                      // Load batches for selected course
+                      if (course) {
+                        loadBatchesByCourse(course);
+                      }
+                    }}
                     required
-                    style={{ marginBottom: '15px' }}
-                  />
+                    style={{ marginBottom: '15px', padding: '8px', border: '1px solid #ddd', borderRadius: '4px' }}
+                  >
+                    <option value="">Select Course *</option>
+                    <option value="Data Science & AI">Data Science & AI</option>
+                    <option value="Cyber Security & Ethical Hacking">Cyber Security & Ethical Hacking</option>
+                  </select>
                   <small style={{color: '#888', marginTop: '-10px', display: 'block'}}>
-                    Enter the course identifier (e.g., data-science-101, cyber-security-001)
+                    Select the course this video is assigned to
+                  </small>
+                  
+                  <select
+                    value={formData.batchId || ''}
+                    onChange={(e) => handleInputChange('batchId', e.target.value)}
+                    style={{ marginBottom: '15px', padding: '8px', border: '1px solid #ddd', borderRadius: '4px' }}
+                  >
+                    <option value="">Select Batch (Optional - Leave empty for all batches)</option>
+                    {batches.map(batch => (
+                      <option key={batch.id} value={batch.id}>
+                        {batch.name}
+                      </option>
+                    ))}
+                  </select>
+                  <small style={{color: '#888', marginTop: '-10px', display: 'block'}}>
+                    Select specific batch or leave empty to make available to all batches in this course
                   </small>
                   
                   <textarea
@@ -2686,14 +3413,6 @@ const AdminDashboard = ({ user, onLogout }) => {
                     onChange={(e) => handleInputChange('description', e.target.value)}
                     rows={3}
                     style={{resize: 'vertical', minHeight: '60px', marginBottom: '15px'}}
-                  />
-                  
-                  <input
-                    type="text"
-                    placeholder="Batch ID (optional)"
-                    value={formData.batchId || ''}
-                    onChange={(e) => handleInputChange('batchId', e.target.value)}
-                    style={{ marginBottom: '15px' }}
                   />
                   
                   <input
@@ -2850,7 +3569,8 @@ const AdminDashboard = ({ user, onLogout }) => {
               <button onClick={closeModal} className="btn-cancel" disabled={saving}>Cancel</button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* Toast Notifications */}
