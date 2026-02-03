@@ -15,7 +15,7 @@ router.get('/', async (req, res) => {
       const demoCourses = [
         {
           _id: '1',
-          title: 'Full Stack Data Science & AI Program',
+          title: 'Data Science & AI',
           description: 'Master data science and AI with hands-on projects',
           instructor: 'Dr. Smith Johnson',
           duration: '6 months',
@@ -26,36 +26,14 @@ router.get('/', async (req, res) => {
         },
         {
           _id: '2',
-          title: 'Web Development Bootcamp',
-          description: 'Learn modern web development from scratch',
+          title: 'Cyber Security & Ethical Hacking',
+          description: 'Master cybersecurity fundamentals, ethical hacking techniques, and security analysis',
           instructor: 'Sarah Williams',
-          duration: '4 months',
-          modules: 8,
+          duration: '6 months',
+          modules: 10,
           progress: 60,
           enrolled: 856,
-          thumbnail: '💻'
-        },
-        {
-          _id: '3',
-          title: 'Machine Learning Masterclass',
-          description: 'Deep dive into ML algorithms and applications',
-          instructor: 'Prof. Alex Chen',
-          duration: '5 months',
-          modules: 10,
-          progress: 30,
-          enrolled: 645,
-          thumbnail: '🤖'
-        },
-        {
-          _id: '4',
-          title: 'Python Programming',
-          description: 'Complete Python course for beginners to advanced',
-          instructor: 'John Doe',
-          duration: '3 months',
-          modules: 12,
-          progress: 75,
-          enrolled: 1567,
-          thumbnail: '🐍'
+          thumbnail: '�'
         }
       ];
       return res.json(demoCourses);

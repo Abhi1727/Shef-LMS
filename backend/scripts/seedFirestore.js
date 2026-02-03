@@ -44,7 +44,7 @@ const sampleData = {
     admin1: {
       name: "Super Admin",
       email: "admin@sheflms.com",
-      password: "$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcg7b3XeKeUxWDeBlkxiRlO.J4m",
+      password: "$2b$10$1c7z1iAMraS3lW.ZlBXS1ezsvX9TH7wvMKoGZzGPgx5XoaRVTHtp6",
       role: "admin",
       status: "active",
       createdAt: new Date("2025-11-01"),
@@ -70,11 +70,25 @@ const sampleData = {
       role: "student",
       status: "active",
       enrollmentNumber: "SU-2025-002",
-      course: "Full Stack Web Development",
+      course: "Data Science & AI",
       phone: "+1-345-678-9012",
       address: "456 Oak Ave, San Francisco, CA",
       createdAt: new Date("2025-11-08"),
       updatedAt: new Date("2025-11-08")
+    },
+    teacher1: {
+      name: "Dr. Sarah Mitchell",
+      email: "teacher@sheflms.com",
+      password: "$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcg7b3XeKeUxWDeBlkxiRlO.J4m",
+      role: "teacher",
+      status: "active",
+      age: 35,
+      domain: "Cyber Security & Ethical Hacking",
+      experience: "8 years in cybersecurity education",
+      phone: "+1-555-0123",
+      address: "789 University Ave, Boston, MA",
+      createdAt: new Date("2025-10-20"),
+      updatedAt: new Date("2025-11-01")
     }
   },
   courses: {
@@ -87,18 +101,22 @@ const sampleData = {
       price: "$999",
       status: "active",
       enrollmentCount: 2,
+      teacherId: "teacher_cybersecurity_id",
+      domain: "Cyber Security & Ethical Hacking",
       createdAt: new Date("2025-10-15"),
       updatedAt: new Date("2025-11-01")
     },
     course2: {
-      title: "Full Stack Web Development",
-      description: "Learn to build complete web applications using modern frontend and backend technologies.",
-      duration: "5 months",
-      instructor: "Jane Doe",
-      modules: 5,
-      price: "$899",
+      title: "Data Science & AI",
+      description: "Master data analysis, machine learning, deep learning, and AI applications with Python.",
+      duration: "6 months",
+      instructor: "Dr. Sarah Mitchell",
+      modules: 8,
+      price: "$1299",
       status: "active",
       enrollmentCount: 1,
+      teacherId: "teacher_datascience_id",
+      domain: "Data Science & AI",
       createdAt: new Date("2025-10-20"),
       updatedAt: new Date("2025-11-02")
     }
@@ -162,6 +180,7 @@ const sampleData = {
       skills: ["Networking", "Security Tools", "Reporting"],
       requirements: "Deploy test environment and document findings",
       deliverables: "Written report, video walkthrough, tools used",
+      courseId: "course1",
       status: "active",
       createdAt: new Date("2025-10-25"),
       updatedAt: new Date("2025-11-01")
@@ -176,6 +195,7 @@ const sampleData = {
       difficulty: "Hard",
       passingScore: 75,
       type: "exam",
+      courseId: "course1",
       status: "active",
       createdAt: new Date("2025-10-15"),
       updatedAt: new Date("2025-11-01")

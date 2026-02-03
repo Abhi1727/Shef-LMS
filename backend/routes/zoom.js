@@ -240,37 +240,77 @@ router.delete('/meetings/:id', auth, async (req, res) => {
 });
 
 // @route   GET /api/zoom/join/:id
-// @desc    Get join URL for a meeting
+// @desc    Get join URL for a meeting (students: must be enrolled; teachers: must own; admin: any)
 // @access  Private
 router.get('/join/:id', auth, async (req, res) => {
   try {
     const doc = await db.collection('liveClasses').doc(req.params.id).get();
 
     if (!doc.exists) {
-      return res.status(404).json({ 
-        success: false, 
-        message: 'Meeting not found' 
+      return res.status(404).json({
+        success: false,
+        message: 'Meeting not found'
       });
     }
 
     const meeting = doc.data();
+    const user = req.user;
 
-    // Increment student count
-    await db.collection('liveClasses').doc(req.params.id).update({
-      students: (meeting.students || 0) + 1
-    });
+    // Admin can join any meeting
+    if (user.role === 'admin') {
+      return res.json({
+        success: true,
+        joinUrl: meeting.joinUrl,
+        password: meeting.password,
+        title: meeting.title
+      });
+    }
 
-    res.json({
-      success: true,
-      joinUrl: meeting.joinUrl,
-      password: meeting.password,
-      title: meeting.title
-    });
+    // Teacher can join if they own the class
+    if (user.role === 'teacher') {
+      if (meeting.teacherId === user.id) {
+        return res.json({
+          success: true,
+          joinUrl: meeting.joinUrl,
+          password: meeting.password,
+          title: meeting.title
+        });
+      }
+      return res.status(403).json({
+        success: false,
+        message: 'You can only join classes you teach'
+      });
+    }
+
+    // Student: must be in enrolledStudents or in the batch
+    if (user.role === 'student') {
+      const enrolled = meeting.enrolledStudents && meeting.enrolledStudents.includes(user.id);
+      const inBatch = meeting.batchId && user.batchId === meeting.batchId;
+      // Legacy: meetings without enrolledStudents/batchId (e.g. admin-created) allow any student
+      const legacyMeeting = !meeting.enrolledStudents && !meeting.batchId;
+      if (enrolled || inBatch || legacyMeeting) {
+        await db.collection('liveClasses').doc(req.params.id).update({
+          students: (meeting.students || 0) + 1
+        });
+        return res.json({
+          success: true,
+          joinUrl: meeting.joinUrl,
+          password: meeting.password,
+          title: meeting.title
+        });
+      }
+      return res.status(403).json({
+        success: false,
+        message: 'You are not enrolled in this class'
+      });
+    }
+
+    res.status(403).json({ success: false, message: 'Access denied' });
   } catch (error) {
     console.error('Error getting join URL:', error);
-    res.status(500).json({ 
-      success: false, 
-      message: 'Failed to get join URL' 
+    res.status(500).json({
+      success: false,
+      message: 'Failed to get join URL'
     });
   }
 });

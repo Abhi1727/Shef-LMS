@@ -281,16 +281,18 @@
 
 /* Admin Content Area */
 .admin-content {
-  padding: 40px;
+  padding: 25px;
   min-height: calc(100vh - 85px);
+  max-width: 1400px;
+  margin: 0 auto;
 }
 
 .admin-section {
   background: white;
   border-radius: 20px;
-  padding: 35px;
+  padding: 30px;
   box-shadow: 0 10px 40px rgba(102, 126, 234, 0.06);
-  margin-bottom: 30px;
+  margin-bottom: 25px;
   border: 1px solid #f0f0f0;
   transition: all 0.3s ease;
 }
@@ -518,6 +520,126 @@
   transform: scale(1.05);
 }
 
+.btn-view {
+  background: #48bb78;
+  border: none;
+  padding: 8px 12px;
+  border-radius: 8px;
+  color: white;
+  cursor: pointer;
+  font-size: 14px;
+  transition: all 0.3s ease;
+  text-decoration: none;
+  display: inline-block;
+}
+
+.btn-view:hover {
+  background: #38a169;
+  transform: scale(1.05);
+}
+
+/* Action Buttons Container */
+.action-btns {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: nowrap;
+  white-space: nowrap;
+}
+
+.action-btns .btn-edit,
+.action-btns .btn-delete,
+.action-btns .btn-view {
+  margin: 0;
+  min-width: 40px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  font-size: 13px;
+  padding: 6px 10px;
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.action-btns .btn-edit {
+  background: linear-gradient(135deg, #4299e1 0%, #3182ce 100%);
+}
+
+.action-btns .btn-edit:hover {
+  background: linear-gradient(135deg, #3182ce 0%, #2c5282 100%);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(66, 153, 225, 0.3);
+}
+
+.action-btns .btn-delete {
+  background: linear-gradient(135deg, #f56565 0%, #e53e3e 100%);
+}
+
+.action-btns .btn-delete:hover {
+  background: linear-gradient(135deg, #e53e3e 0%, #c53030 100%);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(245, 101, 101, 0.3);
+}
+
+.action-btns .btn-view {
+  background: linear-gradient(135deg, #48bb78 0%, #38a169 100%);
+}
+
+.action-btns .btn-view:hover {
+  background: linear-gradient(135deg, #38a169 0%, #2f855a 100%);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(72, 187, 120, 0.3);
+}
+
+/* Responsive improvements for action buttons */
+@media (max-width: 768px) {
+  .action-btns {
+    flex-direction: column;
+    gap: 4px;
+    align-items: stretch;
+  }
+  
+  .action-btns .btn-edit,
+  .action-btns .btn-delete,
+  .action-btns .btn-view {
+    width: 100%;
+    justify-content: center;
+    font-size: 12px;
+    padding: 8px 6px;
+    min-width: auto;
+    height: 32px;
+  }
+  
+  .data-table th:last-child,
+  .data-table td:last-child {
+    min-width: 120px;
+    padding: 12px 8px;
+  }
+}
+
+@media (max-width: 1024px) {
+  .action-btns {
+    gap: 6px;
+  }
+  
+  .action-btns .btn-edit,
+  .action-btns .btn-delete,
+  .action-btns .btn-view {
+    font-size: 12px;
+    padding: 6px 8px;
+    min-width: 36px;
+    height: 32px;
+  }
+  
+  .data-table th:last-child,
+  .data-table td:last-child {
+    min-width: 150px;
+    padding: 14px 12px;
+  }
+}
+
 /* Data Table */
 .data-table-container {
   overflow-x: auto;
@@ -550,6 +672,16 @@
   border-bottom: 1px solid #e2e8f0;
   color: #4a5568;
   font-size: 14px;
+  vertical-align: middle;
+}
+
+/* Extra padding for Actions column */
+.data-table th:last-child,
+.data-table td:last-child {
+  padding: 16px 20px;
+  text-align: center;
+  min-width: 180px;
+  white-space: nowrap;
 }
 
 .data-table tbody tr {
@@ -675,9 +807,32 @@
   padding: 4px 12px;
   background: linear-gradient(135deg, #fbd38d 0%, #f6ad55 100%);
   color: #7c2d12;
-  border-radius: 12px;
-  font-size: 12px;
+  border-radius: 16px;
+  font-size: 11px;
   font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  display: inline-block;
+}
+
+.source-badge {
+  padding: 4px 10px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  display: inline-block;
+}
+
+.source-badge.zoom {
+  background: linear-gradient(135deg, #4299e1 0%, #3182ce 100%);
+  color: white;
+}
+
+.source-badge.drive {
+  background: linear-gradient(135deg, #48bb78 0%, #38a169 100%);
+  color: white;
 }
 
 .card-actions {
@@ -1678,5 +1833,121 @@
 
   .insights-grid {
     grid-template-columns: 1fr;
+  }
+}
+
+/* Mentor Dashboard Specific Styles */
+.no-classes, .no-courses, .no-videos, .no-assessments, .no-meetings, .no-activity {
+  text-align: center;
+  color: #666;
+  font-style: italic;
+  padding: 40px;
+  background: #f8f9fa;
+  border-radius: 8px;
+  margin: 20px 0;
+}
+
+.mentorship-content {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 30px;
+  margin-top: 20px;
+}
+
+.mentorship-info, .mentorship-actions {
+  background: white;
+  padding: 20px;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.mentorship-info h3, .mentorship-actions h3 {
+  margin-bottom: 15px;
+  color: #2d3748;
+}
+
+.profile-details {
+  display: grid;
+  gap: 10px;
+}
+
+.profile-field {
+  display: flex;
+  justify-content: space-between;
+  padding: 8px 0;
+  border-bottom: 1px solid #eee;
+}
+
+.profile-field label {
+  font-weight: 600;
+  color: #4a5568;
+}
+
+.mentorship-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+}
+
+.mentorship-actions button {
+  padding: 12px 20px;
+  border: none;
+  border-radius: 6px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.mentorship-actions button:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px rgba(102, 126, 234, 0.3);
+}
+
+/* Responsive Design for Admin Panel */
+@media (max-width: 1600px) {
+  .admin-content {
+    max-width: 1200px;
+    padding: 20px;
+  }
+  
+  .admin-section {
+    padding: 25px;
+  }
+}
+
+@media (max-width: 1200px) {
+  .admin-content {
+    max-width: 100%;
+    padding: 15px;
+  }
+  
+  .admin-section {
+    padding: 20px;
+    margin-bottom: 20px;
+  }
+}
+
+@media (max-width: 768px) {
+  .admin-content {
+    padding: 10px;
+  }
+  
+  .admin-section {
+    padding: 15px;
+    margin-bottom: 15px;
+  }
+  
+  .admin-main-content {
+    margin-left: 0;
+  }
+  
+  .admin-sidebar {
+    transform: translateX(-100%);
+  }
+  
+  .admin-sidebar.open {
+    transform: translateX(0);
   }
 }
