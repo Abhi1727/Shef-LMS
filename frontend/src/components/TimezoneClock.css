@@ -1,0 +1,87 @@
+.timezone-clock {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border-radius: 12px;
+  padding: 16px 20px;
+  min-width: 160px;
+  text-align: center;
+  box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  transition: all 0.3s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+.timezone-clock::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(45deg, rgba(255, 255, 255, 0.1) 0%, transparent 100%);
+  pointer-events: none;
+}
+
+.timezone-clock:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
+}
+
+.clock-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.9);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin-bottom: 8px;
+}
+
+.clock-time {
+  font-size: 24px;
+  font-weight: 700;
+  color: #ffffff;
+  font-family: 'Courier New', monospace;
+  margin-bottom: 4px;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.clock-date {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.8);
+  font-weight: 500;
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+  .timezone-clock {
+    min-width: 140px;
+    padding: 12px 16px;
+  }
+  
+  .clock-time {
+    font-size: 20px;
+  }
+  
+  .clock-label {
+    font-size: 11px;
+  }
+}
+
+@media (max-width: 480px) {
+  .timezone-clock {
+    min-width: 120px;
+    padding: 10px 12px;
+  }
+  
+  .clock-time {
+    font-size: 18px;
+  }
+  
+  .clock-label {
+    font-size: 10px;
+  }
+  
+  .clock-date {
+    font-size: 10px;
+  }
+}

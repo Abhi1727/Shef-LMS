@@ -1,0 +1,40 @@
+.timezone-clocks-container {
+  background: rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(10px);
+  border-radius: 16px;
+  padding: 20px;
+  margin: 20px 0;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.clocks-wrapper {
+  display: flex;
+  gap: 16px;
+  justify-content: center;
+  align-items: stretch;
+  flex-wrap: wrap;
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+  .timezone-clocks-container {
+    margin: 15px 0;
+    padding: 15px;
+  }
+  
+  .clocks-wrapper {
+    gap: 12px;
+  }
+}
+
+@media (max-width: 480px) {
+  .timezone-clocks-container {
+    margin: 10px 0;
+    padding: 12px;
+  }
+  
+  .clocks-wrapper {
+    gap: 8px;
+    justify-content: space-around;
+  }
+}

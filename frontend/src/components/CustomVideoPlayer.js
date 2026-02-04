@@ -1,6 +1,42 @@
 import React, { useState, useRef, useEffect } from 'react';
 import './CustomVideoPlayer.css';
 
+// YouTube IFrame API loader
+let youtubeAPIReady = false;
+let youtubeAPILoading = false;
+
+const loadYouTubeAPI = () => {
+  return new Promise((resolve) => {
+    if (youtubeAPIReady) {
+      resolve();
+      return;
+    }
+    
+    if (!youtubeAPILoading) {
+      youtubeAPILoading = true;
+      const tag = document.createElement('script');
+      tag.src = 'https://www.youtube.com/iframe_api';
+      const firstScriptTag = document.getElementsByTagName('script')[0];
+      firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
+      
+      window.onYouTubeIframeAPIReady = () => {
+        youtubeAPIReady = true;
+        resolve();
+      };
+    } else {
+      // Wait for API to be ready
+      const checkReady = () => {
+        if (youtubeAPIReady) {
+          resolve();
+        } else {
+          setTimeout(checkReady, 100);
+        }
+      };
+      checkReady();
+    }
+  });
+};
+
 const CustomVideoPlayer = ({ video, onClose }) => {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -13,21 +49,22 @@ const CustomVideoPlayer = ({ video, onClose }) => {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [firebaseVideoUrl, setFirebaseVideoUrl] = useState(null);
   const [youtubeVideoUrl, setYoutubeVideoUrl] = useState(null);
+  const [youtubePlayer, setYoutubePlayer] = useState(null);
+  const [playerReady, setPlayerReady] = useState(false);
   
   const videoRef = useRef(null);
+  const youtubeContainerRef = useRef(null);
   const containerRef = useRef(null);
   const controlsTimeoutRef = useRef(null);
 
-  // Determine video source and set appropriate URL
+  // Determine video source and initialize player
   useEffect(() => {
     if (video.videoSource === 'youtube-url' && video.youtubeEmbedUrl) {
       setYoutubeVideoUrl(video.youtubeEmbedUrl);
-      setIsLoading(false);
-      console.log('📺 Manual YouTube video URL loaded:', video.youtubeEmbedUrl);
+      initializeYouTubePlayer(video.youtubeEmbedUrl);
     } else if (video.videoSource === 'youtube' && video.youtubeEmbedUrl) {
       setYoutubeVideoUrl(video.youtubeEmbedUrl);
-      setIsLoading(false);
-      console.log('📺 YouTube video URL loaded:', video.youtubeEmbedUrl);
+      initializeYouTubePlayer(video.youtubeEmbedUrl);
     } else if (video.videoSource === 'firebase' && video.id) {
       const fetchFirebaseUrl = async () => {
         try {
@@ -56,13 +93,86 @@ const CustomVideoPlayer = ({ video, onClose }) => {
     } else if (video.videoUrl && video.videoUrl.includes('youtube.com/embed')) {
       // Handle legacy YouTube embed URLs
       setYoutubeVideoUrl(video.videoUrl);
-      setIsLoading(false);
-      console.log('📺 Legacy YouTube video URL loaded:', video.videoUrl);
+      initializeYouTubePlayer(video.videoUrl);
     } else {
       setError('Unsupported video source or missing video information');
       setIsLoading(false);
     }
   }, [video]);
+
+  // Initialize YouTube player
+  const initializeYouTubePlayer = async (embedUrl) => {
+    try {
+      await loadYouTubeAPI();
+      
+      // Extract video ID from embed URL
+      const videoId = embedUrl.match(/\/embed\/([^?]+)/)?.[1];
+      if (!videoId) {
+        throw new Error('Invalid YouTube video ID');
+      }
+
+      // Wait for container to be available
+      if (!youtubeContainerRef.current) {
+        setTimeout(() => initializeYouTubePlayer(embedUrl), 100);
+        return;
+      }
+
+      // Create YouTube player
+      const player = new window.YT.Player(youtubeContainerRef.current, {
+        videoId: videoId,
+        playerVars: {
+          autoplay: 0,
+          controls: 0, // Hide YouTube controls
+          disablekb: 1, // Disable keyboard controls
+          enablejsapi: 1,
+          iv_load_policy: 3, // Hide annotations
+          modestbranding: 1, // Hide YouTube logo
+          rel: 0, // Hide related videos
+          showinfo: 0
+        },
+        events: {
+          onReady: (event) => {
+            console.log('📺 YouTube player ready');
+            setYoutubePlayer(event.target);
+            setPlayerReady(true);
+            setIsLoading(false);
+            
+            // Set initial volume
+            event.target.setVolume(volume * 100);
+            
+            // Get video duration immediately
+            const videoDuration = event.target.getDuration();
+            setDuration(videoDuration);
+            console.log('📺 Video duration:', videoDuration);
+          },
+          onStateChange: (event) => {
+            // Update playing state
+            const state = event.data;
+            const wasPlaying = isPlaying;
+            const nowPlaying = state === window.YT.PlayerState.PLAYING;
+            
+            setIsPlaying(nowPlaying);
+            
+            // Get video duration when playing starts
+            if (nowPlaying && !wasPlaying) {
+              const videoDuration = event.target.getDuration();
+              setDuration(videoDuration);
+              console.log('📺 Video started, duration:', videoDuration);
+            }
+          },
+          onError: (event) => {
+            console.error('❌ YouTube player error:', event.data);
+            setError('Failed to load YouTube video');
+            setIsLoading(false);
+          }
+        }
+      });
+    } catch (error) {
+      console.error('❌ Error initializing YouTube player:', error);
+      setError('Failed to initialize YouTube player');
+      setIsLoading(false);
+    }
+  };
 
   // Auto-hide controls after 3 seconds
   useEffect(() => {
@@ -87,6 +197,33 @@ const CustomVideoPlayer = ({ video, onClose }) => {
       }
     };
   }, [isPlaying]);
+
+  // Time tracking for both YouTube and Firebase videos
+  useEffect(() => {
+    let interval;
+
+    if (isPlaying) {
+      interval = setInterval(() => {
+        if (youtubePlayer && playerReady) {
+          // YouTube video time tracking
+          const currentTime = youtubePlayer.getCurrentTime();
+          const videoDuration = youtubePlayer.getDuration();
+          setCurrentTime(currentTime);
+          setDuration(videoDuration);
+        } else if (videoRef.current) {
+          // Firebase video time tracking
+          setCurrentTime(videoRef.current.currentTime);
+          setDuration(videoRef.current.duration);
+        }
+      }, 100); // Update every 100ms for smooth progress bar
+    }
+
+    return () => {
+      if (interval) {
+        clearInterval(interval);
+      }
+    };
+  }, [isPlaying, youtubePlayer, playerReady]);
 
   // Show controls on mouse movement
   const handleMouseMove = () => {
@@ -135,7 +272,15 @@ const CustomVideoPlayer = ({ video, onClose }) => {
 
   // Control functions
   const togglePlay = () => {
-    if (videoRef.current) {
+    if (youtubePlayer && playerReady) {
+      // YouTube player controls
+      if (isPlaying) {
+        youtubePlayer.pauseVideo();
+      } else {
+        youtubePlayer.playVideo();
+      }
+    } else if (videoRef.current) {
+      // Firebase video controls
       if (isPlaying) {
         videoRef.current.pause();
       } else {
@@ -145,16 +290,41 @@ const CustomVideoPlayer = ({ video, onClose }) => {
   };
 
   const handleSeek = (e) => {
-    if (videoRef.current) {
-      videoRef.current.currentTime = e.target.value;
-      setCurrentTime(e.target.value);
+    const seekTime = parseFloat(e.target.value);
+    setCurrentTime(seekTime);
+    
+    if (youtubePlayer && playerReady) {
+      // YouTube player seek
+      youtubePlayer.seekTo(seekTime, true);
+    } else if (videoRef.current) {
+      // Firebase video seek
+      videoRef.current.currentTime = seekTime;
     }
   };
 
   const handleVolumeChange = (e) => {
-    if (videoRef.current) {
-      videoRef.current.volume = e.target.value;
-      setVolume(e.target.value);
+    const newVolume = parseFloat(e.target.value);
+    setVolume(newVolume);
+    
+    if (youtubePlayer && playerReady) {
+      // YouTube player volume (0-100)
+      youtubePlayer.setVolume(newVolume * 100);
+    } else if (videoRef.current) {
+      // Firebase video volume (0-1)
+      videoRef.current.volume = newVolume;
+    }
+  };
+
+  const handleSpeedChange = (e) => {
+    const newSpeed = parseFloat(e.target.value);
+    setPlaybackSpeed(newSpeed);
+    
+    if (youtubePlayer && playerReady) {
+      // YouTube player playback speed
+      youtubePlayer.setPlaybackRate(newSpeed);
+    } else if (videoRef.current) {
+      // Firebase video playback speed
+      videoRef.current.playbackRate = newSpeed;
     }
   };
 
@@ -239,20 +409,13 @@ const CustomVideoPlayer = ({ video, onClose }) => {
 
         {/* YouTube Video Player */}
         {youtubeVideoUrl && (
-          <iframe
+          <div 
+            ref={youtubeContainerRef}
             className="youtube-video-player"
-            src={youtubeVideoUrl}
-            title={video.title}
-            frameBorder="0"
-            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-            allowFullScreen
-            onLoad={() => {
-              setIsLoading(false);
-              console.log('📺 YouTube iframe loaded successfully');
-            }}
-            onError={() => {
-              setError('Failed to load YouTube video');
-              setIsLoading(false);
+            style={{
+              width: '100%',
+              height: '100%',
+              backgroundColor: '#000'
             }}
           />
         )}
@@ -293,7 +456,7 @@ const CustomVideoPlayer = ({ video, onClose }) => {
               
               <select
                 value={playbackSpeed}
-                onChange={(e) => setPlaybackSpeed(parseFloat(e.target.value))}
+                onChange={handleSpeedChange}
                 className="speed-control"
               >
                 <option value="0.5">0.5x</option>

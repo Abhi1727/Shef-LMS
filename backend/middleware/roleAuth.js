@@ -18,6 +18,21 @@ const roleAuth = (...allowedRoles) => {
 
       req.user = decoded.user;
 
+      // Check if user account is active - ONLY for students
+      // Admins and teachers can access even if account is inactive
+      if (req.user.role === 'student' && req.user.status !== 'active') {
+        return res.status(403).json({ 
+          message: 'Account is deactivated. Please contact administrator.' 
+        });
+      }
+
+      // Commented out: This was blocking admins and teachers too
+      // if (req.user.status !== 'active') {
+      //   return res.status(403).json({ 
+      //     message: 'Account is deactivated. Please contact administrator.' 
+      //   });
+      // }
+
       // Check if user's role is in the allowed roles
       if (!allowedRoles.includes(req.user.role)) {
         return res.status(403).json({ 

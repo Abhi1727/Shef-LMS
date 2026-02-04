@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { ToastContainer, showToast } from './Toast';
+import axios from 'axios';
 import './Dashboard.css';
 
 const TeacherDashboard = ({ user, onLogout }) => {
@@ -16,12 +17,37 @@ const TeacherDashboard = ({ user, onLogout }) => {
     courseId: '',
     batchId: '',
     domain: user?.domain || '',
-    duration: ''
+    duration: '',
+    youtubeUrl: ''
   });
+  const [batches, setBatches] = useState([]);
+  const [studentName, setStudentName] = useState('');
+  const [batchName, setBatchName] = useState('');
 
   useEffect(() => {
     loadTeacherData();
   }, []);
+
+  // Handle batch deletion
+  const handleDeleteBatch = async (batchId) => {
+    if (!window.confirm('Are you sure you want to delete this batch?')) return;
+    try {
+      const token = localStorage.getItem('token');
+      const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
+      const response = await fetch(`${apiUrl}/api/batches/${batchId}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (response.ok) {
+        setBatches(batches.filter(batch => batch.id !== batchId));
+        showToast('Batch deleted successfully!', 'success');
+      } else {
+        showToast('Failed to delete batch', 'error');
+      }
+    } catch (error) {
+      showToast('Error deleting batch', 'error');
+    }
+  };
 
   const loadTeacherData = async () => {
     setLoading(true);
@@ -80,6 +106,20 @@ const TeacherDashboard = ({ user, onLogout }) => {
     }
   };
 
+  // YouTube URL validation function
+  const isValidYouTubeUrl = (url) => {
+    if (!url || typeof url !== 'string') return false;
+    
+    const youtubeUrlPatterns = [
+      /^https?:\/\/(www\.)?youtube\.com\/watch\?v=[\w-]+(&.*)?$/,
+      /^https?:\/\/(www\.)?youtu\.be\/[\w-]+(\?.*)?$/,
+      /^https?:\/\/(www\.)?youtube\.com\/embed\/[\w-]+(\?.*)?$/,
+      /^https?:\/\/(www\.)?youtube\.com\/v\/[\w-]+(\?.*)?$/
+    ];
+    
+    return youtubeUrlPatterns.some(pattern => pattern.test(url.trim()));
+  };
+
   const handleUploadSubmit = async (e) => {
     e.preventDefault();
     setUploading(true);
@@ -88,27 +128,38 @@ const TeacherDashboard = ({ user, onLogout }) => {
       const token = localStorage.getItem('token');
       const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
       
-      const formData = new FormData();
-      const videoFile = document.getElementById('videoFile').files[0];
+      // Validate YouTube URL
+      if (!uploadForm.youtubeUrl) {
+        showToast('Please enter a YouTube video URL', 'error');
+        setUploading(false);
+        return;
+      }
       
-      if (!videoFile) {
-        showToast('Please select a video file', 'error');
+      if (!isValidYouTubeUrl(uploadForm.youtubeUrl)) {
+        showToast('Please enter a valid YouTube URL (e.g., https://www.youtube.com/watch?v=...)', 'error');
         setUploading(false);
         return;
       }
 
-      formData.append('video', videoFile);
-      formData.append('title', uploadForm.title);
-      formData.append('description', uploadForm.description);
-      formData.append('courseId', uploadForm.courseId);
-      formData.append('batchId', uploadForm.batchId);
-      formData.append('domain', uploadForm.domain);
-      formData.append('duration', uploadForm.duration);
+      // Send lecture data with YouTube URL
+      const lectureData = {
+        title: uploadForm.title,
+        description: uploadForm.description,
+        courseId: uploadForm.courseId,
+        batchId: uploadForm.batchId,
+        domain: uploadForm.domain,
+        duration: uploadForm.duration,
+        youtubeUrl: uploadForm.youtubeUrl,
+        videoSource: 'youtube'
+      };
 
       const response = await fetch(`${apiUrl}/api/teacher/classroom/upload`, {
         method: 'POST',
-        headers: { 'Authorization': `Bearer ${token}` },
-        body: formData
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(lectureData)
       });
 
       if (response.ok) {
@@ -122,9 +173,9 @@ const TeacherDashboard = ({ user, onLogout }) => {
           courseId: '',
           batchId: '',
           domain: user?.domain || '',
-          duration: ''
+          duration: '',
+          youtubeUrl: ''
         });
-        document.getElementById('videoFile').value = '';
         
         // Reload lectures for the course
         if (uploadForm.courseId) {
@@ -172,6 +223,88 @@ const TeacherDashboard = ({ user, onLogout }) => {
     }
   };
 
+  const handleAddStudent = async (e) => {
+    e.preventDefault();
+    if (!selectedCourse || !studentName) {
+      showToast('Please select a course and enter a student name', 'error');
+      return;
+    }
+
+    try {
+      const token = localStorage.getItem('token');
+      const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
+
+      const response = await axios.post(`${apiUrl}/api/teacher/students`, {
+        name: studentName,
+        courseId: selectedCourse,
+        batchId: uploadForm.batchId // Use batchId from uploadForm
+      }, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+
+      if (response.status === 201) {
+        showToast('Student added successfully!', 'success');
+        setStudentName('');
+        setSelectedCourse('');
+        setUploadForm({ ...uploadForm, batchId: '' }); // Reset batchId in uploadForm
+        // Optionally, reload students or perform other actions
+      } else {
+        showToast('Failed to add student. Please try again.', 'error');
+      }
+    } catch (error) {
+      console.error('Error adding student:', error);
+      showToast('Error adding student. Please try again.', 'error');
+    }
+  };
+
+  const handleBatchSubmit = async (e) => {
+    e.preventDefault();
+    if (!batchName) {
+      showToast('Please enter a batch name', 'error');
+      return;
+    }
+
+    try {
+      const token = localStorage.getItem('token');
+      const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
+
+      const response = await axios.post(`${apiUrl}/api/teacher/batches`, {
+        name: batchName,
+        courseId: selectedCourse
+      }, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+
+      if (response.status === 201) {
+        showToast('Batch created successfully!', 'success');
+        setBatchName('');
+        // Reload batches for the selected course
+        if (selectedCourse) {
+          const batchResponse = await axios.get(`/api/batches/${selectedCourse}`);
+          setBatches(batchResponse.data);
+        }
+      } else {
+        showToast('Failed to create batch. Please try again.', 'error');
+      }
+    } catch (error) {
+      console.error('Error creating batch:', error);
+      showToast('Error creating batch. Please try again.', 'error');
+    }
+  };
+
+  useEffect(() => {
+    // Fetch batches when a course is selected
+    const fetchBatches = async () => {
+      if (selectedCourse) {
+        const response = await axios.get(`/api/batches/${selectedCourse}`);
+        setBatches(response.data);
+      } else {
+        setBatches([]);
+      }
+    };
+    fetchBatches();
+  }, [selectedCourse]);
+
   if (loading) {
     return (
       <div className="dashboard">
@@ -208,14 +341,15 @@ const TeacherDashboard = ({ user, onLogout }) => {
           className={`nav-item ${activeSection === 'courses' ? 'active' : ''}`}
           onClick={() => setActiveSection('courses')}
         >
-          📚 My Courses
+          � My Batches
         </button>
-        <button
+        {/* Commented out - My Students option disabled */}
+        {/* <button
           className={`nav-item ${activeSection === 'students' ? 'active' : ''}`}
           onClick={() => setActiveSection('students')}
         >
           👥 My Students
-        </button>
+        </button> */}
         <button
           className={`nav-item ${activeSection === 'lectures' ? 'active' : ''}`}
           onClick={() => setActiveSection('lectures')}
@@ -280,7 +414,7 @@ const TeacherDashboard = ({ user, onLogout }) => {
                 </div>
                 <div className="info-item">
                   <label>Age:</label>
-                  <span>{user?.age}</span>
+                  <span>{user?.age}</span> {/* Display teacher's age */}
                 </div>
                 <div className="info-item">
                   <label>Phone:</label>
@@ -293,7 +427,7 @@ const TeacherDashboard = ({ user, onLogout }) => {
 
         {activeSection === 'courses' && (
           <div className="dashboard-section">
-            <h2>My Courses</h2>
+            <h2>My Batches</h2>
             <div className="courses-grid">
               {courses.map(course => (
                 <div key={course.id} className="course-card">
@@ -340,6 +474,61 @@ const TeacherDashboard = ({ user, onLogout }) => {
               {students.length === 0 && (
                 <p className="no-data">No students enrolled yet.</p>
               )}
+            </div>
+
+            {/* Add Student Form */}
+            <div className="add-student-section">
+              <h3>Add New Student</h3>
+              <form onSubmit={handleAddStudent} className="add-student-form">
+                <div className="form-group">
+                  <label htmlFor="course">Course *</label>
+                  <select
+                    id="course"
+                    value={selectedCourse}
+                    onChange={(e) => setSelectedCourse(e.target.value)}
+                    required
+                  >
+                    <option value="">Select a course</option>
+                    {courses.map(course => (
+                      <option key={course.id} value={course.id}>
+                        {course.title}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                
+                <div className="form-group">
+                  <label htmlFor="batch">Batch *</label>
+                  <select
+                    id="batch"
+                    value={uploadForm.batchId}
+                    onChange={(e) => setUploadForm({...uploadForm, batchId: e.target.value})}
+                    required
+                  >
+                    <option value="">Select a batch</option>
+                    {batches.map(batch => (
+                      <option key={batch.id} value={batch.id}>
+                        {batch.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                
+                <div className="form-group">
+                  <label htmlFor="studentName">Student Name *</label>
+                  <input
+                    type="text"
+                    id="studentName"
+                    value={studentName}
+                    onChange={(e) => setStudentName(e.target.value)}
+                    required
+                  />
+                </div>
+                
+                <button type="submit" className="add-student-btn">
+                  Add Student
+                </button>
+              </form>
             </div>
           </div>
         )}
@@ -418,7 +607,8 @@ const TeacherDashboard = ({ user, onLogout }) => {
                     />
                   </div>
                   
-                  <div className="form-group">
+                  {/* Commented out - Duration field disabled */}
+                  {/* <div className="form-group">
                     <label htmlFor="duration">Duration</label>
                     <input
                       type="text"
@@ -427,22 +617,24 @@ const TeacherDashboard = ({ user, onLogout }) => {
                       onChange={(e) => setUploadForm({...uploadForm, duration: e.target.value})}
                       placeholder="e.g., 45 minutes"
                     />
-                  </div>
+                  </div> */}
                   
                   <div className="form-group full-width">
-                    <label htmlFor="videoFile">Video File *</label>
+                    <label htmlFor="youtubeUrl">YouTube Video URL *</label>
                     <input
-                      type="file"
-                      id="videoFile"
-                      accept="video/*"
+                      type="url"
+                      id="youtubeUrl"
+                      value={uploadForm.youtubeUrl}
+                      onChange={(e) => setUploadForm({...uploadForm, youtubeUrl: e.target.value})}
+                      placeholder="https://www.youtube.com/watch?v=..."
                       required
                     />
-                    <small>Supported formats: MP4, AVI, MOV, etc. Max size: 2GB</small>
+                    <small>Enter a valid YouTube video URL (e.g., https://www.youtube.com/watch?v=... or https://youtu.be/...)</small>
                   </div>
                 </div>
                 
                 <button type="submit" className="upload-btn" disabled={uploading}>
-                  {uploading ? 'Uploading...' : '📤 Upload Lecture'}
+                  {uploading ? 'Adding Lecture...' : '🎬 Add Lecture'}
                 </button>
               </form>
             </div>
@@ -466,6 +658,18 @@ const TeacherDashboard = ({ user, onLogout }) => {
                           <span>🌐 Domain: {lecture.domain}</span>
                           <span>📅 Uploaded: {formatDate(lecture.createdAt)}</span>
                         </div>
+                        {lecture.youtubeUrl && (
+                          <div className="youtube-info">
+                            <span>🎬 YouTube: {lecture.youtubeUrl}</span>
+                            <button 
+                              className="watch-btn" 
+                              onClick={() => window.open(lecture.youtubeUrl, '_blank')}
+                              style={{ marginLeft: '10px', padding: '5px 10px', background: '#ff0000', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
+                            >
+                              ▶️ Watch
+                            </button>
+                          </div>
+                        )}
                         {lecture.fileInfo && (
                           <div className="file-info">
                             <span>📁 {lecture.fileInfo.originalName}</span>
@@ -504,6 +708,53 @@ const TeacherDashboard = ({ user, onLogout }) => {
                 <li>Manage Zoom meetings</li>
                 <li>Track attendance</li>
               </ul>
+            </div>
+          </div>
+        )}
+
+        {activeSection === 'batches' && (
+          <div className="dashboard-section">
+            <h2>My Batches</h2>
+            <div className="batches-list">
+              {batches.map(batch => (
+                <div key={batch.id} className="batch-card">
+                  <div className="batch-info">
+                    <h3>{batch.name}</h3>
+                    <p>Course: {courses.find(c => c.id === batch.courseId)?.title}</p>
+                    <p>Students: {batch.studentCount || 0}</p>
+                  </div>
+                  <div className="batch-actions">
+                    <button className="view-btn">View Students</button>
+                    <button className="delete-btn" onClick={() => handleDeleteBatch(batch.id)}>
+                      🗑️ Delete Batch
+                    </button>
+                  </div>
+                </div>
+              ))}
+              {batches.length === 0 && (
+                <p className="no-data">No batches found for this course.</p>
+              )}
+            </div>
+
+            {/* Add Batch Form */}
+            <div className="add-batch-section">
+              <h3>Add New Batch</h3>
+              <form onSubmit={handleBatchSubmit} className="add-batch-form">
+                <div className="form-group">
+                  <label htmlFor="batchName">Batch Name *</label>
+                  <input
+                    type="text"
+                    id="batchName"
+                    value={batchName}
+                    onChange={(e) => setBatchName(e.target.value)}
+                    required
+                  />
+                </div>
+                
+                <button type="submit" className="add-batch-btn">
+                  Add Batch
+                </button>
+              </form>
             </div>
           </div>
         )}

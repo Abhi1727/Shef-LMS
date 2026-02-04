@@ -235,6 +235,55 @@ router.delete('/:lectureId', roleAuth('admin'), async (req, res) => {
   }
 });
 
+// @route   POST /api/admin/classroom/youtube-url
+// @desc    Add lecture with manual YouTube URL
+// @access  Private (Admin only)
+router.post('/youtube-url', roleAuth('admin'), async (req, res) => {
+  try {
+    const { title, instructor, description, course, batchId, domain, duration, youtubeVideoUrl, youtubeVideoId, youtubeEmbedUrl, type, date } = req.body;
+
+    // Validate required fields
+    if (!title || !course || !youtubeVideoUrl) {
+      return res.status(400).json({ 
+        message: 'Title, course, and YouTube URL are required' 
+      });
+    }
+
+    // Prepare lecture data
+    const lectureData = {
+      title: title.trim(),
+      instructor: instructor?.trim() || '',
+      description: description?.trim() || '',
+      course: course.trim(),
+      batchId: batchId?.trim() || '',
+      domain: domain?.trim() || '',
+      duration: duration?.trim() || '',
+      type: type?.trim() || 'Lecture',
+      date: date?.trim() || new Date().toISOString().split('T')[0],
+      videoSource: 'youtube-url',
+      youtubeVideoId: youtubeVideoId?.trim() || '',
+      youtubeVideoUrl: youtubeVideoUrl?.trim() || '',
+      youtubeEmbedUrl: youtubeEmbedUrl?.trim() || '',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+
+    // Save lecture metadata to Firestore
+    const docRef = await db.collection('classroom').add(lectureData);
+
+    res.status(201).json({
+      success: true,
+      message: 'YouTube video lecture added successfully',
+      lectureId: docRef.id,
+      ...lectureData
+    });
+
+  } catch (error) {
+    console.error('Error adding YouTube URL lecture:', error);
+    res.status(500).json({ message: 'Failed to add YouTube video lecture' });
+  }
+});
+
 // Error handling middleware for multer
 router.use((error, req, res, next) => {
   if (error instanceof multer.MulterError) {
