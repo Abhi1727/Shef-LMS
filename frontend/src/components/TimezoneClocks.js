@@ -5,9 +5,9 @@ import './TimezoneClocks.css';
 const TimezoneClocks = () => {
   const timezones = [
     { id: 'est', timezone: 'America/New_York', label: 'EST' },
-    { id: 'pst', timezone: 'America/Los_Angeles', label: 'PST' },
-    { id: 'ist', timezone: 'Asia/Kolkata', label: 'IST' },
-    { id: 'cst', timezone: 'America/Chicago', label: 'CST' }
+    { id: 'cst', timezone: 'America/Chicago', label: 'CST' },
+    { id: 'mst', timezone: 'America/Denver', label: 'MST' },
+    { id: 'pst', timezone: 'America/Los_Angeles', label: 'PST' }
   ];
 
   return (

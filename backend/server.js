@@ -2,7 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const dotenv = require('dotenv');
 const { db } = require('./config/firebase');
-const { startRecordingSync } = require('./jobs/syncRecordings');
+// const { startRecordingSync } = require('./jobs/syncRecordings');
 const videoProcessor = require('./middleware/videoProcessor');
 
 dotenv.config();
@@ -40,9 +40,9 @@ app.use('/api/content', require('./routes/content'));
 app.use('/api/zoom', require('./routes/zoom'));
 app.use('/api/classroom', require('./routes/classroom'));
 
-// Apply video processor middleware for automatic URL/passcode extraction
+// Apply video processor middleware for automatic URL/passcode extraction - COMMENTED OUT
 // This must come BEFORE the admin routes
-app.use('/api/admin', videoProcessor);
+// app.use('/api/admin', videoProcessor);
 app.use('/api/admin', require('./routes/admin'));
 app.use('/api/video', require('./routes/video'));
 app.use('/api/teacher', require('./routes/teacher'));
@@ -62,6 +62,6 @@ const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
   
-  // Start Zoom recording sync scheduler
-  startRecordingSync();
+  // Start Zoom recording sync scheduler - COMMENTED OUT
+  // startRecordingSync();
 });

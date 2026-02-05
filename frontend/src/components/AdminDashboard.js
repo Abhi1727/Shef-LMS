@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo, memo } from 'react';
 import { createPortal } from 'react-dom';
+import { useNavigate } from 'react-router-dom';
 import { firebaseService, COLLECTIONS } from '../services/firebaseService';
 import { where } from 'firebase/firestore';
 import bcrypt from 'bcryptjs';
@@ -10,6 +11,7 @@ import { YouTubeUtils } from '../utils/youtubeUtils';
 import './AdminDashboard.css';
 
 const AdminDashboard = ({ user, onLogout }) => {
+  const navigate = useNavigate();
   const [activeSection, setActiveSection] = useState('overview');
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [loading, setLoading] = useState(true);
@@ -169,6 +171,26 @@ const AdminDashboard = ({ user, onLogout }) => {
     clearSearch();
   }, [clearSearch]);
 
+  const handleBatchClick = useCallback((batch) => {
+    const batchId = batch.id || batch._id;
+    console.log('Navigating to batch:', {
+      batchName: batch.name,
+      batchId: batchId,
+      fullBatch: batch
+    });
+    navigate(`/admin/batch/${batchId}`);
+  }, [navigate]);
+
+  const handleBatchViewSelect = useCallback((view) => {
+    setBatchView(view);
+  }, []);
+
+  const closeBatchDetailsModal = useCallback(() => {
+    setShowBatchDetailsModal(false);
+    setSelectedBatch(null);
+    setBatchView('');
+  }, []);
+
   // Memoized search results component
   const SearchResults = memo(({ results, onStudentClick }) => (
     <div className="search-results">
@@ -292,6 +314,11 @@ const AdminDashboard = ({ user, onLogout }) => {
   const [modalType, setModalType] = useState('');
   const [editingItem, setEditingItem] = useState(null);
   const [formData, setFormData] = useState({});
+  
+  // Batch details modal state
+  const [showBatchDetailsModal, setShowBatchDetailsModal] = useState(false);
+  const [selectedBatch, setSelectedBatch] = useState(null);
+  const [batchView, setBatchView] = useState(''); // 'videos' or 'students'
 
   // Manage body scroll when modal is open
   useEffect(() => {
@@ -839,10 +866,10 @@ const AdminDashboard = ({ user, onLogout }) => {
 
   const getDefaultFormData = (type) => {
     const defaults = {
-      student: { name: '', email: '', password: '', enrollmentNumber: '', course: '', batchId: '', status: 'active', role: 'student', phone: '', address: '' },
+      student: { name: '', email: '', password: '', course: '', batchId: '', status: 'active', role: 'student', phone: '', address: '' },
       teacher: { name: '', email: '', password: '', age: '', domain: '', experience: '', status: 'active', role: 'teacher', phone: '', address: '' },
       course: { title: '', description: '', duration: '', modules: 0, status: 'active', instructor: '', price: '' },
-      batch: { name: '', course: '', startDate: '', endDate: '', teacherId: '', status: 'active' },
+      batch: { name: '', course: '', startDate: '', teacherId: '', status: 'active' },
       module: { name: '', courseId: '', description: '', duration: '', lessons: 0, order: 1 },
   lesson: { title: '', moduleId: '', content: '', duration: '', videoUrl: '', classLink: '', order: 1, resources: '' },
       project: { title: '', description: '', difficulty: 'Intermediate', duration: '', skills: [], requirements: '', deliverables: '' },
@@ -861,8 +888,8 @@ const AdminDashboard = ({ user, onLogout }) => {
       setSaving(true);
       // Validate required fields
       if (modalType === 'student') {
-        if (!formData.name || !formData.email || (!editingItem && !formData.password) || !formData.enrollmentNumber || !formData.course) {
-          showToast('Please fill in all required fields (Name, Email, Password, Enrollment Number, Course)', 'warning');
+        if (!formData.name || !formData.email || (!editingItem && !formData.password) || !formData.course) {
+          showToast('Please fill in all required fields (Name, Email, Password, Course)', 'warning');
           return;
         }
 
@@ -872,7 +899,8 @@ const AdminDashboard = ({ user, onLogout }) => {
           try {
             // Check if email already exists via API
             const token = localStorage.getItem('token');
-            const usersResponse = await fetch('/api/admin/users', {
+            const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
+            const usersResponse = await fetch(`${apiUrl}/api/admin/users`, {
               headers: { 'Authorization': `Bearer ${token}` }
             });
             if (usersResponse.ok) {
@@ -889,7 +917,7 @@ const AdminDashboard = ({ user, onLogout }) => {
               name: formData.name,
               email: formData.email,
               password: formData.password, // Send plain text, backend will hash
-              enrollmentNumber: formData.enrollmentNumber,
+              enrollmentNumber: '', // Send empty string since we removed this field
               phone: formData.phone || '',
               address: formData.address || '',
               course: formData.course || '',
@@ -898,7 +926,7 @@ const AdminDashboard = ({ user, onLogout }) => {
               role: 'student'
             };
 
-            const createResponse = await fetch('/api/admin/users', {
+            const createResponse = await fetch(`${apiUrl}/api/admin/users`, {
               method: 'POST',
               headers: {
                 'Content-Type': 'application/json',
@@ -925,7 +953,6 @@ const AdminDashboard = ({ user, onLogout }) => {
           const updateData = {
             name: formData.name,
             email: formData.email,
-            enrollmentNumber: formData.enrollmentNumber,
             phone: formData.phone || '',
             address: formData.address || '',
             course: formData.course || '',
@@ -1394,6 +1421,7 @@ const AdminDashboard = ({ user, onLogout }) => {
     if (window.confirm('Are you sure you want to delete this item?')) {
       try {
         const token = localStorage.getItem('token');
+        const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
         
         // Map collection names to API endpoints
         const collectionMap = {
@@ -1408,7 +1436,8 @@ const AdminDashboard = ({ user, onLogout }) => {
           [COLLECTIONS.MENTORS]: 'mentors',
           [COLLECTIONS.CONTENT]: 'content',
           [COLLECTIONS.CLASSROOM]: 'classroom',
-          [COLLECTIONS.LIVE_CLASSES]: 'liveClasses'
+          [COLLECTIONS.LIVE_CLASSES]: 'liveClasses',
+          'batches': 'batches'
         };
         
         const apiEndpoint = collectionMap[collection];
@@ -1417,7 +1446,7 @@ const AdminDashboard = ({ user, onLogout }) => {
           return;
         }
 
-        const response = await fetch(`/api/admin/${apiEndpoint}/${id}`, {
+        const response = await fetch(`${apiUrl}/api/admin/${apiEndpoint}/${id}`, {
           method: 'DELETE',
           headers: {
             'Authorization': `Bearer ${token}`
@@ -1817,7 +1846,7 @@ const AdminDashboard = ({ user, onLogout }) => {
                     <tr>
                       <th>Name</th>
                       <th>Email</th>
-                      <th>Enrollment No.</th>
+                      <th>Batch</th>
                       <th>Course</th>
                       <th>Last Login IP</th>
                       <th>Location</th>
@@ -1830,7 +1859,7 @@ const AdminDashboard = ({ user, onLogout }) => {
                       <tr key={student.id}>
                         <td>{student.name}</td>
                         <td>{student.email}</td>
-                        <td>{student.enrollmentNumber}</td>
+                        <td>{student.batchId || 'N/A'}</td>
                         <td>{student.course || 'N/A'}</td>
                         <td>
                           <span className="ip-address" title={student.lastLogin?.timestamp || 'Never logged in'}>
@@ -1936,7 +1965,6 @@ const AdminDashboard = ({ user, onLogout }) => {
                       <th>Batch Name</th>
                       <th>Course</th>
                       <th>Start Date</th>
-                      <th>End Date</th>
                       <th>Teacher</th>
                       <th>Students</th>
                       <th>Status</th>
@@ -1946,10 +1974,17 @@ const AdminDashboard = ({ user, onLogout }) => {
                   <tbody>
                     {batches.map(batch => (
                       <tr key={batch.id || batch._id}>
-                        <td>{batch.name}</td>
+                        <td>
+                          <button 
+                            onClick={() => handleBatchClick(batch)} 
+                            className="btn-link" 
+                            title="View Batch Details"
+                          >
+                            {batch.name}
+                          </button>
+                        </td>
                         <td>{batch.course}</td>
                         <td>{batch.startDate || 'N/A'}</td>
-                        <td>{batch.endDate || 'N/A'}</td>
                         <td>{batch.teacherName || 'N/A'}</td>
                         <td>{batch.students?.length || 0}</td>
                         <td>
@@ -2793,13 +2828,14 @@ const AdminDashboard = ({ user, onLogout }) => {
                       onBlur={(e) => e.target.setAttribute('readonly', true)}
                     />
                   )}
-                  <input
+                  {/* Enrollment Number Field - Commented Out */}
+                  {/* <input
                     type="text"
                     placeholder="Enrollment Number *"
                     value={formData.enrollmentNumber || ''}
                     onChange={(e) => handleInputChange('enrollmentNumber', e.target.value)}
                     required
-                  />
+                  /> */}
                   <input
                     type="tel"
                     placeholder="Phone Number"
@@ -2984,6 +3020,9 @@ const AdminDashboard = ({ user, onLogout }) => {
                     value={formData.name || ''}
                     onChange={(e) => handleInputChange('name', e.target.value)}
                     required
+                    readOnly={false}
+                    onFocus={(e) => e.target.removeAttribute('readonly')}
+                    onBlur={(e) => e.target.setAttribute('readonly', true)}
                   />
                   <select
                     value={formData.course || ''}
@@ -3005,12 +3044,6 @@ const AdminDashboard = ({ user, onLogout }) => {
                     placeholder="Start Date"
                     value={formData.startDate || ''}
                     onChange={(e) => handleInputChange('startDate', e.target.value)}
-                  />
-                  <input
-                    type="date"
-                    placeholder="End Date"
-                    value={formData.endDate || ''}
-                    onChange={(e) => handleInputChange('endDate', e.target.value)}
                   />
                   <select
                     value={formData.teacherId || ''}
@@ -3588,6 +3621,231 @@ const AdminDashboard = ({ user, onLogout }) => {
                 {saving ? (editingItem ? 'Updating...' : 'Creating...') : (editingItem ? 'Update' : 'Create')}
               </button>
               <button onClick={closeModal} className="btn-cancel" disabled={saving}>Cancel</button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* Batch Details Modal */}
+      {showBatchDetailsModal && createPortal(
+        <div className="modal-overlay" onClick={closeBatchDetailsModal}>
+          <div className="modal batch-details-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>📚 Batch Details: {selectedBatch?.name}</h3>
+              <button className="modal-close" onClick={closeBatchDetailsModal}>×</button>
+            </div>
+            
+            <div className="batch-info">
+              <div className="batch-details-grid">
+                <div className="detail-item">
+                  <label>Batch Name:</label>
+                  <span>{selectedBatch?.name}</span>
+                </div>
+                <div className="detail-item">
+                  <label>Course:</label>
+                  <span>{selectedBatch?.course}</span>
+                </div>
+                <div className="detail-item">
+                  <label>Teacher:</label>
+                  <span>{selectedBatch?.teacherName || 'N/A'}</span>
+                </div>
+                <div className="detail-item">
+                  <label>Start Date:</label>
+                  <span>{selectedBatch?.startDate || 'N/A'}</span>
+                </div>
+                <div className="detail-item">
+                  <label>End Date:</label>
+                  <span>{selectedBatch?.endDate || 'N/A'}</span>
+                </div>
+                <div className="detail-item">
+                  <label>Status:</label>
+                  <span className={`status-badge ${selectedBatch?.status}`}>
+                    {selectedBatch?.status}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {!batchView ? (
+              <div className="batch-options">
+                <h4>What would you like to view?</h4>
+                <div className="option-buttons">
+                  <button 
+                    onClick={() => handleBatchViewSelect('videos')}
+                    className="btn-option"
+                  >
+                    📹 Videos
+                  </button>
+                  <button 
+                    onClick={() => handleBatchViewSelect('students')}
+                    className="btn-option"
+                  >
+                    👥 Students
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="batch-content-view">
+                <div className="view-header">
+                  <button 
+                    onClick={() => setBatchView('')}
+                    className="btn-back"
+                  >
+                    ← Back to Options
+                  </button>
+                  <h4>
+                    {batchView === 'videos' ? '📹 Videos' : '👥 Students'} for {selectedBatch?.name}
+                  </h4>
+                </div>
+                
+                {batchView === 'videos' && (
+                  <div className="videos-view">
+                    {(() => {
+                      const batchVideos = classroomVideos.filter(video => {
+                        // Match by batchId first, then by courseId as fallback
+                        return video.batchId === selectedBatch?.id || 
+                               video.batchId === selectedBatch?._id ||
+                               video.courseId === selectedBatch?.course;
+                      });
+                      
+                      return batchVideos.length > 0 ? (
+                        <div className="videos-list">
+                          {batchVideos.map(video => (
+                            <div key={video.id} className="video-item">
+                              <div className="video-info">
+                                <h5>{video.title}</h5>
+                                <p><strong>Instructor:</strong> {video.instructor}</p>
+                                <p><strong>Date:</strong> {video.date}</p>
+                                <p><strong>Duration:</strong> {video.duration}</p>
+                                {video.videoSource === 'youtube' && video.youtubeVideoUrl && (
+                                  <a 
+                                    href={video.youtubeVideoUrl} 
+                                    target="_blank" 
+                                    rel="noopener noreferrer"
+                                    className="btn-view-video"
+                                  >
+                                    ▶️ Watch Video
+                                  </a>
+                                )}
+                                {video.videoSource === 'youtube-url' && video.youtubeVideoUrl && (
+                                  <a 
+                                    href={video.youtubeVideoUrl} 
+                                    target="_blank" 
+                                    rel="noopener noreferrer"
+                                    className="btn-view-video"
+                                  >
+                                    ▶️ Watch Video
+                                  </a>
+                                )}
+                                {video.zoomUrl && (
+                                  <a 
+                                    href={video.zoomUrl} 
+                                    target="_blank" 
+                                    rel="noopener noreferrer"
+                                    className="btn-view-video"
+                                  >
+                                    🎥 Join Zoom Class
+                                  </a>
+                                )}
+                                {video.driveId && (
+                                  <a 
+                                    href={`https://drive.google.com/file/d/${video.driveId}/view`} 
+                                    target="_blank" 
+                                    rel="noopener noreferrer"
+                                    className="btn-view-video"
+                                  >
+                                    📁 View on Drive
+                                  </a>
+                                )}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="no-data">
+                          <p>📹 No videos found for this batch</p>
+                          <small>Videos may be assigned to this batch by course or directly by batch ID</small>
+                        </div>
+                      );
+                    })()}
+                  </div>
+                )}
+                
+                {batchView === 'students' && (
+                  <div className="students-view">
+                    {(() => {
+                      // Debug logging
+                      console.log('Selected Batch:', selectedBatch);
+                      console.log('All Students:', students);
+                      
+                      const batchStudents = students.filter(student => {
+                        // Filter students by selected batch name or ID
+                        const selectedBatchId = selectedBatch?.id || selectedBatch?._id;
+                        const selectedBatchName = selectedBatch?.name;
+                        const selectedBatchCourse = selectedBatch?.course;
+                        
+                        const studentMatch = student.batchId === selectedBatchId || 
+                                             student.batchId === selectedBatchId ||
+                                             (selectedBatchCourse && student.course === selectedBatchCourse);
+                        
+                        console.log('Filtering student:', {
+                          studentName: student.name,
+                          studentBatchId: student.batchId,
+                          studentCourse: student.course,
+                          match: studentMatch
+                        });
+                        
+                        return studentMatch;
+                      });
+                      
+                      console.log('Filtered Students:', batchStudents);
+                      
+                      return batchStudents.length > 0 ? (
+                        <div className="students-list">
+                          <table className="students-table">
+                            <thead>
+                              <tr>
+                                <th>Name</th>
+                                <th>Email</th>
+                                <th>Batch</th>
+                                <th>Status</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {batchStudents.map(student => (
+                                <tr key={student.id}>
+                                  <td>{student.name}</td>
+                                  <td>{student.email}</td>
+                                  <td>{student.batchId || 'N/A'}</td>
+                                  <td>
+                                    <span className={`status-badge ${student.status}`}>
+                                      {student.status}
+                                    </span>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      ) : (
+                        <div className="no-data">
+                          <p>👥 No students found in this batch</p>
+                          <small>Students may be enrolled by batch ID or course matching</small>
+                          <br/>
+                          <small>Selected Batch ID: {selectedBatch?.id || selectedBatch?._id}</small>
+                          <br/>
+                          <small>Selected Batch Course: {selectedBatch?.course}</small>
+                        </div>
+                      );
+                    })()}
+                  </div>
+                )}
+              </div>
+            )}
+
+            <div className="modal-actions">
+              <button onClick={closeBatchDetailsModal} className="btn-cancel">Close</button>
             </div>
           </div>
         </div>,

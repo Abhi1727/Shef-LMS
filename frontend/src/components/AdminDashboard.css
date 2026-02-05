@@ -2303,3 +2303,271 @@ body.modal-open {
     transform: translateX(0);
   }
 }
+
+/* Batch Details Modal Styles */
+.batch-details-modal {
+  max-width: 800px;
+  width: 90%;
+  max-height: 80vh;
+  overflow-y: auto;
+}
+
+.batch-details-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.detail-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.detail-item label {
+  font-weight: 600;
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+}
+
+.detail-item span {
+  color: var(--text-primary);
+  font-size: 0.95rem;
+}
+
+.batch-options {
+  text-align: center;
+  padding: 32px 0;
+}
+
+.batch-options h4 {
+  margin-bottom: 24px;
+  color: var(--text-primary);
+  font-size: 1.2rem;
+}
+
+.option-buttons {
+  display: flex;
+  gap: 16px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.btn-option {
+  padding: 16px 32px;
+  background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+  color: white;
+  border: none;
+  border-radius: 12px;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--transition-normal);
+  min-width: 150px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.btn-option:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-lg);
+}
+
+.batch-content-view {
+  margin-top: 24px;
+}
+
+.view-header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 24px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.btn-back {
+  padding: 8px 16px;
+  background: var(--background-light);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  font-size: 0.875rem;
+}
+
+.btn-back:hover {
+  background: var(--border-color);
+  color: var(--text-primary);
+}
+
+.view-header h4 {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: 1.1rem;
+}
+
+.videos-view, .students-view {
+  max-height: 400px;
+  overflow-y: auto;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  background: var(--background-light);
+}
+
+.videos-list {
+  padding: 16px;
+}
+
+.video-item {
+  background: white;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 12px;
+  transition: all var(--transition-fast);
+}
+
+.video-item:hover {
+  box-shadow: var(--shadow-md);
+  transform: translateY(-1px);
+}
+
+.video-info h5 {
+  margin: 0 0 12px 0;
+  color: var(--text-primary);
+  font-size: 1rem;
+}
+
+.video-info p {
+  margin: 6px 0;
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+}
+
+.btn-view-video {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  background: var(--success-color);
+  color: white;
+  text-decoration: none;
+  border-radius: 6px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  transition: all var(--transition-fast);
+  margin-top: 8px;
+}
+
+.btn-view-video:hover {
+  background: #059669;
+  transform: translateY(-1px);
+}
+
+.students-list {
+  padding: 16px;
+}
+
+.students-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+}
+
+.students-table th,
+.students-table td {
+  padding: 12px;
+  text-align: left;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.students-table th {
+  background: var(--background-light);
+  font-weight: 600;
+  color: var(--text-secondary);
+  position: sticky;
+  top: 0;
+}
+
+.students-table tr:hover {
+  background: var(--background-light);
+}
+
+.no-data {
+  text-align: center;
+  padding: 48px 24px;
+  color: var(--text-secondary);
+}
+
+.no-data p {
+  margin: 0;
+  font-size: 1rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+/* Responsive styles for batch details modal */
+@media (max-width: 768px) {
+  .batch-details-modal {
+    width: 95%;
+    max-height: 90vh;
+  }
+  
+  .batch-details-grid {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+  
+  .option-buttons {
+    flex-direction: column;
+    align-items: center;
+  }
+  
+  .btn-option {
+    width: 100%;
+    max-width: 250px;
+  }
+  
+  .view-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+  
+  .students-table {
+    font-size: 0.8rem;
+  }
+  
+  .students-table th,
+  .students-table td {
+    padding: 8px;
+  }
+}
+
+/* Clickable batch name button */
+.btn-link {
+  background: none;
+  border: none;
+  color: var(--primary-color);
+  font-weight: 600;
+  cursor: pointer;
+  text-decoration: underline;
+  padding: 4px 8px;
+  border-radius: 4px;
+  transition: all var(--transition-fast);
+  font-size: 0.95rem;
+}
+
+.btn-link:hover {
+  background: var(--background-light);
+  color: var(--secondary-color);
+  text-decoration: none;
+  transform: translateY(-1px);
+}
