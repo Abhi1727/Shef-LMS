@@ -171,6 +171,33 @@ const AdminDashboard = ({ user, onLogout }) => {
     clearSearch();
   }, [clearSearch]);
 
+  const handleFileUpload = useCallback((e) => {
+    const file = e.target.files[0];
+    if (file) {
+      // Check file size (50MB limit)
+      if (file.size > 50 * 1024 * 1024) {
+        showToast('File size must be less than 50MB', 'error');
+        e.target.value = ''; // Clear the input
+        return;
+      }
+      
+      // Check file type
+      const allowedTypes = ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
+      if (!allowedTypes.includes(file.type)) {
+        showToast('Only PDF and Word documents are allowed', 'error');
+        e.target.value = ''; // Clear the input
+        return;
+      }
+      
+      setUploadedFile(file);
+      setFormData(prev => ({
+        ...prev,
+        fileName: file.name,
+        fileSize: file.size
+      }));
+    }
+  }, []);
+
   const handleBatchClick = useCallback((batch) => {
     const batchId = batch.id || batch._id;
     console.log('Navigating to batch:', {
@@ -337,6 +364,7 @@ const AdminDashboard = ({ user, onLogout }) => {
     };
   }, [showModal]);
   const [saving, setSaving] = useState(false);
+  const [uploadedFile, setUploadedFile] = useState(null);
 
   // Filter teachers by selected course for batch modal
   const getFilteredTeachers = useCallback(() => {
@@ -870,7 +898,7 @@ const AdminDashboard = ({ user, onLogout }) => {
       teacher: { name: '', email: '', password: '', age: '', domain: '', experience: '', status: 'active', role: 'teacher', phone: '', address: '' },
       course: { title: '', description: '', duration: '', modules: 0, status: 'active', instructor: '', price: '' },
       batch: { name: '', course: '', startDate: '', teacherId: '', status: 'active' },
-      module: { name: '', courseId: '', description: '', duration: '', lessons: 0, order: 1 },
+      module: { name: '', courseId: '', batchId: '', duration: '', contentType: 'text', content: '', externalLink: '', fileUrl: '', fileName: '', fileSize: 0 },
   lesson: { title: '', moduleId: '', content: '', duration: '', videoUrl: '', classLink: '', order: 1, resources: '' },
       project: { title: '', description: '', difficulty: 'Intermediate', duration: '', skills: [], requirements: '', deliverables: '' },
       assessment: { title: '', description: '', questions: 0, duration: '', difficulty: 'Medium', passingScore: 70 },
@@ -1191,6 +1219,69 @@ const AdminDashboard = ({ user, onLogout }) => {
       } else if (modalType === 'module') {
         if (!formData.name || !formData.courseId) {
           showToast('Please fill in all required fields (Name, Course)', 'warning');
+          return;
+        }
+        
+        // Additional validation based on content type
+        if (formData.contentType === 'link' && !formData.externalLink) {
+          showToast('Please provide an external link URL', 'warning');
+          return;
+        }
+        
+        if ((formData.contentType === 'pdf' || formData.contentType === 'word') && !uploadedFile && !formData.fileUrl) {
+          showToast('Please upload a file', 'warning');
+          return;
+        }
+        
+        // Handle file upload for modules
+        try {
+          const token = localStorage.getItem('token');
+          const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
+          
+          const formDataToSend = new FormData();
+          formDataToSend.append('name', formData.name);
+          formDataToSend.append('courseId', formData.courseId);
+          formDataToSend.append('batchId', formData.batchId || '');
+          formDataToSend.append('duration', formData.duration || '');
+          formDataToSend.append('contentType', formData.contentType || 'text');
+          formDataToSend.append('content', formData.content || '');
+          formDataToSend.append('externalLink', formData.externalLink || '');
+          
+          // Add file if available
+          if (uploadedFile) {
+            formDataToSend.append('file', uploadedFile);
+          }
+          
+          const endpoint = editingItem?.id 
+            ? `${apiUrl}/api/admin/modules/${editingItem.id}/upload`
+            : `${apiUrl}/api/admin/modules/upload`;
+            
+          const method = editingItem?.id ? 'PUT' : 'POST';
+          
+          const response = await fetch(endpoint, {
+            method: method,
+            headers: {
+              'Authorization': `Bearer ${token}`
+            },
+            body: formDataToSend
+          });
+          
+          const result = await response.json();
+          
+          if (response.ok) {
+            const successMessage = editingItem ? 'Module updated successfully!' : 'Module created successfully!';
+            showToast(successMessage, 'success');
+            closeModal();
+            await refreshData('modules');
+            setUploadedFile(null); // Clear uploaded file
+            return; // Prevent generic save logic from executing
+          } else {
+            showToast('Error: ' + (result.message || 'Failed to save module'), 'error');
+            return;
+          }
+        } catch (error) {
+          console.error('Error saving module:', error);
+          showToast('Failed to save module. Please try again.', 'error');
           return;
         }
       } else if (modalType === 'lesson') {
@@ -2021,9 +2112,9 @@ const AdminDashboard = ({ user, onLogout }) => {
                     <tr>
                       <th>Module Name</th>
                       <th>Course</th>
+                      <th>Batch</th>
+                      <th>File Type</th>
                       <th>Duration</th>
-                      <th>Lessons</th>
-                      <th>Order</th>
                       <th>Actions</th>
                     </tr>
                   </thead>
@@ -2032,11 +2123,40 @@ const AdminDashboard = ({ user, onLogout }) => {
                       <tr key={module.id}>
                         <td>{module.name}</td>
                         <td>{courses.find(c => c.id === module.courseId)?.title || 'N/A'}</td>
+                        <td>{batches.find(b => b.id === module.batchId)?.name || 'N/A'}</td>
+                        <td>
+                          <span className="content-type-badge">
+                            {module.contentType === 'pdf' && '📄 PDF'}
+                            {module.contentType === 'word' && '📝 Word'}
+                            {module.contentType === 'link' && '🔗 Link'}
+                            {module.contentType === 'text' && '📄 Text'}
+                          </span>
+                        </td>
                         <td>{module.duration}</td>
-                        <td>{module.lessons}</td>
-                        <td>{module.order}</td>
                         <td>
                           <button onClick={() => openModal('module', module)} className="btn-edit">✏️</button>
+                          {(module.contentType === 'pdf' || module.contentType === 'word') && module.fileUrl && (
+                            <a 
+                              href={module.fileUrl} 
+                              target="_blank" 
+                              rel="noopener noreferrer" 
+                              className="btn-view"
+                              title="View/Download File"
+                            >
+                              📥
+                            </a>
+                          )}
+                          {module.contentType === 'link' && module.externalLink && (
+                            <a 
+                              href={module.externalLink} 
+                              target="_blank" 
+                              rel="noopener noreferrer" 
+                              className="btn-view"
+                              title="Open External Link"
+                            >
+                              🔗
+                            </a>
+                          )}
                           <button onClick={() => handleDelete(COLLECTIONS.MODULES, module.id)} className="btn-delete">🗑️</button>
                         </td>
                       </tr>
@@ -3090,32 +3210,124 @@ const AdminDashboard = ({ user, onLogout }) => {
                     required
                   >
                     <option value="">Select Course *</option>
-                    <option value="1">Data Science & AI</option>
-                    <option value="2">Cyber Security & Ethical Hacking</option>
+                    <option value="Data Science & AI">Data Science & AI</option>
+                    <option value="Cyber Security & Ethical Hacking">Cyber Security & Ethical Hacking</option>
                   </select>
-                  <textarea
-                    placeholder="Module Description"
-                    value={formData.description || ''}
-                    onChange={(e) => handleInputChange('description', e.target.value)}
-                    rows="3"
-                  />
+                  
+                  <select
+                    value={formData.batchId || ''}
+                    onChange={(e) => handleInputChange('batchId', e.target.value)}
+                  >
+                    <option value="">Select Batch</option>
+                    {(() => {
+                      const selectedCourse = formData.courseId;
+                      const filteredBatches = batches.filter(batch => {
+                        // Try multiple matching approaches
+                        return batch.course === selectedCourse || 
+                               batch.courseId === selectedCourse ||
+                               (typeof selectedCourse === 'string' && batch.course && batch.course.toLowerCase() === selectedCourse.toLowerCase());
+                      });
+                      
+                      // Debug logging
+                      console.log('Selected Course:', selectedCourse);
+                      console.log('All Batches:', batches);
+                      console.log('Filtered Batches:', filteredBatches);
+                      
+                      return filteredBatches;
+                    })().map(batch => (
+                      <option key={batch.id} value={batch.id}>
+                        {batch.name}
+                      </option>
+                    ))}
+                  </select>
+                  
+                  {/* File Type Selection */}
+                  <select
+                    value={formData.contentType || 'text'}
+                    onChange={(e) => handleInputChange('contentType', e.target.value)}
+                  >
+                    <option value="text">Text Content</option>
+                    <option value="pdf">PDF Document</option>
+                    <option value="word">Word Document</option>
+                    <option value="link">External Link</option>
+                  </select>
+
+                  {/* Conditional fields based on content type */}
+                  {(formData.contentType === 'pdf' || formData.contentType === 'word') && (
+                    <div className="file-upload-section">
+                      <label>Upload {formData.contentType === 'pdf' ? 'PDF' : 'Word'} File:</label>
+                      <div 
+                        className="drop-zone"
+                        onDragOver={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          e.currentTarget.classList.add('drag-over');
+                        }}
+                        onDragLeave={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          e.currentTarget.classList.remove('drag-over');
+                        }}
+                        onDrop={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          e.currentTarget.classList.remove('drag-over');
+                          const files = e.dataTransfer.files;
+                          if (files.length > 0) {
+                            handleFileUpload({ target: { files } });
+                          }
+                        }}
+                      >
+                        <div className="drop-zone-content">
+                          <div className="drop-icon">📁</div>
+                          <p>Drag and drop your {formData.contentType === 'pdf' ? 'PDF' : 'Word'} file here</p>
+                          <p className="or-text">or</p>
+                          <input
+                            type="file"
+                            accept={formData.contentType === 'pdf' ? '.pdf' : '.doc,.docx'}
+                            onChange={(e) => handleFileUpload(e)}
+                            className="file-input"
+                            id="file-upload"
+                          />
+                          <label htmlFor="file-upload" className="file-select-btn">
+                            Select Files
+                          </label>
+                        </div>
+                      </div>
+                      {formData.fileName && (
+                        <div className="file-info">
+                          <span>✅ {formData.fileName}</span>
+                          {formData.fileSize && (
+                            <span> ({(formData.fileSize / 1024 / 1024).toFixed(2)} MB)</span>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {formData.contentType === 'link' && (
+                    <input
+                      type="url"
+                      placeholder="External Link URL *"
+                      value={formData.externalLink || ''}
+                      onChange={(e) => handleInputChange('externalLink', e.target.value)}
+                    />
+                  )}
+
+                  {formData.contentType === 'text' && (
+                    <textarea
+                      placeholder="Module Content"
+                      value={formData.content || ''}
+                      onChange={(e) => handleInputChange('content', e.target.value)}
+                      rows="4"
+                    />
+                  )}
+
                   <input
                     type="text"
                     placeholder="Duration (e.g., 4 weeks)"
                     value={formData.duration || ''}
                     onChange={(e) => handleInputChange('duration', e.target.value)}
-                  />
-                  <input
-                    type="number"
-                    placeholder="Number of Lessons"
-                    value={formData.lessons || ''}
-                    onChange={(e) => handleInputChange('lessons', parseInt(e.target.value) || 0)}
-                  />
-                  <input
-                    type="number"
-                    placeholder="Order / Sequence"
-                    value={formData.order || ''}
-                    onChange={(e) => handleInputChange('order', parseInt(e.target.value) || 1)}
                   />
                 </>
               )}
@@ -3496,7 +3708,7 @@ const AdminDashboard = ({ user, onLogout }) => {
                       required
                       style={{ width: '100%', padding: '8px', border: '1px solid #ddd', borderRadius: '4px' }}
                     />
-                    <small style={{color: '#888', marginTop: '-10px', display: 'block'}}>
+                    {/* <small style={{color: '#888', marginTop: '-10px', display: 'block'}}>
                       Paste the YouTube video URL. Video should be uploaded as "Private" or "Unlisted" on YouTube.
                     </small>
                     <div style={{ marginTop: '10px', padding: '10px', backgroundColor: '#fff3cd', borderRadius: '4px', border: '1px solid #ffc107' }}>
@@ -3505,7 +3717,7 @@ const AdminDashboard = ({ user, onLogout }) => {
                       • Copy the YouTube video URL here<br/>
                       • Students will only see videos for their enrolled course<br/>
                       • No API configuration needed
-                    </div>
+                    </div> */}
                   </div>
                 </>
               )}

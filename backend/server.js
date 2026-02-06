@@ -47,6 +47,7 @@ app.use('/api/admin', require('./routes/admin'));
 app.use('/api/video', require('./routes/video'));
 app.use('/api/teacher', require('./routes/teacher'));
 app.use('/api/batches', require('./routes/batches'));
+app.use('/api/student', require('./routes/student'));
 
 // Health check & API root
 app.get('/api', (req, res) => {

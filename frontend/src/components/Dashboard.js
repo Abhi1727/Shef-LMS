@@ -3,6 +3,7 @@ import { firebaseService, COLLECTIONS } from '../services/firebaseService';
 import { doc, setDoc, getDoc } from 'firebase/firestore';
 import { db } from '../firebase/config';
 import CustomVideoPlayer from './CustomVideoPlayer';
+import StudentProfile from './StudentProfile';
 import { YouTubeUtils } from '../utils/youtubeUtils';
 import './Dashboard.css';
 
@@ -31,6 +32,9 @@ const Dashboard = ({ user, onLogout }) => {
   // Progress tracking state
   const [viewedFiles, setViewedFiles] = useState([]);
   const [progressPercent, setProgressPercent] = useState(0);
+  
+  // Video watching history state
+  const [videoWatchHistory, setVideoWatchHistory] = useState([]);
   
   // Classroom videos from Firebase
   const [classroomVideos, setClassroomVideos] = useState([]);
@@ -122,6 +126,73 @@ const Dashboard = ({ user, onLogout }) => {
     } catch (error) {
       console.error('Error saving user progress:', error);
     }
+  };
+
+  // Save video watching history to Firebase
+  const saveVideoWatchHistory = async (newVideoWatchHistory) => {
+    if (!user?.id) return;
+    try {
+      const progressRef = doc(db, 'userProgress', user.id);
+      await setDoc(progressRef, {
+        videoWatchHistory: newVideoWatchHistory,
+        lastUpdated: new Date().toISOString(),
+        userId: user.id,
+        userEmail: user.email
+      }, { merge: true });
+    } catch (error) {
+      console.error('Error saving video watch history:', error);
+    }
+  };
+
+  // Update video progress tracking
+  const updateVideoProgress = async (videoId, progress, position) => {
+    if (!user?.id) return;
+    
+    try {
+      const progressRef = doc(db, 'userProgress', user.id);
+      const progressDoc = await getDoc(progressRef);
+      
+      if (progressDoc.exists()) {
+        const data = progressDoc.data();
+        const videoHistory = data.videoWatchHistory || [];
+        
+        // Find and update the video record
+        const updatedHistory = videoHistory.map(record => {
+          if (record.videoId === videoId) {
+            return {
+              ...record,
+              watchProgress: Math.max(record.watchProgress, progress),
+              lastWatchedPosition: position,
+              lastWatchedAt: new Date().toISOString(),
+              isCompleted: progress >= 95 // Mark as completed if 95% or more watched
+            };
+          }
+          return record;
+        });
+        
+        await setDoc(progressRef, {
+          videoWatchHistory: updatedHistory,
+          lastUpdated: new Date().toISOString()
+        }, { merge: true });
+        
+        // Update local state
+        setVideoWatchHistory(updatedHistory);
+      }
+    } catch (error) {
+      console.error('Error updating video progress:', error);
+    }
+  };
+
+  // Get video resume position
+  const getVideoResumePosition = (videoId) => {
+    const videoRecord = videoWatchHistory.find(record => record.videoId === videoId);
+    return videoRecord ? videoRecord.lastWatchedPosition : 0;
+  };
+
+  // Get video progress percentage
+  const getVideoProgress = (videoId) => {
+    const videoRecord = videoWatchHistory.find(record => record.videoId === videoId);
+    return videoRecord ? videoRecord.watchProgress : 0;
   };
 
   // Calculate progress percentage
@@ -275,19 +346,31 @@ const Dashboard = ({ user, onLogout }) => {
   useEffect(() => {
     if (user?.id) {
       loadUserProgress();
+      loadVideoWatchHistory();
     }
   }, [user?.id, loadUserProgress]);
 
-  // Enhanced logout function to clear all cached data
-  const handleLogout = () => {
-    // Clear all authentication data
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
-    sessionStorage.clear();
+  // Load video watching history from Firebase
+  const loadVideoWatchHistory = useCallback(async () => {
+    if (!user?.id) return;
     
-    // Force complete page reload to clear any cached state
-    window.location.href = '/login';
-  };
+    try {
+      const progressRef = doc(db, 'userProgress', user.id);
+      const progressDoc = await getDoc(progressRef);
+      
+      if (progressDoc.exists()) {
+        const data = progressDoc.data();
+        setVideoWatchHistory(data.videoWatchHistory || []);
+        console.log('Loaded video watch history for student:', user.name);
+      } else {
+        setVideoWatchHistory([]);
+        console.log('No video watch history found for student:', user.name);
+      }
+    } catch (error) {
+      console.error('Error loading video watch history:', error);
+      setVideoWatchHistory([]);
+    }
+  }, [user?.id]);
 
   // Load course content from API
   const loadCourseContent = useCallback(async () => {
@@ -308,6 +391,24 @@ const Dashboard = ({ user, onLogout }) => {
     }
     setContentLoading(false);
   }, [getCourseSlug]);
+
+  // Load course content on mount and when course changes
+  useEffect(() => {
+    if (user?.currentCourse) {
+      loadCourseContent();
+    }
+  }, [user?.currentCourse, loadCourseContent]);
+
+  // Enhanced logout function to clear all cached data
+  const handleLogout = () => {
+    // Clear all authentication data
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
+    sessionStorage.clear();
+    
+    // Force complete page reload to clear any cached state
+    window.location.href = '/login';
+  };
 
   // Handle file click - open in Colab for notebooks, otherwise download/view
   const handleFileClick = (file) => {
@@ -377,6 +478,25 @@ const Dashboard = ({ user, onLogout }) => {
       return;
     }
 
+    // Record video watching history with progress
+    const watchRecord = {
+      videoId: session.id,
+      videoTitle: session.title,
+      watchedAt: new Date().toISOString(),
+      videoSource: session.videoSource,
+      date: session.date,
+      watchProgress: 0, // Progress percentage (0-100)
+      lastWatchedPosition: 0, // Last position in seconds
+      totalDuration: session.duration || 0,
+      isCompleted: false
+    };
+
+    // Update video watch history
+    const existingHistory = videoWatchHistory.filter(record => record.videoId !== session.id);
+    const newHistory = [watchRecord, ...existingHistory];
+    setVideoWatchHistory(newHistory);
+    saveVideoWatchHistory(newHistory);
+
     // For Zoom videos, validate access via API
     if (session.videoSource === 'zoom') {
       try {
@@ -428,6 +548,21 @@ const Dashboard = ({ user, onLogout }) => {
       setSelectedVideo(session);
     }
   };
+
+  // Get the most recent video played by user
+  const getLastPlayedVideo = useCallback(() => {
+    if (videoWatchHistory.length === 0) {
+      // No watch history, return the newest video
+      return classroomVideos.length > 0 ? classroomVideos[0] : null;
+    }
+
+    // Get the most recently watched video
+    const mostRecentRecord = videoWatchHistory
+      .sort((a, b) => new Date(b.watchedAt) - new Date(a.watchedAt))[0];
+    
+    const video = classroomVideos.find(v => v.id === mostRecentRecord.videoId);
+    return video ? { ...video, watchedAt: mostRecentRecord.watchedAt, lastWatchedPosition: mostRecentRecord.lastWatchedPosition } : null;
+  }, [videoWatchHistory, classroomVideos]);
 
   // Create enhanced Zoom URL with automatic passcode
   const createEnhancedZoomUrl = (zoomUrl, passcode) => {
@@ -954,8 +1089,13 @@ const Dashboard = ({ user, onLogout }) => {
     ]
   };
 
-  // Select courseData based on user's enrolled course
-  const courseData = isDataScience() ? dsCourseData : cyberCourseData;
+  // Select courseData based on user's enrolled course - Use dynamic data
+  const courseData = courseContent ? {
+    title: courseContent.title || (isDataScience() ? 'Full Stack Data Science & AI' : 'Cyber Security & Ethical Hacking'),
+    duration: courseContent.duration || '6 months',
+    modules: courseContent.modules ? courseContent.modules.length : (isDataScience() ? dsCourseData.modules : cyberCourseData.modules),
+    totalFiles: courseContent.totalFiles || 0
+  } : (isDataScience() ? dsCourseData : cyberCourseData);
 
   // Course-specific Capstone Projects
   const dsCapstoneProjects = [
@@ -1261,18 +1401,18 @@ const Dashboard = ({ user, onLogout }) => {
             <span>Job Board</span>
           </button>
           */}
+
+          <button 
+            className={`nav-item ${activeSection === 'profile' ? 'active' : ''}`}
+            onClick={() => { setActiveSection('profile'); if (window.innerWidth <= 1024) setSidebarOpen(false); }}
+            title="My Profile"
+          >
+            <span className="nav-icon">👤</span>
+            <span>My Profile</span>
+          </button>
         </nav>
 
         <div className="sidebar-footer">
-          <div className="user-profile" onClick={() => setShowProfileModal(true)}>
-            <div className="user-avatar">
-              {user?.name?.charAt(0)?.toUpperCase()}
-            </div>
-            <div className="user-info">
-              <div className="user-name">{user?.name}</div>
-              <div className="user-role">Student</div>
-            </div>
-          </div>
           <button className="nav-item" onClick={onLogout} style={{ marginTop: '1rem' }}>
             <span className="nav-icon">🚪</span>
             <span>Logout</span>
@@ -1301,7 +1441,7 @@ const Dashboard = ({ user, onLogout }) => {
               <div className="stats-grid">
                 <div className="stat-card animate-in">
                   <div className="stat-icon">📚</div>
-                  <div className="stat-value">{courseData.modules}</div>
+                  <div className="stat-value">{contentLoading ? '...' : courseData.modules}</div>
                   <div className="stat-label">Total Modules</div>
                 </div>
                 <div className="stat-card animate-in">
@@ -1322,7 +1462,8 @@ const Dashboard = ({ user, onLogout }) => {
               </div>
 
               {/* Current Course Section */}
-              <div className="content-section animate-in">
+              {/* Commented out - Your Learning Journey section disabled */}
+              {/* <div className="content-section animate-in">
                 <div className="section-header">
                   <div className="section-title">
                     <div className="section-icon">🎓</div>
@@ -1342,7 +1483,7 @@ const Dashboard = ({ user, onLogout }) => {
                       <div className="course-progress">
                         <div className="course-stats">
                           <span>Progress: {progressPercent}%</span>
-                          <span>{viewedFiles.length} files viewed</span>
+                          <span>{viewedFiles.length} of {courseData.totalFiles || '...'} files viewed</span>
                         </div>
                         <div className="progress-bar">
                           <div 
@@ -1362,89 +1503,15 @@ const Dashboard = ({ user, onLogout }) => {
                     </div>
                   </div>
                 </div>
-              </div>
+              </div> */}
 
-              {/* Commented out - Recent Classroom Videos section disabled */}
-              {/* {classroomVideos.length > 0 && (
-                <div className="content-section animate-in">
-                  <div className="section-header">
-                    <div className="section-title">
-                      <div className="section-icon">🎥</div>
-                      Recent Classroom Videos
-                    </div>
-                  </div>
-
-                  <div className="video-grid">
-                    {classroomVideos.slice(0, 6).map((video) => (
-                      <div 
-                        key={video.id} 
-                        className="video-card"
-                        onClick={() => setSelectedVideo(video)}
-                      >
-                        <div className="video-thumbnail" style={{ position: 'relative', overflow: 'hidden' }}>
-                          {video.videoSource === 'youtube-url' && videoThumbnails[video.id] ? (
-                            <img 
-                              src={videoThumbnails[video.id]} 
-                              alt={video.title}
-                              style={{
-                                width: '100%',
-                                height: '100%',
-                                objectFit: 'cover'
-                              }}
-                              onError={(e) => {
-                                e.target.style.display = 'none';
-                                e.target.nextSibling.style.display = 'flex';
-                              }}
-                            />
-                          ) : null}
-                          
-                          <div style={{
-                            display: video.videoSource === 'youtube-url' && videoThumbnails[video.id] ? 'none' : 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            height: '100%',
-                            fontSize: '24px'
-                          }}>
-                            {video.videoSource === 'youtube-url' ? '📺' : '🎥'}
-                          </div>
-                          
-                          {videoDurations[video.id] && videoDurations[video.id] !== 'Duration not available' && (
-                            <div style={{
-                              position: 'absolute',
-                              bottom: '4px',
-                              right: '4px',
-                              backgroundColor: 'rgba(0, 0, 0, 0.8)',
-                              color: 'white',
-                              padding: '1px 4px',
-                              borderRadius: '2px',
-                              fontSize: '10px',
-                              fontWeight: 'bold'
-                            }}>
-                              {videoDurations[video.id]}
-                            </div>
-                          )}
-                        </div>
-                        <div className="video-info">
-                          <div className="video-title">{video.title}</div>
-                          <div className="video-meta">
-                            <span>👨‍🏫 {getTeacherName(video.batchId)}</span>
-                            {videoDurations[video.id] && videoDurations[video.id] !== 'Duration not available' && (
-                              <span>⏱️ {videoDurations[video.id]}</span>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )} */}
-
+              
               {/* Quick Actions */}
               <div className="content-section animate-in">
                 <div className="section-header">
                   <div className="section-title">
-                    <div className="section-icon">⚡</div>
-                    Quick Actions
+                    {/* <div className="section-icon">⚡</div> */}
+                    {/* Quick Actions */}
                   </div>
                 </div>
 
@@ -1789,6 +1856,27 @@ const Dashboard = ({ user, onLogout }) => {
               </div>
             </div>
           )}
+          
+          {activeSection === 'profile' && (
+            <div className="animate-in">
+              <StudentProfile 
+                user={user} 
+                onProfileUpdate={(updatedUser) => {
+                  // Update the user state in localStorage
+                  localStorage.setItem('user', JSON.stringify(updatedUser));
+                  
+                  // If email changed, show message about potential re-login
+                  if (user.email !== updatedUser.email) {
+                    alert('Email updated! You may need to login again with your new email address.');
+                  }
+                  
+                  // Update the user prop by triggering a re-render
+                  // In a real app, you'd use a state management system
+                  window.location.reload();
+                }}
+              />
+            </div>
+          )}
         </div>
       </main>
 
@@ -1796,6 +1884,8 @@ const Dashboard = ({ user, onLogout }) => {
       {selectedVideo && (
         <CustomVideoPlayer
           video={selectedVideo}
+          resumePosition={getVideoResumePosition(selectedVideo.id)}
+          onProgressUpdate={updateVideoProgress}
           onClose={() => setSelectedVideo(null)}
         />
       )}

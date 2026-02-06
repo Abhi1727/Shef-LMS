@@ -27,6 +27,27 @@ const upload = multer({
   }
 });
 
+// Configure multer for module file uploads (PDF, Word documents)
+const moduleUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 50 * 1024 * 1024, // 50MB limit for PDF/Word files
+  },
+  fileFilter: (req, file, cb) => {
+    // Accept PDF and Word files
+    const allowedTypes = [
+      'application/pdf',
+      'application/msword',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+    ];
+    if (allowedTypes.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only PDF and Word documents are allowed'), false);
+    }
+  }
+});
+
 // @route   GET /api/admin/users/search
 // @desc    Search users by email
 router.get('/users/search', async (req, res) => {
@@ -745,6 +766,145 @@ router.delete('/classroom/:id', async (req, res) => {
   } catch (err) {
     console.error('Error deleting classroom video:', err);
     res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// Module-specific routes with file upload support
+// @route   POST /api/admin/modules/upload
+// @desc    Create a new module with file upload
+router.post('/modules/upload', moduleUpload.single('file'), async (req, res) => {
+  try {
+    const { name, courseId, batchId, duration, contentType, externalLink } = req.body;
+    
+    if (!name || !courseId) {
+      return res.status(400).json({ message: 'Name and Course ID are required' });
+    }
+
+    const moduleData = {
+      name,
+      courseId,
+      batchId: batchId || '',
+      duration: duration || '',
+      contentType: contentType || 'text',
+      content: req.body.content || '',
+      externalLink: externalLink || '',
+      status: 'active',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+
+    // Handle file upload
+    if (req.file) {
+      const file = req.file;
+      const fileName = `${Date.now()}-${file.originalname}`;
+      const filePath = `modules/${courseId}/${fileName}`;
+      
+      // Upload to Firebase Storage
+      const bucket = db.storage().bucket();
+      const fileUpload = bucket.file(filePath);
+      
+      await fileUpload.save(file.buffer, {
+        metadata: {
+          contentType: file.mimetype,
+        },
+      });
+      
+      // Get file URL
+      const [url] = await fileUpload.getSignedUrl({
+        action: 'read',
+        expires: '03-01-2500', // Far future expiration
+      });
+      
+      moduleData.fileUrl = url;
+      moduleData.fileName = file.originalname;
+      moduleData.fileSize = file.size;
+      
+      // Determine content type based on file
+      if (file.mimetype === 'application/pdf') {
+        moduleData.contentType = 'pdf';
+      } else if (file.mimetype.includes('word')) {
+        moduleData.contentType = 'word';
+      }
+    }
+
+    const docRef = await db.collection('modules').add(moduleData);
+    res.json({ 
+      id: docRef.id, 
+      ...moduleData,
+      message: 'Module created successfully with file upload' 
+    });
+  } catch (err) {
+    console.error('Error creating module with upload:', err);
+    res.status(500).json({ message: 'Server error', error: err.message });
+  }
+});
+
+// @route   PUT /api/admin/modules/:id/upload
+// @desc    Update a module with file upload
+router.put('/modules/:id/upload', moduleUpload.single('file'), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { name, courseId, batchId, duration, contentType, externalLink } = req.body;
+    
+    const moduleDoc = await db.collection('modules').doc(id).get();
+    if (!moduleDoc.exists) {
+      return res.status(404).json({ message: 'Module not found' });
+    }
+
+    const moduleData = {
+      name,
+      courseId,
+      batchId: batchId || '',
+      duration: duration || '',
+      contentType: contentType || 'text',
+      content: req.body.content || '',
+      externalLink: externalLink || '',
+      updatedAt: new Date().toISOString()
+    };
+
+    // Handle file upload
+    if (req.file) {
+      const file = req.file;
+      const fileName = `${Date.now()}-${file.originalname}`;
+      const filePath = `modules/${courseId}/${fileName}`;
+      
+      // Upload to Firebase Storage
+      const bucket = db.storage().bucket();
+      const fileUpload = bucket.file(filePath);
+      
+      await fileUpload.save(file.buffer, {
+        metadata: {
+          contentType: file.mimetype,
+        },
+      });
+      
+      // Get file URL
+      const [url] = await fileUpload.getSignedUrl({
+        action: 'read',
+        expires: '03-01-2500',
+      });
+      
+      moduleData.fileUrl = url;
+      moduleData.fileName = file.originalname;
+      moduleData.fileSize = file.size;
+      
+      // Determine content type based on file
+      if (file.mimetype === 'application/pdf') {
+        moduleData.contentType = 'pdf';
+      } else if (file.mimetype.includes('word')) {
+        moduleData.contentType = 'word';
+      }
+    }
+
+    await db.collection('modules').doc(id).update(moduleData);
+    res.json({ 
+      id,
+      ...moduleData,
+      message: 'Module updated successfully with file upload' 
+    });
+  } catch (err) {
+    console.error('Error updating module with upload:', err);
+    res.status(500).json({ message: 'Server error', error: err.message });
   }
 });
 

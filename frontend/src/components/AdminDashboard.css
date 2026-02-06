@@ -2571,3 +2571,146 @@ body.modal-open {
   text-decoration: none;
   transform: translateY(-1px);
 }
+
+/* Module File Upload Styles */
+.file-upload-section {
+  margin: 16px 0;
+}
+
+.drop-zone {
+  border: 2px dashed var(--border-color);
+  border-radius: 8px;
+  background: var(--background-light);
+  text-align: center;
+  transition: all var(--transition-normal);
+  cursor: pointer;
+  margin: 8px 0;
+}
+
+.drop-zone:hover {
+  border-color: var(--primary-color);
+  background: #f0f4ff;
+}
+
+.drop-zone.drag-over {
+  border-color: var(--primary-color);
+  background: #e6f0ff;
+  transform: scale(1.02);
+}
+
+.drop-zone-content {
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.drop-icon {
+  font-size: 48px;
+  margin-bottom: 8px;
+}
+
+.drop-zone p {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 14px;
+}
+
+.or-text {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.file-input {
+  display: none;
+}
+
+.file-select-btn {
+  display: inline-block;
+  padding: 8px 16px;
+  background: var(--primary-color);
+  color: white;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  transition: all var(--transition-fast);
+  text-decoration: none;
+}
+
+.file-select-btn:hover {
+  background: var(--secondary-color);
+  transform: translateY(-1px);
+}
+
+.file-info {
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--success-color);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  font-weight: 500;
+}
+
+/* Content Type Badge */
+.content-type-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 600;
+  background: var(--background-light);
+  border: 1px solid var(--border-color);
+  color: var(--text-primary);
+}
+
+/* Module Action Buttons */
+.btn-view {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  margin: 0 2px;
+  border: none;
+  border-radius: 6px;
+  background: var(--success-color);
+  color: white;
+  text-decoration: none;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.btn-view:hover {
+  background: #059669;
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-md);
+}
+
+.btn-edit {
+  margin-right: 4px;
+}
+
+.btn-delete {
+  margin-left: 4px;
+}
+
+/* Responsive adjustments for module table */
+@media (max-width: 768px) {
+  .content-type-badge {
+    font-size: 10px;
+    padding: 2px 6px;
+  }
+  
+  .btn-view {
+    width: 28px;
+    height: 28px;
+    font-size: 12px;
+  }
+}

@@ -37,7 +37,7 @@ const loadYouTubeAPI = () => {
   });
 };
 
-const CustomVideoPlayer = ({ video, onClose }) => {
+const CustomVideoPlayer = ({ video, onClose, resumePosition = 0, onProgressUpdate }) => {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -51,6 +51,7 @@ const CustomVideoPlayer = ({ video, onClose }) => {
   const [youtubeVideoUrl, setYoutubeVideoUrl] = useState(null);
   const [youtubePlayer, setYoutubePlayer] = useState(null);
   const [playerReady, setPlayerReady] = useState(false);
+  const [hasStartedPlaying, setHasStartedPlaying] = useState(false);
   
   const videoRef = useRef(null);
   const youtubeContainerRef = useRef(null);
@@ -128,7 +129,8 @@ const CustomVideoPlayer = ({ video, onClose }) => {
           iv_load_policy: 3, // Hide annotations
           modestbranding: 1, // Hide YouTube logo
           rel: 0, // Hide related videos
-          showinfo: 0
+          showinfo: 0,
+          start: Math.floor(resumePosition) // Start from resume position
         },
         events: {
           onReady: (event) => {
@@ -144,32 +146,54 @@ const CustomVideoPlayer = ({ video, onClose }) => {
             const videoDuration = event.target.getDuration();
             setDuration(videoDuration);
             console.log('📺 Video duration:', videoDuration);
-          },
-          onStateChange: (event) => {
-            // Update playing state
-            const state = event.data;
-            const wasPlaying = isPlaying;
-            const nowPlaying = state === window.YT.PlayerState.PLAYING;
             
-            setIsPlaying(nowPlaying);
-            
-            // Get video duration when playing starts
-            if (nowPlaying && !wasPlaying) {
-              const videoDuration = event.target.getDuration();
-              setDuration(videoDuration);
-              console.log('📺 Video started, duration:', videoDuration);
+            // Set initial position if resume position is provided
+            if (resumePosition > 0 && resumePosition < videoDuration) {
+              event.target.seekTo(resumePosition);
+              console.log('📺 Resumed from position:', resumePosition);
             }
           },
-          onError: (event) => {
-            console.error('❌ YouTube player error:', event.data);
-            setError('Failed to load YouTube video');
-            setIsLoading(false);
+          onStateChange: (event) => {
+            // Update playing state based on YouTube player states
+            if (event.data === window.YT.PlayerState.PLAYING) {
+              setIsPlaying(true);
+              if (!hasStartedPlaying) {
+                setHasStartedPlaying(true);
+                console.log('📺 Video started playing');
+              }
+            } else if (event.data === window.YT.PlayerState.PAUSED) {
+              setIsPlaying(false);
+            } else if (event.data === window.YT.PlayerState.ENDED) {
+              setIsPlaying(false);
+              if (onProgressUpdate) {
+                onProgressUpdate(video.id, 100, duration);
+              }
+            } else if (event.data === window.YT.PlayerState.BUFFERING) {
+              // Keep playing state during buffering
+              setIsPlaying(true);
+            } else if (event.data === window.YT.PlayerState.CUED) {
+              // Video is cued but not playing
+              setIsPlaying(false);
+            }
+          },
+          onTimeUpdate: (event) => {
+            const currentVideoTime = event.target.getCurrentTime();
+            setCurrentTime(currentVideoTime);
+            
+            // Update progress periodically
+            if (onProgressUpdate && hasStartedPlaying && currentVideoTime > 0) {
+              const progress = (currentVideoTime / duration) * 100;
+              // Update progress every 5 seconds or 5% progress
+              if (Math.floor(currentVideoTime) % 5 === 0 || Math.floor(progress) % 5 === 0) {
+                onProgressUpdate(video.id, progress, currentVideoTime);
+              }
+            }
           }
         }
       });
     } catch (error) {
-      console.error('❌ Error initializing YouTube player:', error);
-      setError('Failed to initialize YouTube player');
+      console.error('Error initializing YouTube player:', error);
+      setError('Failed to load video player');
       setIsLoading(false);
     }
   };
@@ -202,7 +226,8 @@ const CustomVideoPlayer = ({ video, onClose }) => {
   useEffect(() => {
     let interval;
 
-    if (isPlaying) {
+    // Always track time when player is ready, regardless of playing state
+    if ((youtubePlayer && playerReady) || videoRef.current) {
       interval = setInterval(() => {
         if (youtubePlayer && playerReady) {
           // YouTube video time tracking
@@ -223,7 +248,7 @@ const CustomVideoPlayer = ({ video, onClose }) => {
         clearInterval(interval);
       }
     };
-  }, [isPlaying, youtubePlayer, playerReady]);
+  }, [youtubePlayer, playerReady, firebaseVideoUrl]);
 
   // Show controls on mouse movement
   const handleMouseMove = () => {
