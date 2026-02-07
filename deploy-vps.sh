@@ -1,7 +1,7 @@
 #!/bin/bash
 
-# Automated VPS Deployment Script for SHEF LMS on Hostinger
-# Domain: learnwithshef.com
+# Automated VPS Deployment Script for LMS on Hostinger
+# Domain: learnwithus.sbs
 
 set -e
 
@@ -82,11 +82,11 @@ JWT_SECRET=shef_lms_secure_jwt_secret_key_$(openssl rand -hex 16)
 JWT_EXPIRE=7d
 
 # CORS Configuration
-ALLOWED_ORIGINS=https://learnwithshef.com,https://www.learnwithshef.com
+ALLOWED_ORIGINS=https://learnwithus.sbs,https://www.learnwithus.sbs
 
 # Application URLs
-FRONTEND_URL=https://learnwithshef.com
-BACKEND_URL=https://learnwithshef.com/api
+FRONTEND_URL=https://learnwithus.sbs
+BACKEND_URL=https://learnwithus.sbs/api
 ENVEOF
 
     echo -e "${YELLOW}⚠️  IMPORTANT: Edit backend/.env with your Firebase credentials!${NC}"
@@ -119,7 +119,7 @@ REACT_APP_FIREBASE_MESSAGING_SENDER_ID=123456789012
 REACT_APP_FIREBASE_APP_ID=1:123456789012:web:abcdef123456
 
 # Backend API
-REACT_APP_API_URL=https://learnwithshef.com/api
+REACT_APP_API_URL=https://learnwithus.sbs/api
 
 REACT_APP_NAME=SHEF LMS
 REACT_APP_VERSION=1.0.0
@@ -155,7 +155,7 @@ echo "━━━━━━━━━━━━━━━━━━━━━━━━�
 cat > /etc/nginx/sites-available/shef-lms << 'NGINXEOF'
 server {
     listen 80;
-    server_name learnwithshef.com www.learnwithshef.com;
+    server_name learnwithus.sbs www.learnwithus.sbs;
 
     # Frontend (React build)
     root /var/www/shef-lms;
@@ -268,15 +268,15 @@ if [ "$dns_configured" = "y" ]; then
     read -p "Enter email for SSL certificate: " ssl_email
     if [ -n "$ssl_email" ]; then
         echo "Getting SSL certificate..."
-        certbot --nginx -d learnwithshef.com -d www.learnwithshef.com --non-interactive --agree-tos -m "$ssl_email" --redirect
+        certbot --nginx -d learnwithus.sbs -d www.learnwithus.sbs --non-interactive --agree-tos -m "$ssl_email" --redirect
         echo "✅ SSL certificate installed"
     else
         echo -e "${YELLOW}⚠️  Skipping SSL. Run manually later:${NC}"
-        echo "sudo certbot --nginx -d learnwithshef.com -d www.learnwithshef.com"
+        echo "sudo certbot --nginx -d learnwithus.sbs -d www.learnwithus.sbs"
     fi
 else
     echo -e "${YELLOW}⚠️  SSL skipped. Configure DNS first, then run:${NC}"
-    echo "sudo certbot --nginx -d learnwithshef.com -d www.learnwithshef.com"
+    echo "sudo certbot --nginx -d learnwithus.sbs -d www.learnwithus.sbs"
 fi
 
 echo ""
@@ -298,9 +298,9 @@ if [ "$dns_configured" = "y" ] && [ -n "$ssl_email" ]; then
 fi
 echo ""
 echo "🌐 Your site will be accessible at:"
-echo "   http://learnwithshef.com (after DNS propagation)"
+echo "   http://learnwithus.sbs (after DNS propagation)"
 if [ "$dns_configured" = "y" ] && [ -n "$ssl_email" ]; then
-    echo "   https://learnwithshef.com (SSL enabled)"
+    echo "   https://learnwithus.sbs (SSL enabled)"
 fi
 echo ""
 echo "📋 Next Steps:"
@@ -318,7 +318,7 @@ echo "3. Configure DNS in Hostinger (if not done):"
 echo "   Add A records pointing to: $VPS_IP"
 echo ""
 echo "4. Get SSL certificate (if skipped):"
-echo "   sudo certbot --nginx -d learnwithshef.com -d www.learnwithshef.com"
+echo "   sudo certbot --nginx -d learnwithus.sbs -d www.learnwithus.sbs"
 echo ""
 echo "5. Create admin user:"
 echo "   - Visit your site and register"

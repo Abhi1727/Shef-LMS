@@ -5,7 +5,6 @@ import { firebaseService, COLLECTIONS } from '../services/firebaseService';
 import { where } from 'firebase/firestore';
 import bcrypt from 'bcryptjs';
 import { ToastContainer, showToast } from './Toast';
-import TimezoneClocks from './TimezoneClocks';
 import fallbackData from '../data/fallbackData';
 import { YouTubeUtils } from '../utils/youtubeUtils';
 import './AdminDashboard.css';
@@ -346,6 +345,8 @@ const AdminDashboard = ({ user, onLogout }) => {
   const [showBatchDetailsModal, setShowBatchDetailsModal] = useState(false);
   const [selectedBatch, setSelectedBatch] = useState(null);
   const [batchView, setBatchView] = useState(''); // 'videos' or 'students'
+  const [studentPage, setStudentPage] = useState(1);
+  const studentsPerPage = 25;
 
   // Manage body scroll when modal is open
   useEffect(() => {
@@ -389,6 +390,13 @@ const AdminDashboard = ({ user, onLogout }) => {
     }
   }, [modalType]);
 
+  // Derived pagination data for students section
+  const totalStudentPages = Math.max(1, Math.ceil(students.length / studentsPerPage));
+  const currentStudentPage = Math.min(studentPage, totalStudentPages);
+  const studentStartIndex = (currentStudentPage - 1) * studentsPerPage;
+  const studentEndIndex = studentStartIndex + studentsPerPage;
+  const paginatedStudents = students.slice(studentStartIndex, studentEndIndex);
+
   // Optimized individual data loading functions
   const loadStudents = async (forceRefresh = false) => {
     const cachedData = getCachedData('students');
@@ -409,12 +417,14 @@ const AdminDashboard = ({ user, onLogout }) => {
         const data = await response.json();
         setStudents(data);
         setCachedData('students', data);
+        setStudentPage(1);
         return data;
       } else {
         // Use fallback data when API fails
         console.log('Using fallback student data');
         setStudents(fallbackData.users);
         setCachedData('students', fallbackData.users);
+        setStudentPage(1);
         showToast('⚠️ Using demo data - Firebase quota exceeded. Contact admin to upgrade Firebase plan.', 'warning');
         return fallbackData.users;
       }
@@ -424,6 +434,7 @@ const AdminDashboard = ({ user, onLogout }) => {
       console.log('Using fallback student data due to error');
       setStudents(fallbackData.users);
       setCachedData('students', fallbackData.users);
+      setStudentPage(1);
       showToast('⚠️ Using demo data - Firebase quota exceeded. Contact admin to upgrade Firebase plan.', 'warning');
       return fallbackData.users;
     } finally {
@@ -1318,8 +1329,8 @@ const AdminDashboard = ({ user, onLogout }) => {
 
       // Validate classroom fields
       if (modalType === 'classroom') {
-        if (!formData.title || !formData.instructor || !formData.course) {
-          showToast('Please fill in all required fields (Title, Instructor, Course)', 'warning');
+        if (!formData.title || !formData.instructor || !formData.course || !formData.batchId) {
+          showToast('Please fill in all required fields (Title, Instructor, Course, Batch)', 'warning');
           return;
         }
       }
@@ -1840,9 +1851,6 @@ const AdminDashboard = ({ user, onLogout }) => {
           </div>
         </header>
 
-        {/* Timezone Clocks */}
-        <TimezoneClocks />
-
         {/* Dashboard Content */}
         <div className="admin-content">
           {/* Overview Section */}
@@ -1939,34 +1947,24 @@ const AdminDashboard = ({ user, onLogout }) => {
                       <th>Email</th>
                       <th>Batch</th>
                       <th>Course</th>
-                      <th>Last Login IP</th>
-                      <th>Location</th>
-                      <th>Status</th>
                       <th>Actions</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {students.map(student => (
+                    {paginatedStudents.map(student => (
                       <tr key={student.id}>
-                        <td>{student.name}</td>
+                        <td>
+                          <button 
+                            className="link-button"
+                            type="button"
+                            onClick={() => openStudentDetails(student)}
+                          >
+                            {student.name}
+                          </button>
+                        </td>
                         <td>{student.email}</td>
-                        <td>{student.batchId || 'N/A'}</td>
+                        <td>{batches.find(b => b.id === student.batchId)?.name || student.batchName || student.batchId || 'N/A'}</td>
                         <td>{student.course || 'N/A'}</td>
-                        <td>
-                          <span className="ip-address" title={student.lastLogin?.timestamp || 'Never logged in'}>
-                            {student.lastLogin?.ipAddress || student.lastLoginIP || 'N/A'}
-                          </span>
-                        </td>
-                        <td>
-                          {student.lastLogin?.city && student.lastLogin?.country 
-                            ? `${student.lastLogin.city}, ${student.lastLogin.country}`
-                            : 'N/A'}
-                        </td>
-                        <td>
-                          <span className={`status-badge ${student.status === 'inactive' ? 'inactive' : student.status}`}>
-                            {student.status === 'inactive' ? 'Deactivated' : student.status === 'active' ? 'Active' : student.status}
-                          </span>
-                        </td>
                         <td>
                           <button onClick={() => openModal('student', student)} className="btn-edit">✏️</button>
                           {/* Commented out - Deactivate/Activate action disabled */}
@@ -1984,6 +1982,29 @@ const AdminDashboard = ({ user, onLogout }) => {
                   </tbody>
                 </table>
                 {students.length === 0 && <p className="no-data">No students found. Add your first student!</p>}
+
+                {students.length > studentsPerPage && (
+                  <div className="pagination-controls">
+                    <button
+                      className="btn-secondary"
+                      onClick={() => setStudentPage(prev => Math.max(1, prev - 1))}
+                      disabled={currentStudentPage === 1}
+                    >
+                      ← Previous
+                    </button>
+                    <span className="pagination-info">
+                      Page {currentStudentPage} of {totalStudentPages} · Showing{' '}
+                      {studentStartIndex + 1}–{Math.min(studentEndIndex, students.length)} of {students.length} students
+                    </span>
+                    <button
+                      className="btn-secondary"
+                      onClick={() => setStudentPage(prev => Math.min(totalStudentPages, prev + 1))}
+                      disabled={currentStudentPage === totalStudentPages}
+                    >
+                      Next →
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -2906,17 +2927,6 @@ const AdminDashboard = ({ user, onLogout }) => {
             <div className="modal-content">
               {modalType === 'student' && (
                 <>
-                  {editingItem && editingItem.lastLogin && (
-                    <div className="ip-info-display">
-                      <h4>📍 Last Login Information</h4>
-                      <div className="ip-details">
-                        <p><strong>IP Address:</strong> {editingItem.lastLogin.ipAddress || editingItem.lastLoginIP || 'N/A'}</p>
-                        <p><strong>Location:</strong> {editingItem.lastLogin.city}, {editingItem.lastLogin.country}</p>
-                        <p><strong>ISP:</strong> {editingItem.lastLogin.isp || 'Unknown'}</p>
-                        <p><strong>Time:</strong> {editingItem.lastLogin.timestamp ? new Date(editingItem.lastLogin.timestamp).toLocaleString() : 'N/A'}</p>
-                      </div>
-                    </div>
-                  )}
                   <input
                     type="text"
                     placeholder="Student full name *"
@@ -2980,11 +2990,10 @@ const AdminDashboard = ({ user, onLogout }) => {
                   <select
                     value={formData.batchId || ''}
                     onChange={(e) => handleInputChange('batchId', e.target.value)}
-                    required
                   >
-                    <option value="">Select Batch *</option>
+                    <option value="">Select Batch (Optional)</option>
                     {batches.map(batch => (
-                      <option key={batch._id} value={batch._id}>
+                      <option key={batch.id || batch._id} value={batch.id || batch._id}>
                         {batch.name}
                       </option>
                     ))}

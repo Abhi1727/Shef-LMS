@@ -640,6 +640,8 @@ router.post('/classroom', async (req, res) => {
       courseType,
       type,
       instructorColor,
+      courseId,
+      batchId,
       // Zoom specific fields
       zoomUrl,
       zoomPasscode,
@@ -668,7 +670,10 @@ router.post('/classroom', async (req, res) => {
       type: type || 'Live Class',
       instructorColor: instructorColor || '#E91E63',
       createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
+      updatedAt: new Date().toISOString(),
+      // Optional course and batch association for stricter access control
+      courseId: courseId || null,
+      batchId: batchId || null
     };
 
     // Add video source specific fields
@@ -1064,36 +1069,66 @@ router.post('/batches', async (req, res) => {
 });
 
 // @route   PUT /api/admin/batches/:id
-// @desc    Update a batch
+// @desc    Update a batch (general fields)
 router.put('/batches/:id', async (req, res) => {
     try {
         const { name, course, startDate, endDate, teacherId, teacherName, status } = req.body;
         
         // Update batch in Firebase
         const updateData = {
-            name,
-            course,
-            startDate: startDate || null,
-            endDate: endDate || null,
-            teacherId,
-            teacherName: teacherName || '',
-            status: status || 'active',
-            updatedAt: new Date().toISOString()
+          name,
+          course,
+          startDate: startDate || null,
+          endDate: endDate || null,
+          teacherId,
+          teacherName: teacherName || '',
+          status: status || 'active',
+          updatedAt: new Date().toISOString()
         };
         
         await db.collection('batches').doc(req.params.id).update(updateData);
         
         res.json({
-            success: true,
-            message: 'Batch updated successfully',
-            id: req.params.id,
-            ...updateData
+          success: true,
+          message: 'Batch updated successfully',
+          id: req.params.id,
+          ...updateData
         });
     } catch (error) {
         console.error('Error updating batch:', error);
         res.status(500).json({ message: 'Error updating batch: ' + error.message });
     }
 });
+
+    // @route   PUT /api/admin/batches/:id/schedule
+    // @desc    Update batch timing/schedule (IST)
+    // Note: All authenticated admins can call this (router already protected by roleAuth('admin'))
+    router.put('/batches/:id/schedule', async (req, res) => {
+      try {
+        const { days, time, timezone } = req.body;
+
+        const schedule = {
+          timezone: timezone || 'IST',
+          days: days || '',
+          time: time || ''
+        };
+
+        await db.collection('batches').doc(req.params.id).update({
+          schedule,
+          updatedAt: new Date().toISOString()
+        });
+
+        res.json({
+          success: true,
+          message: 'Batch timing updated successfully',
+          id: req.params.id,
+          schedule
+        });
+      } catch (error) {
+        console.error('Error updating batch schedule:', error);
+        res.status(500).json({ message: 'Error updating batch schedule: ' + error.message });
+      }
+    });
 
 // @route   DELETE /api/admin/batches/:id
 // @desc    Delete a batch

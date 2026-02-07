@@ -75,7 +75,7 @@ router.get('/', async (req, res) => {
 });
 
 // @route   PUT /api/batches/:id/students
-// @desc    Add students to a batch
+// @desc    Add students to a batch (ensure single-batch membership)
 // @access  Admin only
 router.put('/:id/students', isAdmin, async (req, res) => {
   try {
@@ -99,6 +99,28 @@ router.put('/:id/students', isAdmin, async (req, res) => {
     }
 
     const batchData = batchDoc.data();
+
+    // Remove these students from any other batches first so
+    // that no student ends up in multiple batches.
+    const allBatchesSnapshot = await db.collection('batches').get();
+    const removalPromises = [];
+
+    allBatchesSnapshot.forEach(doc => {
+      if (doc.id === batchId) return; // Skip current batch
+
+      const data = doc.data();
+      const existingStudents = data.students || [];
+
+      const hasOverlap = studentIds.some(id => existingStudents.includes(id));
+      if (hasOverlap) {
+        const filteredStudents = existingStudents.filter(id => !studentIds.includes(id));
+        removalPromises.push(doc.ref.update({ students: filteredStudents }));
+      }
+    });
+
+    await Promise.all(removalPromises);
+
+    // Now add students to the target batch (avoid duplicates)
     const currentStudents = batchData.students || [];
     const updatedStudents = [...new Set([...currentStudents, ...studentIds])];
 
@@ -106,10 +128,15 @@ router.put('/:id/students', isAdmin, async (req, res) => {
       students: updatedStudents
     });
 
-    // Update students with batchId
-    const updatePromises = studentIds.map(studentId => 
-      db.collection('users').doc(studentId).update({ batchId })
-    );
+    // Update students with their new batchId and align course
+    const batchCourse = batchData.course || null;
+    const updatePromises = studentIds.map(studentId => {
+      const updatePayload = { batchId };
+      if (batchCourse) {
+        updatePayload.course = batchCourse;
+      }
+      return db.collection('users').doc(studentId).update(updatePayload);
+    });
     await Promise.all(updatePromises);
 
     res.json({
@@ -121,6 +148,49 @@ router.put('/:id/students', isAdmin, async (req, res) => {
     res.status(500).json({ 
       success: false, 
       message: 'Failed to add students to batch' 
+    });
+  }
+});
+
+// @route   DELETE /api/batches/:batchId/students/:studentId
+// @desc    Remove a student from a batch (does NOT delete the student account)
+// @access  Admin only
+router.delete('/:batchId/students/:studentId', isAdmin, async (req, res) => {
+  try {
+    const { batchId, studentId } = req.params;
+
+    const batchRef = db.collection('batches').doc(batchId);
+    const batchDoc = await batchRef.get();
+
+    if (!batchDoc.exists) {
+      return res.status(404).json({
+        success: false,
+        message: 'Batch not found'
+      });
+    }
+
+    const batchData = batchDoc.data();
+    const currentStudents = batchData.students || [];
+    const updatedStudents = currentStudents.filter(id => id !== studentId);
+
+    await batchRef.update({ students: updatedStudents });
+
+    // Clear batch assignment on the student document, if it still exists
+    const studentRef = db.collection('users').doc(studentId);
+    const studentDoc = await studentRef.get();
+    if (studentDoc.exists) {
+      await studentRef.update({ batchId: null });
+    }
+
+    res.json({
+      success: true,
+      message: 'Student removed from batch successfully'
+    });
+  } catch (error) {
+    console.error('Error removing student from batch:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to remove student from batch'
     });
   }
 });

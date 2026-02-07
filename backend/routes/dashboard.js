@@ -10,16 +10,36 @@ router.use(auth);
 // @desc    Get classroom videos for the student with course and batch filtering
 router.get('/classroom', async (req, res) => {
   try {
-    const user = req.user;
-    const userCourse = user.currentCourse || user.course || '';
-    const userBatchId = user.batchId || '';
-    const userEmail = user.email || '';
+    const tokenUser = req.user;
+    let userCourse = tokenUser.currentCourse || tokenUser.course || '';
+    let userBatchId = tokenUser.batchId || '';
+    const userEmail = tokenUser.email || '';
+
+    // Always try to refresh course and batch from Firestore for students
+    // so that newly assigned batches take effect immediately without
+    // requiring the student to log out and log back in.
+    try {
+      if (tokenUser.id && tokenUser.role === 'student') {
+        const userDoc = await db.collection('users').doc(tokenUser.id).get();
+        if (userDoc.exists) {
+          const freshData = userDoc.data();
+          if (freshData.course) {
+            userCourse = freshData.course;
+          }
+          if (typeof freshData.batchId !== 'undefined') {
+            userBatchId = freshData.batchId || '';
+          }
+        }
+      }
+    } catch (lookupError) {
+      console.error('Dashboard classroom: failed to refresh user from Firestore, using token values instead:', lookupError);
+    }
     
     console.log('🔍 Dashboard Debug - User info:', {
       email: userEmail,
       course: userCourse,
       batchId: userBatchId,
-      role: user.role
+      role: tokenUser.role
     });
     
     // Get all classroom videos
@@ -31,47 +51,50 @@ router.get('/classroom', async (req, res) => {
     
     console.log('🔍 Dashboard Debug - Total videos found:', allVideos.length);
     
-    // Get all batches to map batch names to IDs
+    // Get all batches to map batch names to IDs (one-way)
     const batchesSnapshot = await db.collection('batches').get();
-    const batchMap = {};
+    const batchNameToId = {};
     batchesSnapshot.forEach(doc => {
       const data = doc.data();
-      batchMap[data.name] = doc.id; // Map batch name to ID
-      batchMap[doc.id] = data.name; // Map batch ID to name (for reverse lookup)
+      if (data.name) {
+        batchNameToId[data.name] = doc.id; // Map batch name to ID
+      }
     });
     
-    console.log('🔍 Dashboard Debug - Batch map:', batchMap);
+    console.log('🔍 Dashboard Debug - Batch name → ID map:', batchNameToId);
     
     // Filter videos based on user's course and batch
     const filteredVideos = allVideos.filter(video => {
       // Check if video matches user's course (support both 'course' and 'courseId' fields)
       const videoCourse = video.courseId || video.course; // Use courseId if available, fallback to course
       const courseMatch = videoCourse === userCourse;
-      
-      // Check batch filtering
-      let batchMatch = true;
-      if (video.batchId && video.batchId !== '') {
-        // Video is assigned to specific batch - check if user is in that batch
-        // Handle both batch ID and batch name scenarios
-        const userBatchActualId = batchMap[userBatchId] || userBatchId; // Convert batch name to ID if needed
-        batchMatch = video.batchId === userBatchActualId;
-      }
-      // If video.batchId is empty or undefined, video is available to all batches in the course
-      
+
+      // Convert batch name to ID if needed, but do NOT convert IDs back to names
+      const userBatchActualId = batchNameToId[userBatchId] || userBatchId;
+
+      // Batch restriction: if video has a batchId, it is targeted to that batch
+      const batchMatch = video.batchId && video.batchId === userBatchActualId;
+
+      // Student access rule:
+      //  - If enrolled in the course, they can see all videos for that course
+      //  - Additionally, if batchMatch is true they also have access (even if course field is missing)
+      const hasAccess = courseMatch || batchMatch;
+
       console.log('🔍 Dashboard Debug - Video filtering:', {
         videoTitle: video.title,
-        videoCourse: videoCourse,
+        videoCourse,
         videoBatchId: video.batchId,
         userCourse,
         userBatchId,
-        userBatchActualId: batchMap[userBatchId] || userBatchId,
+        userBatchActualId,
         courseMatch,
-        batchMatch
+        batchMatch,
+        hasAccess
       });
-      
-      return courseMatch && batchMatch;
+
+      return hasAccess;
     });
-    
+
     console.log('🔍 Dashboard Debug - Filtered videos count:', filteredVideos.length);
     
     // Sort videos by creation date (newest first)

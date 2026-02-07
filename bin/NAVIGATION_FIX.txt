@@ -21,7 +21,7 @@ DEPLOYED:
 
 TESTING:
 Please clear browser cache (Ctrl+Shift+R or Cmd+Shift+R) and try:
-1. https://learnwithshef.com/ - Should redirect to login
+1. https://learnwithus.sbs/ - Should redirect to login
 2. Login with any demo account
 3. Should redirect to appropriate dashboard (no loop)
 

@@ -40,7 +40,11 @@ export const firebaseService = {
       });
       return { id: docRef.id, success: true };
     } catch (error) {
-      console.error(`Error creating document in ${collectionName}:`, error);
+      // Suppress noisy permission errors in production; they are expected when
+      // Firestore rules block client access and backend APIs are the source of truth.
+      if (!error?.message?.includes('Missing or insufficient permissions')) {
+        console.error(`Error creating document in ${collectionName}:`, error);
+      }
       return { success: false, error: error.message };
     }
   },
@@ -57,7 +61,9 @@ export const firebaseService = {
         return { success: false, error: 'Document not found' };
       }
     } catch (error) {
-      console.error(`Error getting document from ${collectionName}:`, error);
+      if (!error?.message?.includes('Missing or insufficient permissions')) {
+        console.error(`Error getting document from ${collectionName}:`, error);
+      }
       return { success: false, error: error.message };
     }
   },
@@ -79,7 +85,9 @@ export const firebaseService = {
       
       return { success: true, data: documents };
     } catch (error) {
-      console.error(`Error getting documents from ${collectionName}:`, error);
+      if (!error?.message?.includes('Missing or insufficient permissions')) {
+        console.error(`Error getting documents from ${collectionName}:`, error);
+      }
       return { success: false, error: error.message };
     }
   },
@@ -94,7 +102,9 @@ export const firebaseService = {
       });
       return { success: true };
     } catch (error) {
-      console.error(`Error updating document in ${collectionName}:`, error);
+      if (!error?.message?.includes('Missing or insufficient permissions')) {
+        console.error(`Error updating document in ${collectionName}:`, error);
+      }
       return { success: false, error: error.message };
     }
   },
@@ -106,7 +116,9 @@ export const firebaseService = {
       await deleteDoc(docRef);
       return { success: true };
     } catch (error) {
-      console.error(`Error deleting document from ${collectionName}:`, error);
+      if (!error?.message?.includes('Missing or insufficient permissions')) {
+        console.error(`Error deleting document from ${collectionName}:`, error);
+      }
       return { success: false, error: error.message };
     }
   },
@@ -125,7 +137,9 @@ export const firebaseService = {
       
       return { success: true, data: documents };
     } catch (error) {
-      console.error(`Error querying ${collectionName}:`, error);
+      if (!error?.message?.includes('Missing or insufficient permissions')) {
+        console.error(`Error querying ${collectionName}:`, error);
+      }
       return { success: false, error: error.message };
     }
   }

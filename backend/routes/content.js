@@ -146,7 +146,7 @@ router.get('/:course/:module/:filename', (req, res) => {
   if (ext === '.ipynb') {
     // Since files are served from the same domain, we use the direct file URL
     // Colab can open files from a URL using ?url=...
-    const fileUrl = `https://learnwithshef.com/content/${course}/${encodeURIComponent(module)}/${encodeURIComponent(filename)}`;
+    const fileUrl = `https://learnwithus.sbs/content/${course}/${encodeURIComponent(module)}/${encodeURIComponent(filename)}`;
     colabUrl = `https://colab.research.google.com/github/googlecolab/colabtools/blob/master/notebooks/colab-github-demo.ipynb#fileIds=${encodeURIComponent(fileUrl)}`;
   }
 

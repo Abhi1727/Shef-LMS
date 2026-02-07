@@ -242,6 +242,104 @@
   box-shadow: 0 4px 15px rgba(239, 68, 68, 0.3);
 }
 
+/* Batch details banner for Classroom section */
+.batch-details-banner {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  padding: 16px 20px;
+  margin-bottom: 20px;
+  background: #f7fafc;
+  border-radius: 12px;
+  border: 1px solid #e2e8f0;
+}
+
+.batch-details-left {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.batch-name {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: #2d3748;
+}
+
+.batch-meta-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  font-size: 0.9rem;
+  color: #4a5568;
+}
+
+.batch-meta-row .meta-item {
+  display: inline-flex;
+  align-items: center;
+}
+
+.batch-details-right {
+  text-align: right;
+}
+
+.timing-label {
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #718096;
+  margin-bottom: 4px;
+}
+
+.timing-days {
+  font-size: 0.85rem;
+  color: #4a5568;
+  margin-bottom: 4px;
+}
+
+.timing-value {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #2d3748;
+}
+
+.timing-value-multi {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.9rem;
+  color: #2d3748;
+}
+
+.timing-row {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.timing-zone {
+  font-weight: 600;
+  color: #4a5568;
+  min-width: 40px;
+  text-align: right;
+}
+
+.timing-text {
+  font-weight: 500;
+}
+
+.session-rank-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  margin-bottom: 8px;
+  border-radius: 999px;
+  background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+  color: #ffffff;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
 /* Main Content */
 .main-content {
   flex: 1;

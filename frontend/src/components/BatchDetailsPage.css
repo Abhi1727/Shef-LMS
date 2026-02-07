@@ -91,6 +91,42 @@
   font-size: 0.9rem;
 }
 
+.batch-timing-panel {
+  margin-left: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+.batch-timing-text .label {
+  font-weight: 600;
+  color: #4a5568;
+  margin-right: 6px;
+}
+
+.batch-timing-text .value {
+  color: #2d3748;
+}
+
+.btn-add-timing {
+  background: #007bff;
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 500;
+  font-size: 0.9rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.btn-add-timing:hover {
+  background: #0056b3;
+}
+
 /* Content Layout */
 .batch-content {
   display: grid;
@@ -168,6 +204,14 @@
   font-weight: 600;
   border-bottom: 2px solid #e9ecef;
   padding-bottom: 10px;
+}
+
+.videos-header,
+.students-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
 }
 
 /* Videos Grid */
@@ -320,10 +364,14 @@
   border-radius: 12px;
   padding: 0;
   width: 90%;
-  max-width: 500px;
+  max-width: 520px;
   max-height: 90vh;
   overflow-y: auto;
   box-shadow: 0 20px 25px rgba(0, 0, 0, 0.3);
+}
+
+.add-students-modal {
+  max-width: 900px;
 }
 
 .modal-header {
@@ -360,6 +408,12 @@
 
 .modal-content {
   padding: 20px;
+}
+
+.modal-subtitle {
+  margin: 0 0 15px 0;
+  color: #6c757d;
+  font-size: 0.9rem;
 }
 
 .modal-content input,
@@ -409,6 +463,35 @@
   background: #0056b3;
 }
 
+/* Primary/Secondary buttons (used in Add Students modal) */
+.btn-primary {
+  background: #007bff;
+  color: white;
+  border: none;
+  padding: 10px 20px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: 500;
+}
+
+.btn-primary:hover {
+  background: #0056b3;
+}
+
+.btn-secondary {
+  background: #6c757d;
+  color: white;
+  border: none;
+  padding: 10px 20px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: 500;
+}
+
+.btn-secondary:hover {
+  background: #5a6268;
+}
+
 .btn-watch {
   display: inline-block;
   background: #007bff;
@@ -434,6 +517,29 @@
   border: 1px solid #e9ecef;
 }
 
+.add-students-table-container {
+  max-height: 55vh;
+  overflow-y: auto;
+}
+
+.already-in-batch-row {
+  opacity: 0.7;
+}
+
+.status-badge.already-added {
+  background: #6c757d;
+  color: #fff;
+}
+
+.student-search-input {
+  width: 100%;
+  padding: 10px;
+  margin-bottom: 15px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 14px;
+}
+
 .students-table {
   width: 100%;
   border-collapse: collapse;
@@ -449,6 +555,12 @@
   border-bottom: 2px solid #dee2e6;
 }
 
+.add-students-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
 .students-table td {
   padding: 15px;
   border-bottom: 1px solid #e9ecef;
@@ -461,6 +573,69 @@
 
 .students-table tr:last-child td {
   border-bottom: none;
+}
+
+.schedule-days-section,
+.schedule-time-section {
+  margin-top: 15px;
+}
+
+.field-label {
+  display: block;
+  font-weight: 600;
+  margin-bottom: 8px;
+  color: #495057;
+}
+
+.day-selector {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.day-pill {
+  padding: 6px 10px;
+  border-radius: 20px;
+  border: 1px solid #dee2e6;
+  background: #f8f9fa;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.day-pill.selected {
+  background: #4c6fff;
+  color: #fff;
+  border-color: #4c6fff;
+}
+
+.time-range-inputs {
+  display: flex;
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.time-input-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.time-label {
+  font-size: 12px;
+  color: #6c757d;
+}
+
+.time-input-group input[type="time"] {
+  padding: 8px;
+  border-radius: 4px;
+  border: 1px solid #dee2e6;
+}
+
+.time-hint {
+  margin-top: 6px;
+  font-size: 12px;
+  color: #6c757d;
 }
 
 /* No Data State */

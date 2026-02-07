@@ -35,6 +35,7 @@ const Dashboard = ({ user, onLogout }) => {
   
   // Video watching history state
   const [videoWatchHistory, setVideoWatchHistory] = useState([]);
+  const [batchInfo, setBatchInfo] = useState(null);
   
   // Classroom videos from Firebase
   const [classroomVideos, setClassroomVideos] = useState([]);
@@ -108,7 +109,10 @@ const Dashboard = ({ user, onLogout }) => {
         }
       }
     } catch (error) {
-      console.error('Error loading/initializing user progress:', error);
+      // Ignore permission errors from Firestore when client is not authenticated
+      if (!error?.message?.includes('Missing or insufficient permissions')) {
+        console.error('Error loading/initializing user progress:', error);
+      }
     }
   }, [user?.id, user?.currentCourse, user?.name, getCourseSlug]);
 
@@ -124,7 +128,9 @@ const Dashboard = ({ user, onLogout }) => {
         userEmail: user.email
       }, { merge: true });
     } catch (error) {
-      console.error('Error saving user progress:', error);
+      if (!error?.message?.includes('Missing or insufficient permissions')) {
+        console.error('Error saving user progress:', error);
+      }
     }
   };
 
@@ -140,7 +146,9 @@ const Dashboard = ({ user, onLogout }) => {
         userEmail: user.email
       }, { merge: true });
     } catch (error) {
-      console.error('Error saving video watch history:', error);
+      if (!error?.message?.includes('Missing or insufficient permissions')) {
+        console.error('Error saving video watch history:', error);
+      }
     }
   };
 
@@ -239,21 +247,28 @@ const Dashboard = ({ user, onLogout }) => {
         const videos = await response.json();
         console.log('🔍 Frontend Debug - Videos received:', videos.length);
         console.log('🔍 Frontend Debug - Sample video:', videos[0]);
-        
+
         // Additional sorting on frontend to ensure latest videos are first
         const sortedVideos = videos.sort((a, b) => {
           const dateA = new Date(a.createdAt || a.date || 0);
           const dateB = new Date(b.createdAt || b.date || 0);
           return dateB - dateA; // Newest first
         });
-        
-        console.log('🔍 Frontend Debug - First 3 videos after sorting:', sortedVideos.slice(0, 3).map(v => ({
+
+        // Hide support/utility Zoom rooms from students (e.g. personal meeting rooms)
+        const filteredVideos = sortedVideos.filter(v => {
+          const title = (v.title || '').toLowerCase();
+          return !title.includes("support's personal meeting room") &&
+                 !title.includes('support\'s personal meeting room');
+        });
+
+        console.log('🔍 Frontend Debug - First 3 videos after sorting/filtering:', filteredVideos.slice(0, 3).map(v => ({
           title: v.title,
           createdAt: v.createdAt,
           date: v.date
         })));
-        
-        setClassroomVideos(sortedVideos);
+
+        setClassroomVideos(filteredVideos);
       } else {
         const errorData = await response.json();
         console.error('🔍 Frontend Debug - Error response:', errorData);
@@ -285,6 +300,37 @@ const Dashboard = ({ user, onLogout }) => {
       }
     } catch (error) {
       console.error('Error loading batches:', error);
+    }
+  }, []);
+
+  // Load student's batch info (for displaying batch details and timings in Classroom section)
+  const loadBatchInfo = useCallback(async () => {
+    try {
+      const token = localStorage.getItem('token');
+      if (!token) return;
+
+      const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
+      const response = await fetch(`${apiUrl}/api/student/batch-info`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      if (!response.ok) {
+        return;
+      }
+
+      const data = await response.json();
+
+      // /api/student/batch-info returns the batch object directly
+      // If student is not assigned to any batch, it returns only a message
+      if (data && data.id) {
+        setBatchInfo(data);
+      } else {
+        setBatchInfo(null);
+      }
+    } catch (error) {
+      console.error('Error loading batch info:', error);
     }
   }, []);
 
@@ -332,8 +378,9 @@ const Dashboard = ({ user, onLogout }) => {
     if (user?.currentCourse) {
       loadClassroomVideos();
       loadBatches();
+      loadBatchInfo();
     }
-  }, [user?.currentCourse, loadClassroomVideos, loadBatches]);
+  }, [user?.currentCourse, loadClassroomVideos, loadBatches, loadBatchInfo]);
 
   // Load video enhancements when videos are loaded
   useEffect(() => {
@@ -367,7 +414,9 @@ const Dashboard = ({ user, onLogout }) => {
         console.log('No video watch history found for student:', user.name);
       }
     } catch (error) {
-      console.error('Error loading video watch history:', error);
+      if (!error?.message?.includes('Missing or insufficient permissions')) {
+        console.error('Error loading video watch history:', error);
+      }
       setVideoWatchHistory([]);
     }
   }, [user?.id]);
@@ -422,20 +471,20 @@ const Dashboard = ({ user, onLogout }) => {
     
     if (file.canOpenInColab) {
       // Open notebook in Google Colab
-      const fileUrl = `https://learnwithshef.com${file.path}`;
+      const fileUrl = `https://learnwithus.sbs${file.path}`;
       const colabUrl = `https://colab.research.google.com/drive/`;
       // Since we're serving from our own server, we'll open a viewer or download
       // For now, open directly which will trigger download, or use nbviewer
       window.open(fileUrl, '_blank');
     } else if (file.extension === '.pdf') {
       // Open PDF in new tab
-      window.open(`https://learnwithshef.com${file.path}`, '_blank');
+      window.open(`https://learnwithus.sbs${file.path}`, '_blank');
     } else if (file.extension === '.sql') {
       // Download SQL file
-      window.open(`https://learnwithshef.com${file.path}`, '_blank');
+      window.open(`https://learnwithus.sbs${file.path}`, '_blank');
     } else {
       // Default: download the file
-      window.open(`https://learnwithshef.com${file.path}`, '_blank');
+      window.open(`https://learnwithus.sbs${file.path}`, '_blank');
     }
   };
 
@@ -547,6 +596,49 @@ const Dashboard = ({ user, onLogout }) => {
       // For Drive videos, direct access
       setSelectedVideo(session);
     }
+  };
+
+  // Convert IST time range to other time zones (EST, CST, PST)
+  const convertIstRangeToZone = (range, offsetHours, offsetMinutes = 0) => {
+    if (!range || typeof range !== 'string') return null;
+
+    const parts = range.split('-').map(p => p.trim());
+    if (parts.length !== 2) return null;
+
+    const parseTime = (str) => {
+      const match = str.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
+      if (!match) return null;
+      let [ , h, m, ap ] = match;
+      let hour = parseInt(h, 10);
+      const minute = parseInt(m, 10);
+      const isPM = ap.toUpperCase() === 'PM';
+      if (hour === 12) {
+        hour = isPM ? 12 : 0;
+      } else if (isPM) {
+        hour += 12;
+      }
+      return hour * 60 + minute;
+    };
+
+    const formatTime = (minutes) => {
+      minutes = ((minutes % (24 * 60)) + (24 * 60)) % (24 * 60);
+      let h = Math.floor(minutes / 60);
+      const m = minutes % 60;
+      const ap = h >= 12 ? 'PM' : 'AM';
+      if (h === 0) h = 12;
+      else if (h > 12) h -= 12;
+      return `${h}:${m.toString().padStart(2, '0')} ${ap}`;
+    };
+
+    const startIst = parseTime(parts[0]);
+    const endIst = parseTime(parts[1]);
+    if (startIst == null || endIst == null) return null;
+
+    const delta = offsetHours * 60 + offsetMinutes;
+    const startLocal = startIst + delta;
+    const endLocal = endIst + delta;
+
+    return `${formatTime(startLocal)} - ${formatTime(endLocal)}`;
   };
 
   // Get the most recent video played by user
@@ -1568,6 +1660,55 @@ const Dashboard = ({ user, onLogout }) => {
                 </div>
               </div>
 
+              {batchInfo && (
+                <div className="batch-details-banner">
+                  <div className="batch-details-left">
+                    <div className="batch-name">{batchInfo.name}</div>
+                    <div className="batch-meta-row">
+                      <span className="meta-item">Course: {batchInfo.course || 'N/A'}</span>
+                      {batchInfo.teacherName && (
+                        <span className="meta-item">Teacher: {batchInfo.teacherName}</span>
+                      )}
+                    </div>
+                  </div>
+                  <div className="batch-details-right">
+                    {batchInfo.schedule && (batchInfo.schedule.days || batchInfo.schedule.time) ? (
+                      <>
+                        <div className="timing-label">Batch Timing (EST / CST / PST)</div>
+                        {batchInfo.schedule.days && (
+                          <div className="timing-days">Days: {batchInfo.schedule.days}</div>
+                        )}
+                        <div className="timing-value-multi">
+                          <div className="timing-row">
+                            <span className="timing-zone">EST</span>
+                            <span className="timing-text">
+                              {convertIstRangeToZone(batchInfo.schedule.time, -10, -30) || 'Unavailable'}
+                            </span>
+                          </div>
+                          <div className="timing-row">
+                            <span className="timing-zone">CST</span>
+                            <span className="timing-text">
+                              {convertIstRangeToZone(batchInfo.schedule.time, -11, -30) || 'Unavailable'}
+                            </span>
+                          </div>
+                          <div className="timing-row">
+                            <span className="timing-zone">PST</span>
+                            <span className="timing-text">
+                              {convertIstRangeToZone(batchInfo.schedule.time, -13, -30) || 'Unavailable'}
+                            </span>
+                          </div>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <div className="timing-label">Batch Timing (EST / CST / PST)</div>
+                        <div className="timing-value">Not set yet</div>
+                      </>
+                    )}
+                  </div>
+                </div>
+              )}
+
               {classroomVideos.length > 0 ? (
                 <div className="content-section">
                   <div className="section-header">
@@ -1578,13 +1719,20 @@ const Dashboard = ({ user, onLogout }) => {
                   </div>
 
                   <div className="cards-grid">
-                    {classroomVideos.map((video) => (
+                    {classroomVideos.map((video, index) => (
                       <div 
                         key={video.id} 
                         className="project-card"
                         style={{ cursor: 'pointer' }}
                         onClick={() => setSelectedVideo(video)}
                       >
+                        <div className="session-rank-badge">
+                          {index === 0
+                            ? 'Latest Session'
+                            : index === 1
+                              ? '2nd Latest'
+                              : `Session ${index + 1}`}
+                        </div>
                         {/* Video Thumbnail */}
                         <div style={{ 
                           position: 'relative',
