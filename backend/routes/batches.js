@@ -195,4 +195,48 @@ router.delete('/:batchId/students/:studentId', isAdmin, async (req, res) => {
   }
 });
 
+// @route   DELETE /api/batches/:batchId/videos/:videoId
+// @desc    Remove a video from a batch (does NOT delete the video from database)
+// @access  Admin only
+router.delete('/:batchId/videos/:videoId', isAdmin, async (req, res) => {
+  try {
+    const { batchId, videoId } = req.params;
+
+    const batchRef = db.collection('batches').doc(batchId);
+    const batchDoc = await batchRef.get();
+
+    if (!batchDoc.exists) {
+      return res.status(404).json({
+        success: false,
+        message: 'Batch not found'
+      });
+    }
+
+    // Remove video from batch by clearing its batchId in the classroom collection
+    const videoRef = db.collection('classroom').doc(videoId);
+    const videoDoc = await videoRef.get();
+    
+    if (!videoDoc.exists) {
+      return res.status(404).json({
+        success: false,
+        message: 'Video not found'
+      });
+    }
+
+    // Clear the batchId for this video (disassociate from batch)
+    await videoRef.update({ batchId: null });
+
+    res.json({
+      success: true,
+      message: 'Video removed from batch successfully'
+    });
+  } catch (error) {
+    console.error('Error removing video from batch:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to remove video from batch'
+    });
+  }
+});
+
 module.exports = router;

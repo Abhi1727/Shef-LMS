@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { createPortal } from 'react-dom';
 import { ToastContainer, showToast } from './Toast';
 import { YouTubeUtils } from '../utils/youtubeUtils';
+import CustomVideoPlayer from './CustomVideoPlayer';
 import './BatchDetailsPage.css';
 
 const DAYS_OF_WEEK = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -59,6 +60,7 @@ const BatchDetailsPage = () => {
   const [selectedBatch, setSelectedBatch] = useState(null);
   const [classroomVideos, setClassroomVideos] = useState([]);
   const [students, setStudents] = useState([]);
+  const [selectedVideo, setSelectedVideo] = useState(null);
   const [loading, setLoading] = useState(true);
   const [activeView, setActiveView] = useState('videos');
   const [editingStudent, setEditingStudent] = useState(null);
@@ -66,6 +68,7 @@ const BatchDetailsPage = () => {
   const [showAddStudentsModal, setShowAddStudentsModal] = useState(false);
   const [selectedStudentIds, setSelectedStudentIds] = useState([]);
   const [showAddVideoModal, setShowAddVideoModal] = useState(false);
+  const [editingVideo, setEditingVideo] = useState(null);
   const [showScheduleModal, setShowScheduleModal] = useState(false);
   const [scheduleForm, setScheduleForm] = useState({ days: '', time: '' });
   const [timeRange, setTimeRange] = useState({ start: '', end: '' });
@@ -74,7 +77,9 @@ const BatchDetailsPage = () => {
   const [videoFormData, setVideoFormData] = useState({
     title: '',
     youtubeVideoUrl: '',
-    description: ''
+    description: '',
+    date: '',
+    time: ''
   });
   const [studentFormData, setStudentFormData] = useState({
     name: '',
@@ -131,6 +136,7 @@ const BatchDetailsPage = () => {
         
         if (batch) {
           setSelectedBatch(batch);
+          
           if (batch.schedule) {
             const days = batch.schedule.days || '';
             const time = batch.schedule.time || '';
@@ -138,7 +144,32 @@ const BatchDetailsPage = () => {
             const parsedRange = parseIstRangeToTimeInputs(time);
             setTimeRange(parsedRange);
           }
+          
           console.log('Found batch:', batch);
+          
+          // Load students
+          const studentsResponse = await fetch(`${apiUrl}/api/admin/users`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+          });
+          
+          if (studentsResponse.ok) {
+            const allUsers = await studentsResponse.json();
+            const studentUsers = allUsers.filter(user => user.role === 'student');
+            
+            // Filter students by batchId for consistency with Dashboard
+            const batchStudents = studentUsers.filter(student => 
+              student.batchId === batchId
+            );
+            
+            console.log('🔍 BatchDetails Debug - Students for batch:', {
+              batchId,
+              totalStudents: studentUsers.length,
+              batchStudents: batchStudents.length,
+              batchStudentsArray: batch.students?.length || 0
+            });
+            
+            setStudents(batchStudents);
+          }
         } else {
           console.error('Batch not found. Available IDs:', batches.map(b => ({ name: b.name, id: b.id || b._id })));
           showToast('Batch not found', 'error');
@@ -153,19 +184,37 @@ const BatchDetailsPage = () => {
       });
       
       if (videosResponse.ok) {
-        const videos = await videosResponse.json();
-        setClassroomVideos(videos);
-      }
-
-      // Load students
-      const studentsResponse = await fetch(`${apiUrl}/api/admin/users`, {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      
-      if (studentsResponse.ok) {
-        const allUsers = await studentsResponse.json();
-        const studentUsers = allUsers.filter(user => user.role === 'student');
-        setStudents(studentUsers);
+        const allVideos = await videosResponse.json();
+        
+        // Filter videos to show only those belonging to this batch
+        const batchVideos = allVideos.filter(video => {
+          // Check if video belongs to this batch by batchId
+          if (video.batchId === batchId) {
+            return true;
+          }
+          
+          // For videos without batchId, check if they belong to this batch's course
+          // This is for backward compatibility with older videos
+          if (!video.batchId && selectedBatch && video.courseId === selectedBatch.course) {
+            return true;
+          }
+          
+          return false;
+        });
+        
+        console.log('🔍 BatchDetails Debug - Videos for batch:', {
+          batchId,
+          batchName: selectedBatch?.name,
+          totalVideos: allVideos.length,
+          filteredVideos: batchVideos.length,
+          sampleVideos: batchVideos.slice(0, 3).map(v => ({
+            title: v.title,
+            batchId: v.batchId,
+            courseId: v.courseId
+          }))
+        });
+        
+        setClassroomVideos(batchVideos);
       }
     } catch (error) {
       console.error('Error loading batch data:', error);
@@ -343,6 +392,15 @@ const BatchDetailsPage = () => {
           )
         );
 
+        // Update selectedBatch to add students to batch's students array
+        setSelectedBatch(prev => ({
+          ...prev,
+          students: [...new Set([...prev.students, ...selectedStudentIds])]
+        }));
+
+        // Refresh batch data to ensure consistency
+        await refreshBatchData();
+
         setShowAddStudentsModal(false);
         setSelectedStudentIds([]);
       } else {
@@ -356,9 +414,9 @@ const BatchDetailsPage = () => {
 
   const handleAddVideoToBatch = async () => {
     try {
-      const { title, youtubeVideoUrl, description } = videoFormData;
-      if (!title || !youtubeVideoUrl) {
-        showToast('Please fill in all required fields (Title, YouTube URL)', 'warning');
+      const { title, youtubeVideoUrl, description, date } = videoFormData;
+      if (!title || !youtubeVideoUrl || !date) {
+        showToast('Please fill in all required fields (Title, YouTube URL, Class Date)', 'warning');
         return;
       }
 
@@ -382,34 +440,136 @@ const BatchDetailsPage = () => {
         videoSource: 'youtube-url',
         youtubeVideoId: videoId,
         youtubeVideoUrl,
-        youtubeEmbedUrl: YouTubeUtils.getEmbedUrl(videoId)
+        youtubeEmbedUrl: YouTubeUtils.getEmbedUrl(videoId),
+        date: date,
+        time: videoFormData.time || ''
       };
 
-      const response = await fetch(`${apiUrl}/api/admin/classroom/youtube-url`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify(lectureData)
-      });
+      let response;
+      
+      if (editingVideo) {
+        // Update existing video
+        response = await fetch(`${apiUrl}/api/admin/classroom/${editingVideo.id}`, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify(lectureData)
+        });
+      } else {
+        // Create new video
+        response = await fetch(`${apiUrl}/api/admin/classroom/youtube-url`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify(lectureData)
+        });
+      }
 
       const data = await response.json();
 
       if (response.ok) {
-        showToast('YouTube video added successfully!', 'success');
+        const successMessage = editingVideo ? 'Video updated successfully!' : 'YouTube video added successfully!';
+        showToast(successMessage, 'success');
 
-        // Optimistically update classroom videos list for this page
-        setClassroomVideos(prev => [{ id: data.lecture.id, ...data.lecture }, ...prev]);
+        if (editingVideo) {
+          // Update existing video in the list
+          setClassroomVideos(prev => prev.map(v => 
+            v.id === editingVideo.id ? { ...data.lecture, id: editingVideo.id } : v
+          ));
+        } else {
+          // Add new video to the list
+          setClassroomVideos(prev => [{ id: data.lecture.id, ...data.lecture }, ...prev]);
+        }
 
         setShowAddVideoModal(false);
-        setVideoFormData({ title: '', youtubeVideoUrl: '', description: '' });
+        setEditingVideo(null);
+        setVideoFormData({ title: '', youtubeVideoUrl: '', description: '', date: '', time: '' });
       } else {
         showToast('Error: ' + (data.message || 'Failed to save YouTube video'), 'error');
       }
     } catch (error) {
       console.error('Error saving classroom video:', error);
       showToast('Failed to save YouTube video. Please try again.', 'error');
+    }
+  };
+
+  const handleEditVideo = (video) => {
+    // Set the video being edited
+    setEditingVideo(video);
+    
+    // Populate the video form with existing video data for editing
+    setVideoFormData({
+      title: video.title || '',
+      youtubeVideoUrl: video.youtubeVideoUrl || '',
+      description: video.description || '',
+      date: video.date || new Date().toISOString().split('T')[0],
+      time: video.time || ''
+    });
+    
+    // Open the add video modal with populated data
+    setShowAddVideoModal(true);
+  };
+
+  const handleDeleteVideo = async (video) => {
+    const selectedBatchId = selectedBatch?.id || selectedBatch?._id;
+    if (!selectedBatchId) {
+      showToast('Batch information not available', 'error');
+      return;
+    }
+
+    if (window.confirm(`Remove "${video.title}" from this batch? This will not delete the video, only unassign it from this batch.`)) {
+      try {
+        const token = localStorage.getItem('token');
+        const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
+
+        // Remove video from batch (disassociate, not delete)
+        const response = await fetch(`${apiUrl}/api/batches/${selectedBatchId}/videos/${video.id}`, {
+          method: 'DELETE',
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        });
+
+        if (response.ok) {
+          showToast('Video removed from batch successfully!', 'success');
+          // Remove the video from the local state
+          setClassroomVideos(prev => prev.filter(v => v.id !== video.id));
+        } else {
+          const errorData = await response.json();
+          showToast('Error: ' + (errorData.message || 'Failed to remove video from batch'), 'error');
+        }
+      } catch (error) {
+        console.error('Error removing video from batch:', error);
+        showToast('Failed to remove video from batch. Please try again.', 'error');
+      }
+    }
+  };
+
+  // Refresh batch data to ensure consistency
+  const refreshBatchData = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
+      
+      const response = await fetch(`${apiUrl}/api/batches`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        const batches = data.batches || [];
+        const batch = batches.find(b => b.id === batchId || b._id === batchId);
+        
+        if (batch) {
+          setSelectedBatch(batch);
+        }
+      }
+    } catch (error) {
+      console.error('Error refreshing batch data:', error);
     }
   };
 
@@ -439,6 +599,15 @@ const BatchDetailsPage = () => {
           setStudents(prev => prev.map(s => 
             s.id === student.id ? { ...s, batchId: null } : s
           ));
+          
+          // Update selectedBatch to remove student from batch's students array
+          setSelectedBatch(prev => ({
+            ...prev,
+            students: prev.students.filter(id => id !== student.id)
+          }));
+          
+          // Refresh batch data to ensure consistency
+          await refreshBatchData();
         } else {
           showToast('Failed to remove student from batch', 'error');
         }
@@ -479,7 +648,7 @@ const BatchDetailsPage = () => {
       return dateB - dateA;
     });
 
-  // Filter students strictly by batch assignment
+  // Filter students by batchId for consistency with Dashboard
   const selectedBatchId = selectedBatch?.id || selectedBatch?._id;
   const batchStudents = students.filter(student => student.batchId === selectedBatchId);
 
@@ -500,7 +669,6 @@ const BatchDetailsPage = () => {
   return (
     <>
     <div className="batch-details-page">
-      <ToastContainer />
       
       {/* Header */}
       <div className="batch-header">
@@ -581,7 +749,7 @@ const BatchDetailsPage = () => {
                     <div 
                       key={video.id} 
                       className="video-card"
-                      onClick={() => window.open(video.videoUrl || video.youtubeVideoUrl || `https://drive.google.com/file/d/${video.driveId}/view`, '_blank')}
+                      onClick={() => setSelectedVideo(video)}
                     >
                       <div className="video-thumbnail" style={{ position: 'relative', overflow: 'hidden' }}>
                         {video.videoSource === 'youtube-url' ? (
@@ -636,10 +804,60 @@ const BatchDetailsPage = () => {
                             <span className="value">{selectedBatch.teacherName || video.instructor}</span>
                           </span>
                           <span className="meta-item">
-                            <span className="label">📅 Date:</span>
-                            <span className="value">{new Date(video.date).toLocaleDateString()}</span>
+                            <span className="label">📅 Class Date:</span>
+                            <span className="value">{new Date(video.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</span>
                           </span>
                         </div>
+                      </div>
+                      
+                      {/* Video Actions */}
+                      <div className="video-actions" style={{ 
+                        display: 'flex', 
+                        gap: '8px', 
+                        padding: '10px',
+                        borderTop: '1px solid #eee'
+                      }}>
+                        <button 
+                          onClick={(e) => {
+                            e.stopPropagation(); // Prevent video play
+                            handleEditVideo(video);
+                          }}
+                          className="btn-edit"
+                          style={{ 
+                            padding: '4px 8px', 
+                            fontSize: '12px',
+                            background: '#667eea',
+                            color: 'white',
+                            border: 'none',
+                            borderRadius: '4px',
+                            cursor: 'pointer'
+                          }}
+                          title="Edit Video"
+                        >
+                          ✏️ Edit
+                        </button>
+                        <button 
+                          onClick={(e) => {
+                            e.stopPropagation(); // Prevent video play
+                            if (window.confirm(`Remove "${video.title}" from this batch? This will not delete the video, only unassign it from this batch.`)) {
+                              // Handle video deletion
+                              handleDeleteVideo(video);
+                            }
+                          }}
+                          className="btn-delete"
+                          style={{ 
+                            padding: '4px 8px', 
+                            fontSize: '12px',
+                            background: '#ef4444',
+                            color: 'white',
+                            border: 'none',
+                            borderRadius: '4px',
+                            cursor: 'pointer'
+                          }}
+                          title="Remove Video from Batch"
+                        >
+                          🗑️ Remove
+                        </button>
                       </div>
                     </div>
                   ))}
@@ -797,19 +1015,29 @@ const BatchDetailsPage = () => {
       )}
     </div>
 
+    {/* Video Player Modal */}
+    {selectedVideo && (
+      <CustomVideoPlayer
+        video={selectedVideo}
+        onClose={() => setSelectedVideo(null)}
+      />
+    )}
+
     {showAddVideoModal && createPortal(
       <div className="modal-overlay" onClick={() => {
         setShowAddVideoModal(false);
-        setVideoFormData({ title: '', youtubeVideoUrl: '', description: '' });
+        setEditingVideo(null);
+        setVideoFormData({ title: '', youtubeVideoUrl: '', description: '', date: '', time: '' });
       }}>
         <div className="modal" onClick={(e) => e.stopPropagation()}>
           <div className="modal-header">
-            <h3>Add Video to {selectedBatch.name}</h3>
+            <h3>{editingVideo ? 'Edit Video' : 'Add Video'} to {selectedBatch.name}</h3>
             <button
               className="modal-close"
               onClick={() => {
                 setShowAddVideoModal(false);
-                setVideoFormData({ title: '', youtubeVideoUrl: '', description: '' });
+                setEditingVideo(null);
+                setVideoFormData({ title: '', youtubeVideoUrl: '', description: '', date: '', time: '' });
               }}
             >
               ×
@@ -833,6 +1061,25 @@ const BatchDetailsPage = () => {
               onChange={(e) => setVideoFormData({ ...videoFormData, youtubeVideoUrl: e.target.value })}
               required
             />
+            <input
+              type="date"
+              placeholder="Class Date *"
+              value={videoFormData.date}
+              onChange={(e) => setVideoFormData({ ...videoFormData, date: e.target.value })}
+              required
+              style={{ marginBottom: '15px' }}
+            />
+            <input
+              type="text"
+              placeholder="Class Time (e.g., 7:00 PM)"
+              value={videoFormData.time || ''}
+              onChange={(e) => setVideoFormData({ ...videoFormData, time: e.target.value })}
+              style={{ marginBottom: '15px' }}
+              title="Optional: Use batch timing or enter custom time"
+            />
+            <small style={{color: '#888', fontSize: '12px', display: 'block', marginBottom: '15px'}}>
+              * Required fields. Class time will be displayed with the video.
+            </small>
             <textarea
               placeholder="Description (optional)"
               rows="3"
@@ -846,7 +1093,7 @@ const BatchDetailsPage = () => {
               className="btn-cancel"
               onClick={() => {
                 setShowAddVideoModal(false);
-                setVideoFormData({ title: '', youtubeVideoUrl: '', description: '' });
+                setVideoFormData({ title: '', youtubeVideoUrl: '', description: '', date: '', time: '' });
               }}
             >
               Cancel
@@ -1050,6 +1297,9 @@ const BatchDetailsPage = () => {
       </div>,
       document.body
     )}
+
+    {/* Toast Notifications - Rendered via portal for proper stacking */}
+    {createPortal(<ToastContainer />, document.body)}
     </>
   );
 };

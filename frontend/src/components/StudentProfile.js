@@ -81,24 +81,28 @@ const StudentProfile = ({ user, onProfileUpdate }) => {
     try {
       const token = localStorage.getItem('token');
       const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
-
+      
+      // Only send password data to backend, not name/email changes
       const response = await fetch(`${apiUrl}/api/student/profile`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
         },
-        body: JSON.stringify(profileData)
+        body: JSON.stringify({
+          currentPassword: passwordData.currentPassword,
+          newPassword: passwordData.newPassword
+        })
       });
 
       const data = await response.json();
 
       if (response.ok) {
-        showMessage('Profile updated successfully!', 'success');
+        showMessage('Password updated successfully!', 'success');
         setIsEditing(false);
         
-        // Update user data in localStorage
-        const updatedUser = { ...user, ...data.profile };
+        // Update user data in localStorage (only password changes)
+        const updatedUser = { ...user, currentPassword: passwordData.newPassword };
         localStorage.setItem('user', JSON.stringify(updatedUser));
         
         // If email was changed, we need to update the token
@@ -225,32 +229,12 @@ const StudentProfile = ({ user, onProfileUpdate }) => {
           <div className="profile-grid">
             <div className="profile-field">
               <label>Full Name</label>
-              {isEditing ? (
-                <input
-                  type="text"
-                  name="name"
-                  value={profileData.name}
-                  onChange={handleInputChange}
-                  className="profile-input"
-                />
-              ) : (
-                <span className="profile-value">{profileData.name || 'Not set'}</span>
-              )}
+              <span className="profile-value">{profileData.name || 'Not set'}</span>
             </div>
 
             <div className="profile-field">
               <label>Email Address</label>
-              {isEditing ? (
-                <input
-                  type="email"
-                  name="email"
-                  value={profileData.email}
-                  onChange={handleInputChange}
-                  className="profile-input"
-                />
-              ) : (
-                <span className="profile-value">{profileData.email || 'Not set'}</span>
-              )}
+              <span className="profile-value">{profileData.email || 'Not set'}</span>
             </div>
           </div>
         </div>

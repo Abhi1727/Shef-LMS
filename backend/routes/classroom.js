@@ -53,6 +53,19 @@ router.post('/upload', roleAuth('admin'), upload.single('video'), async (req, re
       uploadedBy: req.user.id
     };
 
+    // If batchId is provided, fetch and include batch name
+    if (metadata.batchId) {
+      try {
+        const batchDoc = await db.collection('batches').doc(metadata.batchId).get();
+        if (batchDoc.exists) {
+          const batchData = batchDoc.data();
+          metadata.batchName = batchData.name;
+        }
+      } catch (error) {
+        console.error('Error fetching batch name:', error);
+      }
+    }
+
     // Upload video to Firebase Storage
     const uploadResult = await classroomService.uploadVideo(req.file, metadata);
 
@@ -267,6 +280,19 @@ router.post('/youtube-url', roleAuth('admin'), async (req, res) => {
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
     };
+
+    // If batchId is provided, fetch and include batch name
+    if (lectureData.batchId) {
+      try {
+        const batchDoc = await db.collection('batches').doc(lectureData.batchId).get();
+        if (batchDoc.exists) {
+          const batchData = batchDoc.data();
+          lectureData.batchName = batchData.name;
+        }
+      } catch (error) {
+        console.error('Error fetching batch name:', error);
+      }
+    }
 
     // Save lecture metadata to Firestore
     const docRef = await db.collection('classroom').add(lectureData);

@@ -714,15 +714,23 @@ router.put('/classroom/:id', async (req, res) => {
       instructorColor,
       zoomUrl,
       zoomPasscode,
-      driveId
+      driveId,
+      videoSource,
+      youtubeVideoId,
+      youtubeVideoUrl,
+      youtubeEmbedUrl,
+      description,
+      courseId,
+      batchId
     } = req.body;
 
-    // Validate that either Zoom URL or Drive ID is provided
-    if (!zoomUrl && !driveId) {
-      return res.status(400).json({ message: 'Either Zoom URL or Drive ID is required' });
+    // Validate that at least one video source is provided
+    const hasVideoSource = zoomUrl || driveId || youtubeVideoUrl || videoSource;
+    if (!hasVideoSource) {
+      return res.status(400).json({ 
+        message: 'A video source is required. Please provide either a Zoom URL, Drive ID, or YouTube URL.' 
+      });
     }
-
-    // Passcode extraction is handled by middleware if needed
 
     const videoData = {
       updatedAt: new Date().toISOString()
@@ -736,20 +744,38 @@ router.put('/classroom/:id', async (req, res) => {
     if (courseType) videoData.courseType = courseType;
     if (type) videoData.type = type;
     if (instructorColor) videoData.instructorColor = instructorColor;
+    if (description !== undefined) videoData.description = description;
+    if (courseId) videoData.courseId = courseId;
+    if (batchId !== undefined) videoData.batchId = batchId;
 
     // Add video source specific fields
     if (zoomUrl) {
       videoData.zoomUrl = zoomUrl;
       videoData.zoomPasscode = zoomPasscode;
       videoData.videoSource = 'zoom';
-      // Remove driveId if switching to Zoom
+      // Remove other video source fields if switching to Zoom
       videoData.driveId = null;
+      videoData.youtubeVideoId = null;
+      videoData.youtubeVideoUrl = null;
+      videoData.youtubeEmbedUrl = null;
     } else if (driveId) {
       videoData.driveId = driveId;
       videoData.videoSource = 'drive';
-      // Remove zoom fields if switching to Drive
+      // Remove other video source fields if switching to Drive
       videoData.zoomUrl = null;
       videoData.zoomPasscode = null;
+      videoData.youtubeVideoId = null;
+      videoData.youtubeVideoUrl = null;
+      videoData.youtubeEmbedUrl = null;
+    } else if (youtubeVideoUrl || videoSource === 'youtube-url') {
+      videoData.videoSource = 'youtube-url';
+      videoData.youtubeVideoId = youtubeVideoId;
+      videoData.youtubeVideoUrl = youtubeVideoUrl;
+      videoData.youtubeEmbedUrl = youtubeEmbedUrl;
+      // Remove other video source fields if switching to YouTube
+      videoData.zoomUrl = null;
+      videoData.zoomPasscode = null;
+      videoData.driveId = null;
     }
 
     await db.collection('classroom').doc(id).update(videoData);

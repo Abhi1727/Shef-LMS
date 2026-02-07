@@ -9,6 +9,71 @@ import fallbackData from '../data/fallbackData';
 import { YouTubeUtils } from '../utils/youtubeUtils';
 import './AdminDashboard.css';
 
+// Move StudentSearch component outside to prevent re-creation on every render
+const StudentSearch = memo(({ onStudentClick, searchEmail, setSearchEmail, searchResults, isSearching, showSearchResults, clearSearch, searchStudentByEmail, handleSearchSubmit }) => {
+  const handleInputChange = useCallback((e) => {
+    const value = e.target.value;
+    setSearchEmail(value);
+    if (value === '') {
+      clearSearch();
+    } else {
+      searchStudentByEmail(value);
+    }
+  }, [clearSearch, searchStudentByEmail, setSearchEmail]);
+
+  return (
+    <div className="student-search-section">
+      <h3>🔍 Search Student by Email</h3>
+      <form onSubmit={handleSearchSubmit} className="search-form">
+        <div className="search-input-group">
+          <input
+            type="email"
+            placeholder="Enter student email address..."
+            value={searchEmail}
+            onChange={handleInputChange}
+            className="search-input"
+          />
+          <button type="submit" className="btn-search" disabled={isSearching}>
+            {isSearching ? '🔄 Searching...' : '🔍 Search'}
+          </button>
+          {searchEmail && (
+            <button type="button" onClick={clearSearch} className="btn-clear">
+              ✖️ Clear
+            </button>
+          )}
+        </div>
+      </form>
+      
+      {showSearchResults && (
+        <div className="search-results">
+          <h4>Search Results ({searchResults.length})</h4>
+          {searchResults.length > 0 ? (
+            <div className="search-results-list">
+              {searchResults.map(student => (
+                <div key={student.id} className="search-result-item">
+                  <div className="student-info">
+                    <strong>{student.name}</strong>
+                    <span className="student-email">{student.email}</span>
+                    <span className="student-course">{student.course || 'No Course'}</span>
+                  </div>
+                  <button 
+                    onClick={() => onStudentClick(student)} 
+                    className="btn-select-student"
+                  >
+                    Select
+                  </button>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="no-results">No students found with that email.</p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+});
+
 const AdminDashboard = ({ user, onLogout }) => {
   const navigate = useNavigate();
   const [activeSection, setActiveSection] = useState('overview');
@@ -216,85 +281,6 @@ const AdminDashboard = ({ user, onLogout }) => {
     setSelectedBatch(null);
     setBatchView('');
   }, []);
-
-  // Memoized search results component
-  const SearchResults = memo(({ results, onStudentClick }) => (
-    <div className="search-results">
-      <h4>Search Results ({results.length})</h4>
-      {results.length > 0 ? (
-        <div className="search-results-list">
-          {results.map(student => (
-            <div key={student.id} className="search-result-item">
-              <div className="student-info">
-                <strong>{student.name}</strong>
-                <span className="student-email">{student.email}</span>
-                <span className="student-course">{student.course || 'No course'}</span>
-                <span className={`status-badge ${student.status === 'inactive' ? 'inactive' : student.status}`}>
-                  {student.status === 'inactive' ? 'Deactivated' : student.status === 'active' ? 'Active' : student.status}
-                </span>
-              </div>
-              <div className="student-actions">
-                <button 
-                  onClick={() => onStudentClick(student)}
-                  className="btn-edit"
-                  title="View/Edit Student Details"
-                >
-                  📝 View Details
-                </button>
-              </div>
-            </div>
-          ))}
-        </div>
-      ) : (
-        <p className="no-results">No students found with that email address.</p>
-      )}
-    </div>
-  ));
-
-  // Memoized search component with stable handlers
-  const StudentSearch = memo(({ onStudentClick }) => {
-    const handleInputChange = useCallback((e) => {
-      const value = e.target.value;
-      setSearchEmail(value);
-      if (value === '') {
-        clearSearch();
-      } else {
-        searchStudentByEmail(value);
-      }
-    }, [clearSearch, searchStudentByEmail]);
-
-    return (
-      <div className="student-search-section">
-        <h3>🔍 Search Student by Email</h3>
-        <form onSubmit={handleSearchSubmit} className="search-form">
-          <div className="search-input-group">
-            <input
-              type="email"
-              placeholder="Enter student email address..."
-              value={searchEmail}
-              onChange={handleInputChange}
-              className="search-input"
-            />
-            <button type="submit" className="btn-search" disabled={isSearching}>
-              {isSearching ? '🔄 Searching...' : '🔍 Search'}
-            </button>
-            {searchEmail && (
-              <button type="button" onClick={clearSearch} className="btn-clear">
-                ✖️ Clear
-              </button>
-            )}
-          </div>
-        </form>
-        
-        {showSearchResults && (
-          <SearchResults 
-            results={searchResults} 
-            onStudentClick={onStudentClick}
-          />
-        )}
-      </div>
-    );
-  });
 
   // Memoized stats component
   const StatsCards = memo(({ stats }) => (
@@ -699,11 +685,15 @@ const AdminDashboard = ({ user, onLogout }) => {
         await Promise.all([
           loadStudents(),
           loadCourses(),
-          loadTeachers()
+          loadTeachers(),
+          loadBatches()
         ]);
         break;
       case 'students':
-        await loadStudents();
+        await Promise.all([
+          loadStudents(),
+          loadBatches()
+        ]);
         break;
       case 'teachers':
         await loadTeachers();
@@ -858,7 +848,12 @@ const AdminDashboard = ({ user, onLogout }) => {
       if (type === 'classroom') {
         const formData = {
           ...item,
-          course: item.courseId || item.course // Handle both courseId and course for backward compatibility
+          course: item.courseId || item.course, // Handle both courseId and course for backward compatibility
+          // Ensure YouTube URL is properly mapped for editing
+          youtubeVideoUrl: item.youtubeVideoUrl || (item.youtubeVideoId ? `https://www.youtube.com/watch?v=${item.youtubeVideoId}` : ''),
+          instructor: item.instructor || 'Admin', // Default to Admin if not specified
+          // Format date for input field (YYYY-MM-DD)
+          date: item.date || new Date().toISOString().split('T')[0] // Use existing date or today's date
         };
         setFormData(formData);
         // Load batches if course is specified
@@ -1329,8 +1324,8 @@ const AdminDashboard = ({ user, onLogout }) => {
 
       // Validate classroom fields
       if (modalType === 'classroom') {
-        if (!formData.title || !formData.instructor || !formData.course || !formData.batchId) {
-          showToast('Please fill in all required fields (Title, Instructor, Course, Batch)', 'warning');
+        if (!formData.title || !formData.course || !formData.youtubeVideoUrl || !formData.date) {
+          showToast('Please fill in all required fields (Title, Course, YouTube URL, Class Date)', 'warning');
           return;
         }
       }
@@ -1416,23 +1411,40 @@ const AdminDashboard = ({ user, onLogout }) => {
             videoSource: 'youtube-url',
             youtubeVideoId: videoId,
             youtubeVideoUrl: formData.youtubeVideoUrl,
-            youtubeEmbedUrl: YouTubeUtils.getEmbedUrl(videoId)
+            youtubeEmbedUrl: YouTubeUtils.getEmbedUrl(videoId),
+            date: formData.date // Add class date
           };
 
-          // Save via API
-          const response = await fetch(`${apiUrl}/api/admin/classroom/youtube-url`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${token}`
-            },
-            body: JSON.stringify(lectureData)
-          });
+          let response;
+          
+          // Check if we're editing an existing video or creating a new one
+          if (editingItem && editingItem.id) {
+            // Update existing video
+            response = await fetch(`${apiUrl}/api/admin/classroom/${editingItem.id}`, {
+              method: 'PUT',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+              },
+              body: JSON.stringify(lectureData)
+            });
+          } else {
+            // Create new video
+            response = await fetch(`${apiUrl}/api/admin/classroom/youtube-url`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+              },
+              body: JSON.stringify(lectureData)
+            });
+          }
 
           const data = await response.json();
 
           if (response.ok) {
-            showToast('YouTube video added successfully!', 'success');
+            const successMessage = editingItem ? 'YouTube video updated successfully!' : 'YouTube video added successfully!';
+            showToast(successMessage, 'success');
             closeModal();
             await refreshData('classroom');
             return; // Prevent generic save logic from executing
@@ -1859,7 +1871,17 @@ const AdminDashboard = ({ user, onLogout }) => {
               <h2>Dashboard Overview</h2>
               
               {/* Student Search Section */}
-              <StudentSearch onStudentClick={openStudentDetails} />
+              <StudentSearch 
+                onStudentClick={openStudentDetails}
+                searchEmail={searchEmail}
+                setSearchEmail={setSearchEmail}
+                searchResults={searchResults}
+                isSearching={isSearching}
+                showSearchResults={showSearchResults}
+                clearSearch={clearSearch}
+                searchStudentByEmail={searchStudentByEmail}
+                handleSearchSubmit={handleSearchSubmit}
+              />
               
               <StatsCards stats={stats} />
 
@@ -1937,7 +1959,17 @@ const AdminDashboard = ({ user, onLogout }) => {
               </div>
 
               {/* Student Search Section */}
-              <StudentSearch onStudentClick={openStudentDetails} />
+              <StudentSearch 
+                onStudentClick={openStudentDetails}
+                searchEmail={searchEmail}
+                setSearchEmail={setSearchEmail}
+                searchResults={searchResults}
+                isSearching={isSearching}
+                showSearchResults={showSearchResults}
+                clearSearch={clearSearch}
+                searchStudentByEmail={searchStudentByEmail}
+                handleSearchSubmit={handleSearchSubmit}
+              />
 
               <div className="data-table-container">
                 <table className="data-table">
@@ -1963,7 +1995,7 @@ const AdminDashboard = ({ user, onLogout }) => {
                           </button>
                         </td>
                         <td>{student.email}</td>
-                        <td>{batches.find(b => b.id === student.batchId)?.name || student.batchName || student.batchId || 'N/A'}</td>
+                        <td>{batches.find(b => b.id === student.batchId)?.name || student.batchName || 'No Batch Assigned'}</td>
                         <td>{student.course || 'N/A'}</td>
                         <td>
                           <button onClick={() => openModal('student', student)} className="btn-edit">✏️</button>
@@ -2084,32 +2116,39 @@ const AdminDashboard = ({ user, onLogout }) => {
                     </tr>
                   </thead>
                   <tbody>
-                    {batches.map(batch => (
-                      <tr key={batch.id || batch._id}>
-                        <td>
-                          <button 
-                            onClick={() => handleBatchClick(batch)} 
-                            className="btn-link" 
-                            title="View Batch Details"
-                          >
-                            {batch.name}
-                          </button>
-                        </td>
-                        <td>{batch.course}</td>
-                        <td>{batch.startDate || 'N/A'}</td>
-                        <td>{batch.teacherName || 'N/A'}</td>
-                        <td>{batch.students?.length || 0}</td>
-                        <td>
-                          <span className={`status-badge ${batch.status}`}>
-                            {batch.status}
-                          </span>
-                        </td>
-                        <td>
-                          <button onClick={() => openModal('batch', batch)} className="btn-edit">✏️</button>
-                          <button onClick={() => handleDelete('batches', batch.id || batch._id)} className="btn-delete">🗑️</button>
-                        </td>
-                      </tr>
-                    ))}
+                    {batches.map(batch => {
+                      // Calculate actual student count based on batchId
+                      const actualStudentCount = students.filter(student => 
+                        student.role === 'student' && student.batchId === (batch.id || batch._id)
+                      ).length;
+                      
+                      return (
+                        <tr key={batch.id || batch._id}>
+                          <td>
+                            <button 
+                              onClick={() => handleBatchClick(batch)} 
+                              className="btn-link" 
+                              title="View Batch Details"
+                            >
+                              {batch.name}
+                            </button>
+                          </td>
+                          <td>{batch.course}</td>
+                          <td>{batch.startDate || 'N/A'}</td>
+                          <td>{batch.teacherName || 'N/A'}</td>
+                          <td>{actualStudentCount}</td>
+                          <td>
+                            <span className={`status-badge ${batch.status}`}>
+                              {batch.status}
+                            </span>
+                          </td>
+                          <td>
+                            <button onClick={() => openModal('batch', batch)} className="btn-edit">✏️</button>
+                            <button onClick={() => handleDelete('batches', batch.id || batch._id)} className="btn-delete">🗑️</button>
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
                 {batches.length === 0 && <p className="no-data">No batches found. Create your first batch!</p>}
@@ -2404,7 +2443,7 @@ const AdminDashboard = ({ user, onLogout }) => {
                 <table>
                   <thead>
                     <tr>
-                      <th>Date</th>
+                      <th>Class Date</th>
                       <th>Topic</th>
                       <th>Duration</th>
                       <th>Course</th>
@@ -2433,7 +2472,7 @@ const AdminDashboard = ({ user, onLogout }) => {
                               </span>
                               {video.batchId && (
                                 <small style={{display: 'block', color: '#666', marginTop: '2px'}}>
-                                  Batch: {batches.find(b => b.id === video.batchId)?.name || video.batchId}
+                                  Batch: {batches.find(b => b.id === video.batchId)?.name || 'No Batch Assigned'}
                                 </small>
                               )}
                             </td>
@@ -2917,7 +2956,7 @@ const AdminDashboard = ({ user, onLogout }) => {
 
       {/* Modal - Rendered using Portal for proper centering */}
       {showModal && createPortal(
-        <div className="modal-overlay" onClick={closeModal}>
+        <div className="modal-overlay">
           <div className="modal" onClick={(e) => e.stopPropagation()} key={`${modalType}-${editingItem ? editingItem.id : 'new'}`}>
             <div className="modal-header">
               <h2>{editingItem ? 'Edit' : 'Add'} {modalType.charAt(0).toUpperCase() + modalType.slice(1)}</h2>
@@ -3704,6 +3743,22 @@ const AdminDashboard = ({ user, onLogout }) => {
                     Select specific batch or leave empty to make available to all batches in this course
                   </small>
                   
+                  <div style={{ marginBottom: '15px' }}>
+                    <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>
+                      Class Date *
+                    </label>
+                    <input
+                      type="date"
+                      value={formData.date || ''}
+                      onChange={(e) => handleInputChange('date', e.target.value)}
+                      required
+                      style={{ width: '100%', padding: '8px', border: '1px solid #ddd', borderRadius: '4px' }}
+                    />
+                    <small style={{color: '#888', marginTop: '-10px', display: 'block'}}>
+                      Select the date when this class was conducted or will be conducted
+                    </small>
+                  </div>
+                  
                   {/* Manual YouTube URL Input */}
                   <div style={{ marginBottom: '15px' }}>
                     <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>
@@ -3850,7 +3905,7 @@ const AdminDashboard = ({ user, onLogout }) => {
 
       {/* Batch Details Modal */}
       {showBatchDetailsModal && createPortal(
-        <div className="modal-overlay" onClick={closeBatchDetailsModal}>
+        <div className="modal-overlay">
           <div className="modal batch-details-modal" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <h3>📚 Batch Details: {selectedBatch?.name}</h3>
@@ -4038,7 +4093,7 @@ const AdminDashboard = ({ user, onLogout }) => {
                                 <tr key={student.id}>
                                   <td>{student.name}</td>
                                   <td>{student.email}</td>
-                                  <td>{student.batchId || 'N/A'}</td>
+                                  <td>{batches.find(b => b.id === student.batchId)?.name || 'No Batch Assigned'}</td>
                                   <td>
                                     <span className={`status-badge ${student.status}`}>
                                       {student.status}
@@ -4073,8 +4128,8 @@ const AdminDashboard = ({ user, onLogout }) => {
         document.body
       )}
 
-      {/* Toast Notifications */}
-      <ToastContainer />
+      {/* Toast Notifications - Rendered via portal for proper stacking */}
+      {createPortal(<ToastContainer />, document.body)}
     </div>
   );
 };
