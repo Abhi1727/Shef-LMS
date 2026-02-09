@@ -1,7 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { firebaseService, COLLECTIONS } from '../services/firebaseService';
-import { doc, setDoc, getDoc } from 'firebase/firestore';
-import { db } from '../firebase/config';
 import CustomVideoPlayer from './CustomVideoPlayer';
 import './Dashboard-lms.css';
 
@@ -50,27 +48,10 @@ const Dashboard = ({ user, onLogout }) => {
 
   // Load user progress
   const loadUserProgress = useCallback(async () => {
-    if (!user?.id) return;
-    
-    try {
-      const progressRef = doc(db, 'userProgress', user.id);
-      const progressDoc = await getDoc(progressRef);
-      
-      if (progressDoc.exists()) {
-        const data = progressDoc.data();
-        setViewedFiles(data.viewedFiles || []);
-        const progress = Math.round((data.viewedFiles?.length || 0) / 30 * 100);
-        setProgressPercent(progress);
-      } else {
-        setViewedFiles([]);
-        setProgressPercent(0);
-      }
-    } catch (error) {
-      console.error('Error loading user progress:', error);
-      setViewedFiles([]);
-      setProgressPercent(0);
-    }
-  }, [user?.id]);
+    // Firebase-based progress tracking removed; use local defaults.
+    setViewedFiles([]);
+    setProgressPercent(0);
+  }, []);
 
   // Load classroom videos
   const loadClassroomVideos = useCallback(async () => {

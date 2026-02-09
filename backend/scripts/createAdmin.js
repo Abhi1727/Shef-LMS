@@ -1,33 +1,32 @@
-const { db } = require('../config/firebase');
+const { connectMongo } = require('../config/mongo');
 const bcrypt = require('bcryptjs');
+const User = require('../models/User');
 
-// Script to create a proper admin account
+// Script to create or update an admin account in MongoDB
 async function createAdminAccount() {
   try {
     console.log('🔧 Creating admin account...');
-    
+
+    await connectMongo();
+
     // Check if admin already exists
-    const existingAdmin = await db.collection('users')
-      .where('email', '==', 'admin@sheflms.com')
-      .get();
-    
-    if (!existingAdmin.empty) {
-      console.log('⚠️ Admin account already exists. Updating to active status...');
-      const adminDoc = existingAdmin.docs[0];
-      await db.collection('users').doc(adminDoc.id).update({
-        role: 'admin',
-        status: 'active',
-        updatedAt: new Date().toISOString()
-      });
+    const existingAdmin = await User.findOne({ email: 'admin@sheflms.com' }).exec();
+
+    if (existingAdmin) {
+      console.log('⚠️ Admin account already exists. Updating to active status in MongoDB...');
+      existingAdmin.role = 'admin';
+      existingAdmin.status = 'active';
+      existingAdmin.updatedAt = new Date();
+      await existingAdmin.save();
       console.log('✅ Admin account updated successfully!');
       console.log('   Email: admin@sheflms.com');
       console.log('   Status: Active');
       return;
     }
-    
+
     // Create new admin account
     const hashedPassword = await bcrypt.hash('admin123', 10);
-    
+
     const adminData = {
       name: 'System Administrator',
       email: 'admin@sheflms.com',
@@ -38,16 +37,17 @@ async function createAdminAccount() {
       course: 'System Administration',
       phone: '',
       address: '',
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
+      createdAt: new Date(),
+      updatedAt: new Date()
     };
-    
-    const docRef = await db.collection('users').add(adminData);
-    
+
+    const adminUser = new User(adminData);
+    const saved = await adminUser.save();
+
     console.log('✅ Admin account created successfully!');
     console.log('   Email: admin@sheflms.com');
     console.log('   Password: admin123');
-    console.log('   ID: ' + docRef.id);
+    console.log('   ID: ' + saved._id.toString());
     console.log('\n⚠️ IMPORTANT: Please change the default password after first login!');
     console.log('🔗 Login URL: http://localhost:3000/login');
     

@@ -1,19 +1,15 @@
-// Script to verify all classroom videos
-const { db } = require('./config/firebase');
+// Script to verify all classroom videos in MongoDB
+const { connectMongo } = require('./config/mongo');
+const Classroom = require('./models/Classroom');
 
 async function verifyVideos() {
   console.log('📹 Classroom Videos in Database:\n');
   console.log('='.repeat(80));
-  
-  const snapshot = await db.collection('classroom')
-    .where('courseType', '==', 'Cyber Security')
-    .get();
-  
-  const videos = [];
-  snapshot.forEach(doc => {
-    videos.push({ id: doc.id, ...doc.data() });
-  });
-  
+
+  await connectMongo();
+
+  const videos = await Classroom.find({ courseType: 'Cyber Security' }).lean();
+
   // Sort by date
   videos.sort((a, b) => new Date(a.date) - new Date(b.date));
   

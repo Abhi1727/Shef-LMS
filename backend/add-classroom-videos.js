@@ -1,5 +1,6 @@
-// Script to add classroom videos to Firestore
-const { db } = require('./config/firebase');
+// Script to add classroom videos directly to MongoDB Classroom collection
+const { connectMongo } = require('./config/mongo');
+const Classroom = require('./models/Classroom');
 
 const videos = [
   // Original 6 videos (Nov 8-23, 2025) - Found in git history
@@ -127,22 +128,17 @@ const videos = [
 ];
 
 async function addVideos() {
-  console.log('Adding classroom videos to Firestore...\n');
-  
+  console.log('Adding classroom videos to MongoDB classroom collection...\n');
+
   try {
-    // First, let's check if any of these videos already exist
-    const existingSnapshot = await db.collection('classroom').get();
-    const existingTitles = new Set();
-    const existingDriveIds = new Set();
-    
-    existingSnapshot.forEach(doc => {
-      const data = doc.data();
-      existingTitles.add(data.title);
-      existingDriveIds.add(data.driveId);
-    });
-    
-    console.log(`Found ${existingSnapshot.size} existing videos in database\n`);
-    
+    await connectMongo();
+
+    const existingDocs = await Classroom.find({}).select('title driveId').lean();
+    const existingTitles = new Set(existingDocs.map(v => v.title));
+    const existingDriveIds = new Set(existingDocs.map(v => v.driveId));
+
+    console.log(`Found ${existingDocs.length} existing videos in database\n`);
+
     let addedCount = 0;
     let skippedCount = 0;
     
@@ -155,14 +151,14 @@ async function addVideos() {
       }
       
       // Add timestamp fields
-      const videoData = {
+      const videoDoc = new Classroom({
         ...video,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
-      };
-      
-      const docRef = await db.collection('classroom').add(videoData);
-      console.log(`✅ Added: ${video.title} (ID: ${docRef.id})`);
+        createdAt: new Date(),
+        updatedAt: new Date()
+      });
+
+      const saved = await videoDoc.save();
+      console.log(`✅ Added: ${video.title} (ID: ${saved._id.toString()})`);
       addedCount++;
     }
     

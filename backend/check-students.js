@@ -1,17 +1,19 @@
-const { db } = require('./config/firebase');
+const { connectMongo } = require('./config/mongo');
+const User = require('./models/User');
 
 (async () => {
   try {
     console.log('🔍 Checking student data in database...');
-    
-    const usersSnapshot = await db.collection('users').where('role', '==', 'student').get();
-    console.log('📊 Total students in database:', usersSnapshot.size);
-    
-    if (usersSnapshot.size > 0) {
+
+    await connectMongo();
+
+    const students = await User.find({ role: 'student' }).exec();
+    console.log('📊 Total students in database:', students.length);
+
+    if (students.length > 0) {
       console.log('👥 Student list:');
-      usersSnapshot.forEach(doc => {
-        const data = doc.data();
-        console.log(`  - ${data.name} (${data.email}) - ${data.course || 'No course'}`);
+      students.forEach((student) => {
+        console.log(`  - ${student.name} (${student.email}) - ${student.course || 'No course'}`);
       });
     } else {
       console.log('❌ No students found in database');
@@ -19,12 +21,12 @@ const { db } = require('./config/firebase');
 
     // Also check all users to see what roles exist
     console.log('\n🔍 Checking all users...');
-    const allUsersSnapshot = await db.collection('users').get();
-    console.log('📊 Total users in database:', allUsersSnapshot.size);
-    
+    const allUsers = await User.find({}).exec();
+    console.log('📊 Total users in database:', allUsers.length);
+
     const roleCounts = {};
-    allUsersSnapshot.forEach(doc => {
-      const role = doc.data().role || 'unknown';
+    allUsers.forEach((user) => {
+      const role = user.role || 'unknown';
       roleCounts[role] = (roleCounts[role] || 0) + 1;
     });
     

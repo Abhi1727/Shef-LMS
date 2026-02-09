@@ -1,7 +1,9 @@
 const express = require('express');
 const router = express.Router();
 const auth = require('../middleware/auth');
-const { db } = require('../config/firebase');
+const User = require('../models/User');
+const Classroom = require('../models/Classroom');
+const Batch = require('../models/Batch');
 
 // Apply auth middleware to all dashboard routes
 router.use(auth);
@@ -15,24 +17,29 @@ router.get('/classroom', async (req, res) => {
     let userBatchId = tokenUser.batchId || '';
     const userEmail = tokenUser.email || '';
 
-    // Always try to refresh course and batch from Firestore for students
-    // so that newly assigned batches take effect immediately without
-    // requiring the student to log out and log back in.
+    // Refresh course and batch from Mongo so that newly assigned batches
+    // take effect without requiring re-login.
     try {
       if (tokenUser.id && tokenUser.role === 'student') {
-        const userDoc = await db.collection('users').doc(tokenUser.id).get();
-        if (userDoc.exists) {
-          const freshData = userDoc.data();
-          if (freshData.course) {
-            userCourse = freshData.course;
+        const mongoUser = await User.findOne({
+          $or: [
+            { _id: tokenUser.id },
+            { firestoreId: tokenUser.id },
+            { email: userEmail }
+          ]
+        }).exec();
+
+        if (mongoUser) {
+          if (mongoUser.course) {
+            userCourse = mongoUser.course;
           }
-          if (typeof freshData.batchId !== 'undefined') {
-            userBatchId = freshData.batchId || '';
+          if (typeof mongoUser.batchId !== 'undefined') {
+            userBatchId = mongoUser.batchId || '';
           }
         }
       }
     } catch (lookupError) {
-      console.error('Dashboard classroom: failed to refresh user from Firestore, using token values instead:', lookupError);
+      console.error('Dashboard classroom: failed to refresh user from Mongo, using token values instead:', lookupError);
     }
     
     console.log('🔍 Dashboard Debug - User info:', {
@@ -42,81 +49,42 @@ router.get('/classroom', async (req, res) => {
       role: tokenUser.role
     });
     
-    // Get all classroom videos
-    const snapshot = await db.collection('classroom').get();
-    const allVideos = [];
-    snapshot.forEach(doc => {
-      allVideos.push({ id: doc.id, ...doc.data() });
-    });
+    // Get all classroom videos from Mongo
+    const classroomDocs = await Classroom.find({}).lean().exec();
+    const allVideos = classroomDocs.map(doc => ({ id: String(doc._id), ...doc }));
     
     console.log('🔍 Dashboard Debug - Total videos found:', allVideos.length);
     
-    // Get all batches to map batch names to IDs (one-way)
-    const batchesSnapshot = await db.collection('batches').get();
-    const batchNameToId = {};
-    batchesSnapshot.forEach(doc => {
-      const data = doc.data();
-      if (data.name) {
-        batchNameToId[data.name] = doc.id; // Map batch name to ID
-      }
-    });
-    
-    console.log('🔍 Dashboard Debug - Batch name → ID map:', batchNameToId);
-    const filteredVideos = [];
-    for (const video of allVideos) {
-      // Admin can access all videos
+    // Optionally load batches (currently unused but kept for future logic)
+    await Batch.find({}).lean().exec();
+
+    // Filter videos based on user's role, course, and batch (Mongo-only, no Firestore)
+    const filteredVideos = allVideos.filter(video => {
+      const videoCourse = video.courseId || video.course || '';
+
+      // Admin can see everything
       if (tokenUser.role === 'admin') {
-        filteredVideos.push(video);
-        continue;
+        return true;
       }
-      
-      // Teacher can access videos for their courses
+
+      // Teachers see videos for their course
       if (tokenUser.role === 'teacher') {
-        const videoCourse = video.courseId || video.course;
-        if (videoCourse === userCourse) {
-          filteredVideos.push(video);
-        }
-        continue;
+        return !!videoCourse && !!userCourse && videoCourse === userCourse;
       }
-      
-      // Student access logic - require both course AND batch to match
+
+      // Students must match course; if a video is batch-specific, batch must match too
       if (tokenUser.role === 'student') {
-        // Check if video matches user's course (support both 'course' and 'courseId' fields)
-        const videoCourse = video.courseId || video.course;
-        const courseMatch = videoCourse === userCourse;
+        const courseMatch = !!videoCourse && !!userCourse && videoCourse === userCourse;
+        if (!courseMatch) return false;
 
-        // Get student's batch information to check batch name
-        let studentBatchName = null;
-        if (userBatchId) {
-          try {
-            const batchDoc = await db.collection('batches').doc(userBatchId).get();
-            if (batchDoc.exists) {
-              const batchData = batchDoc.data();
-              studentBatchName = batchData.name;
-            }
-          } catch (error) {
-            console.error('Error fetching student batch info:', error);
-          }
+        if (video.batchId) {
+          return !!userBatchId && String(video.batchId) === String(userBatchId);
         }
-
-        // Check batch match - require both batchId AND batch name to match
-        let batchMatch = false;
-        if (video.batchId && userBatchId) {
-          batchMatch = video.batchId === userBatchId;
-          
-          // Additional check: verify batch names match if we have batch data
-          if (batchMatch && studentBatchName && video.batchName) {
-            batchMatch = video.batchName === studentBatchName;
-          }
-        }
-
-        // Student must be enrolled in course AND have matching batch
-        // Domain match alone is not sufficient for access
-        if (courseMatch && batchMatch) {
-          filteredVideos.push(video);
-        }
+        return true;
       }
-    }
+
+      return false;
+    });
 
     console.log('🔍 Dashboard Debug - Filtered videos count:', filteredVideos.length);
     

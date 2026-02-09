@@ -1,7 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { firebaseService, COLLECTIONS } from '../services/firebaseService';
-import { doc, setDoc, getDoc } from 'firebase/firestore';
-import { db } from '../firebase/config';
 import CustomVideoPlayer from './CustomVideoPlayer';
 import StudentProfile from './StudentProfile';
 import { YouTubeUtils } from '../utils/youtubeUtils';
@@ -245,117 +243,40 @@ const Dashboard = ({ user, onLogout }) => {
 
   // Load user's progress from Firebase and initialize if new
   const loadUserProgress = useCallback(async () => {
-    if (!user?.id) return;
-    
-    try {
-      const progressRef = doc(db, 'userProgress', user.id);
-      const progressDoc = await getDoc(progressRef);
-      
-      if (progressDoc.exists()) {
-        // Load existing progress
-        const data = progressDoc.data();
-        setViewedFiles(data.viewedFiles || []);
-        console.log('Loaded existing progress for student:', user.name);
-      } else {
-        // Initialize progress for new student
-        if (user?.currentCourse) {
-          const courseSlug = getCourseSlug();
-          await setDoc(progressRef, {
-            userId: user.id,
-            currentCourse: user.currentCourse,
-            courseSlug: courseSlug,
-            enrollmentDate: user.enrollmentDate || new Date().toISOString(),
-            viewedFiles: [],
-            completedModules: [],
-            progress: 0,
-            lastUpdated: new Date().toISOString(),
-            status: 'active'
-          });
-          setViewedFiles([]);
-          console.log('Initialized progress for new student:', user.name);
-        }
-      }
-    } catch (error) {
-      // Ignore permission errors from Firestore when client is not authenticated
-      if (!error?.message?.includes('Missing or insufficient permissions')) {
-        console.error('Error loading/initializing user progress:', error);
-      }
-    }
-  }, [user?.id, user?.currentCourse, user?.name, getCourseSlug]);
+    // Firebase-based progress tracking has been removed.
+    // Keep local state only so UI continues to work.
+    setViewedFiles([]);
+    setVideoWatchHistory([]);
+  }, []);
 
-  // Save progress to Firebase
+  // Save progress (no-op now that Firebase is removed)
   const saveUserProgress = async (newViewedFiles) => {
-    if (!user?.id) return;
-    try {
-      const progressRef = doc(db, 'userProgress', user.id);
-      await setDoc(progressRef, {
-        viewedFiles: newViewedFiles,
-        lastUpdated: new Date().toISOString(),
-        userId: user.id,
-        userEmail: user.email
-      }, { merge: true });
-    } catch (error) {
-      if (!error?.message?.includes('Missing or insufficient permissions')) {
-        console.error('Error saving user progress:', error);
-      }
-    }
+    setViewedFiles(newViewedFiles);
   };
 
-  // Save video watching history to Firebase
+  // Save video watching history (local only)
   const saveVideoWatchHistory = async (newVideoWatchHistory) => {
-    if (!user?.id) return;
-    try {
-      const progressRef = doc(db, 'userProgress', user.id);
-      await setDoc(progressRef, {
-        videoWatchHistory: newVideoWatchHistory,
-        lastUpdated: new Date().toISOString(),
-        userId: user.id,
-        userEmail: user.email
-      }, { merge: true });
-    } catch (error) {
-      if (!error?.message?.includes('Missing or insufficient permissions')) {
-        console.error('Error saving video watch history:', error);
-      }
-    }
+    setVideoWatchHistory(newVideoWatchHistory);
   };
 
-  // Update video progress tracking
+  // Update video progress tracking (local only)
   const updateVideoProgress = async (videoId, progress, position) => {
-    if (!user?.id) return;
-    
-    try {
-      const progressRef = doc(db, 'userProgress', user.id);
-      const progressDoc = await getDoc(progressRef);
-      
-      if (progressDoc.exists()) {
-        const data = progressDoc.data();
-        const videoHistory = data.videoWatchHistory || [];
-        
-        // Find and update the video record
-        const updatedHistory = videoHistory.map(record => {
-          if (record.videoId === videoId) {
-            return {
-              ...record,
-              watchProgress: Math.max(record.watchProgress, progress),
-              lastWatchedPosition: position,
-              lastWatchedAt: new Date().toISOString(),
-              isCompleted: progress >= 95 // Mark as completed if 95% or more watched
-            };
-          }
-          return record;
-        });
-        
-        await setDoc(progressRef, {
-          videoWatchHistory: updatedHistory,
-          lastUpdated: new Date().toISOString()
-        }, { merge: true });
-        
-        // Update local state
-        setVideoWatchHistory(updatedHistory);
-      }
-    } catch (error) {
-      console.error('Error updating video progress:', error);
-    }
+    setVideoWatchHistory(prevHistory => {
+      const videoHistory = prevHistory || [];
+      const updatedHistory = videoHistory.map(record => {
+        if (record.videoId === videoId) {
+          return {
+            ...record,
+            watchProgress: Math.max(record.watchProgress, progress),
+            lastWatchedPosition: position,
+            lastWatchedAt: new Date().toISOString(),
+            isCompleted: progress >= 95
+          };
+        }
+        return record;
+      });
+      return updatedHistory;
+    });
   };
 
   // Get video resume position
@@ -560,33 +481,10 @@ const Dashboard = ({ user, onLogout }) => {
   useEffect(() => {
     if (user?.id) {
       loadUserProgress();
-      loadVideoWatchHistory();
-    }
-  }, [user?.id, loadUserProgress]);
-
-  // Load video watching history from Firebase
-  const loadVideoWatchHistory = useCallback(async () => {
-    if (!user?.id) return;
-    
-    try {
-      const progressRef = doc(db, 'userProgress', user.id);
-      const progressDoc = await getDoc(progressRef);
-      
-      if (progressDoc.exists()) {
-        const data = progressDoc.data();
-        setVideoWatchHistory(data.videoWatchHistory || []);
-        console.log('Loaded video watch history for student:', user.name);
-      } else {
-        setVideoWatchHistory([]);
-        console.log('No video watch history found for student:', user.name);
-      }
-    } catch (error) {
-      if (!error?.message?.includes('Missing or insufficient permissions')) {
-        console.error('Error loading video watch history:', error);
-      }
+      // Video watch history is now tracked only in local state
       setVideoWatchHistory([]);
     }
-  }, [user?.id]);
+  }, [user?.id, loadUserProgress]);
 
   // Load course content from API
   const loadCourseContent = useCallback(async () => {

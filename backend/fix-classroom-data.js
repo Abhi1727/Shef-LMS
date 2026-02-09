@@ -1,21 +1,24 @@
-// Script to check and fix classroom video data in Firestore
-const { db } = require('./config/firebase');
+// Script to check and fix classroom video data in MongoDB
+const { connectMongo } = require('./config/mongo');
+const Classroom = require('./models/Classroom');
 
 async function fixClassroomData() {
   console.log('Checking classroom collection...');
-  
-  const snapshot = await db.collection('classroom').get();
-  
-  if (snapshot.empty) {
+
+  await connectMongo();
+
+  const documents = await Classroom.find({}).exec();
+
+  if (!documents.length) {
     console.log('No videos found in classroom collection.');
     return;
   }
-  
-  console.log(`Found ${snapshot.size} videos. Checking data...`);
-  
-  for (const doc of snapshot.docs) {
-    const data = doc.data();
-    console.log('\nVideo ID:', doc.id);
+
+  console.log(`Found ${documents.length} videos. Checking data...`);
+
+  for (const doc of documents) {
+    const data = doc.toObject();
+    console.log('\nVideo ID:', doc._id.toString());
     console.log('Title:', data.title);
     console.log('Drive ID:', data.driveId);
     console.log('Course Type:', data.courseType);
@@ -24,11 +27,10 @@ async function fixClassroomData() {
     // If it has 'course' but not 'courseType', fix it
     if (data.course && !data.courseType) {
       console.log('  → Fixing: Moving "course" to "courseType"');
-      await db.collection('classroom').doc(doc.id).update({
-        courseType: data.course
-      });
+      doc.courseType = data.course;
+      await doc.save();
     }
-    
+
     // If driveId contains a URL, extract just the ID
     if (data.driveId && data.driveId.includes('drive.google.com')) {
       const match = data.driveId.match(/\/file\/d\/([a-zA-Z0-9_-]+)/);
@@ -37,9 +39,8 @@ async function fixClassroomData() {
         console.log('  → Fixing Drive ID: Extracting from URL');
         console.log('    Old:', data.driveId);
         console.log('    New:', extractedId);
-        await db.collection('classroom').doc(doc.id).update({
-          driveId: extractedId
-        });
+        doc.driveId = extractedId;
+        await doc.save();
       }
     }
   }

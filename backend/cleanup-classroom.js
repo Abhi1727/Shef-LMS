@@ -1,28 +1,30 @@
-const { db } = require('./config/firebase');
+const { connectMongo } = require('./config/mongo');
+const Classroom = require('./models/Classroom');
 require('dotenv').config();
 
 async function cleanUpClassroomData() {
   try {
     console.log('🧹 Starting comprehensive classroom data cleanup...\n');
-    
-    // Get all documents
-    const snapshot = await db.collection('classroom').get();
-    
-    if (snapshot.empty) {
+
+    await connectMongo();
+
+    const documents = await Classroom.find({}).exec();
+
+    if (!documents.length) {
       console.log('📭 No documents found in classroom collection');
       return;
     }
-    
-    console.log(`📊 Found ${snapshot.size} documents to analyze\n`);
-    
+
+    console.log(`📊 Found ${documents.length} documents to analyze\n`);
+
     let deletedCount = 0;
     let failedCount = 0;
     let keptCount = 0;
-    
-    for (const doc of snapshot.docs) {
-      const data = doc.data();
-      const docId = doc.id;
-      
+
+    for (const doc of documents) {
+      const data = doc.toObject();
+      const docId = doc._id.toString();
+
       // Delete if:
       // 1. No video source OR empty video source
       // 2. Title contains "Personal Meeting Room" (these are auto-generated duplicates)
@@ -37,7 +39,7 @@ async function cleanUpClassroomData() {
       
       if (shouldDelete) {
         try {
-          await doc.ref.delete();
+          await Classroom.findByIdAndDelete(doc._id);
           console.log(`🗑️ Deleted: ${docId} - ${data.title || 'No title'}`);
           deletedCount++;
         } catch (error) {
@@ -54,15 +56,15 @@ async function cleanUpClassroomData() {
     console.log(`   ✅ Successfully deleted: ${deletedCount} documents`);
     console.log(`   ❌ Failed to delete: ${failedCount} documents`);
     console.log(`   📋 Kept: ${keptCount} documents`);
-    console.log(`   📈 Total processed: ${snapshot.size} documents`);
-    
+    console.log(`   📈 Total processed: ${documents.length} documents`);
+
     // Show remaining documents
     if (keptCount > 0) {
       console.log(`\n📋 Remaining documents:`);
-      const remainingSnapshot = await db.collection('classroom').get();
-      remainingSnapshot.forEach((doc) => {
-        const data = doc.data();
-        console.log(`   📹 ${data.title || 'No title'} (${data.videoSource || 'no source'}) - ${doc.id}`);
+      const remaining = await Classroom.find({}).exec();
+      remaining.forEach((doc) => {
+        const data = doc.toObject();
+        console.log(`   📹 ${data.title || 'No title'} (${data.videoSource || 'no source'}) - ${doc._id.toString()}`);
       });
     }
     
@@ -75,10 +77,12 @@ async function cleanUpClassroomData() {
 async function deleteByTitlePattern(pattern) {
   try {
     console.log(`🗑️ Deleting documents with title pattern: ${pattern}`);
-    
-    const snapshot = await db.collection('classroom').get();
-    
-    if (snapshot.empty) {
+
+    await connectMongo();
+
+    const documents = await Classroom.find({}).exec();
+
+    if (!documents.length) {
       console.log('📭 No documents found');
       return;
     }
@@ -86,17 +90,17 @@ async function deleteByTitlePattern(pattern) {
     let deletedCount = 0;
     let failedCount = 0;
     
-    for (const doc of snapshot.docs) {
-      const data = doc.data();
+    for (const doc of documents) {
+      const data = doc.toObject();
       const title = data.title || '';
-      
+
       if (title.includes(pattern)) {
         try {
-          await doc.ref.delete();
-          console.log(`✅ Deleted: ${doc.id} - ${title}`);
+          await Classroom.findByIdAndDelete(doc._id);
+          console.log(`✅ Deleted: ${doc._id.toString()} - ${title}`);
           deletedCount++;
         } catch (error) {
-          console.error(`❌ Failed to delete ${doc.id}:`, error);
+          console.error(`❌ Failed to delete ${doc._id.toString()}:`, error);
           failedCount++;
         }
       }

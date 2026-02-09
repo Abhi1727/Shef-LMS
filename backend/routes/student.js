@@ -1,9 +1,10 @@
 const express = require('express');
 const router = express.Router();
-const { db } = require('../config/firebase');
 const auth = require('../middleware/auth');
 const { roleAuth } = require('../middleware/roleAuth');
 const bcrypt = require('bcryptjs');
+const User = require('../models/User');
+const Batch = require('../models/Batch');
 
 // Apply auth and student role check to all student routes
 router.use(auth);
@@ -31,25 +32,28 @@ router.get('/profile', async (req, res) => {
       return res.json(demoProfile);
     }
     
-    // Get student data from Firestore
-    const userDoc = await db.collection('users').doc(userId).get();
-    
-    if (!userDoc.exists) {
+    // Get student data from Mongo
+    const userDoc = await User.findOne({
+      $or: [
+        { _id: userId },
+        { firestoreId: userId }
+      ]
+    }).exec();
+
+    if (!userDoc) {
       return res.status(404).json({ message: 'Student profile not found' });
     }
-
-    const userData = userDoc.data();
     
     // Return only necessary profile information (exclude password)
     const profileData = {
-      id: userDoc.id,
-      name: userData.name,
-      email: userData.email,
-      currentCourse: userData.course || userData.currentCourse,
-      status: userData.status,
-      role: userData.role,
-      createdAt: userData.createdAt,
-      updatedAt: userData.updatedAt
+      id: String(userDoc._id),
+      name: userDoc.name,
+      email: userDoc.email,
+      currentCourse: userDoc.course || userDoc.currentCourse,
+      status: userDoc.status,
+      role: userDoc.role,
+      createdAt: userDoc.createdAt,
+      updatedAt: userDoc.updatedAt
     };
 
     res.json(profileData);
@@ -113,22 +117,24 @@ router.put('/profile', async (req, res) => {
       return res.json(demoResponse);
     }
 
-    // Check if email is being changed and if new email already exists
-    const userDoc = await db.collection('users').doc(userId).get();
-    
-    if (!userDoc.exists) {
+    // Check if email is being changed and if new email already exists (Mongo)
+    const userDoc = await User.findOne({
+      $or: [
+        { _id: userId },
+        { firestoreId: userId }
+      ]
+    }).exec();
+
+    if (!userDoc) {
       return res.status(404).json({ message: 'Student profile not found' });
     }
 
-    const currentEmail = userDoc.data()?.email;
+    const currentEmail = userDoc.email;
 
     if (currentEmail !== normalizedEmail) {
       // Email is being changed, check for duplicates
-      const existingUserSnapshot = await db.collection('users')
-        .where('email', '==', normalizedEmail)
-        .get();
-      
-      if (!existingUserSnapshot.empty) {
+      const existingUser = await User.findOne({ email: normalizedEmail }).exec();
+      if (existingUser) {
         return res.status(400).json({ message: 'Email already exists' });
       }
     }
@@ -148,23 +154,14 @@ router.put('/profile', async (req, res) => {
       updateData.address = address.trim();
     }
 
-    console.log('🔧 Updating Firestore with data:', updateData);
-
-    // Update student profile in Firestore
-    await db.collection('users').doc(userId).update(updateData);
-
-    // Get updated profile data to return
-    const updatedDoc = await db.collection('users').doc(userId).get();
-    const updatedData = updatedDoc.data();
-
     const responseProfile = {
-      id: userId,
-      name: updatedData.name,
-      email: updatedData.email,
-      currentCourse: updatedData.course || updatedData.currentCourse,
-      status: updatedData.status,
-      role: updatedData.role,
-      updatedAt: updatedData.updatedAt
+      id: String(userDoc._id),
+      name: updateData.name,
+      email: updateData.email,
+      currentCourse: userDoc.course || userDoc.currentCourse,
+      status: userDoc.status,
+      role: userDoc.role,
+      updatedAt: updateData.updatedAt
     };
 
     console.log('✅ Student profile updated in database:', responseProfile);
@@ -217,15 +214,19 @@ router.put('/password', async (req, res) => {
       }
     }
 
-    // Get current student data
-    const userDoc = await db.collection('users').doc(userId).get();
+    // Get current student data from Mongo
+    const userDoc = await User.findOne({
+      $or: [
+        { _id: userId },
+        { firestoreId: userId }
+      ]
+    }).exec();
     
-    if (!userDoc.exists) {
+    if (!userDoc) {
       return res.status(404).json({ message: 'Student not found' });
     }
 
-    const userData = userDoc.data();
-    const storedPassword = userData.password;
+    const storedPassword = userDoc.password;
 
     console.log('🔧 Verifying current password for user:', userId);
 
@@ -246,11 +247,10 @@ router.put('/password', async (req, res) => {
     const salt = await bcrypt.genSalt(10);
     const hashedNewPassword = await bcrypt.hash(newPassword, salt);
 
-    // Update password in Firestore
-    await db.collection('users').doc(userId).update({
-      password: hashedNewPassword,
-      updatedAt: new Date().toISOString()
-    });
+    // Update password in Mongo
+    userDoc.password = hashedNewPassword;
+    userDoc.updatedAt = new Date();
+    await userDoc.save();
 
     console.log('✅ Password updated in database for user:', userId);
 
@@ -267,38 +267,40 @@ router.get('/batch-info', async (req, res) => {
   try {
     const userId = req.user.id;
     
-    // Get student data to find batchId
-    const userDoc = await db.collection('users').doc(userId).get();
+    // Get student data to find batchId (Mongo)
+    const userDoc = await User.findOne({
+      $or: [
+        { _id: userId },
+        { firestoreId: userId }
+      ]
+    }).exec();
     
-    if (!userDoc.exists) {
+    if (!userDoc) {
       return res.status(404).json({ message: 'Student not found' });
     }
 
-    const userData = userDoc.data();
-    const batchId = userData.batchId;
+    const batchId = userDoc.batchId;
 
     if (!batchId) {
       return res.json({ message: 'Student not assigned to any batch' });
     }
 
-    // Get batch information
-    const batchDoc = await db.collection('batches').doc(batchId).get();
+    // Get batch information from Mongo
+    const batchDoc = await Batch.findById(batchId).lean().exec();
     
-    if (!batchDoc.exists) {
+    if (!batchDoc) {
       return res.status(404).json({ message: 'Batch not found' });
     }
 
-    const batchData = batchDoc.data();
-
     res.json({
-      id: batchId,
-      name: batchData.name,
-      course: batchData.course,
-      teacherName: batchData.teacherName,
-      schedule: batchData.schedule,
-      startDate: batchData.startDate,
-      endDate: batchData.endDate,
-      status: batchData.status
+      id: String(batchDoc._id),
+      name: batchDoc.name,
+      course: batchDoc.course,
+      teacherName: batchDoc.teacherName,
+      schedule: batchDoc.schedule,
+      startDate: batchDoc.startDate,
+      endDate: batchDoc.endDate,
+      status: batchDoc.status
     });
   } catch (err) {
     console.error('Error fetching batch info:', err);
@@ -312,32 +314,17 @@ router.get('/course-progress', async (req, res) => {
   try {
     const userId = req.user.id;
     
-    // Get progress data from userProgress collection
-    const progressDoc = await db.collection('userProgress').doc(userId).get();
-    
-    if (!progressDoc.exists) {
-      return res.json({
-        message: 'No progress data found',
-        progress: {
-          viewedFiles: [],
-          completedModules: [],
-          progress: 0,
-          lastUpdated: null
-        }
-      });
-    }
-
-    const progressData = progressDoc.data();
-
-    res.json({
-      viewedFiles: progressData.viewedFiles || [],
-      completedModules: progressData.completedModules || [],
-      progress: progressData.progress || 0,
-      lastUpdated: progressData.lastUpdated,
-      enrollmentDate: progressData.enrollmentDate,
-      currentCourse: progressData.currentCourse,
-      courseSlug: progressData.courseSlug,
-      status: progressData.status || 'active'
+    // TODO: Implement Mongo-backed course progress tracking.
+    // For now, return an empty progress structure to keep the
+    // endpoint working without Firebase.
+    return res.json({
+      message: 'No progress data found',
+      progress: {
+        viewedFiles: [],
+        completedModules: [],
+        progress: 0,
+        lastUpdated: null
+      }
     });
   } catch (err) {
     console.error('Error fetching course progress:', err);

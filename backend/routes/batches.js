@@ -1,7 +1,8 @@
 const express = require('express');
 const router = express.Router();
-const { db } = require('../config/firebase');
 const { isAdmin } = require('../middleware/roleAuth');
+const Batch = require('../models/Batch');
+const User = require('../models/User');
 
 // @route   POST /api/batches
 // @desc    Create a new batch
@@ -17,27 +18,28 @@ router.post('/', isAdmin, async (req, res) => {
       });
     }
 
-    const batchData = {
+    const batch = new Batch({
       name,
       course,
-      startDate: startDate || new Date().toISOString().split('T')[0],
-      endDate,
+      startDate: startDate ? new Date(startDate) : new Date(),
+      endDate: endDate ? new Date(endDate) : null,
       teacherId,
       teacherName,
       students: [],
       schedule: schedule || { days: [], time: '' },
       status: 'active',
-      createdAt: new Date().toISOString()
-    };
+      createdAt: new Date(),
+      updatedAt: new Date()
+    });
 
-    const batchRef = await db.collection('batches').add(batchData);
+    const savedBatch = await batch.save();
 
     res.json({
       success: true,
       message: 'Batch created successfully',
       batch: {
-        id: batchRef.id,
-        ...batchData
+        id: String(savedBatch._id),
+        ...savedBatch.toObject()
       }
     });
   } catch (error) {
@@ -54,13 +56,9 @@ router.post('/', isAdmin, async (req, res) => {
 // @access  Private
 router.get('/', async (req, res) => {
   try {
-    const batchesSnapshot = await db.collection('batches').get();
+    const batchesDocs = await Batch.find({}).lean().exec();
 
-    const batches = [];
-    batchesSnapshot.forEach(doc => {
-      batches.push({ id: doc.id, ...doc.data() });
-    });
-
+    const batches = batchesDocs.map(doc => ({ id: String(doc._id), ...doc }));
     res.json({
       success: true,
       batches
@@ -89,55 +87,64 @@ router.put('/:id/students', isAdmin, async (req, res) => {
       });
     }
 
-    const batchDoc = await db.collection('batches').doc(batchId).get();
+    const batchDoc = await Batch.findById(batchId).exec();
     
-    if (!batchDoc.exists) {
+    if (!batchDoc) {
       return res.status(404).json({ 
         success: false, 
         message: 'Batch not found' 
       });
     }
 
-    const batchData = batchDoc.data();
-
     // Remove these students from any other batches first so
     // that no student ends up in multiple batches.
-    const allBatchesSnapshot = await db.collection('batches').get();
-    const removalPromises = [];
+    // Remove these students from any other batches first so
+    // that no student ends up in multiple batches.
+    const allBatches = await Batch.find({}).exec();
 
-    allBatchesSnapshot.forEach(doc => {
-      if (doc.id === batchId) return; // Skip current batch
+    await Promise.all(
+      allBatches
+        .filter(doc => String(doc._id) !== String(batchId))
+        .map(doc => {
+          const existingStudents = doc.students || [];
+          const hasOverlap = studentIds.some(id => existingStudents.includes(id));
+          if (!hasOverlap) return Promise.resolve();
 
-      const data = doc.data();
-      const existingStudents = data.students || [];
-
-      const hasOverlap = studentIds.some(id => existingStudents.includes(id));
-      if (hasOverlap) {
-        const filteredStudents = existingStudents.filter(id => !studentIds.includes(id));
-        removalPromises.push(doc.ref.update({ students: filteredStudents }));
-      }
-    });
-
-    await Promise.all(removalPromises);
+          doc.students = existingStudents.filter(id => !studentIds.includes(id));
+          doc.updatedAt = new Date();
+          return doc.save();
+        })
+    );
 
     // Now add students to the target batch (avoid duplicates)
-    const currentStudents = batchData.students || [];
+    const currentStudents = batchDoc.students || [];
     const updatedStudents = [...new Set([...currentStudents, ...studentIds])];
 
-    await db.collection('batches').doc(batchId).update({
-      students: updatedStudents
-    });
+    batchDoc.students = updatedStudents;
+    batchDoc.updatedAt = new Date();
+    await batchDoc.save();
 
-    // Update students with their new batchId and align course
-    const batchCourse = batchData.course || null;
-    const updatePromises = studentIds.map(studentId => {
-      const updatePayload = { batchId };
-      if (batchCourse) {
-        updatePayload.course = batchCourse;
-      }
-      return db.collection('users').doc(studentId).update(updatePayload);
-    });
-    await Promise.all(updatePromises);
+    // Update students with their new batchId and align course in Mongo
+    const batchCourse = batchDoc.course || null;
+    await Promise.all(
+      studentIds.map(async (studentId) => {
+        const user = await User.findOne({
+          $or: [
+            { _id: studentId },
+            { firestoreId: studentId }
+          ]
+        }).exec();
+
+        if (!user) return;
+
+        user.batchId = String(batchDoc._id);
+        if (batchCourse) {
+          user.course = batchCourse;
+        }
+        user.updatedAt = new Date();
+        await user.save();
+      })
+    );
 
     res.json({
       success: true,
@@ -159,27 +166,32 @@ router.delete('/:batchId/students/:studentId', isAdmin, async (req, res) => {
   try {
     const { batchId, studentId } = req.params;
 
-    const batchRef = db.collection('batches').doc(batchId);
-    const batchDoc = await batchRef.get();
+    const batchDoc = await Batch.findById(batchId).exec();
 
-    if (!batchDoc.exists) {
+    if (!batchDoc) {
       return res.status(404).json({
         success: false,
         message: 'Batch not found'
       });
     }
 
-    const batchData = batchDoc.data();
-    const currentStudents = batchData.students || [];
-    const updatedStudents = currentStudents.filter(id => id !== studentId);
+    const currentStudents = batchDoc.students || [];
+    batchDoc.students = currentStudents.filter(id => id !== studentId);
+    batchDoc.updatedAt = new Date();
+    await batchDoc.save();
 
-    await batchRef.update({ students: updatedStudents });
+    // Clear batch assignment on the student document in Mongo, if it still exists
+    const user = await User.findOne({
+      $or: [
+        { _id: studentId },
+        { firestoreId: studentId }
+      ]
+    }).exec();
 
-    // Clear batch assignment on the student document, if it still exists
-    const studentRef = db.collection('users').doc(studentId);
-    const studentDoc = await studentRef.get();
-    if (studentDoc.exists) {
-      await studentRef.update({ batchId: null });
+    if (user) {
+      user.batchId = null;
+      user.updatedAt = new Date();
+      await user.save();
     }
 
     res.json({

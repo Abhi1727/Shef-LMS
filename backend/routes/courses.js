@@ -1,17 +1,14 @@
 const express = require('express');
 const router = express.Router();
-const { db } = require('../config/firebase');
 const auth = require('../middleware/auth');
+const Course = require('../models/Course');
 
 // @route   GET /api/courses
 // @desc    Get all courses
 router.get('/', async (req, res) => {
   try {
-    // Try to get courses from Firestore
-    const coursesSnapshot = await db.collection('courses').get();
-    
-    if (coursesSnapshot.empty) {
-      // Return demo courses if DB is empty
+    const courses = await Course.find({}).lean().exec();
+    if (!courses || courses.length === 0) {
       const demoCourses = [
         {
           _id: '1',
@@ -33,19 +30,14 @@ router.get('/', async (req, res) => {
           modules: 10,
           progress: 60,
           enrolled: 856,
-          thumbnail: '�'
+          thumbnail: '🛡️'
         }
       ];
       return res.json(demoCourses);
     }
 
-    // Convert Firestore docs to array
-    const courses = [];
-    coursesSnapshot.forEach(doc => {
-      courses.push({ id: doc.id, ...doc.data() });
-    });
-
-    res.json(courses);
+    const normalized = courses.map(c => ({ id: String(c._id), ...c }));
+    res.json(normalized);
   } catch (err) {
     console.error(err.message);
     res.status(500).send('Server error');
@@ -56,11 +48,11 @@ router.get('/', async (req, res) => {
 // @desc    Get course by ID
 router.get('/:id', async (req, res) => {
   try {
-    const courseDoc = await db.collection('courses').doc(req.params.id).get();
-    if (!courseDoc.exists) {
+    const course = await Course.findById(req.params.id).lean().exec();
+    if (!course) {
       return res.status(404).json({ message: 'Course not found' });
     }
-    res.json({ id: courseDoc.id, ...courseDoc.data() });
+    res.json({ id: String(course._id), ...course });
   } catch (err) {
     console.error(err.message);
     res.status(500).send('Server error');
@@ -73,10 +65,11 @@ router.post('/', auth, async (req, res) => {
   try {
     const courseData = {
       ...req.body,
-      createdAt: new Date().toISOString()
+      createdAt: new Date()
     };
-    const courseRef = await db.collection('courses').add(courseData);
-    res.json({ id: courseRef.id, ...courseData });
+    const course = new Course(courseData);
+    const saved = await course.save();
+    res.json({ id: String(saved._id), ...saved.toObject() });
   } catch (err) {
     console.error(err.message);
     res.status(500).send('Server error');

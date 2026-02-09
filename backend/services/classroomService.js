@@ -1,272 +1,122 @@
-const { storage, db } = require('../config/firebase');
-const path = require('path');
-const crypto = require('crypto');
+const Classroom = require('../models/Classroom');
 
 class ClassroomService {
-  /**
-   * Upload video file to Firebase Storage
-   * @param {Object} file - Multer file object
-   * @param {Object} metadata - Lecture metadata
-   * @returns {Promise<Object>} - Storage file info
-   */
-  async uploadVideo(file, metadata) {
-    try {
-      // Generate unique filename
-      const fileExtension = path.extname(file.originalname);
-      const uniqueFilename = `lecture_${Date.now()}_${crypto.randomBytes(4).toString('hex')}${fileExtension}`;
-      
-      // Define storage path (organized by course/year)
-      const storagePath = `lectures/${metadata.courseId}/${new Date().getFullYear()}/${uniqueFilename}`;
-      
-      // Get reference to Firebase Storage bucket
-      const bucket = storage.bucket();
-      const fileRef = bucket.file(storagePath);
-      
-      // Upload file to Firebase Storage
-      await fileRef.save(file.buffer, {
-        metadata: {
-          contentType: file.mimetype,
-          metadata: {
-            originalName: file.originalname,
-            uploadedBy: metadata.uploadedBy,
-            courseId: metadata.courseId,
-            title: metadata.title
-          }
-        }
-      });
-      
-      // Make file publicly accessible (but we'll use signed URLs)
-      await fileRef.makePublic();
-      
-      return {
-        filename: uniqueFilename,
-        storagePath: storagePath,
-        size: file.size,
-        contentType: file.mimetype,
-        originalName: file.originalname
-      };
-    } catch (error) {
-      console.error('Error uploading video to Firebase Storage:', error);
-      throw new Error('Failed to upload video to storage');
-    }
+  // Direct file uploads and signed URLs are no longer supported in this
+  // Firebase-free version. Admins should use YouTube/Drive links instead.
+  async uploadVideo() {
+    throw new Error('Direct video upload is disabled. Use YouTube/Drive links instead.');
   }
 
-  /**
-   * Generate signed URL for video playback
-   * @param {string} storagePath - Firebase Storage file path
-   * @param {number} expiresIn - URL expiration time in seconds (default: 2 hours)
-   * @returns {Promise<string>} - Signed URL
-   */
-  async getSignedUrl(storagePath, expiresIn = 7200) {
-    try {
-      const bucket = storage.bucket();
-      const fileRef = bucket.file(storagePath);
-      
-      // Check if file exists
-      const [exists] = await fileRef.exists();
-      if (!exists) {
-        throw new Error('Video file not found in storage');
-      }
-      
-      // Generate signed URL
-      const [signedUrl] = await fileRef.getSignedUrl({
-        action: 'read',
-        expires: Date.now() + (expiresIn * 1000)
-      });
-      
-      return signedUrl;
-    } catch (error) {
-      console.error('Error generating signed URL:', error);
-      throw new Error('Failed to generate video access URL');
-    }
+  async getSignedUrl() {
+    throw new Error('Signed URL generation is disabled (no Firebase Storage).');
   }
 
-  /**
-   * Save lecture metadata to Firestore
-   * @param {Object} lectureData - Lecture metadata
-   * @returns {Promise<string>} - Lecture document ID
-   */
+  // Save lecture metadata to MongoDB Classroom collection
   async saveLectureMetadata(lectureData) {
     try {
-      const lectureRef = db.collection('classroom').doc();
-      await lectureRef.set({
-        id: lectureRef.id,
+      const doc = new Classroom({
         title: lectureData.title,
+        instructor: lectureData.instructor,
         description: lectureData.description || '',
         courseId: lectureData.courseId,
+        course: lectureData.course,
         batchId: lectureData.batchId || null,
         batchName: lectureData.batchName || null,
         domain: lectureData.domain || null,
-        firebaseStoragePath: lectureData.firebaseStoragePath,
         duration: lectureData.duration || null,
-        uploadedBy: lectureData.uploadedBy,
-        createdAt: new Date().toISOString(),
-        videoSource: 'firebase',
-        isActive: true
+        courseType: lectureData.courseType,
+        type: lectureData.type,
+        date: lectureData.date,
+        videoSource: lectureData.videoSource,
+        zoomUrl: lectureData.zoomUrl,
+        zoomPasscode: lectureData.zoomPasscode,
+        driveId: lectureData.driveId,
+        youtubeVideoId: lectureData.youtubeVideoId,
+        youtubeVideoUrl: lectureData.youtubeVideoUrl,
+        youtubeEmbedUrl: lectureData.youtubeEmbedUrl,
+        storagePath: lectureData.firebaseStoragePath || lectureData.storagePath,
+        uploadedBy: lectureData.uploadedBy
       });
-      
-      return lectureRef.id;
+      const saved = await doc.save();
+      return String(saved._id);
     } catch (error) {
-      console.error('Error saving lecture metadata:', error);
+      console.error('Error saving lecture metadata (Mongo):', error);
       throw new Error('Failed to save lecture metadata');
     }
   }
 
-  /**
-   * Get lecture metadata by ID
-   * @param {string} lectureId - Lecture document ID
-   * @returns {Promise<Object>} - Lecture metadata
-   */
   async getLectureById(lectureId) {
     try {
-      const lectureDoc = await db.collection('classroom').doc(lectureId).get();
-      
-      if (!lectureDoc.exists) {
+      const doc = await Classroom.findById(lectureId).lean().exec();
+      if (!doc) {
         throw new Error('Lecture not found');
       }
-      
-      return { id: lectureDoc.id, ...lectureDoc.data() };
+      return { id: String(doc._id), ...doc };
     } catch (error) {
-      console.error('Error fetching lecture:', error);
+      console.error('Error fetching lecture (Mongo):', error);
       throw error;
     }
   }
 
-  /**
-   * Get lectures accessible to user based on role and enrollment
-   * @param {Object} user - User object
-   * @param {string} courseId - Filter by course ID (optional)
-   * @returns {Promise<Array>} - Array of accessible lectures
-   */
   async getAccessibleLectures(user, courseId = null) {
     try {
-      // Get both Firebase and YouTube videos
-      let firebaseQuery = db.collection('classroom').where('videoSource', '==', 'firebase');
-      let youtubeQuery = db.collection('classroom').where('videoSource', '==', 'youtube-url');
-      
-      // Apply course filter if specified
+      const query = {};
       if (courseId) {
-        firebaseQuery = firebaseQuery.where('courseId', '==', courseId);
-        youtubeQuery = youtubeQuery.where('course', '==', courseId);
+        query.courseId = courseId;
       }
-      
-      const [firebaseSnapshot, youtubeSnapshot] = await Promise.all([
-        firebaseQuery.get(),
-        youtubeQuery.get()
-      ]);
-      
-      const lectures = [];
-      
-      firebaseSnapshot.forEach(doc => {
-        lectures.push({ id: doc.id, ...doc.data() });
-      });
-      
-      youtubeSnapshot.forEach(doc => {
-        lectures.push({ id: doc.id, ...doc.data() });
-      });
-      
-      // Filter based on user role and access permissions
-      const filteredLectures = [];
-      for (const lecture of lectures) {
-        // Admin can access all lectures
-        if (user.role === 'admin') {
-          filteredLectures.push(lecture);
-          continue;
-        }
-        
-        // Teacher can access lectures for their courses
-        if (user.role === 'teacher') {
-          if (lecture.courseId === user.currentCourse || 
-              lecture.courseId === user.course ||
-              lecture.course === user.currentCourse || 
-              lecture.course === user.course) {
-            filteredLectures.push(lecture);
+
+      const docs = await Classroom.find(query).lean().exec();
+
+      return docs
+        .filter(lecture => {
+          if (user.role === 'admin') return true;
+
+          if (user.role === 'teacher') {
+            return (
+              lecture.courseId === user.currentCourse ||
+              lecture.courseId === user.course
+            );
           }
-          continue;
-        }
-        
-        // Student access logic
-        if (user.role === 'student') {
-          // Get student's batch information to check batch name
-          const studentBatchId = user.batchId;
-          let studentBatchName = null;
-          
-          if (studentBatchId) {
-            try {
-              const batchDoc = await db.collection('batches').doc(studentBatchId).get();
-              if (batchDoc.exists) {
-                const batchData = batchDoc.data();
-                studentBatchName = batchData.name;
-              }
-            } catch (error) {
-              console.error('Error fetching student batch info:', error);
+
+          if (user.role === 'student') {
+            const enrolledInCourse =
+              lecture.courseId === user.currentCourse ||
+              lecture.courseId === user.course;
+
+            const batchMatch = lecture.batchId && lecture.batchId === user.batchId;
+
+            if (lecture.batchId) {
+              return !!batchMatch;
             }
+
+            const domainMatch =
+              lecture.domain &&
+              (lecture.domain === user.domain ||
+                user.domain?.toLowerCase().includes(lecture.domain?.toLowerCase()) ||
+                lecture.domain?.toLowerCase().includes(user.domain?.toLowerCase()));
+
+            return enrolledInCourse || domainMatch;
           }
-          
-          // Check if enrolled in course (handle both courseId and course fields)
-          const enrolledInCourse = lecture.courseId === user.currentCourse || 
-                                 lecture.courseId === user.course ||
-                                 lecture.course === user.currentCourse || 
-                                 lecture.course === user.course;
-          
-          // Check batch match - require both batchId AND batch name to match
-          let batchMatch = false;
-          if (lecture.batchId && studentBatchId) {
-            batchMatch = lecture.batchId === studentBatchId;
-            
-            // Additional check: verify batch names match if we have batch data
-            if (batchMatch && studentBatchName && lecture.batchName) {
-              batchMatch = lecture.batchName === studentBatchName;
-            }
-          }
-          
-          // Student must be enrolled in course AND have matching batch
-          // Domain match alone is not sufficient for access
-          if (enrolledInCourse && batchMatch) {
-            filteredLectures.push(lecture);
-          }
-        }
-      }
-      
-      return filteredLectures;
+
+          return false;
+        })
+        .map(doc => ({ id: String(doc._id), ...doc }));
     } catch (error) {
-      console.error('Error fetching accessible lectures:', error);
+      console.error('Error fetching accessible lectures (Mongo):', error);
       throw new Error('Failed to fetch lectures');
     }
   }
 
-  /**
-   * Delete video from Firebase Storage
-   * @param {string} storagePath - Firebase Storage file path
-   * @returns {Promise<void>}
-   */
-  async deleteVideo(storagePath) {
-    try {
-      const bucket = storage.bucket();
-      const fileRef = bucket.file(storagePath);
-      
-      // Check if file exists before deleting
-      const [exists] = await fileRef.exists();
-      if (exists) {
-        await fileRef.delete();
-        console.log('Video deleted from storage:', storagePath);
-      }
-    } catch (error) {
-      console.error('Error deleting video from storage:', error);
-      throw new Error('Failed to delete video from storage');
-    }
+  async deleteVideo() {
+    // No-op: physical file deletion is not supported without Firebase Storage
+    return;
   }
 
-  /**
-   * Delete lecture metadata from Firestore
-   * @param {string} lectureId - Lecture document ID
-   * @returns {Promise<void>}
-   */
   async deleteLectureMetadata(lectureId) {
     try {
-      await db.collection('classroom').doc(lectureId).delete();
+      await Classroom.findByIdAndDelete(lectureId).exec();
     } catch (error) {
-      console.error('Error deleting lecture metadata:', error);
+      console.error('Error deleting lecture metadata (Mongo):', error);
       throw new Error('Failed to delete lecture metadata');
     }
   }

@@ -1,11 +1,14 @@
 const express = require('express');
 const router = express.Router();
-const { db } = require('../config/firebase');
 const auth = require('../middleware/auth');
 const { roleAuth } = require('../middleware/roleAuth');
 const multer = require('multer');
-const classroomService = require('../services/classroomService');
+const mongoose = require('mongoose');
+const User = require('../models/User');
+const Batch = require('../models/Batch');
 const Course = require('../models/Course');
+const Module = require('../models/Module');
+const Classroom = require('../models/Classroom');
 
 // Apply auth and admin role check to all admin routes
 router.use(auth);
@@ -48,6 +51,20 @@ const moduleUpload = multer({
   }
 });
 
+// Generic dynamic models for collections that previously lived only in Firestore
+const genericSchema = new mongoose.Schema({}, { strict: false, timestamps: true });
+const dynamicModels = {};
+function getDynamicModel(collectionName) {
+  if (!dynamicModels[collectionName]) {
+    dynamicModels[collectionName] = mongoose.model(
+      `Dyn_${collectionName}`,
+      genericSchema,
+      collectionName
+    );
+  }
+  return dynamicModels[collectionName];
+}
+
 // @route   GET /api/admin/users/search
 // @desc    Search users by email
 router.get('/users/search', async (req, res) => {
@@ -58,23 +75,18 @@ router.get('/users/search', async (req, res) => {
       return res.status(400).json({ message: 'Email parameter is required' });
     }
 
-    // Search for users with email containing the search term (case insensitive)
-    const usersSnapshot = await db.collection('users')
-      .where('role', '==', 'student')
-      .where('email', '>=', email.toLowerCase())
-      .where('email', '<=', email.toLowerCase() + '\uf8ff')
-      .limit(10) // Limit results to prevent excessive reads
-      .get();
+    const normalized = normalizeEmail(email);
 
-    const users = [];
-    usersSnapshot.forEach(doc => {
-      const userData = doc.data();
-      if (userData.email && userData.email.toLowerCase().includes(email.toLowerCase())) {
-        users.push({ id: doc.id, ...userData });
-      }
-    });
+    const users = await User.find({
+      role: 'student',
+      email: { $regex: normalized, $options: 'i' }
+    })
+      .limit(10)
+      .lean()
+      .exec();
 
-    res.json(users);
+    const mapped = users.map(u => ({ id: String(u._id), ...u }));
+    res.json(mapped);
   } catch (err) {
     console.error('Error searching users:', err);
     res.status(500).json({ message: 'Server error' });
@@ -85,29 +97,9 @@ router.get('/users/search', async (req, res) => {
 // @desc    Get all users (students)
 router.get('/users', async (req, res) => {
   try {
-    const usersSnapshot = await db.collection('users').where('role', '==', 'student').get();
-    const users = [];
-    usersSnapshot.forEach(doc => {
-      const userData = doc.data();
-      const user = { 
-        id: doc.id, 
-        ...userData,
-        // Ensure phone and address are included with fallbacks
-        phone: userData.phone || '',
-        address: userData.address || ''
-      };
-      users.push(user);
-      
-      // Debug logging for student data
-      if (userData.phone || userData.address) {
-        console.log(`Student ${doc.id} has phone/address:`, {
-          phone: userData.phone,
-          address: userData.address
-        });
-      }
-    });
-    console.log(`Total students fetched: ${users.length}`);
-    res.json(users);
+    const users = await User.find({ role: 'student' }).lean().exec();
+    const mapped = users.map(u => ({ id: String(u._id), ...u }));
+    res.json(mapped);
   } catch (err) {
     console.error('Error fetching users:', err);
     res.status(500).json({ message: 'Server error' });
@@ -149,18 +141,16 @@ router.post('/users', async (req, res) => {
       course,
       batchId: batchId || null,
       status: status || 'active',
-      role: role || 'student',
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
+      role: role || 'student'
     };
 
-    // Include optional fields
     if (phone) userData.phone = phone;
     if (address) userData.address = address;
 
-    const docRef = await db.collection('users').add(userData);
+    const user = new User(userData);
+    const saved = await user.save();
 
-    res.json({ id: docRef.id, message: 'User created successfully' });
+    res.json({ id: String(saved._id), message: 'User created successfully' });
   } catch (err) {
     console.error('Error creating user:', err);
     res.status(500).json({ message: 'Server error' });
@@ -174,10 +164,10 @@ router.put('/users/:id', async (req, res) => {
     const { id } = req.params;
     const updateData = {
       ...req.body,
-      updatedAt: new Date().toISOString()
+      updatedAt: new Date()
     };
-    
-    await db.collection('users').doc(id).update(updateData);
+
+    await User.findByIdAndUpdate(id, updateData, { new: true }).exec();
     res.json({ message: 'User updated successfully' });
   } catch (err) {
     console.error('Error updating user:', err);
@@ -190,7 +180,7 @@ router.put('/users/:id', async (req, res) => {
 router.delete('/users/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    await db.collection('users').doc(id).delete();
+    await User.findByIdAndDelete(id).exec();
     res.json({ message: 'User deleted successfully' });
   } catch (err) {
     console.error('Error deleting user:', err);
@@ -202,12 +192,9 @@ router.delete('/users/:id', async (req, res) => {
 // @desc    Get all mentors
 router.get('/mentors', async (req, res) => {
   try {
-    const mentorsSnapshot = await db.collection('mentors').get();
-    const mentors = [];
-    mentorsSnapshot.forEach(doc => {
-      mentors.push({ id: doc.id, ...doc.data() });
-    });
-    res.json(mentors);
+    const mentors = await User.find({ role: 'mentor' }).lean().exec();
+    const mapped = mentors.map(m => ({ id: String(m._id), ...m }));
+    res.json(mapped);
   } catch (err) {
     console.error('Error fetching mentors:', err);
     res.status(500).json({ message: 'Server error' });
@@ -243,18 +230,17 @@ router.post('/mentors', async (req, res) => {
       bio: bio || '',
       linkedin: linkedin || '',
       status: status || 'active',
-      role: role || 'mentor',
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
+      role: role || 'mentor'
     };
 
-    const docRef = await db.collection('mentors').add(mentorData);
-    console.log('✅ Mentor created successfully with ID:', docRef.id);
+    const mentor = new User(mentorData);
+    const saved = await mentor.save();
+    console.log('✅ Mentor created successfully with ID:', saved._id);
 
     res.json({
-      id: docRef.id,
+      id: String(saved._id),
       message: 'Mentor created successfully',
-      mentor: { id: docRef.id, ...mentorData }
+      mentor: { id: String(saved._id), ...saved.toObject() }
     });
   } catch (err) {
     console.error('Error creating mentor:', err);
@@ -269,15 +255,14 @@ router.put('/mentors/:id', async (req, res) => {
     const { id } = req.params;
     const updateData = {
       ...req.body,
-      updatedAt: new Date().toISOString()
+      updatedAt: new Date()
     };
 
-    // Remove password from update data if present (password updates should use separate endpoint)
     if (updateData.password) {
       delete updateData.password;
     }
 
-    await db.collection('mentors').doc(id).update(updateData);
+    await User.findByIdAndUpdate(id, updateData, { new: true }).exec();
     res.json({ message: 'Mentor updated successfully' });
   } catch (err) {
     console.error('Error updating mentor:', err);
@@ -290,7 +275,7 @@ router.put('/mentors/:id', async (req, res) => {
 router.delete('/mentors/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    await db.collection('mentors').doc(id).delete();
+    await User.findByIdAndDelete(id).exec();
     res.json({ message: 'Mentor deleted successfully' });
   } catch (err) {
     console.error('Error deleting mentor:', err);
@@ -302,12 +287,9 @@ router.delete('/mentors/:id', async (req, res) => {
 // @desc    Get all teachers
 router.get('/teachers', async (req, res) => {
   try {
-    const teachersSnapshot = await db.collection('users').where('role', '==', 'teacher').get();
-    const teachers = [];
-    teachersSnapshot.forEach(doc => {
-      teachers.push({ id: doc.id, ...doc.data() });
-    });
-    res.json(teachers);
+    const teachers = await User.find({ role: 'teacher' }).lean().exec();
+    const mapped = teachers.map(t => ({ id: String(t._id), ...t }));
+    res.json(mapped);
   } catch (err) {
     console.error('Error fetching teachers:', err);
     res.status(500).json({ message: 'Server error' });
@@ -337,27 +319,25 @@ router.post('/teachers', async (req, res) => {
       name,
       email: normalizedEmail,
       password: finalPassword,
-      age: age ? parseInt(age) : null,
+      age: age ? parseInt(age, 10) : null,
       domain,
       experience,
       status: status || 'active',
-      role: role || 'teacher',
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
+      role: role || 'teacher'
     };
 
-    // Include optional fields
     if (phone) teacherData.phone = phone;
     if (address) teacherData.address = address;
 
-    const docRef = await db.collection('users').add(teacherData);
+    const teacher = new User(teacherData);
+    const saved = await teacher.save();
 
-    console.log('✅ Teacher created successfully with ID:', docRef.id);
+    console.log('✅ Teacher created successfully with ID:', saved._id);
 
     res.json({
-      id: docRef.id,
+      id: String(saved._id),
       message: 'Teacher created successfully',
-      teacher: { id: docRef.id, ...teacherData }
+      teacher: { id: String(saved._id), ...saved.toObject() }
     });
   } catch (err) {
     console.error('Error creating teacher:', err);
@@ -372,10 +352,10 @@ router.put('/teachers/:id', async (req, res) => {
     const { id } = req.params;
     const updateData = {
       ...req.body,
-      updatedAt: new Date().toISOString()
+      updatedAt: new Date()
     };
 
-    await db.collection('users').doc(id).update(updateData);
+    await User.findByIdAndUpdate(id, updateData, { new: true }).exec();
     res.json({ message: 'Teacher updated successfully' });
   } catch (err) {
     console.error('Error updating teacher:', err);
@@ -388,7 +368,7 @@ router.put('/teachers/:id', async (req, res) => {
 router.delete('/teachers/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    await db.collection('users').doc(id).delete();
+    await User.findByIdAndDelete(id).exec();
     res.json({ message: 'Teacher deleted successfully' });
   } catch (err) {
     console.error('Error deleting teacher:', err);
@@ -401,62 +381,10 @@ router.delete('/teachers/:id', async (req, res) => {
 // @access  Private (Admin only)
 router.post('/classroom/upload', upload.single('video'), async (req, res) => {
   try {
-    if (!req.file) {
-      return res.status(400).json({ message: 'Video file is required' });
-    }
-
-    const { title, description, courseId, batchId, domain, duration } = req.body;
-
-    // Validate required fields
-    if (!title || !courseId) {
-      return res.status(400).json({ 
-        message: 'Title and courseId are required' 
-      });
-    }
-
-    // Prepare metadata
-    const metadata = {
-      title: title.trim(),
-      description: description?.trim() || '',
-      courseId: courseId.trim(),
-      batchId: batchId?.trim() || null,
-      domain: domain?.trim() || null,
-      duration: duration || null,
-      uploadedBy: req.user.id
-    };
-
-    // Upload video to Firebase Storage
-    const uploadResult = await classroomService.uploadVideo(req.file, metadata);
-
-    // Save lecture metadata to Firestore
-    const lectureData = {
-      ...metadata,
-      firebaseStoragePath: uploadResult.storagePath
-    };
-    
-    const lectureId = await classroomService.saveLectureMetadata(lectureData);
-
-    res.status(201).json({
-      message: 'Lecture uploaded successfully',
-      lecture: {
-        id: lectureId,
-        title: metadata.title,
-        description: metadata.description,
-        courseId: metadata.courseId,
-        batchId: metadata.batchId,
-        domain: metadata.domain,
-        duration: metadata.duration,
-        uploadedBy: metadata.uploadedBy,
-        createdAt: new Date().toISOString(),
-        videoSource: 'firebase',
-        fileInfo: {
-          filename: uploadResult.filename,
-          size: uploadResult.size,
-          originalName: uploadResult.originalName
-        }
-      }
+    // Legacy Firebase Storage upload is no longer supported
+    return res.status(503).json({
+      message: 'Direct video file upload is temporarily disabled. Please use YouTube URL based uploads instead.'
     });
-
   } catch (error) {
     console.error('Error uploading lecture:', error);
     
@@ -515,43 +443,9 @@ router.post('/classroom/youtube-upload', upload.single('video'), async (req, res
     // Upload video to YouTube
     const youtubeResult = await youtubeService.uploadVideo(req.file.path, metadata);
 
-    // Save lecture metadata to Firestore with YouTube info
-    const lectureData = {
-      ...metadata,
-      videoSource: 'youtube',
-      youtubeVideoId: youtubeResult.videoId,
-      youtubeVideoUrl: youtubeResult.videoUrl,
-      youtubeEmbedUrl: youtubeResult.embedUrl,
-      uploadedBy: req.user.id,
-      fileInfo: {
-        originalName: req.file.originalname,
-        size: req.file.size,
-        mimetype: req.file.mimetype
-      }
-    };
-    
-    const lectureId = await classroomService.saveLectureMetadata(lectureData);
-
-    res.status(201).json({
-      message: 'Lecture uploaded successfully to YouTube',
-      lecture: {
-        id: lectureId,
-        title: metadata.title,
-        description: metadata.description,
-        courseId: metadata.courseId,
-        batchId: metadata.batchId,
-        domain: metadata.domain,
-        duration: metadata.duration,
-        courseType: metadata.courseType,
-        instructor: metadata.instructor,
-        uploadedBy: metadata.uploadedBy,
-        createdAt: new Date().toISOString(),
-        videoSource: 'youtube',
-        youtubeVideoId: youtubeResult.videoId,
-        youtubeVideoUrl: youtubeResult.videoUrl,
-        youtubeEmbedUrl: youtubeResult.embedUrl,
-        fileInfo: lectureData.fileInfo
-      }
+    // Legacy YouTube upload with Firebase metadata is no longer supported
+    return res.status(503).json({
+      message: 'Server-side YouTube file upload is temporarily disabled. Please use manual YouTube URL mode.'
     });
 
   } catch (error) {
@@ -626,14 +520,14 @@ router.post('/classroom/youtube-url', async (req, res) => {
       updatedAt: new Date().toISOString()
     };
 
-    // Save to Firestore
-    const docRef = await db.collection('classroom').add(lectureData);
+    const lecture = new Classroom(lectureData);
+    const saved = await lecture.save();
 
     res.status(201).json({
       message: 'YouTube video added successfully',
       lecture: {
-        id: docRef.id,
-        ...lectureData
+        id: String(saved._id),
+        ...saved.toObject()
       }
     });
 
@@ -703,12 +597,13 @@ router.post('/classroom', async (req, res) => {
       videoData.videoSource = 'drive';
     }
 
-    const docRef = await db.collection('classroom').add(videoData);
-    
+    const video = new Classroom(videoData);
+    const saved = await video.save();
+
     res.status(201).json({ 
       message: 'Video added successfully', 
-      videoId: docRef.id,
-      video: { id: docRef.id, ...videoData }
+      videoId: String(saved._id),
+      video: { id: String(saved._id), ...saved.toObject() }
     });
   } catch (err) {
     console.error('Error adding classroom video:', err);
@@ -795,8 +690,8 @@ router.put('/classroom/:id', async (req, res) => {
       videoData.driveId = null;
     }
 
-    await db.collection('classroom').doc(id).update(videoData);
-    
+    await Classroom.findByIdAndUpdate(id, videoData, { new: true }).exec();
+
     res.json({ message: 'Video updated successfully' });
   } catch (err) {
     console.error('Error updating classroom video:', err);
@@ -809,7 +704,7 @@ router.put('/classroom/:id', async (req, res) => {
 router.delete('/classroom/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    await db.collection('classroom').doc(id).delete();
+    await Classroom.findByIdAndDelete(id).exec();
     res.json({ message: 'Video deleted successfully' });
   } catch (err) {
     console.error('Error deleting classroom video:', err);
@@ -822,64 +717,8 @@ router.delete('/classroom/:id', async (req, res) => {
 // @desc    Create a new module with file upload
 router.post('/modules/upload', moduleUpload.single('file'), async (req, res) => {
   try {
-    const { name, courseId, batchId, duration, contentType, externalLink } = req.body;
-    
-    if (!name || !courseId) {
-      return res.status(400).json({ message: 'Name and Course ID are required' });
-    }
-
-    const moduleData = {
-      name,
-      courseId,
-      batchId: batchId || '',
-      duration: duration || '',
-      contentType: contentType || 'text',
-      content: req.body.content || '',
-      externalLink: externalLink || '',
-      status: 'active',
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
-    };
-
-    // Handle file upload
-    if (req.file) {
-      const file = req.file;
-      const fileName = `${Date.now()}-${file.originalname}`;
-      const filePath = `modules/${courseId}/${fileName}`;
-      
-      // Upload to Firebase Storage
-      const bucket = db.storage().bucket();
-      const fileUpload = bucket.file(filePath);
-      
-      await fileUpload.save(file.buffer, {
-        metadata: {
-          contentType: file.mimetype,
-        },
-      });
-      
-      // Get file URL
-      const [url] = await fileUpload.getSignedUrl({
-        action: 'read',
-        expires: '03-01-2500', // Far future expiration
-      });
-      
-      moduleData.fileUrl = url;
-      moduleData.fileName = file.originalname;
-      moduleData.fileSize = file.size;
-      
-      // Determine content type based on file
-      if (file.mimetype === 'application/pdf') {
-        moduleData.contentType = 'pdf';
-      } else if (file.mimetype.includes('word')) {
-        moduleData.contentType = 'word';
-      }
-    }
-
-    const docRef = await db.collection('modules').add(moduleData);
-    res.json({ 
-      id: docRef.id, 
-      ...moduleData,
-      message: 'Module created successfully with file upload' 
+    return res.status(503).json({
+      message: 'Module file upload is temporarily disabled. Please create modules without file uploads.'
     });
   } catch (err) {
     console.error('Error creating module with upload:', err);
@@ -891,64 +730,8 @@ router.post('/modules/upload', moduleUpload.single('file'), async (req, res) => 
 // @desc    Update a module with file upload
 router.put('/modules/:id/upload', moduleUpload.single('file'), async (req, res) => {
   try {
-    const { id } = req.params;
-    const { name, courseId, batchId, duration, contentType, externalLink } = req.body;
-    
-    const moduleDoc = await db.collection('modules').doc(id).get();
-    if (!moduleDoc.exists) {
-      return res.status(404).json({ message: 'Module not found' });
-    }
-
-    const moduleData = {
-      name,
-      courseId,
-      batchId: batchId || '',
-      duration: duration || '',
-      contentType: contentType || 'text',
-      content: req.body.content || '',
-      externalLink: externalLink || '',
-      updatedAt: new Date().toISOString()
-    };
-
-    // Handle file upload
-    if (req.file) {
-      const file = req.file;
-      const fileName = `${Date.now()}-${file.originalname}`;
-      const filePath = `modules/${courseId}/${fileName}`;
-      
-      // Upload to Firebase Storage
-      const bucket = db.storage().bucket();
-      const fileUpload = bucket.file(filePath);
-      
-      await fileUpload.save(file.buffer, {
-        metadata: {
-          contentType: file.mimetype,
-        },
-      });
-      
-      // Get file URL
-      const [url] = await fileUpload.getSignedUrl({
-        action: 'read',
-        expires: '03-01-2500',
-      });
-      
-      moduleData.fileUrl = url;
-      moduleData.fileName = file.originalname;
-      moduleData.fileSize = file.size;
-      
-      // Determine content type based on file
-      if (file.mimetype === 'application/pdf') {
-        moduleData.contentType = 'pdf';
-      } else if (file.mimetype.includes('word')) {
-        moduleData.contentType = 'word';
-      }
-    }
-
-    await db.collection('modules').doc(id).update(moduleData);
-    res.json({ 
-      id,
-      ...moduleData,
-      message: 'Module updated successfully with file upload' 
+    return res.status(503).json({
+      message: 'Module file upload is temporarily disabled. Please update modules without file uploads.'
     });
   } catch (err) {
     console.error('Error updating module with upload:', err);
@@ -963,11 +746,21 @@ collections.forEach(collectionName => {
   // Get all items
   router.get(`/${collectionName}`, async (req, res) => {
     try {
-      const snapshot = await db.collection(collectionName).get();
-      const items = [];
-      snapshot.forEach(doc => {
-        items.push({ id: doc.id, ...doc.data() });
-      });
+      let items;
+      if (collectionName === 'courses') {
+        items = await Course.find({}).lean().exec();
+        items = items.map(c => ({ id: String(c._id), ...c }));
+      } else if (collectionName === 'modules') {
+        items = await Module.find({}).lean().exec();
+        items = items.map(m => ({ id: String(m._id), ...m }));
+      } else if (collectionName === 'classroom') {
+        items = await Classroom.find({}).lean().exec();
+        items = items.map(cl => ({ id: String(cl._id), ...cl }));
+      } else {
+        const Model = getDynamicModel(collectionName);
+        const docs = await Model.find({}).lean().exec();
+        items = docs.map(d => ({ id: String(d._id), ...d }));
+      }
       res.json(items);
     } catch (err) {
       console.error(`Error fetching ${collectionName}:`, err);
@@ -978,11 +771,22 @@ collections.forEach(collectionName => {
   // Get single item
   router.get(`/${collectionName}/:id`, async (req, res) => {
     try {
-      const doc = await db.collection(collectionName).doc(req.params.id).get();
-      if (!doc.exists) {
+      const { id } = req.params;
+      let doc;
+      if (collectionName === 'courses') {
+        doc = await Course.findById(id).lean().exec();
+      } else if (collectionName === 'modules') {
+        doc = await Module.findById(id).lean().exec();
+      } else if (collectionName === 'classroom') {
+        doc = await Classroom.findById(id).lean().exec();
+      } else {
+        const Model = getDynamicModel(collectionName);
+        doc = await Model.findById(id).lean().exec();
+      }
+      if (!doc) {
         return res.status(404).json({ message: 'Not found' });
       }
-      res.json({ id: doc.id, ...doc.data() });
+      res.json({ id: String(doc._id), ...doc });
     } catch (err) {
       console.error(`Error fetching ${collectionName} item:`, err);
       res.status(500).json({ message: 'Server error' });
@@ -992,12 +796,22 @@ collections.forEach(collectionName => {
   // Create item
   router.post(`/${collectionName}`, async (req, res) => {
     try {
-      const docRef = await db.collection(collectionName).add({
-        ...req.body,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
-      });
-      res.json({ id: docRef.id, message: `${collectionName} item created successfully` });
+      let saved;
+      if (collectionName === 'courses') {
+        const course = new Course(req.body);
+        saved = await course.save();
+      } else if (collectionName === 'modules') {
+        const module = new Module(req.body);
+        saved = await module.save();
+      } else if (collectionName === 'classroom') {
+        const classroom = new Classroom(req.body);
+        saved = await classroom.save();
+      } else {
+        const Model = getDynamicModel(collectionName);
+        const doc = new Model(req.body);
+        saved = await doc.save();
+      }
+      res.json({ id: String(saved._id), message: `${collectionName} item created successfully` });
     } catch (err) {
       console.error(`Error creating ${collectionName} item:`, err);
       res.status(500).json({ message: 'Server error' });
@@ -1009,9 +823,20 @@ collections.forEach(collectionName => {
     try {
       const updateData = {
         ...req.body,
-        updatedAt: new Date().toISOString()
+        updatedAt: new Date()
       };
-      await db.collection(collectionName).doc(req.params.id).update(updateData);
+      const { id } = req.params;
+      let Model;
+      if (collectionName === 'courses') {
+        Model = Course;
+      } else if (collectionName === 'modules') {
+        Model = Module;
+      } else if (collectionName === 'classroom') {
+        Model = Classroom;
+      } else {
+        Model = getDynamicModel(collectionName);
+      }
+      await Model.findByIdAndUpdate(id, updateData, { new: true }).exec();
       res.json({ message: `${collectionName} item updated successfully` });
     } catch (err) {
       console.error(`Error updating ${collectionName} item:`, err);
@@ -1022,7 +847,18 @@ collections.forEach(collectionName => {
   // Delete item
   router.delete(`/${collectionName}/:id`, async (req, res) => {
     try {
-      await db.collection(collectionName).doc(req.params.id).delete();
+      const { id } = req.params;
+      let Model;
+      if (collectionName === 'courses') {
+        Model = Course;
+      } else if (collectionName === 'modules') {
+        Model = Module;
+      } else if (collectionName === 'classroom') {
+        Model = Classroom;
+      } else {
+        Model = getDynamicModel(collectionName);
+      }
+      await Model.findByIdAndDelete(id).exec();
       res.json({ message: `${collectionName} item deleted successfully` });
     } catch (err) {
       console.error(`Error deleting ${collectionName} item:`, err);
@@ -1035,16 +871,15 @@ collections.forEach(collectionName => {
 // @desc    Get admin statistics
 router.get('/stats', async (req, res) => {
   try {
-    const [usersSnapshot, coursesSnapshot, jobsSnapshot] = await Promise.all([
-      db.collection('users').where('role', '==', 'student').get(),
-      db.collection('courses').get(),
-      db.collection('jobs').where('status', '==', 'active').get()
-    ]);
+    const studentsCount = await User.countDocuments({ role: 'student' }).exec();
+    const coursesCount = await Course.countDocuments({}).exec();
+    const Jobs = getDynamicModel('jobs');
+    const activeJobs = await Jobs.countDocuments({ status: 'active' }).exec();
 
     const stats = {
-      totalStudents: usersSnapshot.size,
-      totalCourses: coursesSnapshot.size,
-      activeJobs: jobsSnapshot.size,
+      totalStudents: studentsCount,
+      totalCourses: coursesCount,
+      activeJobs,
       timestamp: new Date().toISOString()
     };
 
@@ -1058,16 +893,9 @@ router.get('/stats', async (req, res) => {
 // Route to get batches by course ID
 router.get('/batches/:courseId', async (req, res) => {
     try {
-        const batchesSnapshot = await db.collection('batches')
-            .where('course', '==', req.params.courseId)
-            .get();
-        
-        const batches = [];
-        batchesSnapshot.forEach(doc => {
-            batches.push({ id: doc.id, ...doc.data() });
-        });
-        
-        res.json(batches);
+    const batches = await Batch.find({ course: req.params.courseId }).lean().exec();
+    const mapped = batches.map(b => ({ id: String(b._id), ...b }));
+    res.json(mapped);
     } catch (error) {
         res.status(500).json({ message: 'Error fetching batches' });
     }
@@ -1084,26 +912,24 @@ router.post('/batches', async (req, res) => {
             return res.status(400).json({ message: 'Batch name, course, and teacher are required' });
         }
         
-        // Create new batch in Firebase
         const batchData = {
-            name,
-            course,
-            startDate: startDate || null,
-            endDate: endDate || null,
-            teacherId,
-            teacherName: teacherName || '',
-            status: status || 'active',
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString()
+          name,
+          course,
+          startDate: startDate || null,
+          endDate: endDate || null,
+          teacherId,
+          teacherName: teacherName || '',
+          status: status || 'active'
         };
-        
-        const docRef = await db.collection('batches').add(batchData);
-        
+
+        const batch = new Batch(batchData);
+        const saved = await batch.save();
+
         res.status(201).json({
-            success: true,
-            message: 'Batch created successfully',
-            id: docRef.id,
-            ...batchData
+          success: true,
+          message: 'Batch created successfully',
+          id: String(saved._id),
+          ...saved.toObject()
         });
     } catch (error) {
         console.error('Error creating batch:', error);
@@ -1117,7 +943,6 @@ router.put('/batches/:id', async (req, res) => {
     try {
         const { name, course, startDate, endDate, teacherId, teacherName, status } = req.body;
         
-        // Update batch in Firebase
         const updateData = {
           name,
           course,
@@ -1125,16 +950,15 @@ router.put('/batches/:id', async (req, res) => {
           endDate: endDate || null,
           teacherId,
           teacherName: teacherName || '',
-          status: status || 'active',
-          updatedAt: new Date().toISOString()
+          status: status || 'active'
         };
-        
-        await db.collection('batches').doc(req.params.id).update(updateData);
-        
+
+        const updated = await Batch.findByIdAndUpdate(req.params.id, updateData, { new: true }).exec();
+
         res.json({
           success: true,
           message: 'Batch updated successfully',
-          id: req.params.id,
+          id: String(updated?._id || req.params.id),
           ...updateData
         });
     } catch (error) {
@@ -1156,10 +980,7 @@ router.put('/batches/:id', async (req, res) => {
           time: time || ''
         };
 
-        await db.collection('batches').doc(req.params.id).update({
-          schedule,
-          updatedAt: new Date().toISOString()
-        });
+        await Batch.findByIdAndUpdate(req.params.id, { schedule }, { new: true }).exec();
 
         res.json({
           success: true,
@@ -1177,7 +998,7 @@ router.put('/batches/:id', async (req, res) => {
 // @desc    Delete a batch
 router.delete('/batches/:id', async (req, res) => {
     try {
-        await db.collection('batches').doc(req.params.id).delete();
+    await Batch.findByIdAndDelete(req.params.id).exec();
         
         res.json({
             success: true,
@@ -1193,13 +1014,9 @@ router.delete('/batches/:id', async (req, res) => {
 // @desc    Get all batches
 router.get('/batches', async (req, res) => {
     try {
-        const batchesSnapshot = await db.collection('batches').get();
-        const batches = [];
-        batchesSnapshot.forEach(doc => {
-            batches.push({ id: doc.id, ...doc.data() });
-        });
-        
-        res.json({ batches });
+    const batches = await Batch.find({}).lean().exec();
+    const mapped = batches.map(b => ({ id: String(b._id), ...b }));
+    res.json({ batches: mapped });
     } catch (error) {
         console.error('Error fetching batches:', error);
         res.status(500).json({ message: 'Error fetching batches' });

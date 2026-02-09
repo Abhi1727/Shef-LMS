@@ -1,65 +1,71 @@
-const admin = require('firebase-admin');
-require('dotenv').config({ path: '/root/Shef-LMS/backend/.env' });
+// MongoDB seeding script for core collections
+// Previously this file seeded Firestore via Firebase Admin.
+// It now seeds Mongo using the existing Mongoose models.
 
-// Initialize Firebase
-admin.initializeApp({
-  credential: admin.credential.cert({
-    projectId: process.env.FIREBASE_PROJECT_ID,
-    clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-    privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n')
-  })
-});
-
-const db = admin.firestore();
+const { connectMongo } = require('../config/mongo');
+const bcrypt = require('bcryptjs');
+const User = require('../models/User');
+const Batch = require('../models/Batch');
+const Course = require('../models/Course');
 
 async function seedData() {
   try {
-    console.log('🚀 Starting to seed data...\n');
+    await connectMongo();
+    console.log('🚀 Starting to seed MongoDB data...\n');
 
-    // 1. Add Courses
+    const now = new Date();
+
+    // 1. Add Courses (upsert by title)
     console.log('📚 Adding courses...');
     const courses = [
       {
+        slug: 'cyber-security-ethical-hacking',
         title: 'Cyber Security & Ethical Hacking',
         description: 'Master cybersecurity fundamentals, ethical hacking techniques, penetration testing, and security analysis. Learn to protect systems and networks from cyber threats.',
         duration: '6 months',
-        modules: 10,
         status: 'active',
         instructor: 'Shubham',
-        price: 49999,
-        image: '🔐',
-        skills: ['Penetration Testing', 'Network Security', 'Ethical Hacking', 'VAPT', 'Linux', 'Kali Linux']
+        price: 49999
       },
       {
+        slug: 'data-science-ai',
         title: 'Data Science & AI',
         description: 'Learn data analysis, machine learning, deep learning, and AI. Master Python, statistics, and build real-world AI applications.',
         duration: '6 months',
-        modules: 12,
         status: 'active',
         instructor: 'SHEF Instructor',
-        price: 59999,
-        image: '🤖',
-        skills: ['Python', 'Machine Learning', 'Deep Learning', 'TensorFlow', 'Data Analysis', 'Statistics']
+        price: 59999
       }
     ];
 
+    const savedCourses = [];
     for (const course of courses) {
-      const existing = await db.collection('courses').where('title', '==', course.title).get();
-      if (existing.empty) {
-        await db.collection('courses').add({
-          ...course,
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString()
-        });
-        console.log(`  ✅ Added course: ${course.title}`);
-      } else {
-        console.log(`  ⏭️  Course already exists: ${course.title}`);
-      }
+      const saved = await Course.findOneAndUpdate(
+        { slug: course.slug },
+        { ...course, updatedAt: now },
+        { upsert: true, new: true, setDefaultsOnInsert: true }
+      );
+      savedCourses.push(saved);
+      console.log(`  ✅ Ensured course: ${saved.title}`);
     }
 
-    // 2. Add Students
-    console.log('\n👥 Adding students...');
-    const bcrypt = require('bcryptjs');
+    // 2. Add a demo batch linked to first course
+    console.log('\n👥 Adding batch and students...');
+    const primaryCourse = savedCourses[0];
+
+    const batch = await Batch.findOneAndUpdate(
+      { name: 'Batch 1' },
+      {
+        name: 'Batch 1',
+        course: primaryCourse._id,
+        status: 'active',
+        updatedAt: now
+      },
+      { upsert: true, new: true, setDefaultsOnInsert: true }
+    );
+    console.log(`  ✅ Ensured batch: ${batch.name}`);
+
+    // 3. Add Students
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash('Admin@123', salt);
 
@@ -71,8 +77,8 @@ async function seedData() {
         role: 'student',
         status: 'active',
         enrollmentNumber: 'SU-2025-001',
-        enrollmentDate: '2025-11-07',
-        course: 'Cyber Security & Ethical Hacking',
+        course: primaryCourse.title,
+        batchId: batch._id,
         phone: '',
         address: ''
       },
@@ -83,31 +89,26 @@ async function seedData() {
         role: 'student',
         status: 'active',
         enrollmentNumber: 'SU-2025-002',
-        enrollmentDate: '2025-12-01',
         course: 'Data Science & AI',
+        batchId: batch._id,
         phone: '',
         address: ''
       }
     ];
 
     for (const student of students) {
-      const existing = await db.collection('users').where('email', '==', student.email).get();
-      if (existing.empty) {
-        await db.collection('users').add({
-          ...student,
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString()
-        });
-        console.log(`  ✅ Added student: ${student.name} (${student.email})`);
-      } else {
-        console.log(`  ⏭️  Student already exists: ${student.email}`);
-      }
+      const saved = await User.findOneAndUpdate(
+        { email: student.email },
+        { ...student, updatedAt: now },
+        { upsert: true, new: true, setDefaultsOnInsert: true }
+      );
+      console.log(`  ✅ Ensured student: ${saved.name} (${saved.email})`);
     }
 
-    console.log('\n🎉 Data seeding completed successfully!');
+    console.log('\n🎉 MongoDB data seeding completed successfully!');
     process.exit(0);
   } catch (error) {
-    console.error('❌ Error seeding data:', error);
+    console.error('❌ Error seeding MongoDB data:', error);
     process.exit(1);
   }
 }

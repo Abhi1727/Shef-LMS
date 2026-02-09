@@ -2,7 +2,6 @@ import React, { useState, useEffect, useCallback, useMemo, memo } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import { firebaseService, COLLECTIONS } from '../services/firebaseService';
-import { where } from 'firebase/firestore';
 import bcrypt from 'bcryptjs';
 import { ToastContainer, showToast } from './Toast';
 import fallbackData from '../data/fallbackData';

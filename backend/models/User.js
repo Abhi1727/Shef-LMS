@@ -10,14 +10,40 @@ const UserSchema = new mongoose.Schema({
     required: true,
     unique: true
   },
+  // Original Firestore document ID (used during migration period)
+  firestoreId: {
+    type: String,
+  },
   password: {
     type: String,
     required: true
   },
   role: {
     type: String,
-    enum: ['student', 'instructor', 'admin'],
+    enum: ['student', 'instructor', 'teacher', 'mentor', 'admin'],
     default: 'student'
+  },
+  status: {
+    type: String,
+    default: 'active'
+  },
+  course: {
+    type: String,
+  },
+  enrollmentNumber: {
+    type: String,
+  },
+  batchId: {
+    type: String,
+  },
+  domain: {
+    type: String,
+  },
+  title: {
+    type: String,
+  },
+  company: {
+    type: String,
   },
   enrolledCourses: [{
     type: mongoose.Schema.Types.ObjectId,

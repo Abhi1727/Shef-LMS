@@ -1,39 +1,36 @@
-const { db } = require('../config/firebase');
+const { connectMongo } = require('../config/mongo');
+const Classroom = require('../models/Classroom');
 
 async function clearClassroomVideos() {
   try {
     console.log('Starting classroom videos cleanup...');
 
-    const collectionRef = db.collection('classroom');
-    const snapshot = await collectionRef.get();
+    await connectMongo();
 
-    if (snapshot.empty) {
+    const documents = await Classroom.find({}).exec();
+
+    if (!documents.length) {
       console.log('No classroom videos found to delete.');
       return;
     }
 
-    console.log(`Found ${snapshot.size} classroom video(s). Deleting...`);
+    console.log(`Found ${documents.length} classroom video(s). Deleting...`);
 
-    let batch = db.batch();
-    let opCount = 0;
+    let deletedCount = 0;
+    let failedCount = 0;
 
-    snapshot.forEach((doc) => {
-      batch.delete(doc.ref);
-      opCount++;
-
-      // Commit in chunks to respect Firestore batch limits
-      if (opCount === 400) {
-        batch.commit();
-        batch = db.batch();
-        opCount = 0;
+    for (const doc of documents) {
+      try {
+        await Classroom.findByIdAndDelete(doc._id);
+        console.log(`✅ Deleted: ${doc._id.toString()}`);
+        deletedCount++;
+      } catch (error) {
+        console.error(`❌ Failed to delete ${doc._id.toString()}:`, error);
+        failedCount++;
       }
-    });
-
-    if (opCount > 0) {
-      await batch.commit();
     }
 
-    console.log('✅ Classroom videos cleanup completed successfully.');
+    console.log(`✅ Classroom videos cleanup completed. Deleted: ${deletedCount}, Failed: ${failedCount}`);
   } catch (error) {
     console.error('Error clearing classroom videos:', error);
   }

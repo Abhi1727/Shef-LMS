@@ -1,27 +1,29 @@
-const { db } = require('./config/firebase');
+const { connectMongo } = require('./config/mongo');
+const Classroom = require('./models/Classroom');
 require('dotenv').config();
 
 async function viewClassroomData() {
   try {
     console.log('🔍 Fetching all classroom documents...\n');
-    
-    const snapshot = await db.collection('classroom').get();
-    
-    if (snapshot.empty) {
+
+    await connectMongo();
+
+    const documents = await Classroom.find({}).exec();
+
+    if (!documents.length) {
       console.log('📭 No documents found in classroom collection');
       return;
     }
-    
-    console.log(`📊 Found ${snapshot.size} documents in classroom collection:\n`);
-    
-    const documents = [];
-    
-    snapshot.forEach((doc, index) => {
-      const data = doc.id;
-      const docData = doc.data();
-      
+
+    console.log(`📊 Found ${documents.length} documents in classroom collection:\n`);
+
+    const result = [];
+
+    documents.forEach((doc, index) => {
+      const docData = doc.toObject();
+
       console.log(`📹 Document ${index + 1}:`);
-      console.log(`   ID: ${doc.id}`);
+      console.log(`   ID: ${doc._id.toString()}`);
       console.log(`   Title: ${docData.title || 'No title'}`);
       console.log(`   Instructor: ${docData.instructor || 'No instructor'}`);
       console.log(`   Course Type: ${docData.courseType || 'No course type'}`);
@@ -33,14 +35,14 @@ async function viewClassroomData() {
       console.log(`   Created: ${docData.createdAt || 'No created date'}`);
       console.log(`   Date: ${docData.date || 'No date'}`);
       console.log('   ---');
-      
-      documents.push({
-        id: doc.id,
+
+      result.push({
+        id: doc._id.toString(),
         ...docData
       });
     });
-    
-    return documents;
+
+    return result;
   } catch (error) {
     console.error('❌ Error fetching classroom data:', error);
     throw error;
@@ -50,9 +52,10 @@ async function viewClassroomData() {
 async function deleteClassroomDocument(docId) {
   try {
     console.log(`🗑️ Deleting document: ${docId}`);
-    
-    await db.collection('classroom').doc(docId).delete();
-    
+
+    await connectMongo();
+    await Classroom.findByIdAndDelete(docId);
+
     console.log(`✅ Successfully deleted document: ${docId}`);
     return true;
   } catch (error) {
@@ -64,28 +67,30 @@ async function deleteClassroomDocument(docId) {
 async function deleteAllClassroomDocuments() {
   try {
     console.log('🗑️ Deleting ALL classroom documents...');
-    
-    const snapshot = await db.collection('classroom').get();
-    
-    if (snapshot.empty) {
+
+    await connectMongo();
+
+    const documents = await Classroom.find({}).exec();
+
+    if (!documents.length) {
       console.log('📭 No documents to delete');
       return;
     }
     
     let deletedCount = 0;
     let failedCount = 0;
-    
-    for (const doc of snapshot.docs) {
+
+    for (const doc of documents) {
       try {
-        await doc.ref.delete();
-        console.log(`✅ Deleted: ${doc.id}`);
+        await Classroom.findByIdAndDelete(doc._id);
+        console.log(`✅ Deleted: ${doc._id.toString()}`);
         deletedCount++;
       } catch (error) {
-        console.error(`❌ Failed to delete ${doc.id}:`, error);
+        console.error(`❌ Failed to delete ${doc._id.toString()}:`, error);
         failedCount++;
       }
     }
-    
+
     console.log(`\n📊 Deletion Summary:`);
     console.log(`   ✅ Successfully deleted: ${deletedCount} documents`);
     console.log(`   ❌ Failed to delete: ${failedCount} documents`);
@@ -99,26 +104,26 @@ async function deleteAllClassroomDocuments() {
 async function deleteByVideoSource(videoSource) {
   try {
     console.log(`🗑️ Deleting documents with videoSource: ${videoSource}`);
-    
-    const snapshot = await db.collection('classroom')
-      .where('videoSource', '==', videoSource)
-      .get();
-    
-    if (snapshot.empty) {
+
+    await connectMongo();
+
+    const documents = await Classroom.find({ videoSource }).exec();
+
+    if (!documents.length) {
       console.log(`📭 No documents found with videoSource: ${videoSource}`);
       return;
     }
     
     let deletedCount = 0;
     let failedCount = 0;
-    
-    for (const doc of snapshot.docs) {
+
+    for (const doc of documents) {
       try {
-        await doc.ref.delete();
-        console.log(`✅ Deleted: ${doc.id} (${doc.data().title})`);
+        await Classroom.findByIdAndDelete(doc._id);
+        console.log(`✅ Deleted: ${doc._id.toString()} (${doc.title})`);
         deletedCount++;
       } catch (error) {
-        console.error(`❌ Failed to delete ${doc.id}:`, error);
+        console.error(`❌ Failed to delete ${doc._id.toString()}:`, error);
         failedCount++;
       }
     }

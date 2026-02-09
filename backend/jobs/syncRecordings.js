@@ -1,11 +1,15 @@
 const cron = require('node-cron');
 const zoomService = require('../services/zoomService');
-const { db } = require('../config/firebase');
+const { connectMongo } = require('../config/mongo');
+const Classroom = require('../models/Classroom');
+const LiveClass = require('../models/LiveClass');
 
 // Function to sync Zoom recordings to classroom
 async function syncZoomRecordings() {
   try {
     console.log('[Zoom Sync] Starting recording sync...');
+
+    await connectMongo();
 
     // Get all recordings from last 7 days (to catch recent classes)
     const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
@@ -40,52 +44,40 @@ async function syncZoomRecordings() {
         continue;
       }
 
-      // Check if this meeting is in our liveClasses collection
-      const liveClassSnapshot = await db.collection('liveClasses')
-        .where('zoomMeetingId', '==', meeting.id.toString())
-        .limit(1)
-        .get();
+      // Check if this meeting is in our liveClasses collection (Mongo)
+      const liveClass = await LiveClass.findOne({
+        zoomMeetingId: meeting.id.toString(),
+      });
 
       let classTitle = meeting.topic;
       let instructor = 'Instructor';
       let courseId = null;
 
-      if (!liveClassSnapshot.empty) {
-        const classData = liveClassSnapshot.docs[0].data();
-        classTitle = classData.title || meeting.topic;
-        instructor = classData.instructor || 'Instructor';
-        courseId = classData.courseId || null;
+      if (liveClass) {
+        classTitle = liveClass.title || meeting.topic;
+        instructor = liveClass.instructor || 'Instructor';
+        courseId = liveClass.courseId || null;
       }
 
       // Add each video recording to classroom collection
       for (const recording of videoRecordings) {
-        // Check if recording already exists
-        const existingSnapshot = await db.collection('classroom')
-          .where('zoomRecordingId', '==', recording.id)
-          .limit(1)
-          .get();
+        // Check if recording already exists in Mongo classroom collection
+        const existing = await Classroom.findOne({ zoomRecordingId: recording.id });
 
-        if (existingSnapshot.empty) {
-          // Add new recording to classroom
-          const classroomRef = db.collection('classroom').doc();
-          await classroomRef.set({
-            id: classroomRef.id,
+        if (!existing) {
+          await Classroom.create({
             title: classTitle,
             instructor: instructor,
             duration: `${Math.floor(meeting.duration / 60)} min`,
             date: meeting.startTime,
-            videoUrl: recording.playUrl, // Zoom video URL
-            thumbnail: `https://via.placeholder.com/400x225/4A90E2/ffffff?text=${encodeURIComponent(classTitle)}`,
+            videoSource: 'zoom',
+            zoomUrl: recording.playUrl,
+            zoomPasscode: meeting.password || '',
             zoomRecordingId: recording.id,
             zoomMeetingId: meeting.id.toString(),
-            fileSize: recording.fileSize,
-            recordingStart: recording.recordingStart,
-            recordingEnd: recording.recordingEnd,
-            downloadUrl: recording.downloadUrl,
-            source: 'zoom',
             courseId: courseId,
-            views: 0,
-            createdAt: new Date().toISOString()
+            createdAt: new Date(),
+            updatedAt: new Date(),
           });
 
           console.log(`[Zoom Sync] Added recording: ${classTitle}`);

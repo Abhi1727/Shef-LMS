@@ -733,12 +733,20 @@ const BatchDetailsPage = () => {
     );
   }
 
+  const selectedBatchId = selectedBatch?.id || selectedBatch?._id;
+
   // Filter videos for this batch and sort by newest first
   const batchVideos = classroomVideos
     .filter(video => {
-      return video.batchId === selectedBatch?.id || 
-             video.batchId === selectedBatch?._id ||
-             video.courseId === selectedBatch?.course;
+      if (!selectedBatchId) return false;
+
+      // If a video is assigned to a specific batch, only show it for that batch
+      if (video.batchId) {
+        return video.batchId === selectedBatchId;
+      }
+
+      // Legacy/course-level videos without batchId fall back to course match
+      return video.courseId === selectedBatch?.course;
     })
     .sort((a, b) => {
       // Sort by date (newest first)
@@ -748,7 +756,6 @@ const BatchDetailsPage = () => {
     });
 
   // Filter students by batchId for consistency with Dashboard
-  const selectedBatchId = selectedBatch?.id || selectedBatch?._id;
   const batchStudents = students.filter(student => student.batchId === selectedBatchId);
 
   // Students list for "Add Students" modal with search by name/email

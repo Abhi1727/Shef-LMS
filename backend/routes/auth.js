@@ -2,7 +2,8 @@ const express = require('express');
 const router = express.Router();
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
-const { db } = require('../config/firebase');
+const { connectMongo } = require('../config/mongo');
+const User = require('../models/User');
 
 // Demo Credentials
 // Student: lqdeleon@gmail.com / Admin@123
@@ -28,32 +29,34 @@ router.post('/register', async (req, res) => {
       return res.status(400).json({ message: 'Email is required' });
     }
 
-    // Check if user exists (use normalized email)
-    const usersSnapshot = await db.collection('users').where('email', '==', normalizedEmail).get();
-    if (!usersSnapshot.empty) {
+    await connectMongo();
+
+    // Check if user exists in Mongo (use normalized email)
+    const existingUser = await User.findOne({ email: normalizedEmail }).exec();
+    if (existingUser) {
       return res.status(400).json({ message: 'User already exists' });
     }
 
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
 
-    const userData = {
+    const user = new User({
       name,
       email: normalizedEmail,
       password: hashedPassword,
       role: role || 'student',
       status: 'active',
-      createdAt: new Date().toISOString()
-    };
+      createdAt: new Date()
+    });
 
-    const docRef = await db.collection('users').add(userData);
+    const savedUser = await user.save();
 
     const payload = {
       user: {
-        id: docRef.id,
-        name,
-        email: normalizedEmail,
-        role: role || 'student'
+        id: String(savedUser._id),
+        name: savedUser.name,
+        email: savedUser.email,
+        role: savedUser.role
       }
     };
 
@@ -127,30 +130,28 @@ router.post('/login', async (req, res) => {
 
     // Check for demo teacher credentials
     if (normalizedEmail === 'teacher@sheflms.com' && password === 'Admin@123') {
-      // Get teacher from Firestore to use correct ID
-      const teacherSnapshot = await db.collection('users').where('email', '==', 'teacher@sheflms.com').get();
-      
+      // Prefer a real Mongo user record if it exists
+      await connectMongo();
+      let teacherUserDoc = await User.findOne({ email: normalizedEmail }).exec();
+
       let teacherUser;
-      if (!teacherSnapshot.empty) {
-        // Use actual Firestore teacher data
-        const teacherDoc = teacherSnapshot.docs[0];
-        const teacherData = teacherDoc.data();
+      if (teacherUserDoc) {
         teacherUser = {
-          id: teacherDoc.id,
-          name: teacherData.name,
-          email: teacherData.email,
-          role: teacherData.role,
-          domain: teacherData.domain,
-          experience: teacherData.experience,
-          assignedCourses: teacherData.assignedCourses || [],
-          department: teacherData.department,
-          phone: teacherData.phone,
-          address: teacherData.address,
-          status: teacherData.status || 'active',
+          id: String(teacherUserDoc._id),
+          name: teacherUserDoc.name,
+          email: teacherUserDoc.email,
+          role: teacherUserDoc.role || 'teacher',
+          domain: teacherUserDoc.domain,
+          experience: teacherUserDoc.experience,
+          assignedCourses: teacherUserDoc.assignedCourses || [],
+          department: teacherUserDoc.department,
+          phone: teacherUserDoc.phone,
+          address: teacherUserDoc.address,
+          status: teacherUserDoc.status || 'active',
           lastLogin: loginInfo
         };
       } else {
-        // Fallback to hardcoded data if not found in Firestore
+        // Fallback to hardcoded data if not found in Mongo
         teacherUser = {
           id: 'teacher_cybersecurity_id',
           name: 'Dr. Sarah Mitchell',
@@ -198,34 +199,16 @@ router.post('/login', async (req, res) => {
       return res.json({ token, user: adminUser });
     }
 
-    // Check Firebase for user (students) - use normalized email
-    const usersSnapshot = await db.collection('users').where('email', '==', normalizedEmail).get();
-    
-    // Check Firebase for mentor if not found in users
-    const mentorsSnapshot = usersSnapshot.empty ? await db.collection('mentors').where('email', '==', normalizedEmail).get() : null;
-    
-    if (usersSnapshot.empty && (!mentorsSnapshot || mentorsSnapshot.empty)) {
+    // Look up user in Mongo only (students/teachers/admins/mentors)
+    await connectMongo();
+    const mongoUser = await User.findOne({ email: normalizedEmail }).exec();
+
+    if (!mongoUser) {
       return res.status(400).json({ message: 'Invalid credentials' });
     }
 
-    let userData;
-    let userId;
-    let collectionName = 'users';
-
-    if (!usersSnapshot.empty) {
-      // Found in users collection
-      usersSnapshot.forEach(doc => {
-        userId = doc.id;
-        userData = doc.data();
-      });
-    } else {
-      // Found in mentors collection
-      collectionName = 'mentors';
-      mentorsSnapshot.forEach(doc => {
-        userId = doc.id;
-        userData = doc.data();
-      });
-    }
+    const userData = mongoUser;
+    const userId = String(mongoUser._id);
 
     // Guard: user must have a bcrypt-hashed password (register & admin both hash)
     const storedPassword = userData.password;
@@ -249,12 +232,11 @@ router.post('/login', async (req, res) => {
     //   return res.status(403).json({ message: 'Account is deactivated. Please contact administrator.' });
     // }
 
-    // Update user's last login info in Firestore
-    await db.collection(collectionName).doc(userId).update({
-      lastLogin: loginInfo,
-      lastLoginIP: clientIP,
-      lastLoginTimestamp: new Date().toISOString()
-    });
+    // Update user's last login info in Mongo
+    userData.lastLogin = loginInfo;
+    userData.lastLoginIP = clientIP;
+    userData.lastLoginTimestamp = new Date();
+    await userData.save();
 
     const payload = {
       user: {

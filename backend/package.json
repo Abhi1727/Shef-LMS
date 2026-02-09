@@ -7,7 +7,10 @@
     "start": "node server.js",
     "dev": "nodemon server.js",
     "reactivate-admin": "node scripts/reactivateAdmin.js",
-    "create-admin": "node scripts/createAdmin.js"
+    "create-admin": "node scripts/createAdmin.js",
+    "migrate:users": "node scripts/migrateUsersToMongo.js",
+    "migrate:batches": "node scripts/migrateBatchesToMongo.js",
+    "migrate:classroom": "node scripts/migrateClassroomToMongo.js"
   },
   "keywords": [
     "lms",
@@ -22,8 +25,6 @@
     "cron": "^3.1.0",
     "dotenv": "^16.3.1",
     "express": "^4.18.2",
-    "firebase": "^12.5.0",
-    "firebase-admin": "^12.0.0",
     "form-data": "^4.0.5",
     "google-auth-library": "^10.5.0",
     "googleapis": "^171.1.0",

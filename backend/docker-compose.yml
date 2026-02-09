@@ -8,9 +8,22 @@ services:
       - "5000:5000"
     env_file:
       - .env
+    environment:
+      - MONGODB_URI=mongodb://mongo:27017/shef-lms
     volumes:
       - ./logs:/app/logs
     restart: unless-stopped
+    networks:
+      - shef-lms-network
+
+  mongo:
+    image: mongo:6
+    container_name: shef-lms-mongo
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    volumes:
+      - ./mongo-data:/data/db
     networks:
       - shef-lms-network
 

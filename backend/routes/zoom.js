@@ -2,317 +2,68 @@ const express = require('express');
 const router = express.Router();
 const zoomService = require('../services/zoomService');
 const auth = require('../middleware/auth');
-const { db } = require('../config/firebase');
+
+// All Zoom-based features are temporarily disabled while Firebase/Zoom
+// integrations are removed. Keep routes but return a clear message.
 
 // @route   POST /api/zoom/meetings
 // @desc    Create a new Zoom meeting
 // @access  Private (Admin only)
 router.post('/meetings', auth, async (req, res) => {
-  try {
-    const { topic, startTime, duration, agenda, courseId, timezone } = req.body;
-
-    // Validate required fields
-    if (!topic || !startTime) {
-      return res.status(400).json({ 
-        success: false, 
-        message: 'Topic and start time are required' 
-      });
-    }
-
-    // Create Zoom meeting
-    const result = await zoomService.createMeeting({
-      topic,
-      startTime,
-      duration,
-      agenda,
-      timezone
-    });
-
-    if (result.success) {
-      // Store meeting in Firestore
-      const meetingRef = db.collection('liveClasses').doc();
-      await meetingRef.set({
-        id: meetingRef.id,
-        zoomMeetingId: result.meeting.id,
-        title: topic,
-        instructor: req.user.name || 'Instructor',
-        date: startTime,
-        time: new Date(startTime).toLocaleTimeString('en-US', { 
-          hour: '2-digit', 
-          minute: '2-digit' 
-        }),
-        duration: `${duration || 60} min`,
-        students: 0,
-        joinUrl: result.meeting.joinUrl,
-        startUrl: result.meeting.startUrl,
-        password: result.meeting.password,
-        courseId: courseId || null,
-        status: 'scheduled',
-        createdBy: req.user.email,
-        createdAt: new Date().toISOString()
-      });
-
-      res.json({
-        success: true,
-        message: 'Meeting created successfully',
-        meeting: result.meeting,
-        firestoreId: meetingRef.id
-      });
-    }
-  } catch (error) {
-    console.error('Error creating meeting:', error);
-    res.status(500).json({ 
-      success: false, 
-      message: error.message || 'Failed to create meeting' 
-    });
-  }
+  return res.status(503).json({
+    success: false,
+    message: 'Zoom meeting creation is temporarily disabled while Zoom/Firebase integration is removed.'
+  });
 });
 
 // @route   GET /api/zoom/meetings
 // @desc    Get all Zoom meetings
 // @access  Private
 router.get('/meetings', auth, async (req, res) => {
-  try {
-    // Get meetings from Firestore
-    const snapshot = await db.collection('liveClasses')
-      .orderBy('date', 'desc')
-      .get();
-
-    const meetings = [];
-    snapshot.forEach(doc => {
-      meetings.push({
-        id: doc.id,
-        ...doc.data()
-      });
-    });
-
-    res.json({
-      success: true,
-      meetings
-    });
-  } catch (error) {
-    console.error('Error fetching meetings:', error);
-    res.status(500).json({ 
-      success: false, 
-      message: 'Failed to fetch meetings' 
-    });
-  }
+  return res.status(503).json({
+    success: false,
+    message: 'Zoom meetings listing is temporarily disabled while Zoom/Firebase integration is removed.'
+  });
 });
 
 // @route   GET /api/zoom/meetings/:id
 // @desc    Get meeting details
 // @access  Private
 router.get('/meetings/:id', auth, async (req, res) => {
-  try {
-    const doc = await db.collection('liveClasses').doc(req.params.id).get();
-
-    if (!doc.exists) {
-      return res.status(404).json({ 
-        success: false, 
-        message: 'Meeting not found' 
-      });
-    }
-
-    const meeting = { id: doc.id, ...doc.data() };
-
-    // Get latest info from Zoom if zoomMeetingId exists
-    if (meeting.zoomMeetingId) {
-      try {
-        const zoomData = await zoomService.getMeeting(meeting.zoomMeetingId);
-        if (zoomData.success) {
-          meeting.zoomStatus = zoomData.meeting.status;
-        }
-      } catch (error) {
-        console.log('Could not fetch live Zoom data:', error.message);
-      }
-    }
-
-    res.json({
-      success: true,
-      meeting
-    });
-  } catch (error) {
-    console.error('Error fetching meeting:', error);
-    res.status(500).json({ 
-      success: false, 
-      message: 'Failed to fetch meeting details' 
-    });
-  }
+  return res.status(503).json({
+    success: false,
+    message: 'Zoom meeting details are temporarily disabled while Zoom/Firebase integration is removed.'
+  });
 });
 
 // @route   PUT /api/zoom/meetings/:id
 // @desc    Update a meeting
 // @access  Private (Admin only)
 router.put('/meetings/:id', auth, async (req, res) => {
-  try {
-    const { topic, startTime, duration, agenda } = req.body;
-    
-    const doc = await db.collection('liveClasses').doc(req.params.id).get();
-
-    if (!doc.exists) {
-      return res.status(404).json({ 
-        success: false, 
-        message: 'Meeting not found' 
-      });
-    }
-
-    const meeting = doc.data();
-
-    // Update Zoom meeting if it has a zoomMeetingId
-    if (meeting.zoomMeetingId) {
-      const updateData = {};
-      if (topic) updateData.topic = topic;
-      if (startTime) updateData.start_time = startTime;
-      if (duration) updateData.duration = duration;
-      if (agenda) updateData.agenda = agenda;
-
-      await zoomService.updateMeeting(meeting.zoomMeetingId, updateData);
-    }
-
-    // Update Firestore
-    const firestoreUpdate = {};
-    if (topic) firestoreUpdate.title = topic;
-    if (startTime) {
-      firestoreUpdate.date = startTime;
-      firestoreUpdate.time = new Date(startTime).toLocaleTimeString('en-US', { 
-        hour: '2-digit', 
-        minute: '2-digit' 
-      });
-    }
-    if (duration) firestoreUpdate.duration = `${duration} min`;
-    firestoreUpdate.updatedAt = new Date().toISOString();
-
-    await db.collection('liveClasses').doc(req.params.id).update(firestoreUpdate);
-
-    res.json({
-      success: true,
-      message: 'Meeting updated successfully'
-    });
-  } catch (error) {
-    console.error('Error updating meeting:', error);
-    res.status(500).json({ 
-      success: false, 
-      message: error.message || 'Failed to update meeting' 
-    });
-  }
+  return res.status(503).json({
+    success: false,
+    message: 'Zoom meeting update is temporarily disabled while Zoom/Firebase integration is removed.'
+  });
 });
 
 // @route   DELETE /api/zoom/meetings/:id
 // @desc    Delete a meeting
 // @access  Private (Admin only)
 router.delete('/meetings/:id', auth, async (req, res) => {
-  try {
-    const doc = await db.collection('liveClasses').doc(req.params.id).get();
-
-    if (!doc.exists) {
-      return res.status(404).json({ 
-        success: false, 
-        message: 'Meeting not found' 
-      });
-    }
-
-    const meeting = doc.data();
-
-    // Delete from Zoom if it has a zoomMeetingId
-    if (meeting.zoomMeetingId) {
-      try {
-        await zoomService.deleteMeeting(meeting.zoomMeetingId);
-      } catch (error) {
-        console.log('Could not delete from Zoom:', error.message);
-        // Continue with Firestore deletion even if Zoom deletion fails
-      }
-    }
-
-    // Delete from Firestore
-    await db.collection('liveClasses').doc(req.params.id).delete();
-
-    res.json({
-      success: true,
-      message: 'Meeting deleted successfully'
-    });
-  } catch (error) {
-    console.error('Error deleting meeting:', error);
-    res.status(500).json({ 
-      success: false, 
-      message: 'Failed to delete meeting' 
-    });
-  }
+  return res.status(503).json({
+    success: false,
+    message: 'Zoom meeting deletion is temporarily disabled while Zoom/Firebase integration is removed.'
+  });
 });
 
 // @route   GET /api/zoom/join/:id
 // @desc    Get join URL for a meeting (students: must be enrolled; teachers: must own; admin: any)
 // @access  Private
 router.get('/join/:id', auth, async (req, res) => {
-  try {
-    const doc = await db.collection('liveClasses').doc(req.params.id).get();
-
-    if (!doc.exists) {
-      return res.status(404).json({
-        success: false,
-        message: 'Meeting not found'
-      });
-    }
-
-    const meeting = doc.data();
-    const user = req.user;
-
-    // Admin can join any meeting
-    if (user.role === 'admin') {
-      return res.json({
-        success: true,
-        joinUrl: meeting.joinUrl,
-        password: meeting.password,
-        title: meeting.title
-      });
-    }
-
-    // Teacher can join if they own the class
-    if (user.role === 'teacher') {
-      if (meeting.teacherId === user.id) {
-        return res.json({
-          success: true,
-          joinUrl: meeting.joinUrl,
-          password: meeting.password,
-          title: meeting.title
-        });
-      }
-      return res.status(403).json({
-        success: false,
-        message: 'You can only join classes you teach'
-      });
-    }
-
-    // Student: must be in enrolledStudents or in the batch
-    if (user.role === 'student') {
-      const enrolled = meeting.enrolledStudents && meeting.enrolledStudents.includes(user.id);
-      const inBatch = meeting.batchId && user.batchId === meeting.batchId;
-      // Legacy: meetings without enrolledStudents/batchId (e.g. admin-created) allow any student
-      const legacyMeeting = !meeting.enrolledStudents && !meeting.batchId;
-      if (enrolled || inBatch || legacyMeeting) {
-        await db.collection('liveClasses').doc(req.params.id).update({
-          students: (meeting.students || 0) + 1
-        });
-        return res.json({
-          success: true,
-          joinUrl: meeting.joinUrl,
-          password: meeting.password,
-          title: meeting.title
-        });
-      }
-      return res.status(403).json({
-        success: false,
-        message: 'You are not enrolled in this class'
-      });
-    }
-
-    res.status(403).json({ success: false, message: 'Access denied' });
-  } catch (error) {
-    console.error('Error getting join URL:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to get join URL'
-    });
-  }
+  return res.status(503).json({
+    success: false,
+    message: 'Zoom join URLs are temporarily disabled while Zoom/Firebase integration is removed.'
+  });
 });
 
 // @route   GET /api/zoom/recordings/:meetingId

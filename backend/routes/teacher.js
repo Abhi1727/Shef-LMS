@@ -1,10 +1,7 @@
 const express = require('express');
 const router = express.Router();
-const { db } = require('../config/firebase');
 const { isTeacher } = require('../middleware/roleAuth');
-const zoomService = require('../services/zoomService');
 const multer = require('multer');
-const classroomService = require('../services/classroomService');
 const {
   verifyCourseOwnership,
   verifyModuleOwnership,
@@ -15,6 +12,14 @@ const {
 
 // Apply auth to all teacher routes
 router.use(isTeacher);
+
+// Temporarily disable teacher APIs while Firebase-based integrations are being removed
+router.use((req, res) => {
+  return res.status(503).json({
+    success: false,
+    message: 'Teacher APIs are temporarily disabled while Firebase integration is removed. Core student/admin flows remain available.'
+  });
+});
 
 // Configure multer for memory storage (for large video files)
 const upload = multer({

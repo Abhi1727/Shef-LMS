@@ -1,32 +1,10 @@
 const axios = require('axios');
-const { db } = require('../config/firebase');
 
 class VideoService {
   // Get enhanced video URL for Zoom recordings
   async getEnhancedVideoUrl(videoId) {
     try {
-      // Get video from classroom collection
-      const videoDoc = await db.collection('classroom').doc(videoId).get();
-      
-      if (!videoDoc.exists) {
-        throw new Error('Video not found');
-      }
-
-      const video = videoDoc.data();
-
-      if (video.source === 'zoom' && video.videoUrl) {
-        // For Zoom videos, try to get a better playback URL
-        return await this.processZoomVideo(video);
-      } else if (video.driveId) {
-        // For Drive videos, return the enhanced preview URL
-        return {
-          ...video,
-          enhancedUrl: `https://drive.google.com/file/d/${video.driveId}/preview`,
-          type: 'drive'
-        };
-      }
-
-      return video;
+      throw new Error('Enhanced video service is disabled (Zoom/Firestore integration removed).');
     } catch (error) {
       console.error('Error getting enhanced video URL:', error);
       throw error;
@@ -71,22 +49,7 @@ class VideoService {
   // Get direct download URL for Zoom recordings (if available)
   async getZoomDownloadUrl(videoId) {
     try {
-      const videoDoc = await db.collection('classroom').doc(videoId).get();
-      
-      if (!videoDoc.exists) {
-        throw new Error('Video not found');
-      }
-
-      const video = videoDoc.data();
-
-      if (video.source === 'zoom' && video.downloadUrl) {
-        return {
-          downloadUrl: video.downloadUrl,
-          expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000) // 24 hours
-        };
-      }
-
-      throw new Error('Download URL not available for this video');
+      throw new Error('Zoom download service is disabled (Zoom/Firestore integration removed).');
     } catch (error) {
       console.error('Error getting Zoom download URL:', error);
       throw error;
@@ -96,42 +59,7 @@ class VideoService {
   // Validate user access to video
   async validateVideoAccess(videoId, userId, userRole) {
     try {
-      const videoDoc = await db.collection('classroom').doc(videoId).get();
-      
-      if (!videoDoc.exists) {
-        return { hasAccess: false, reason: 'Video not found' };
-      }
-
-      const video = videoDoc.data();
-
-      // Check if video is accessible to this user
-      // This logic should match your existing access control
-      if (video.courseRestriction) {
-        // Check if user is enrolled in the course
-        const userDoc = await db.collection('users').doc(userId).get();
-        const userData = userDoc.data();
-        
-        if (userData.currentCourse !== video.courseRestriction) {
-          return { 
-            hasAccess: false, 
-            reason: 'You are not enrolled in this course' 
-          };
-        }
-      }
-
-      return { 
-        hasAccess: true, 
-        video: {
-          id: video.id,
-          title: video.title,
-          videoUrl: video.videoUrl,
-          zoomPasscode: video.zoomPasscode,
-          videoSource: video.source || 'zoom',
-          instructor: video.instructor,
-          date: video.date,
-          duration: video.duration
-        }
-      };
+      return { hasAccess: false, reason: 'Video access validation is disabled (Zoom/Firestore integration removed).' };
     } catch (error) {
       console.error('Error validating video access:', error);
       return { hasAccess: false, reason: 'Failed to validate access' };
@@ -141,24 +69,6 @@ class VideoService {
   // Get video thumbnail or poster
   async getVideoThumbnail(videoId) {
     try {
-      const videoDoc = await db.collection('classroom').doc(videoId).get();
-      
-      if (!videoDoc.exists) {
-        return null;
-      }
-
-      const video = videoDoc.data();
-
-      // For Zoom videos, we might need to generate a thumbnail
-      if (video.source === 'zoom') {
-        // You could implement thumbnail generation here
-        // For now, return a placeholder
-        return {
-          thumbnailUrl: '/api/thumbnails/zoom-placeholder.jpg',
-          generatedAt: new Date().toISOString()
-        };
-      }
-
       return null;
     } catch (error) {
       console.error('Error getting video thumbnail:', error);
@@ -169,22 +79,8 @@ class VideoService {
   // Track video viewing progress
   async trackVideoProgress(userId, videoId, progress) {
     try {
-      const progressRef = db.collection('videoProgress').doc(`${userId}_${videoId}`);
-      
-      await progressRef.set({
-        userId,
-        videoId,
-        progress: {
-          currentTime: progress.currentTime,
-          duration: progress.duration,
-          percentageWatched: progress.percentageWatched,
-          lastWatchedAt: new Date().toISOString(),
-          completed: progress.completed || false
-        },
-        updatedAt: new Date().toISOString()
-      }, { merge: true });
-
-      return { success: true };
+      // Progress tracking is currently disabled; frontend should handle locally.
+      return { success: true, disabled: true };
     } catch (error) {
       console.error('Error tracking video progress:', error);
       throw error;
@@ -194,14 +90,6 @@ class VideoService {
   // Get video viewing progress
   async getVideoProgress(userId, videoId) {
     try {
-      const progressDoc = await db.collection('videoProgress')
-        .doc(`${userId}_${videoId}`)
-        .get();
-
-      if (progressDoc.exists) {
-        return progressDoc.data().progress;
-      }
-
       return null;
     } catch (error) {
       console.error('Error getting video progress:', error);
