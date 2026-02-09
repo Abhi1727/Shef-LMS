@@ -13,3 +13,6 @@ dist/
 *.swo
 .cache/
 coverage/
+
+# Local MongoDB data (do not commit)
+backend/mongo-data/
