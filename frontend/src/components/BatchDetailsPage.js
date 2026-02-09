@@ -65,7 +65,10 @@ const BatchDetailsPage = () => {
   const [activeView, setActiveView] = useState('videos');
   const [editingStudent, setEditingStudent] = useState(null);
   const [showStudentModal, setShowStudentModal] = useState(false);
+  const [showStudentDetailsModal, setShowStudentDetailsModal] = useState(false);
+  const [selectedStudentDetails, setSelectedStudentDetails] = useState(null);
   const [showAddStudentsModal, setShowAddStudentsModal] = useState(false);
+  const [showAddStudentModal, setShowAddStudentModal] = useState(false);
   const [selectedStudentIds, setSelectedStudentIds] = useState([]);
   const [showAddVideoModal, setShowAddVideoModal] = useState(false);
   const [editingVideo, setEditingVideo] = useState(null);
@@ -74,6 +77,16 @@ const BatchDetailsPage = () => {
   const [timeRange, setTimeRange] = useState({ start: '', end: '' });
   const [isAdmin, setIsAdmin] = useState(false);
   const [addStudentsSearch, setAddStudentsSearch] = useState('');
+  const [newStudentForm, setNewStudentForm] = useState({
+    name: '',
+    email: '',
+    password: '',
+    phone: '',
+    address: '',
+    course: selectedBatch?.course || '',
+    batchId: selectedBatch?.id || selectedBatch?._id || '',
+    status: 'active'
+  });
   const [videoFormData, setVideoFormData] = useState({
     title: '',
     youtubeVideoUrl: '',
@@ -165,7 +178,15 @@ const BatchDetailsPage = () => {
               batchId,
               totalStudents: studentUsers.length,
               batchStudents: batchStudents.length,
-              batchStudentsArray: batch.students?.length || 0
+              batchStudentsArray: batch.students?.length || 0,
+              sampleStudentData: batchStudents.slice(0, 2).map(s => ({
+                id: s.id,
+                name: s.name,
+                phone: s.phone,
+                address: s.address,
+                hasPhone: !!s.phone,
+                hasAddress: !!s.address
+              }))
             });
             
             setStudents(batchStudents);
@@ -227,6 +248,17 @@ const BatchDetailsPage = () => {
   useEffect(() => {
     loadBatchData();
   }, [loadBatchData]);
+
+  // Update new student form when batch changes
+  useEffect(() => {
+    if (selectedBatch) {
+      setNewStudentForm(prev => ({
+        ...prev,
+        course: selectedBatch.course || '',
+        batchId: selectedBatch.id || selectedBatch._id || ''
+      }));
+    }
+  }, [selectedBatch]);
 
   const handleBackToAdmin = () => {
     // Go back to the previous page instead of always forcing /admin
@@ -304,6 +336,73 @@ const BatchDetailsPage = () => {
 
   const handleViewChange = (view) => {
     setActiveView(view);
+  };
+
+  const handleViewStudentDetails = (student) => {
+    setSelectedStudentDetails(student);
+    setShowStudentDetailsModal(true);
+  };
+
+  const handleAddNewStudent = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
+
+      // Validate required fields
+      if (!newStudentForm.name || !newStudentForm.email || !newStudentForm.password || !newStudentForm.course) {
+        showToast('Please fill in all required fields (Name, Email, Password, Course)', 'warning');
+        return;
+      }
+
+      const studentData = {
+        name: newStudentForm.name,
+        email: newStudentForm.email,
+        password: newStudentForm.password,
+        phone: newStudentForm.phone,
+        address: newStudentForm.address,
+        course: newStudentForm.course,
+        batchId: newStudentForm.batchId,
+        status: newStudentForm.status,
+        role: 'student'
+      };
+
+      const response = await fetch(`${apiUrl}/api/admin/users`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify(studentData)
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        showToast('Student added successfully!', 'success');
+        
+        // Add the new student to local state
+        const newStudent = { id: data.id, ...studentData };
+        setStudents(prev => [...prev, newStudent]);
+        
+        // Reset form and close modal
+        setNewStudentForm({
+          name: '',
+          email: '',
+          password: '',
+          phone: '',
+          address: '',
+          course: selectedBatch?.course || '',
+          batchId: selectedBatch?.id || selectedBatch?._id || '',
+          status: 'active'
+        });
+        setShowAddStudentModal(false);
+      } else {
+        showToast(data.message || 'Failed to add student', 'error');
+      }
+    } catch (error) {
+      console.error('Error adding student:', error);
+      showToast('Error adding student', 'error');
+    }
   };
 
   const toggleStudentSelection = (studentId) => {
@@ -710,26 +809,26 @@ const BatchDetailsPage = () => {
         </div>
       </div>
 
-      <div className="batch-content">
-        {/* Side Menu */}
-        <div className="side-menu">
-          <h3>Batch Options</h3>
-          <div className="menu-items">
-            <button 
-              className={`menu-item ${activeView === 'videos' ? 'active' : ''}`}
-              onClick={() => handleViewChange('videos')}
-            >
-              📹 Videos ({batchVideos.length})
-            </button>
-            <button 
-              className={`menu-item ${activeView === 'students' ? 'active' : ''}`}
-              onClick={() => handleViewChange('students')}
-            >
-              👥 Students ({batchStudents.length})
-            </button>
-          </div>
+      {/* Horizontal Menu - After Header */}
+      <div className="horizontal-menu">
+        <h3>Batch Options</h3>
+        <div className="menu-items-horizontal">
+          <button 
+            className={`menu-item-horizontal ${activeView === 'videos' ? 'active' : ''}`}
+            onClick={() => handleViewChange('videos')}
+          >
+            📹 Videos ({batchVideos.length})
+          </button>
+          <button 
+            className={`menu-item-horizontal ${activeView === 'students' ? 'active' : ''}`}
+            onClick={() => handleViewChange('students')}
+          >
+            👥 Students ({batchStudents.length})
+          </button>
         </div>
+      </div>
 
+      <div className="batch-content">
         {/* Main Content */}
         <div className="main-content">
           {activeView === 'videos' && (
@@ -875,12 +974,20 @@ const BatchDetailsPage = () => {
             <div className="students-view">
               <div className="students-header">
                 <h2>👥 Students in {selectedBatch.name}</h2>
-                <button
-                  className="btn-add"
-                  onClick={() => setShowAddStudentsModal(true)}
-                >
-                  ➕ Add Students to Batch
-                </button>
+                <div className="students-actions">
+                  <button
+                    className="btn-add"
+                    onClick={() => setShowAddStudentModal(true)}
+                  >
+                    ➕ Add Student
+                  </button>
+                  <button
+                    className="btn-secondary"
+                    onClick={() => setShowAddStudentsModal(true)}
+                  >
+                    👥 Add Existing Students
+                  </button>
+                </div>
               </div>
 
               {batchStudents.length > 0 ? (
@@ -898,7 +1005,12 @@ const BatchDetailsPage = () => {
                     </thead>
                     <tbody>
                       {batchStudents.map(student => (
-                        <tr key={student.id}>
+                        <tr 
+                          key={student.id}
+                          className="student-row"
+                          onClick={() => handleViewStudentDetails(student)}
+                          style={{ cursor: 'pointer' }}
+                        >
                           <td>{student.name}</td>
                           <td>{student.email}</td>
                           <td>{student.batchId || 'N/A'}</td>
@@ -910,14 +1022,23 @@ const BatchDetailsPage = () => {
                           </td>
                           <td>
                             <button 
-                              onClick={() => handleEditStudent(student)}
+                              onClick={(e) => {
+                                e.stopPropagation(); // Prevent row click
+                                handleEditStudent(student);
+                              }}
                               className="btn-edit"
                               title="Edit Student"
                             >
                               ✏️ Edit
                             </button>
                             <button 
-                              onClick={() => handleDeleteStudent(student)}
+                              onClick={(e) => {
+                                e.stopPropagation(); // Prevent row click
+                                if (window.confirm(`Remove ${student.name} from this batch? This will not delete the student, only unassign them from this batch.`)) {
+                                  // Handle student deletion
+                                  handleDeleteStudent(student);
+                                }
+                              }}
                               className="btn-delete"
                               title="Remove from Batch"
                             >
@@ -1291,6 +1412,158 @@ const BatchDetailsPage = () => {
               onClick={handleAddStudentsToBatch}
             >
               Save
+            </button>
+          </div>
+        </div>
+      </div>,
+      document.body
+    )}
+
+    {showStudentDetailsModal && createPortal(
+      <div className="modal-overlay" onClick={() => setShowStudentDetailsModal(false)}>
+        <div className="modal student-details-modal" onClick={(e) => e.stopPropagation()}>
+          <div className="modal-header">
+            <h3>👤 Student Details</h3>
+            <button className="modal-close" onClick={() => setShowStudentDetailsModal(false)}>×</button>
+          </div>
+          
+          <div className="modal-content student-details-content">
+            <div className="student-details-grid">
+              <div className="detail-section">
+                <h4>📝 Personal Information</h4>
+                <div className="detail-item">
+                  <label>Full Name:</label>
+                  <span>{selectedStudentDetails?.name || 'N/A'}</span>
+                </div>
+                <div className="detail-item">
+                  <label>Email Address:</label>
+                  <span>{selectedStudentDetails?.email || 'N/A'}</span>
+                </div>
+                <div className="detail-item">
+                  <label>Phone Number:</label>
+                  <span>{selectedStudentDetails?.phone || 'N/A'}</span>
+                </div>
+                <div className="detail-item">
+                  <label>Address:</label>
+                  <span>{selectedStudentDetails?.address || 'N/A'}</span>
+                </div>
+              </div>
+
+              <div className="detail-section">
+                <h4>🎓 Academic Information</h4>
+                <div className="detail-item">
+                  <label>Batch Name:</label>
+                  <span>{selectedBatch?.name || 'N/A'}</span>
+                </div>
+                <div className="detail-item">
+                  <label>Course:</label>
+                  <span>{selectedStudentDetails?.course || 'N/A'}</span>
+                </div>
+                <div className="detail-item">
+                  <label>Status:</label>
+                  <span className={`status-badge ${selectedStudentDetails?.status || 'inactive'}`}>
+                    {selectedStudentDetails?.status || 'N/A'}
+                  </span>
+                </div>
+              </div>
+            </div>
+            
+            <div className="modal-actions">
+              <button
+                className="btn-primary"
+                onClick={() => setShowStudentDetailsModal(false)}
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>,
+      document.body
+    )}
+
+    {/* Add Student Modal */}
+    {showAddStudentModal && createPortal(
+      <div className="modal-overlay" onClick={() => setShowAddStudentModal(false)}>
+        <div className="modal" onClick={(e) => e.stopPropagation()}>
+          <div className="modal-header">
+            <h2>Add New Student</h2>
+            <button className="modal-close" onClick={() => setShowAddStudentModal(false)}>×</button>
+          </div>
+          
+          <div className="modal-content">
+            <input
+              type="text"
+              placeholder="Student full name *"
+              value={newStudentForm.name}
+              onChange={(e) => setNewStudentForm({...newStudentForm, name: e.target.value})}
+              required
+            />
+            <input
+              type="email"
+              placeholder="Enter student email address *"
+              value={newStudentForm.email}
+              onChange={(e) => setNewStudentForm({...newStudentForm, email: e.target.value})}
+              required
+              autoComplete="off"
+              readOnly
+              onFocus={(e) => e.target.removeAttribute('readonly')}
+              onBlur={(e) => e.target.setAttribute('readonly', true)}
+            />
+            <input
+              type="password"
+              placeholder="Create password for student *"
+              value={newStudentForm.password}
+              onChange={(e) => setNewStudentForm({...newStudentForm, password: e.target.value})}
+              required
+              autoComplete="off"
+              readOnly
+              onFocus={(e) => e.target.removeAttribute('readonly')}
+              onBlur={(e) => e.target.setAttribute('readonly', true)}
+            />
+            <input
+              type="tel"
+              placeholder="Phone Number"
+              value={newStudentForm.phone}
+              onChange={(e) => setNewStudentForm({...newStudentForm, phone: e.target.value})}
+            />
+            <textarea
+              placeholder="Address"
+              value={newStudentForm.address}
+              onChange={(e) => setNewStudentForm({...newStudentForm, address: e.target.value})}
+              rows="2"
+            />
+            <select
+              value={newStudentForm.course}
+              onChange={(e) => setNewStudentForm({...newStudentForm, course: e.target.value})}
+              required
+            >
+              <option value="">Select Course *</option>
+              <option value="Data Science & AI">Data Science & AI</option>
+              <option value="Cyber Security & Ethical Hacking">Cyber Security & Ethical Hacking</option>
+            </select>
+            <select
+              value={newStudentForm.status}
+              onChange={(e) => setNewStudentForm({...newStudentForm, status: e.target.value})}
+            >
+              <option value="active">Active</option>
+              <option value="inactive">Inactive</option>
+              <option value="on-leave">On Leave</option>
+            </select>
+          </div>
+
+          <div className="modal-actions">
+            <button
+              className="btn-secondary"
+              onClick={() => setShowAddStudentModal(false)}
+            >
+              Cancel
+            </button>
+            <button
+              className="btn-primary"
+              onClick={handleAddNewStudent}
+            >
+              Add Student
             </button>
           </div>
         </div>

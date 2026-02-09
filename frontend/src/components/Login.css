@@ -15,11 +15,120 @@
   overflow: hidden;
 }
 
+.animated-bg-fallback {
+  position: absolute;
+  bottom: -10%;
+  right: -10%;
+  width: 120vw;
+  height: 120vh;
+  min-height: 100vh;
+  min-width: 100vw;
+  z-index: 1;
+  background: radial-gradient(circle at 80% 80%, rgba(102, 126, 234, 0.3) 0%, rgba(118, 75, 162, 0.2) 25%, transparent 50%);
+  animation: orbFloat 8s infinite ease-in-out;
+  border-radius: 50%;
+  filter: blur(2px);
+}
+
+@keyframes orbFloat {
+  0%, 100% {
+    transform: scale(1) translate(0, 0);
+    opacity: 0.6;
+  }
+  25% {
+    transform: scale(1.1) translate(-20px, -10px);
+    opacity: 0.8;
+  }
+  50% {
+    transform: scale(1.05) translate(10px, -20px);
+    opacity: 0.7;
+  }
+  75% {
+    transform: scale(0.95) translate(-10px, 10px);
+    opacity: 0.9;
+  }
+}
+
+.spline-iframe {
+  position: absolute;
+  bottom: -10%;
+  right: -10%;
+  width: 120vw;
+  height: 120vh;
+  min-height: 100vh;
+  min-width: 100vw;
+  z-index: 2;
+  transform: scale(1.1);
+  transform-origin: bottom right;
+  opacity: 0;
+  transition: opacity 0.3s ease-in-out, transform 0.3s ease-in-out;
+  will-change: transform, opacity;
+  backface-visibility: hidden;
+  perspective: 1000px;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+.spline-iframe.loaded {
+  opacity: 1;
+}
+
+.spline-iframe.loading {
+  opacity: 0;
+  animation: pulse 2s infinite ease-in-out;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 0;
+  }
+  50% {
+    opacity: 0.3;
+  }
+}
+
+@media (max-width: 768px) {
+  .animated-bg-fallback {
+    width: 150vw;
+    height: 150vh;
+    bottom: -20%;
+    right: -20%;
+  }
+  
+  .spline-iframe {
+    width: 150vw;
+    height: 150vh;
+    bottom: -20%;
+    right: -20%;
+    transform: scale(1.2);
+    transition: opacity 1s ease-in-out, transform 1s ease-in-out;
+  }
+}
+
+@media (max-width: 480px) {
+  .animated-bg-fallback {
+    width: 180vw;
+    height: 180vh;
+    bottom: -30%;
+    right: -30%;
+  }
+  
+  .spline-iframe {
+    width: 180vw;
+    height: 180vh;
+    bottom: -30%;
+    right: -30%;
+    transform: scale(1.3);
+    transition: opacity 1.2s ease-in-out, transform 1.2s ease-in-out;
+  }
+}
+
 .shape {
   position: absolute;
   border-radius: 50%;
   opacity: 0.1;
   animation: float 20s infinite ease-in-out;
+  z-index: 2;
 }
 
 .shape1 {
@@ -62,15 +171,16 @@
 }
 
 .login-card {
-  background: white;
+  background: linear-gradient(135deg, rgba(102, 126, 234, 0.15) 0%, rgba(118, 75, 162, 0.15) 100%);
   border-radius: 20px;
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
   width: 90%;
   max-width: 450px;
   padding: 40px;
   position: relative;
-  z-index: 10;
+  z-index: 100;
   animation: slideUp 0.5s ease-out;
+  margin-left: -460px;
 }
 
 @keyframes slideUp {
@@ -119,7 +229,7 @@
 
 .logo h1 {
   font-size: 32px;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: linear-gradient(135deg, #f8f4e6 0%, #f0e6d2 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
@@ -128,12 +238,12 @@
 
 .login-header h2 {
   font-size: 24px;
-  color: #333;
+  color: #f8f4e6;
   margin-bottom: 8px;
 }
 
 .login-header p {
-  color: #666;
+  color: #f0e6d2;
   font-size: 14px;
 }
 
@@ -148,29 +258,56 @@
 .form-group label {
   display: block;
   margin-bottom: 8px;
-  color: #333;
+  color: #f8f4e6;
   font-weight: 600;
   font-size: 14px;
 }
 
+/* Enhanced Form Styles */
+.input-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.input-icon {
+  position: absolute;
+  left: 12px;
+  font-size: 16px;
+  z-index: 2;
+  color: #6c757d;
+  transition: color 0.3s ease;
+}
+
 .form-group input {
   width: 100%;
-  padding: 12px 16px;
+  padding: 12px 16px 12px 40px;
   border: 2px solid #e0e0e0;
   border-radius: 10px;
   font-size: 14px;
   transition: all 0.3s ease;
+  background: rgba(248, 244, 230, 0.1);
+  color: #f8f4e6;
+  backdrop-filter: blur(10px);
 }
 
-.form-group input:focus {
-  outline: none;
-  border-color: #667eea;
-  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+.form-group input:focus + .input-icon {
+  color: #667eea;
 }
 
-.error-message {
-  background: #fee;
-  color: #c33;
+.form-group input.shake {
+  animation: shake 0.5s ease-in-out;
+}
+
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  10%, 30%, 50%, 70%, 90% { transform: translateX(-5px); }
+  20%, 40%, 60%, 80% { transform: translateX(5px); }
+}
+
+.warning-message {
+  background: rgba(255, 193, 7, 0.1);
+  color: #ffc107;
   padding: 12px 16px;
   border-radius: 10px;
   margin-bottom: 20px;
@@ -178,6 +315,22 @@
   align-items: center;
   gap: 8px;
   font-size: 14px;
+  border: 1px solid rgba(255, 193, 7, 0.3);
+  backdrop-filter: blur(10px);
+}
+
+.ip-info {
+  background: rgba(23, 162, 184, 0.1);
+  color: #17a2b8;
+  padding: 10px 16px;
+  border-radius: 8px;
+  margin-bottom: 20px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  border: 1px solid rgba(23, 162, 184, 0.3);
+  backdrop-filter: blur(10px);
 }
 
 .login-btn {
@@ -192,6 +345,27 @@
   cursor: pointer;
   transition: all 0.3s ease;
   margin-bottom: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  position: relative;
+  overflow: hidden;
+}
+
+.login-btn::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+  transition: left 0.5s ease;
+}
+
+.login-btn:hover:not(:disabled)::before {
+  left: 100%;
 }
 
 .login-btn:hover:not(:disabled) {
@@ -206,6 +380,28 @@
 .login-btn:disabled {
   opacity: 0.7;
   cursor: not-allowed;
+}
+
+.login-btn.locked {
+  background: linear-gradient(135deg, #dc3545 0%, #c82333 100%);
+}
+
+.login-btn.loading {
+  pointer-events: none;
+}
+
+.spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-top: 2px solid white;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
 }
 
 .demo-credentials {

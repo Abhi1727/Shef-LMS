@@ -62,38 +62,61 @@ router.get('/classroom', async (req, res) => {
     });
     
     console.log('🔍 Dashboard Debug - Batch name → ID map:', batchNameToId);
-    
-    // Filter videos based on user's course and batch
-    const filteredVideos = allVideos.filter(video => {
-      // Check if video matches user's course (support both 'course' and 'courseId' fields)
-      const videoCourse = video.courseId || video.course; // Use courseId if available, fallback to course
-      const courseMatch = videoCourse === userCourse;
+    const filteredVideos = [];
+    for (const video of allVideos) {
+      // Admin can access all videos
+      if (tokenUser.role === 'admin') {
+        filteredVideos.push(video);
+        continue;
+      }
+      
+      // Teacher can access videos for their courses
+      if (tokenUser.role === 'teacher') {
+        const videoCourse = video.courseId || video.course;
+        if (videoCourse === userCourse) {
+          filteredVideos.push(video);
+        }
+        continue;
+      }
+      
+      // Student access logic - require both course AND batch to match
+      if (tokenUser.role === 'student') {
+        // Check if video matches user's course (support both 'course' and 'courseId' fields)
+        const videoCourse = video.courseId || video.course;
+        const courseMatch = videoCourse === userCourse;
 
-      // Convert batch name to ID if needed, but do NOT convert IDs back to names
-      const userBatchActualId = batchNameToId[userBatchId] || userBatchId;
+        // Get student's batch information to check batch name
+        let studentBatchName = null;
+        if (userBatchId) {
+          try {
+            const batchDoc = await db.collection('batches').doc(userBatchId).get();
+            if (batchDoc.exists) {
+              const batchData = batchDoc.data();
+              studentBatchName = batchData.name;
+            }
+          } catch (error) {
+            console.error('Error fetching student batch info:', error);
+          }
+        }
 
-      // Batch restriction: if video has a batchId, it is targeted to that batch
-      const batchMatch = video.batchId && video.batchId === userBatchActualId;
+        // Check batch match - require both batchId AND batch name to match
+        let batchMatch = false;
+        if (video.batchId && userBatchId) {
+          batchMatch = video.batchId === userBatchId;
+          
+          // Additional check: verify batch names match if we have batch data
+          if (batchMatch && studentBatchName && video.batchName) {
+            batchMatch = video.batchName === studentBatchName;
+          }
+        }
 
-      // Student access rule:
-      //  - If enrolled in the course, they can see all videos for that course
-      //  - Additionally, if batchMatch is true they also have access (even if course field is missing)
-      const hasAccess = courseMatch || batchMatch;
-
-      console.log('🔍 Dashboard Debug - Video filtering:', {
-        videoTitle: video.title,
-        videoCourse,
-        videoBatchId: video.batchId,
-        userCourse,
-        userBatchId,
-        userBatchActualId,
-        courseMatch,
-        batchMatch,
-        hasAccess
-      });
-
-      return hasAccess;
-    });
+        // Student must be enrolled in course AND have matching batch
+        // Domain match alone is not sufficient for access
+        if (courseMatch && batchMatch) {
+          filteredVideos.push(video);
+        }
+      }
+    }
 
     console.log('🔍 Dashboard Debug - Filtered videos count:', filteredVideos.length);
     

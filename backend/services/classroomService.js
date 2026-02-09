@@ -95,6 +95,7 @@ class ClassroomService {
         description: lectureData.description || '',
         courseId: lectureData.courseId,
         batchId: lectureData.batchId || null,
+        batchName: lectureData.batchName || null,
         domain: lectureData.domain || null,
         firebaseStoragePath: lectureData.firebaseStoragePath,
         duration: lectureData.duration || null,
@@ -139,50 +140,95 @@ class ClassroomService {
    */
   async getAccessibleLectures(user, courseId = null) {
     try {
-      let query = db.collection('classroom').where('videoSource', '==', 'firebase');
+      // Get both Firebase and YouTube videos
+      let firebaseQuery = db.collection('classroom').where('videoSource', '==', 'firebase');
+      let youtubeQuery = db.collection('classroom').where('videoSource', '==', 'youtube-url');
       
-      // Filter by course if specified
+      // Apply course filter if specified
       if (courseId) {
-        query = query.where('courseId', '==', courseId);
+        firebaseQuery = firebaseQuery.where('courseId', '==', courseId);
+        youtubeQuery = youtubeQuery.where('course', '==', courseId);
       }
       
-      const snapshot = await query.get();
+      const [firebaseSnapshot, youtubeSnapshot] = await Promise.all([
+        firebaseQuery.get(),
+        youtubeQuery.get()
+      ]);
+      
       const lectures = [];
       
-      snapshot.forEach(doc => {
+      firebaseSnapshot.forEach(doc => {
+        lectures.push({ id: doc.id, ...doc.data() });
+      });
+      
+      youtubeSnapshot.forEach(doc => {
         lectures.push({ id: doc.id, ...doc.data() });
       });
       
       // Filter based on user role and access permissions
-      return lectures.filter(lecture => {
+      const filteredLectures = [];
+      for (const lecture of lectures) {
         // Admin can access all lectures
-        if (user.role === 'admin') return true;
+        if (user.role === 'admin') {
+          filteredLectures.push(lecture);
+          continue;
+        }
         
         // Teacher can access lectures for their courses
         if (user.role === 'teacher') {
-          return lecture.courseId === user.currentCourse || lecture.courseId === user.course;
+          if (lecture.courseId === user.currentCourse || 
+              lecture.courseId === user.course ||
+              lecture.course === user.currentCourse || 
+              lecture.course === user.course) {
+            filteredLectures.push(lecture);
+          }
+          continue;
         }
         
         // Student access logic
         if (user.role === 'student') {
-          // Check if enrolled in course
+          // Get student's batch information to check batch name
+          const studentBatchId = user.batchId;
+          let studentBatchName = null;
+          
+          if (studentBatchId) {
+            try {
+              const batchDoc = await db.collection('batches').doc(studentBatchId).get();
+              if (batchDoc.exists) {
+                const batchData = batchDoc.data();
+                studentBatchName = batchData.name;
+              }
+            } catch (error) {
+              console.error('Error fetching student batch info:', error);
+            }
+          }
+          
+          // Check if enrolled in course (handle both courseId and course fields)
           const enrolledInCourse = lecture.courseId === user.currentCourse || 
-                                 lecture.courseId === user.course;
+                                 lecture.courseId === user.course ||
+                                 lecture.course === user.currentCourse || 
+                                 lecture.course === user.course;
           
-          // Check batch match
-          const batchMatch = lecture.batchId && lecture.batchId === user.batchId;
+          // Check batch match - require both batchId AND batch name to match
+          let batchMatch = false;
+          if (lecture.batchId && studentBatchId) {
+            batchMatch = lecture.batchId === studentBatchId;
+            
+            // Additional check: verify batch names match if we have batch data
+            if (batchMatch && studentBatchName && lecture.batchName) {
+              batchMatch = lecture.batchName === studentBatchName;
+            }
+          }
           
-          // Check domain match
-          const domainMatch = lecture.domain && 
-                            (lecture.domain === user.domain || 
-                             user.domain?.toLowerCase().includes(lecture.domain?.toLowerCase()) ||
-                             lecture.domain?.toLowerCase().includes(user.domain?.toLowerCase()));
-          
-          return enrolledInCourse || batchMatch || domainMatch;
+          // Student must be enrolled in course AND have matching batch
+          // Domain match alone is not sufficient for access
+          if (enrolledInCourse && batchMatch) {
+            filteredLectures.push(lecture);
+          }
         }
-        
-        return false;
-      });
+      }
+      
+      return filteredLectures;
     } catch (error) {
       console.error('Error fetching accessible lectures:', error);
       throw new Error('Failed to fetch lectures');

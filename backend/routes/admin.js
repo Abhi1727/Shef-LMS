@@ -88,8 +88,25 @@ router.get('/users', async (req, res) => {
     const usersSnapshot = await db.collection('users').where('role', '==', 'student').get();
     const users = [];
     usersSnapshot.forEach(doc => {
-      users.push({ id: doc.id, ...doc.data() });
+      const userData = doc.data();
+      const user = { 
+        id: doc.id, 
+        ...userData,
+        // Ensure phone and address are included with fallbacks
+        phone: userData.phone || '',
+        address: userData.address || ''
+      };
+      users.push(user);
+      
+      // Debug logging for student data
+      if (userData.phone || userData.address) {
+        console.log(`Student ${doc.id} has phone/address:`, {
+          phone: userData.phone,
+          address: userData.address
+        });
+      }
     });
+    console.log(`Total students fetched: ${users.length}`);
     res.json(users);
   } catch (err) {
     console.error('Error fetching users:', err);

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { ToastContainer, showToast } from './Toast';
 import axios from 'axios';
 import './Dashboard.css';
@@ -760,7 +761,8 @@ const TeacherDashboard = ({ user, onLogout }) => {
         )}
       </main>
 
-      <ToastContainer />
+      {/* Toast Notifications - Rendered via portal for proper stacking */}
+      {createPortal(<ToastContainer />, document.body)}
     </div>
   );
 };

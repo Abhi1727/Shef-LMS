@@ -1,25 +1,34 @@
 .toast-container {
   position: fixed;
-  top: 80px;
+  top: 20px; /* Moved higher to be more visible above modals */
   right: 20px;
-  z-index: 9999;
+  z-index: 9999999; /* Absolute maximum - 9 million, higher than everything else */
   display: flex;
   flex-direction: column;
   gap: 12px;
   max-width: 400px;
+  pointer-events: none; /* Allow clicks through container but not on toasts */
+  /* Ensure it's always on top */
+  transform: translateZ(0); /* Force GPU acceleration */
+  will-change: transform; /* Optimize for animations */
 }
 
 .toast {
+  pointer-events: auto; /* Re-enable clicks for individual toasts */
   background: white;
   border-radius: 12px;
   padding: 16px 20px;
-  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.15);
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.25); /* Increased shadow for better visibility */
   display: flex;
   align-items: center;
   gap: 12px;
   min-width: 300px;
   animation: slideIn 0.3s ease-out;
   border-left: 4px solid;
+  border: 1px solid rgba(0, 0, 0, 0.1); /* Add border for better definition */
+  /* Ensure toast is always visible */
+  position: relative;
+  transform: translateZ(0); /* Force new stacking context */
 }
 
 @keyframes slideIn {
@@ -85,14 +94,18 @@
 
 @media (max-width: 768px) {
   .toast-container {
-    top: 70px;
+    top: 10px; /* Even higher on mobile for better visibility */
     right: 16px;
     left: 16px;
     max-width: none;
+    z-index: 9999999; /* Ensure maximum z-index on mobile too */
   }
 
   .toast {
     min-width: auto;
     width: 100%;
+    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.3); /* Even stronger shadow on mobile */
+    position: relative;
+    transform: translateZ(0); /* Force new stacking context on mobile */
   }
 }

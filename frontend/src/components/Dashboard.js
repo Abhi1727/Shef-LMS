@@ -7,6 +7,150 @@ import StudentProfile from './StudentProfile';
 import { YouTubeUtils } from '../utils/youtubeUtils';
 import './Dashboard.css';
 
+// Background Image Slider Component
+const BackgroundImageSlider = () => {
+  const [currentSlide, setCurrentSlide] = useState(0);
+  
+  const slides = [
+    {
+      url: 'https://images.unsplash.com/photo-1552664730-d307ca884978?w=1920&h=1080&fit=crop',
+      title: 'Data Science & AI',
+      subtitle: 'Master the future of technology',
+      cta: 'Start Learning'
+    },
+    {
+      url: 'https://images.unsplash.com/photo-1563013544-824ae1b704d3?w=1920&h=1080&fit=crop',
+      title: 'Cyber Security',
+      subtitle: 'Protect digital worlds',
+      cta: 'Explore Courses'
+    },
+    {
+      url: 'https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=1920&h=1080&fit=crop',
+      title: 'Web Development',
+      subtitle: 'Build amazing applications',
+      cta: 'Create Projects'
+    },
+    {
+      url: 'https://images.unsplash.com/photo-1551434678-e076c223a692?w=1920&h=1080&fit=crop',
+      title: 'Mobile Development',
+      subtitle: 'Apps for billions',
+      cta: 'Develop Apps'
+    }
+  ];
+  
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setCurrentSlide((prev) => (prev + 1) % slides.length);
+    }, 5000);
+    
+    return () => clearInterval(timer);
+  }, [slides.length]);
+  
+  const goToSlide = (index) => {
+    setCurrentSlide(index);
+  };
+  
+  const goToPrevious = () => {
+    setCurrentSlide((prev) => (prev - 1 + slides.length) % slides.length);
+  };
+  
+  const goToNext = () => {
+    setCurrentSlide((prev) => (prev + 1) % slides.length);
+  };
+  
+  return (
+    <div className="background-slider">
+      <div className="slider-container">
+        {slides.map((slide, index) => (
+          <div
+            key={index}
+            className={`slide ${index === currentSlide ? 'active' : ''}`}
+            style={{ backgroundImage: `url(${slide.url})` }}
+          />
+        ))}
+        
+        {/* Overlay Content */}
+        <div className="slider-overlay">
+          <div className="slider-content">
+            <div className="slider-text">
+              <h1 className="slider-title">{slides[currentSlide].title}</h1>
+              <p className="slider-subtitle">{slides[currentSlide].subtitle}</p>
+              <button className="slider-cta">{slides[currentSlide].cta}</button>
+            </div>
+          </div>
+        </div>
+        
+        {/* Navigation Arrows */}
+        <button className="slider-arrow prev" onClick={goToPrevious}>
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M15 18l-6-6 6-6"/>
+          </svg>
+        </button>
+        <button className="slider-arrow next" onClick={goToNext}>
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M9 18l6-6-6-6"/>
+          </svg>
+        </button>
+        
+        {/* Dots Indicator */}
+        <div className="slider-dots">
+          {slides.map((_, index) => (
+            <button
+              key={index}
+              className={`dot ${index === currentSlide ? 'active' : ''}`}
+              onClick={() => goToSlide(index)}
+            />
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// Typing Animation Component
+const TypingAnimation = ({ texts, speed = 100, pauseDuration = 2000 }) => {
+  const [displayedText, setDisplayedText] = useState('');
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const [currentTextIndex, setCurrentTextIndex] = useState(0);
+  const [isDeleting, setIsDeleting] = useState(false);
+  
+  useEffect(() => {
+    const currentText = texts[currentTextIndex];
+    
+    const timeout = setTimeout(() => {
+      if (!isDeleting) {
+        // Typing
+        if (currentIndex < currentText.length) {
+          setDisplayedText(prev => prev + currentText[currentIndex]);
+          setCurrentIndex(prev => prev + 1);
+        } else {
+          // Pause before deleting
+          setTimeout(() => setIsDeleting(true), pauseDuration);
+        }
+      } else {
+        // Deleting
+        if (currentIndex > 0) {
+          setDisplayedText(prev => prev.slice(0, -1));
+          setCurrentIndex(prev => prev - 1);
+        } else {
+          // Move to next text
+          setIsDeleting(false);
+          setCurrentTextIndex((prev) => (prev + 1) % texts.length);
+        }
+      }
+    }, isDeleting ? speed / 2 : speed);
+    
+    return () => clearTimeout(timeout);
+  }, [currentIndex, currentTextIndex, isDeleting, speed, pauseDuration, texts]);
+  
+  return (
+    <span className="typing-text">
+      {displayedText}
+      <span className="typing-cursor">|</span>
+    </span>
+  );
+};
+
 const Dashboard = ({ user, onLogout }) => {
   const [stats, setStats] = useState(null);
   const [courses, setCourses] = useState([]);
@@ -23,6 +167,7 @@ const Dashboard = ({ user, onLogout }) => {
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [showHelpMenu, setShowHelpMenu] = useState(false);
   const [selectedVideo, setSelectedVideo] = useState(null);
+  const [darkMode, setDarkMode] = useState(false);
   
   // Course content state
   const [courseContent, setCourseContent] = useState(null);
@@ -53,6 +198,28 @@ const Dashboard = ({ user, onLogout }) => {
 
     }));
   };
+
+  // Dark mode toggle
+  const toggleDarkMode = () => {
+    const newDarkMode = !darkMode;
+    setDarkMode(newDarkMode);
+    localStorage.setItem('darkMode', newDarkMode);
+  };
+
+  // Load dark mode preference on mount
+  useEffect(() => {
+    const savedDarkMode = localStorage.getItem('darkMode') === 'true';
+    setDarkMode(savedDarkMode);
+  }, []);
+
+  // Apply dark mode class to body
+  useEffect(() => {
+    if (darkMode) {
+      document.body.classList.add('dark-mode');
+    } else {
+      document.body.classList.remove('dark-mode');
+    }
+  }, [darkMode]);
 
   // Determine the course slug from user's enrolled course
   const getCourseSlug = useCallback(() => {
@@ -1338,7 +1505,7 @@ const Dashboard = ({ user, onLogout }) => {
           type: 'announcement',
           title: announcement.title,
           description: announcement.content,
-          time: announcement.createdAt ? new Date(announcement.createdAt.seconds * 1000).toLocaleDateString() : 'Recently'
+          time: announcement.createdAt ? new Date(announcement.createdAt.seconds * 1000).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'Recently'
         }));
 
       setStats(calculatedStats);
@@ -1394,6 +1561,18 @@ const Dashboard = ({ user, onLogout }) => {
 
   return (
     <div className="dashboard">
+      {/* 3D Educational Background Elements */}
+      <div className="edu-3d-container">
+        <div className="edu-3d-element book">📚</div>
+        <div className="edu-3d-element graduation-cap">🎓</div>
+        <div className="edu-3d-element microscope">🔬</div>
+        <div className="edu-3d-element calculator">🧮</div>
+        <div className="edu-3d-element flask">⚗️</div>
+        <div className="edu-3d-element laptop">💻</div>
+        <div className="edu-3d-element dna">🧬</div>
+        <div className="edu-3d-element brain">🧠</div>
+      </div>
+
       {/* Mobile Menu Toggle */}
       <button 
         className="mobile-menu-toggle"
@@ -1402,115 +1581,58 @@ const Dashboard = ({ user, onLogout }) => {
         <span style={{ fontSize: '1.5rem' }}>☰</span>
       </button>
 
-      {/* Sidebar Overlay */}
-      <div className={`sidebar-overlay ${sidebarOpen ? 'visible' : ''}`} onClick={() => setSidebarOpen(false)} />
-
-      {/* Sidebar */}
-      <aside className={`sidebar ${sidebarOpen ? 'open' : 'closed'}`}>
-        <div className="sidebar-header">
+      {/* Top Navigation Bar */}
+      <header className="top-nav">
+        <div className="top-nav-header">
           <h2>LMS</h2>
           <div className="subtitle">Student Portal</div>
         </div>
-
-        <nav className="sidebar-nav">
+        
+        <nav className="top-nav-menu">
           <button 
             className={`nav-item ${activeSection === 'overview' ? 'active' : ''}`}
-            onClick={() => { setActiveSection('overview'); if (window.innerWidth <= 1024) setSidebarOpen(false); }}
+            onClick={() => setActiveSection('overview')}
             title="Home"
           >
             <span className="nav-icon">🏠</span>
             <span>Home</span>
           </button>
-          {/* Commented out - Live Classes option disabled */}
-          {/* <button 
-            className={`nav-item ${activeSection === 'liveClasses' ? 'active' : ''}`}
-            onClick={() => { setActiveSection('liveClasses'); if (window.innerWidth <= 1024) setSidebarOpen(false); }}
-            title="Live Classes"
-          >
-            <span className="nav-icon">📡</span>
-            <span>Live Classes</span>
-          </button> */}
-          
-          {/* Commented out - Learn option disabled */}
-          {/* <button 
-            className={`nav-item ${activeSection === 'courses' ? 'active' : ''}`}
-            onClick={() => { setActiveSection('courses'); if (window.innerWidth <= 1024) setSidebarOpen(false); }}
-            title="Learn"
-          >
-            <span className="nav-icon">📖</span>
-            <span>Learn</span>
-          </button> */}
           
           <button 
             className={`nav-item ${activeSection === 'classroom' ? 'active' : ''}`}
-            onClick={() => { setActiveSection('classroom'); if (window.innerWidth <= 1024) setSidebarOpen(false); }}
+            onClick={() => setActiveSection('classroom')}
             title="Classroom"
           >
             <span className="nav-icon">🎥</span>
             <span>Classroom</span>
           </button>
           
-          {/* Commented out - Disabled navigation items */}
-          {/* 
-          <button 
-            className={`nav-item ${activeSection === 'activity' ? 'active' : ''}`}
-            onClick={() => { setActiveSection('activity'); if (window.innerWidth <= 1024) setSidebarOpen(false); }}
-            title="Practice"
-          >
-            <span className="icon">✏️</span>
-            <span>Practice</span>
-          </button>
-          <button 
-            className={`nav-item ${activeSection === 'projects' ? 'active' : ''}`}
-            onClick={() => { setActiveSection('projects'); if (window.innerWidth <= 1024) setSidebarOpen(false); }}
-            title="Projects"
-          >
-            <span className="icon">📁</span>
-            <span>Projects</span>
-          </button>
-          <button 
-            className={`nav-item ${activeSection === 'career' ? 'active' : ''}`}
-            onClick={() => { setActiveSection('career'); if (window.innerWidth <= 1024) setSidebarOpen(false); }}
-            title="Career"
-          >
-            <span className="icon">🎯</span>
-            <span>Career</span>
-          </button>
-          <button 
-            className={`nav-item ${activeSection === 'mentorship' ? 'active' : ''}`}
-            onClick={() => { setActiveSection('mentorship'); if (window.innerWidth <= 1024) setSidebarOpen(false); }}
-            title="Mentorship"
-          >
-            <span className="icon">👨‍🏫</span>
-            <span>Mentorship</span>
-          </button>
-          <button 
-            className={`nav-item ${activeSection === 'jobboard' ? 'active' : ''}`}
-            onClick={() => { setActiveSection('jobboard'); if (window.innerWidth <= 1024) setSidebarOpen(false); }}
-            title="Job Board"
-          >
-            <span className="icon">💼</span>
-            <span>Job Board</span>
-          </button>
-          */}
-
           <button 
             className={`nav-item ${activeSection === 'profile' ? 'active' : ''}`}
-            onClick={() => { setActiveSection('profile'); if (window.innerWidth <= 1024) setSidebarOpen(false); }}
+            onClick={() => setActiveSection('profile')}
             title="My Profile"
           >
             <span className="nav-icon">👤</span>
             <span>My Profile</span>
           </button>
-        </nav>
-
-        <div className="sidebar-footer">
-          <button className="nav-item" onClick={onLogout} style={{ marginTop: '1rem' }}>
+          
+          <button 
+            className="nav-item dark-mode-toggle" 
+            onClick={toggleDarkMode}
+            title={darkMode ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
+          >
+            <span className="nav-icon">{darkMode ? '☀️' : '🌙'}</span>
+            <span>{darkMode ? 'Light' : 'Dark'}</span>
+          </button>
+          
+          <button className="nav-item logout-btn" onClick={onLogout}>
             <span className="nav-icon">🚪</span>
             <span>Logout</span>
           </button>
-        </div>
-      </aside>
+        </nav>
+        
+        <div className="top-nav-spacer"></div>
+      </header>
 
       {/* Main Content */}
       <main className="main-content">
@@ -1519,18 +1641,26 @@ const Dashboard = ({ user, onLogout }) => {
         <div className="dashboard-content">
           {activeSection === 'overview' && (
             <div className="animate-in">
-              {/* Header */}
-              <div className="header">
-                <h1>Welcome back, {user?.name}! 👋</h1>
+              
+              {/* Welcome Header - Only on home page */}
+              <div className="welcome-header">
+                <div className="rotating-text-container">
+                  <h1 className="rotating-text">
+                    Welcome back, <span>{user?.name}</span>! Welcome back, <span>{user?.name}</span>! Welcome back, <span>{user?.name}</span>!
+                  </h1>
+                </div>
                 <div className="subtitle">
                   {isDataScience() 
-                    ? 'Continue your Data Science & AI journey' 
-                    : 'Advance your cybersecurity skills'}
+                    ? <TypingAnimation text="Continue your Data Science & AI journey" speed={80} />
+                    : <TypingAnimation text="Advance your cybersecurity skills" speed={80} />}
                 </div>
               </div>
+              
+              {/* Background Image Slider - Only on home page */}
+              <BackgroundImageSlider />
 
               {/* Stats Grid */}
-              <div className="stats-grid">
+              {/* <div className="stats-grid">
                 <div className="stat-card animate-in">
                   <div className="stat-icon">📚</div>
                   <div className="stat-value">{contentLoading ? '...' : courseData.modules}</div>
@@ -1551,7 +1681,7 @@ const Dashboard = ({ user, onLogout }) => {
                   <div className="stat-value">{classroomVideos.length}</div>
                   <div className="stat-label">Class Videos</div>
                 </div>
-              </div>
+              </div> */}
 
               {/* Current Course Section */}
               {/* Commented out - Your Learning Journey section disabled */}
@@ -1817,7 +1947,7 @@ const Dashboard = ({ user, onLogout }) => {
                             </div>
                           )}
                           <div style={{ marginBottom: '8px' }}>
-                            <strong>📅 Date:</strong> {new Date(video.date || video.createdAt).toLocaleDateString()}
+                            <strong>📅 Class Date:</strong> {new Date(video.date || video.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
                           </div>
                         </div>
                         

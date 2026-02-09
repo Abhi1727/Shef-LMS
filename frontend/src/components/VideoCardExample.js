@@ -150,7 +150,7 @@ const VideoCardExample = () => {
                   <span>•</span>
                   <span>{selectedVideo.duration}</span>
                   <span>•</span>
-                  <span>{new Date(selectedVideo.publishDate).toLocaleDateString()}</span>
+                  <span>{new Date(selectedVideo.publishDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</span>
                 </div>
               </div>
             </div>

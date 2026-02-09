@@ -384,7 +384,7 @@ const CustomVideoPlayer = ({ video, onClose, resumePosition = 0, onProgressUpdat
         <div className="video-title">
           <h3>{video.title}</h3>
           <div className="video-meta">
-            <span>📅 {new Date(video.date || video.createdAt).toLocaleDateString()}</span>
+            <span>📅 Class Date: {new Date(video.date || video.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</span>
             <span>⏱️ {video.duration}</span>
             <span>👨‍🏫 {video.instructor}</span>
             {video.videoSource === 'firebase' && <span>🔥 Firebase Storage</span>}

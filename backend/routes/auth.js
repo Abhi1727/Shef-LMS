@@ -269,6 +269,8 @@ router.post('/login', async (req, res) => {
         domain: userData.domain,
         title: userData.title,
         company: userData.company,
+        phone: userData.phone || '', // Add phone number
+        address: userData.address || '', // Add address
         lastLogin: loginInfo
       }
     };

@@ -382,7 +382,7 @@ const Dashboard = ({ user, onLogout }) => {
                             <span>⏱️ {video.duration}</span>
                           </div>
                           <div className="video-meta-row">
-                            <span>📅 {new Date(video.date || video.createdAt).toLocaleDateString()}</span>
+                            <span>📅 Class Date: {new Date(video.date || video.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</span>
                             <span className="learning-badge">New</span>
                           </div>
                         </div>
@@ -582,7 +582,7 @@ const Dashboard = ({ user, onLogout }) => {
                             <span>⏱️ {video.duration}</span>
                           </div>
                           <div className="video-meta-row">
-                            <span>📅 {new Date(video.date || video.createdAt).toLocaleDateString()}</span>
+                            <span>📅 Class Date: {new Date(video.date || video.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</span>
                             <span className="learning-badge">
                               {video.videoSource === 'youtube-url' ? 'YouTube' : 'Firebase'}
                             </span>
