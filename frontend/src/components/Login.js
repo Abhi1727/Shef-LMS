@@ -11,16 +11,15 @@ const Login = ({ onLogin }) => {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [ipData, setIpData] = useState(null);
-  const [iframeLoaded, setIframeLoaded] = useState(false);
-  const [showIframe, setShowIframe] = useState(false);
   const [loginAttempts, setLoginAttempts] = useState(0);
   const [isLocked, setIsLocked] = useState(false);
   const [lockTimeRemaining, setLockTimeRemaining] = useState(0);
-  const iframeRef = useRef(null);
+  const [showPassword, setShowPassword] = useState(false);
+  const containerRef = useRef(null);
 
   const { email, password } = formData;
 
-  // Detect IP address when component mounts
+  // Detect IP address when component mounts (for security logging only)
   useEffect(() => {
     const fetchIP = async () => {
       try {
@@ -31,37 +30,52 @@ const Login = ({ onLogin }) => {
       }
     };
     fetchIP();
+  }, []);
 
-    // Optimized iframe loading strategy
-    const loadIframe = () => {
-      // Create a new iframe element for better performance
-      const iframe = document.createElement('iframe');
-      iframe.src = 'https://my.spline.design/reactiveorb-oBoMVyo5ZcPfpuQuaNzGdhQ4/';
-      iframe.frameBorder = '0';
-      iframe.width = '100%';
-      iframe.height = '100%';
-      iframe.className = 'spline-iframe';
-      iframe.loading = 'eager';
-      iframe.allow = 'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture';
-      iframe.allowFullScreen = true;
-      
-      iframe.onload = () => {
-        setIframeLoaded(true);
-      };
-      
-      // Add to DOM after a short delay
-      setTimeout(() => {
-        if (iframeRef.current?.parentElement) {
-          iframeRef.current.parentElement.replaceChild(iframe, iframeRef.current);
+  // Cursor-based ambient animation: floating lines/shapes repel from the cursor
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    const handleMouseMove = (e) => {
+      const rect = container.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+
+      // Update CSS custom properties for gradient highlight
+      container.style.setProperty('--cursor-x', `${x}px`);
+      container.style.setProperty('--cursor-y', `${y}px`);
+
+      // Repel floating shapes away from the cursor
+      const shapes = container.querySelectorAll('.floating-shape');
+      const maxDist = 220;
+      const maxOffset = 32;
+
+      shapes.forEach((shape) => {
+        const sRect = shape.getBoundingClientRect();
+        const sx = sRect.left + sRect.width / 2 - rect.left;
+        const sy = sRect.top + sRect.height / 2 - rect.top;
+
+        const dx = sx - x;
+        const dy = sy - y;
+        const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+
+        if (dist < maxDist) {
+          const force = (maxDist - dist) / maxDist;
+          const offsetX = (dx / dist) * force * maxOffset;
+          const offsetY = (dy / dist) * force * maxOffset;
+          shape.style.transform = `translate3d(${offsetX}px, ${offsetY}px, 0)`;
+        } else {
+          shape.style.transform = 'translate3d(0, 0, 0)';
         }
-        setShowIframe(true);
-      }, 100);
+      });
     };
 
-    // Start loading immediately but show after minimal delay
-    const timer = setTimeout(loadIframe, 200);
+    container.addEventListener('mousemove', handleMouseMove);
 
-    return () => clearTimeout(timer);
+    return () => {
+      container.removeEventListener('mousemove', handleMouseMove);
+    };
   }, []);
 
   const onChange = (e) => {
@@ -137,119 +151,122 @@ const Login = ({ onLogin }) => {
   };
 
   return (
-    <div className="login-container">
-      <div className="login-background">
-        {/* Fallback animated background */}
-        <div className="animated-bg-fallback"></div>
-        
-        {showIframe && (
-          <iframe 
-            ref={iframeRef}
-            src='https://my.spline.design/reactiveorb-oBoMVyo5ZcPfpuQuaNzGdhQ4/' 
-            frameBorder='0' 
-            width='100%' 
-            height='100%'
-            className={`spline-iframe ${iframeLoaded ? 'loaded' : 'loading'}`}
-            onLoad={() => setIframeLoaded(true)}
-            loading="eager"
-            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-            allowFullScreen
-          />
-        )}
-        
-        <div className="shape shape1"></div>
-        <div className="shape shape2"></div>
-        <div className="shape shape3"></div>
+    <div className="login-container" ref={containerRef}>
+      <div className="tech-grid"></div>
+      <div className="floating-shapes">
+        <span className="floating-shape shape-1"></span>
+        <span className="floating-shape shape-2"></span>
+        <span className="floating-shape shape-3"></span>
+        <span className="floating-shape shape-4"></span>
+        <span className="floating-shape shape-5"></span>
       </div>
-      
-      <div className="login-card">
-        <div className="login-header">
-          <div className="logo">
-            <h2>LMS</h2>
+
+      <div className="login-main">
+        <div className="login-card">
+          <div className="login-header">
+            <div className="logo">
+              <h2>LMS</h2>
+            </div>
+            <h2>Welcome Back! 👋</h2>
+            <p>Sign in to continue your learning journey</p>
           </div>
-          <h2>Welcome Back! 👋</h2>
-          <p>Sign in to continue your learning journey</p>
+
+          <form onSubmit={onSubmit} className="login-form" autoComplete="off">
+            {error && (
+              <div className="error-message">
+                <span>⚠️</span> {error}
+              </div>
+            )}
+
+            {loginAttempts > 0 && loginAttempts < 5 && (
+              <div className="warning-message">
+                <span>🔒</span> Login attempts remaining: {5 - loginAttempts}
+              </div>
+            )}
+
+            <div className="form-group">
+              <label htmlFor="email">Email Address</label>
+              <div className="input-wrapper">
+                <span className="input-icon">📧</span>
+                <input
+                  type="email"
+                  id="email"
+                  name="email"
+                  value={email}
+                  onChange={onChange}
+                  placeholder="Enter your email"
+                  autoComplete="off"
+                  required
+                  className={loginAttempts > 2 ? 'shake' : ''}
+                />
+              </div>
+            </div>
+
+            <div className="form-group">
+              <label htmlFor="password">Password</label>
+              <div className="input-wrapper">
+                <span className="input-icon">🔐</span>
+                <input
+                  type={showPassword ? 'text' : 'password'}
+                  id="password"
+                  name="password"
+                  value={password}
+                  onChange={onChange}
+                  placeholder="Enter your password"
+                  autoComplete="new-password"
+                  required
+                  className={loginAttempts > 2 ? 'shake' : ''}
+                />
+                <button
+                  type="button"
+                  className="toggle-password"
+                  onClick={() => setShowPassword((prev) => !prev)}
+                  aria-label={showPassword ? 'Hide password' : 'Show password'}
+                >
+                  <span className="toggle-password-icon" aria-hidden="true">
+                    {showPassword ? '🙈' : '👁️'}
+                  </span>
+                </button>
+              </div>
+            </div>
+
+            <button
+              type="submit"
+              className={`login-btn ${loading ? 'loading' : ''} ${isLocked ? 'locked' : ''}`}
+              disabled={loading || isLocked}
+            >
+              {loading ? (
+                <>
+                  <span className="spinner"></span>
+                  Signing in...
+                </>
+              ) : isLocked ? (
+                <>
+                  <span>🔒</span>
+                  Account Locked
+                </>
+              ) : (
+                <>
+                  <span>🚀</span>
+                  Sign In
+                </>
+              )}
+            </button>
+          </form>
+
+          <div className="login-footer">
+            <p>&copy; 2025 LMS. All rights reserved.</p>
+          </div>
         </div>
 
-        <form onSubmit={onSubmit} className="login-form">
-          {error && (
-            <div className="error-message">
-              <span>⚠️</span> {error}
-            </div>
-          )}
-
-          {loginAttempts > 0 && loginAttempts < 5 && (
-            <div className="warning-message">
-              <span>🔒</span> Login attempts remaining: {5 - loginAttempts}
-            </div>
-          )}
-
-          {ipData && (
-            <div className="ip-info">
-              <span>📍</span> Login from: {ipData.city}, {ipData.country}
-            </div>
-          )}
-
-          <div className="form-group">
-            <label htmlFor="email">Email Address</label>
-            <div className="input-wrapper">
-              <span className="input-icon">📧</span>
-              <input
-                type="email"
-                id="email"
-                name="email"
-                value={email}
-                onChange={onChange}
-                placeholder="Enter your email"
-                required
-                className={loginAttempts > 2 ? 'shake' : ''}
-              />
-            </div>
+        <div className="hero-text hero-below">
+          <h1>Shef LMS</h1>
+          <p>Streamlined classes, recorded lectures, and progress in one place.</p>
+          <div className="hero-tags">
+            <span>Secure Login</span>
+            <span>Live Cohorts</span>
+            <span>Video Library</span>
           </div>
-
-          <div className="form-group">
-            <label htmlFor="password">Password</label>
-            <div className="input-wrapper">
-              <span className="input-icon">🔐</span>
-              <input
-                type="password"
-                id="password"
-                name="password"
-                value={password}
-                onChange={onChange}
-                placeholder="Enter your password"
-                required
-                className={loginAttempts > 2 ? 'shake' : ''}
-              />
-            </div>
-          </div>
-
-          <button 
-            type="submit" 
-            className={`login-btn ${loading ? 'loading' : ''} ${isLocked ? 'locked' : ''}`} 
-            disabled={loading || isLocked}
-          >
-            {loading ? (
-              <>
-                <span className="spinner"></span>
-                Signing in...
-              </>
-            ) : isLocked ? (
-              <>
-                <span>🔒</span>
-                Account Locked
-              </>
-            ) : (
-              <>
-                <span>🚀</span>
-                Sign In
-              </>
-            )}
-          </button>
-        </form>
-
-        <div className="login-footer">
-          <p>&copy; 2025 LMS. All rights reserved.</p>
         </div>
       </div>
     </div>

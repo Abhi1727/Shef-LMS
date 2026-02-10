@@ -17,15 +17,21 @@ async function createAdminAccount() {
       existingAdmin.role = 'admin';
       existingAdmin.status = 'active';
       existingAdmin.updatedAt = new Date();
+
+      // Ensure super admin uses the requested password
+      const hashedPassword = await bcrypt.hash('SuperAdmin@123', 10);
+      existingAdmin.password = hashedPassword;
+
       await existingAdmin.save();
       console.log('✅ Admin account updated successfully!');
       console.log('   Email: admin@sheflms.com');
       console.log('   Status: Active');
+      console.log('   Password: SuperAdmin@123');
       return;
     }
 
     // Create new admin account
-    const hashedPassword = await bcrypt.hash('admin123', 10);
+    const hashedPassword = await bcrypt.hash('SuperAdmin@123', 10);
 
     const adminData = {
       name: 'System Administrator',
@@ -46,7 +52,7 @@ async function createAdminAccount() {
 
     console.log('✅ Admin account created successfully!');
     console.log('   Email: admin@sheflms.com');
-    console.log('   Password: admin123');
+    console.log('   Password: SuperAdmin@123');
     console.log('   ID: ' + saved._id.toString());
     console.log('\n⚠️ IMPORTANT: Please change the default password after first login!');
     console.log('🔗 Login URL: http://localhost:3000/login');

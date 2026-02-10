@@ -47,6 +47,10 @@ app.use('/api/batches', require('./routes/batches'));
 app.use('/api/student', require('./routes/student'));
 
 // Health check & API root
+app.get('/api/health', (req, res) => {
+  res.json({ status: 'ok', uptime: process.uptime() });
+});
+
 app.get('/api', (req, res) => {
   res.json({ message: 'SHEF LMS API is running', status: 'ok' });
 });

@@ -1,8 +1,8 @@
 const CACHE_NAME = 'lms-admin-v1';
+// Cache only URLs we are sure exist in the deployed build
 const urlsToCache = [
   '/',
-  '/static/js/bundle.js',
-  '/static/css/main.css',
+  '/index.html',
   '/manifest.json'
 ];
 

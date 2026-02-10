@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { firebaseService, COLLECTIONS } from '../services/firebaseService';
 import './AdminDashboard.css';
 
@@ -14,14 +14,8 @@ const MentorDashboard = ({ user, onLogout }) => {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [selectedVideo, setSelectedVideo] = useState(null);
   const [showProfileModal, setShowProfileModal] = useState(false);
-  const [showHelpMenu, setShowHelpMenu] = useState(false);
 
-  // Load all data on component mount
-  useEffect(() => {
-    loadAllData();
-  }, []);
-
-  const loadAllData = async () => {
+  const loadAllData = useCallback(async () => {
     try {
       setLoading(true);
 
@@ -73,7 +67,12 @@ const MentorDashboard = ({ user, onLogout }) => {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  // Load all data on component mount
+  useEffect(() => {
+    loadAllData();
+  }, [loadAllData]);
 
   const calculateStats = (coursesData, liveClassesData, classroomData, assessmentsData) => {
     const safeCourses = Array.isArray(coursesData) ? coursesData : [];
@@ -94,11 +93,6 @@ const MentorDashboard = ({ user, onLogout }) => {
       completedAssessments: Math.floor(totalAssessments * 0.7), // Mock completion rate
       upcomingMeetings: safeLiveClasses.filter(lc => lc.scheduledDate && new Date(lc.scheduledDate) > new Date()).length
     });
-  };
-
-  const showToast = (message, type = 'info') => {
-    // Simple toast implementation
-    alert(`${type.toUpperCase()}: ${message}`);
   };
 
   const formatDate = (dateString) => {

@@ -6,7 +6,7 @@ const StudentProfile = ({ user, onProfileUpdate }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [message, setMessage] = useState('');
   const [messageType, setMessageType] = useState('');
-  const [activeTab, setActiveTab] = useState('overview');
+  const [activeTab, setActiveTab] = useState('personal');
   
   // Profile data state
   const [profileData, setProfileData] = useState({
@@ -283,31 +283,13 @@ const StudentProfile = ({ user, onProfileUpdate }) => {
         )}
       </div>
 
-      {/* Navigation Tabs */}
-      <div className="profile-tabs">
+      {/* Navigation Tabs - keep only Personal Info active for now */}
+      <div className="profile-tabs single-tab">
         <button 
-          className={`tab-btn ${activeTab === 'overview' ? 'active' : ''}`}
-          onClick={() => setActiveTab('overview')}
-        >
-          📊 Overview
-        </button>
-        <button 
-          className={`tab-btn ${activeTab === 'personal' ? 'active' : ''}`}
-          onClick={() => setActiveTab('personal')}
+          className="tab-btn active"
+          type="button"
         >
           👤 Personal Info
-        </button>
-        <button 
-          className={`tab-btn ${activeTab === 'security' ? 'active' : ''}`}
-          onClick={() => setActiveTab('security')}
-        >
-          🔒 Security
-        </button>
-        <button 
-          className={`tab-btn ${activeTab === 'achievements' ? 'active' : ''}`}
-          onClick={() => setActiveTab('achievements')}
-        >
-          🏆 Achievements
         </button>
       </div>
 
@@ -318,84 +300,7 @@ const StudentProfile = ({ user, onProfileUpdate }) => {
       )}
 
       <div className="profile-content">
-        {/* Overview Tab */}
-        {activeTab === 'overview' && (
-          <div className="tab-content">
-            {/* Learning Stats Grid */}
-            <div className="stats-grid">
-              <div className="stat-card">
-                <div className="stat-icon">📚</div>
-                <div className="stat-info">
-                  <h3>{learningStats.completedLessons}</h3>
-                  <p>Completed Lessons</p>
-                  <div className="progress-bar">
-                    <div 
-                      className="progress-fill" 
-                      style={{ width: `${(learningStats.completedLessons / learningStats.totalLessons) * 100}%` }}
-                    />
-                  </div>
-                </div>
-              </div>
-
-              <div className="stat-card">
-                <div className="stat-icon">🔥</div>
-                <div className="stat-info">
-                  <h3>{learningStats.streakDays}</h3>
-                  <p>Day Streak</p>
-                  <div className="streak-indicator">
-                    {Array.from({ length: Math.min(learningStats.streakDays, 7) }).map((_, i) => (
-                      <span key={i} className="streak-day">🔥</span>
-                    ))}
-                  </div>
-                </div>
-              </div>
-
-              <div className="stat-card">
-                <div className="stat-icon">📜</div>
-                <div className="stat-info">
-                  <h3>{learningStats.certificates}</h3>
-                  <p>Certificates Earned</p>
-                  <div className="certificates-preview">
-                    {Array.from({ length: Math.min(learningStats.certificates, 3) }).map((_, i) => (
-                      <span key={i} className="cert-icon">🏆</span>
-                    ))}
-                  </div>
-                </div>
-              </div>
-
-              <div className="stat-card">
-                <div className="stat-icon">⏰</div>
-                <div className="stat-info">
-                  <h3>{learningStats.studyHours}h</h3>
-                  <p>Study Hours</p>
-                  <div className="time-indicator">
-                    <span className="time-label">This month</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Current Course Card */}
-            <div className="course-card">
-              <h3>🎓 Current Course</h3>
-              <div className="course-info">
-                <h4>{profileData.currentCourse || 'Not enrolled'}</h4>
-                <p>Started: {new Date(profileData.joinDate).toLocaleDateString()}</p>
-                <div className="course-progress">
-                  <span>Progress: {Math.round((learningStats.completedLessons / learningStats.totalLessons) * 100)}%</span>
-                  <div className="progress-bar">
-                    <div 
-                      className="progress-fill" 
-                      style={{ width: `${(learningStats.completedLessons / learningStats.totalLessons) * 100}%` }}
-                    />
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Personal Info Tab */}
+        {/* Personal Info Tab - only active section for now */}
         {activeTab === 'personal' && (
           <div className="tab-content">
             <div className="profile-section">
@@ -474,8 +379,8 @@ const StudentProfile = ({ user, onProfileUpdate }) => {
           </div>
         )}
 
-        {/* Security Tab */}
-        {activeTab === 'security' && (
+        {/* Security Tab (temporarily disabled) */}
+        {false && activeTab === 'security' && (
           <div className="tab-content">
             <div className="profile-section">
               <h3>🔒 Security Settings</h3>
@@ -568,8 +473,8 @@ const StudentProfile = ({ user, onProfileUpdate }) => {
           </div>
         )}
 
-        {/* Achievements Tab */}
-        {activeTab === 'achievements' && (
+        {/* Achievements Tab (temporarily disabled) */}
+        {false && activeTab === 'achievements' && (
           <div className="tab-content">
             <div className="profile-section">
               <h3>🏆 Achievements & Certificates</h3>

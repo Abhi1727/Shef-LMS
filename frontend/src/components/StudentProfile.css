@@ -44,13 +44,13 @@
 
 .profile-info h2 {
   margin: 0 0 8px 0;
-  color: #1e293b;
+  color: #020617;
   font-size: 28px;
   font-weight: 700;
 }
 
 .profile-email {
-  color: #64748b;
+  color: #9ca3af;
   font-size: 14px;
   margin: 0 0 12px 0;
 }
@@ -834,11 +834,16 @@ body.dark-mode .student-profile-container {
 }
 
 body.dark-mode .profile-header {
+  background: linear-gradient(135deg, #0f172a 0%, #020617 100%);
   border-bottom: 2px solid #475569;
+  box-shadow: 0 12px 40px rgba(15, 23, 42, 0.6);
+}
+body.dark-mode .profile-info h2 {
+  color: #ffffff;
 }
 
-body.dark-mode .profile-header h2 {
-  color: #f8fafc;
+body.dark-mode .profile-email {
+  color: #cbd5e1;
 }
 
 body.dark-mode .profile-section {

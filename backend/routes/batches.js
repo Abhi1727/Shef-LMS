@@ -3,6 +3,7 @@ const router = express.Router();
 const { isAdmin } = require('../middleware/roleAuth');
 const Batch = require('../models/Batch');
 const User = require('../models/User');
+const Classroom = require('../models/Classroom');
 
 // @route   POST /api/batches
 // @desc    Create a new batch
@@ -213,22 +214,20 @@ router.delete('/:batchId/students/:studentId', isAdmin, async (req, res) => {
 router.delete('/:batchId/videos/:videoId', isAdmin, async (req, res) => {
   try {
     const { batchId, videoId } = req.params;
+    // Ensure the batch exists in MongoDB
+    const batchDoc = await Batch.findById(batchId).lean().exec();
 
-    const batchRef = db.collection('batches').doc(batchId);
-    const batchDoc = await batchRef.get();
-
-    if (!batchDoc.exists) {
+    if (!batchDoc) {
       return res.status(404).json({
         success: false,
         message: 'Batch not found'
       });
     }
 
-    // Remove video from batch by clearing its batchId in the classroom collection
-    const videoRef = db.collection('classroom').doc(videoId);
-    const videoDoc = await videoRef.get();
-    
-    if (!videoDoc.exists) {
+    // Find the classroom video document
+    const videoDoc = await Classroom.findById(videoId).exec();
+
+    if (!videoDoc) {
       return res.status(404).json({
         success: false,
         message: 'Video not found'
@@ -236,7 +235,8 @@ router.delete('/:batchId/videos/:videoId', isAdmin, async (req, res) => {
     }
 
     // Clear the batchId for this video (disassociate from batch)
-    await videoRef.update({ batchId: null });
+    videoDoc.batchId = null;
+    await videoDoc.save();
 
     res.json({
       success: true,

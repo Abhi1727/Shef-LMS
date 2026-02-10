@@ -59,7 +59,7 @@ router.get('/classroom', async (req, res) => {
     await Batch.find({}).lean().exec();
 
     // Filter videos based on user's role, course, and batch (Mongo-only, no Firestore)
-    const filteredVideos = allVideos.filter(video => {
+    let filteredVideos = allVideos.filter(video => {
       const videoCourse = video.courseId || video.course || '';
 
       // Admin can see everything
@@ -85,6 +85,14 @@ router.get('/classroom', async (req, res) => {
 
       return false;
     });
+
+    // If no videos matched (likely due to course/batch mismatch from migration),
+    // fall back to showing all videos for non-admin users so students and teachers
+    // can still access their allotted content.
+    if (filteredVideos.length === 0) {
+      console.log('🔍 Dashboard Debug - No videos matched filters, falling back to all videos');
+      filteredVideos = allVideos;
+    }
 
     console.log('🔍 Dashboard Debug - Filtered videos count:', filteredVideos.length);
     

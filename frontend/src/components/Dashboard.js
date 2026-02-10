@@ -73,7 +73,6 @@ const BackgroundImageSlider = () => {
             <div className="slider-text">
               <h1 className="slider-title">{slides[currentSlide].title}</h1>
               <p className="slider-subtitle">{slides[currentSlide].subtitle}</p>
-              <button className="slider-cta">{slides[currentSlide].cta}</button>
             </div>
           </div>
         </div>
@@ -165,7 +164,7 @@ const Dashboard = ({ user, onLogout }) => {
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [showHelpMenu, setShowHelpMenu] = useState(false);
   const [selectedVideo, setSelectedVideo] = useState(null);
-  const [darkMode, setDarkMode] = useState(false);
+  const [darkMode, setDarkMode] = useState(true);
   
   // Course content state
   const [courseContent, setCourseContent] = useState(null);
@@ -206,8 +205,13 @@ const Dashboard = ({ user, onLogout }) => {
 
   // Load dark mode preference on mount
   useEffect(() => {
-    const savedDarkMode = localStorage.getItem('darkMode') === 'true';
-    setDarkMode(savedDarkMode);
+    const stored = localStorage.getItem('darkMode');
+    if (stored === null) {
+      setDarkMode(true);
+      localStorage.setItem('darkMode', 'true');
+    } else {
+      setDarkMode(stored === 'true');
+    }
   }, []);
 
   // Apply dark mode class to body
@@ -332,9 +336,19 @@ const Dashboard = ({ user, onLogout }) => {
       console.log('🔍 Frontend Debug - Response status:', response.status);
       
       if (response.ok) {
-        const videos = await response.json();
+        const raw = await response.json();
+        const videos = Array.isArray(raw)
+          ? raw
+          : Array.isArray(raw?.videos)
+            ? raw.videos
+            : [];
+
         console.log('🔍 Frontend Debug - Videos received:', videos.length);
-        console.log('🔍 Frontend Debug - Sample video:', videos[0]);
+        if (videos.length > 0) {
+          console.log('🔍 Frontend Debug - Sample video:', videos[0]);
+        } else {
+          console.log('🔍 Frontend Debug - No classroom videos available for this student.');
+        }
 
         // Additional sorting on frontend to ensure latest videos are first
         const sortedVideos = videos.sort((a, b) => {
@@ -494,11 +508,14 @@ const Dashboard = ({ user, onLogout }) => {
       const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000/api' : '/api';
       const response = await fetch(`${apiUrl}/content/${slug}`);
       const data = await response.json();
-      if (data.success) {
+      if (data && data.success) {
         setCourseContent(data);
-        if (data.modules && data.modules.length > 0) {
-          setSelectedModule(data.modules[0].id);
+        const modules = Array.isArray(data.modules) ? data.modules : [];
+        if (modules.length > 0 && modules[0]?.id != null) {
+          setSelectedModule(modules[0].id);
         }
+      } else {
+        setCourseContent(null);
       }
     } catch (error) {
       console.error('Error loading course content:', error);
@@ -708,16 +725,20 @@ const Dashboard = ({ user, onLogout }) => {
 
   // Get the most recent video played by user
   const getLastPlayedVideo = useCallback(() => {
-    if (videoWatchHistory.length === 0) {
+    const history = Array.isArray(videoWatchHistory) ? videoWatchHistory : [];
+    const videos = Array.isArray(classroomVideos) ? classroomVideos : [];
+
+    if (history.length === 0) {
       // No watch history, return the newest video
-      return classroomVideos.length > 0 ? classroomVideos[0] : null;
+      return videos.length > 0 ? videos[0] : null;
     }
 
     // Get the most recently watched video
-    const mostRecentRecord = videoWatchHistory
+    const mostRecentRecord = history
       .sort((a, b) => new Date(b.watchedAt) - new Date(a.watchedAt))[0];
-    
-    const video = classroomVideos.find(v => v.id === mostRecentRecord.videoId);
+    if (!mostRecentRecord) return videos.length > 0 ? videos[0] : null;
+
+    const video = videos.find(v => v.id === mostRecentRecord.videoId);
     return video ? { ...video, watchedAt: mostRecentRecord.watchedAt, lastWatchedPosition: mostRecentRecord.lastWatchedPosition } : null;
   }, [videoWatchHistory, classroomVideos]);
 
@@ -1542,15 +1563,13 @@ const Dashboard = ({ user, onLogout }) => {
               
               {/* Welcome Header - Only on home page */}
               <div className="welcome-header">
-                <div className="rotating-text-container">
-                  <h1 className="rotating-text">
-                    Welcome back, <span>{user?.name}</span>! Welcome back, <span>{user?.name}</span>! Welcome back, <span>{user?.name}</span>!
-                  </h1>
-                </div>
+                <h1 className="welcome-title">
+                  Welcome back, <span>{user?.name}</span>!
+                </h1>
                 <div className="subtitle">
                   {isDataScience() 
-                    ? <TypingAnimation text="Continue your Data Science & AI journey" speed={80} />
-                    : <TypingAnimation text="Advance your cybersecurity skills" speed={80} />}
+                    ? <TypingAnimation texts={["Continue your Data Science & AI journey"]} speed={80} />
+                    : <TypingAnimation texts={["Advance your cybersecurity skills"]} speed={80} />}
                 </div>
               </div>
               

@@ -57,12 +57,10 @@ const TeacherDashboard = ({ user, onLogout }) => {
       const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
 
       // Load teacher dashboard data
-      const [dashboardRes, coursesRes] = await Promise.all([
-        fetch(`${apiUrl}/api/teacher/dashboard`, { headers: { 'Authorization': `Bearer ${token}` } }),
-        fetch(`${apiUrl}/api/teacher/courses`, { headers: { 'Authorization': `Bearer ${token}` } })
-      ]);
+      const coursesRes = await fetch(`${apiUrl}/api/teacher/courses`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
 
-      const dashboardData = dashboardRes.ok ? await dashboardRes.json() : null;
       const coursesData = coursesRes.ok ? await coursesRes.json() : [];
 
       setCourses(coursesData.courses || []);
@@ -96,8 +94,8 @@ const TeacherDashboard = ({ user, onLogout }) => {
       });
       
       if (response.ok) {
-        const data = await response.json();
-        setLectures(data.lectures || []);
+        const json = await response.json();
+        setLectures(json.lectures || []);
       } else {
         setLectures([]);
       }
@@ -164,7 +162,7 @@ const TeacherDashboard = ({ user, onLogout }) => {
       });
 
       if (response.ok) {
-        const data = await response.json();
+        await response.json();
         showToast('Lecture uploaded successfully!', 'success');
         
         // Reset form

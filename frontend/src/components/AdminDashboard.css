@@ -1565,36 +1565,83 @@ body.modal-open {
   background: #cbd5e0;
 }
 
-/* Loading */
+/* Loading - match student dashboard style */
 .loading-container {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   min-height: 100vh;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: white;
+  gap: 30px;
+  background: radial-gradient(circle at top, #0b1120, #020617 65%);
+  position: relative;
+  overflow: hidden;
+  padding: 0 16px;
+}
+
+.loading-container::before {
+  content: '';
+  position: absolute;
+  inset: -80px;
+  background-image:
+    linear-gradient(rgba(15, 23, 42, 0.75) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(15, 23, 42, 0.75) 1px, transparent 1px);
+  background-size: 42px 42px;
+  opacity: 0.35;
+  transform: translate3d(0, 0, 0);
+  animation: gridPan 22s linear infinite;
 }
 
 .loader {
-  width: 60px;
-  height: 60px;
-  border: 5px solid rgba(255, 255, 255, 0.3);
-  border-top-color: white;
-  border-radius: 50%;
-  animation: spin 1s linear infinite;
-  margin-bottom: 20px;
+  position: relative;
+  z-index: 10;
+  width: 100px;
+  height: 100px;
+  filter: drop-shadow(0 0 24px rgba(56, 189, 248, 0.55));
 }
 
-@keyframes spin {
+.loader::before,
+.loader::after {
+  content: '';
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  border: 3px solid transparent;
+  border-radius: 50%;
+}
+
+.loader::before {
+  border-top-color: rgba(56, 189, 248, 0.95);
+  border-right-color: rgba(56, 189, 248, 0.4);
+  animation: adminSpin 1.5s linear infinite;
+}
+
+.loader::after {
+  border-bottom-color: rgba(129, 140, 248, 0.85);
+  border-left-color: rgba(129, 140, 248, 0.35);
+  animation: adminSpinReverse 1.5s linear infinite;
+}
+
+@keyframes adminSpin {
   to {
     transform: rotate(360deg);
   }
 }
 
+@keyframes adminSpinReverse {
+  to {
+    transform: rotate(-360deg);
+  }
+}
+
 .loading-container p {
-  font-size: 18px;
+  position: relative;
+  z-index: 10;
+  color: #e2e8f0;
+  font-size: 16px;
   font-weight: 500;
+  letter-spacing: 0.08em;
+  animation: fadeInOut 2s ease-in-out infinite;
 }
 
 /* Responsive */

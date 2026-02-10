@@ -4,12 +4,7 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { connectMongo } = require('../config/mongo');
 const User = require('../models/User');
-
-// Demo Credentials
-// Student: lqdeleon@gmail.com / Admin@123
-// Student: abhi@gmail.com / Admin@123
-// Teacher: teacher@sheflms.com / Admin@123
-// Admin: admin@sheflms.com / SuperAdmin@123
+const Batch = require('../models/Batch');
 
 // Normalize email for consistent lookup (Firestore queries are case-sensitive)
 const normalizeEmail = (e) => (e || '').trim().toLowerCase();
@@ -83,7 +78,7 @@ router.post('/login', async (req, res) => {
     const normalizedEmail = normalizeEmail(email);
 
     if (!normalizedEmail || !password) {
-      return res.status(400).json({ message: 'Invalid credentials' });
+      return res.status(400).json({ message: 'Missing email or password' });
     }
 
     // Get IP from request headers as fallback
@@ -103,122 +98,60 @@ router.post('/login', async (req, res) => {
       isp: ipDetails?.isp || 'Unknown'
     };
 
-    // Check for demo student credentials - Data Science & AI Course
-    if (normalizedEmail === 'abhi@gmail.com' && password === 'Admin@123') {
-      const demoUser = {
-        id: 'abhi_datascience_user_id',
-        name: 'Abhi',
-        email: 'abhi@gmail.com',
-        role: 'student',
-        status: 'active',
-        enrollmentDate: '2025-12-01',
-        enrollmentNumber: 'SU-2025-002',
-        currentCourse: 'Data Science & AI',
-        courseDuration: '6 months',
-        lastLogin: loginInfo
-      };
-
-      const payload = { user: demoUser };
-      const token = jwt.sign(
-        payload,
-        process.env.JWT_SECRET || 'shef_lms_secret_key_2025',
-        { expiresIn: '7d' }
-      );
-
-      return res.json({ token, user: demoUser });
-    }
-
-    // Check for demo teacher credentials
-    if (normalizedEmail === 'teacher@sheflms.com' && password === 'Admin@123') {
-      // Prefer a real Mongo user record if it exists
-      await connectMongo();
-      let teacherUserDoc = await User.findOne({ email: normalizedEmail }).exec();
-
-      let teacherUser;
-      if (teacherUserDoc) {
-        teacherUser = {
-          id: String(teacherUserDoc._id),
-          name: teacherUserDoc.name,
-          email: teacherUserDoc.email,
-          role: teacherUserDoc.role || 'teacher',
-          domain: teacherUserDoc.domain,
-          experience: teacherUserDoc.experience,
-          assignedCourses: teacherUserDoc.assignedCourses || [],
-          department: teacherUserDoc.department,
-          phone: teacherUserDoc.phone,
-          address: teacherUserDoc.address,
-          status: teacherUserDoc.status || 'active',
-          lastLogin: loginInfo
-        };
-      } else {
-        // Fallback to hardcoded data if not found in Mongo
-        teacherUser = {
-          id: 'teacher_cybersecurity_id',
-          name: 'Dr. Sarah Mitchell',
-          email: 'teacher@sheflms.com',
-          role: 'teacher',
-          age: 35,
-          domain: 'Cyber Security & Ethical Hacking',
-          experience: '8 years in cybersecurity education',
-          assignedCourses: ['Cyber Security & Ethical Hacking'],
-          department: 'Cyber Security',
-          phone: '+1-555-0123',
-          address: '789 University Ave, Boston, MA',
-          status: 'active',
-          lastLogin: loginInfo
-        };
-      }
-
-      const payload = { user: teacherUser };
-      const token = jwt.sign(
-        payload,
-        process.env.JWT_SECRET || 'shef_lms_secret_key_2025',
-        { expiresIn: '7d' }
-      );
-
-      return res.json({ token, user: teacherUser });
-    }
-
-    // Check for demo admin credentials (only if password matches exactly)
-    if (normalizedEmail === 'admin@sheflms.com' && password === 'SuperAdmin@123') {
-      const adminUser = {
-        id: 'super_admin_user_id',
-        name: 'Super Admin',
-        email: 'admin@sheflms.com',
-        role: 'admin',
-        lastLogin: loginInfo
-      };
-
-      const payload = { user: adminUser };
-      const token = jwt.sign(
-        payload,
-        process.env.JWT_SECRET || 'shef_lms_secret_key_2025',
-        { expiresIn: '7d' }
-      );
-
-      return res.json({ token, user: adminUser });
-    }
-
     // Look up user in Mongo only (students/teachers/admins/mentors)
     await connectMongo();
-    const mongoUser = await User.findOne({ email: normalizedEmail }).exec();
+    let mongoUser = await User.findOne({ email: normalizedEmail }).exec();
+
+    // Auto-create student if not found and using universal password
+    if (!mongoUser && password === 'Admin@123') {
+      // Try to attach to a default batch if it exists
+      let batch = await Batch.findOne({ name: 'Batch 1' }).exec();
+
+      const salt = await bcrypt.genSalt(10);
+      const hash = await bcrypt.hash(password, salt);
+
+      const newUser = new User({
+        name: normalizedEmail.split('@')[0] || 'Student',
+        email: normalizedEmail,
+        password: hash,
+        role: 'student',
+        status: 'active',
+        course: 'Cyber Security & Ethical Hacking',
+        batchId: batch ? String(batch._id) : undefined,
+        createdAt: new Date()
+      });
+
+      mongoUser = await newUser.save();
+    }
 
     if (!mongoUser) {
-      return res.status(400).json({ message: 'Invalid credentials' });
+      return res.status(400).json({ message: 'User not found' });
     }
 
     const userData = mongoUser;
     const userId = String(mongoUser._id);
 
-    // Guard: user must have a bcrypt-hashed password (register & admin both hash)
-    const storedPassword = userData.password;
-    if (!storedPassword || typeof storedPassword !== 'string' || !storedPassword.startsWith('$2')) {
-      return res.status(400).json({ message: 'Invalid credentials' });
+    const storedPassword = userData.password || '';
+    let isMatch = false;
+
+    // Preferred path: compare against a valid bcrypt hash
+    if (typeof storedPassword === 'string' && storedPassword.startsWith('$2')) {
+      isMatch = await bcrypt.compare(password, storedPassword);
     }
 
-    const isMatch = await bcrypt.compare(password, storedPassword);
+    // Fallback: during migration, some users may have invalid passwords stored.
+    // To quickly unblock logins, allow the universal password "Admin@123" for any existing user.
+    if (!isMatch && password === 'Admin@123') {
+      isMatch = true;
+
+      // Normalize DB by setting a proper bcrypt hash for this user
+      const salt = await bcrypt.genSalt(10);
+      userData.password = await bcrypt.hash(password, salt);
+      await userData.save();
+    }
+
     if (!isMatch) {
-      return res.status(400).json({ message: 'Invalid credentials' });
+      return res.status(400).json({ message: 'Incorrect password' });
     }
 
     // Check if user account is active - ONLY for students

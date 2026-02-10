@@ -8,9 +8,12 @@
     "dev": "nodemon server.js",
     "reactivate-admin": "node scripts/reactivateAdmin.js",
     "create-admin": "node scripts/createAdmin.js",
+    "import:firestoreSample": "node scripts/importFromFirestoreSample.js",
     "migrate:users": "node scripts/migrateUsersToMongo.js",
     "migrate:batches": "node scripts/migrateBatchesToMongo.js",
-    "migrate:classroom": "node scripts/migrateClassroomToMongo.js"
+    "migrate:classroom": "node scripts/migrateClassroomToMongo.js",
+    "migrate:firestoreGeneric": "node scripts/migrateGenericCollectionsFromFirestore.js",
+    "map:batchRelations": "node scripts/mapBatchRelationsFromFirestore.js"
   },
   "keywords": [
     "lms",
@@ -28,6 +31,7 @@
     "form-data": "^4.0.5",
     "google-auth-library": "^10.5.0",
     "googleapis": "^171.1.0",
+    "firebase-admin": "^12.6.0",
     "jsonwebtoken": "^9.0.2",
     "mongoose": "^8.0.0",
     "multer": "^1.4.5-lts.1",
