@@ -1,10 +1,11 @@
 // Moved Firestore batch relation mapper from backend/scripts/mapBatchRelationsFromFirestore.js
 
-const { connectMongo } = require('../../backend/config/mongo');
+// Use the real backend config and models (one directory up from /bin).
+const { connectMongo } = require('../../../backend/config/mongo');
 const { initFirebaseAdmin } = require('../config/firebaseMigration');
-const Batch = require('../../backend/models/Batch');
-const User = require('../../backend/models/User');
-const Classroom = require('../../backend/models/Classroom');
+const Batch = require('../../../backend/models/Batch');
+const User = require('../../../backend/models/User');
+const Classroom = require('../../../backend/models/Classroom');
 
 async function main() {
   try {

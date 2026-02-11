@@ -1766,7 +1766,15 @@ const Dashboard = ({ user, onLogout }) => {
                   </div>
 
                   <div className="cards-grid">
-                    {classroomVideos.map((video, index) => (
+                    {classroomVideos.map((video, index) => {
+                      const studentBatchId = batchInfo?.id ? String(batchInfo.id) : null;
+                      const videoBatchId = video.batchId ? String(video.batchId) : null;
+                      const canSeeNotes =
+                        !!video.notesAvailable &&
+                        !!video.notesFilePath &&
+                        (!videoBatchId || (studentBatchId && videoBatchId === studentBatchId));
+
+                      return (
                       <div 
                         key={video.id} 
                         className="project-card"
@@ -1866,6 +1874,29 @@ const Dashboard = ({ user, onLogout }) => {
                           <div style={{ marginBottom: '8px' }}>
                             <strong>📅 Class Date:</strong> {new Date(video.date || video.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
                           </div>
+                          {canSeeNotes && (
+                            <div style={{ marginTop: '4px' }}>
+                              <button
+                                type="button"
+                                className="btn-secondary"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  window.open(video.notesFilePath, '_blank');
+                                }}
+                                style={{
+                                  fontSize: '13px',
+                                  padding: '6px 10px',
+                                  borderRadius: '6px',
+                                  border: '1px solid #cbd5f5',
+                                  backgroundColor: '#edf2ff',
+                                  color: '#4c51bf',
+                                  cursor: 'pointer'
+                                }}
+                              >
+                                📄 Download Notes{video.notesFileName ? ` (${video.notesFileName})` : ''}
+                              </button>
+                            </div>
+                          )}
                         </div>
                         
                         <div className="card-actions">
@@ -1892,7 +1923,8 @@ const Dashboard = ({ user, onLogout }) => {
                           </button>
                         </div>
                       </div>
-                    ))}
+                    );
+                  })}
                   </div>
                 </div>
               ) : (

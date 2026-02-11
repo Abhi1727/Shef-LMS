@@ -1,6 +1,6 @@
 // Moved legacy Firestore-backed classroom repository from backend/repositories/classroomRepository.js
 
-const Classroom = require('../../backend/models/Classroom');
+const Classroom = require('../../../backend/models/Classroom');
 const { initFirebaseAdmin } = require('../config/firebaseMigration');
 
 async function createClassroomMongo(data) {

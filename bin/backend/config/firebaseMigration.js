@@ -1,6 +1,8 @@
 // Moved legacy Firebase migration helper from backend/config/firebaseMigration.js
 
-const admin = require('firebase-admin');
+// Load firebase-admin from the backend's node_modules so migration scripts
+// can run from the compiled bin directory without separate installs.
+const admin = require('../../../backend/node_modules/firebase-admin');
 
 let appInitialized = false;
 let db = null;

@@ -1,6 +1,6 @@
 // Moved legacy Firestore-backed user repository from backend/repositories/userRepository.js
 
-const User = require('../../backend/models/User');
+const User = require('../../../backend/models/User');
 const { initFirebaseAdmin } = require('../config/firebaseMigration');
 
 async function createUserMongo(data) {

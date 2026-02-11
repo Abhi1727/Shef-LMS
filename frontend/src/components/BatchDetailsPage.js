@@ -92,7 +92,10 @@ const BatchDetailsPage = () => {
     youtubeVideoUrl: '',
     description: '',
     date: '',
-    time: ''
+    time: '',
+    notesAvailable: false,
+    notesFileName: '',
+    notesFile: null
   });
   const [studentFormData, setStudentFormData] = useState({
     name: '',
@@ -124,7 +127,7 @@ const BatchDetailsPage = () => {
   const loadBatchData = useCallback(async () => {
     try {
       const token = localStorage.getItem('token');
-      const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
+      const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5001' : '';
 
       // Load batch details
       const batchesResponse = await fetch(`${apiUrl}/api/admin/batches`, {
@@ -282,7 +285,7 @@ const BatchDetailsPage = () => {
 
     try {
       const token = localStorage.getItem('token');
-      const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
+      const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5001' : '';
       const batchIdForApi = selectedBatch?.id || selectedBatch?._id;
 
       const body = {
@@ -346,7 +349,7 @@ const BatchDetailsPage = () => {
   const handleAddNewStudent = async () => {
     try {
       const token = localStorage.getItem('token');
-      const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
+      const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5001' : '';
 
       // Validate required fields
       if (!newStudentForm.name || !newStudentForm.email || !newStudentForm.password || !newStudentForm.course) {
@@ -416,7 +419,7 @@ const BatchDetailsPage = () => {
   const handleSaveStudent = async () => {
     try {
       const token = localStorage.getItem('token');
-      const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
+      const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5001' : '';
 
       const updateData = {
         name: studentFormData.name,
@@ -467,7 +470,7 @@ const BatchDetailsPage = () => {
 
     try {
       const token = localStorage.getItem('token');
-      const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
+      const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5001' : '';
       const batchIdForApi = selectedBatch?.id || selectedBatch?._id;
 
       const response = await fetch(`${apiUrl}/api/batches/${batchIdForApi}/students`, {
@@ -526,10 +529,9 @@ const BatchDetailsPage = () => {
       }
 
       const token = localStorage.getItem('token');
-      const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
+      const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5001' : '';
       const batchIdForApi = selectedBatch?.id || selectedBatch?._id;
-
-      const lectureData = {
+      const baseLectureData = {
         title,
         instructor: 'Admin',
         description: description || '',
@@ -544,6 +546,24 @@ const BatchDetailsPage = () => {
         time: videoFormData.time || ''
       };
 
+      const formPayload = new FormData();
+      Object.entries(baseLectureData).forEach(([key, value]) => {
+        if (value !== undefined && value !== null) {
+          formPayload.append(key, value);
+        }
+      });
+
+      const notesAvailable = videoFormData.notesAvailable === true || videoFormData.notesAvailable === 'true';
+      formPayload.append('notesAvailable', notesAvailable ? 'true' : 'false');
+      if (notesAvailable) {
+        if (videoFormData.notesFileName) {
+          formPayload.append('notesFileName', videoFormData.notesFileName);
+        }
+        if (videoFormData.notesFile instanceof File) {
+          formPayload.append('notesFile', videoFormData.notesFile);
+        }
+      }
+
       let response;
       
       if (editingVideo) {
@@ -551,20 +571,18 @@ const BatchDetailsPage = () => {
         response = await fetch(`${apiUrl}/api/admin/classroom/${editingVideo.id}`, {
           method: 'PUT',
           headers: {
-            'Content-Type': 'application/json',
             'Authorization': `Bearer ${token}`
           },
-          body: JSON.stringify(lectureData)
+          body: formPayload
         });
       } else {
         // Create new video
         response = await fetch(`${apiUrl}/api/admin/classroom/youtube-url`, {
           method: 'POST',
           headers: {
-            'Content-Type': 'application/json',
             'Authorization': `Bearer ${token}`
           },
-          body: JSON.stringify(lectureData)
+          body: formPayload
         });
       }
 
@@ -586,7 +604,7 @@ const BatchDetailsPage = () => {
 
         setShowAddVideoModal(false);
         setEditingVideo(null);
-        setVideoFormData({ title: '', youtubeVideoUrl: '', description: '', date: '', time: '' });
+        setVideoFormData({ title: '', youtubeVideoUrl: '', description: '', date: '', time: '', notesAvailable: false, notesFileName: '', notesFile: null });
       } else {
         showToast('Error: ' + (data.message || 'Failed to save YouTube video'), 'error');
       }
@@ -606,7 +624,10 @@ const BatchDetailsPage = () => {
       youtubeVideoUrl: video.youtubeVideoUrl || '',
       description: video.description || '',
       date: video.date || new Date().toISOString().split('T')[0],
-      time: video.time || ''
+      time: video.time || '',
+      notesAvailable: !!video.notesAvailable,
+      notesFileName: video.notesFileName || '',
+      notesFile: null
     });
     
     // Open the add video modal with populated data
@@ -623,7 +644,7 @@ const BatchDetailsPage = () => {
     if (window.confirm(`Remove "${video.title}" from this batch? This will not delete the video, only unassign it from this batch.`)) {
       try {
         const token = localStorage.getItem('token');
-        const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
+        const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5001' : '';
 
         // Remove video from batch (disassociate, not delete)
         const response = await fetch(`${apiUrl}/api/batches/${selectedBatchId}/videos/${video.id}`, {
@@ -652,7 +673,7 @@ const BatchDetailsPage = () => {
   const refreshBatchData = async () => {
     try {
       const token = localStorage.getItem('token');
-      const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
+      const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5001' : '';
       
       const response = await fetch(`${apiUrl}/api/batches`, {
         headers: { 'Authorization': `Bearer ${token}` }
@@ -682,7 +703,7 @@ const BatchDetailsPage = () => {
     if (window.confirm(`Remove ${student.name} from this batch? This will not delete the student, only unassign them from this batch.`)) {
       try {
         const token = localStorage.getItem('token');
-        const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
+        const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5001' : '';
 
         const response = await fetch(`${apiUrl}/api/batches/${selectedBatchId}/students/${student.id}`, {
           method: 'DELETE',
@@ -721,14 +742,14 @@ const BatchDetailsPage = () => {
     return (
       <div className="batch-details-page">
         <div className="loading">Loading batch details...</div>
-      </div>
-    );
-  }
-
-  if (!selectedBatch) {
-    return (
-      <div className="batch-details-page">
-        <div className="error">Batch not found</div>
+                    <div 
+                      key={video.id || video._id}
+                      className="video-card"
+                      onClick={() => {
+                        setSelectedVideo(video);
+                      }}
+                    >
+                      <div className="video-thumbnail">
       </div>
     );
   }
@@ -901,69 +922,63 @@ const BatchDetailsPage = () => {
                           </div>
                         )}
                       </div>
-                      <div className="video-info">
-                        <div className="video-title">{video.title}</div>
-                        
-                        <div className="video-meta">
-                          <span className="meta-item">
-                            <span className="label">👨‍🏫 Teacher:</span>
-                            <span className="value">{selectedBatch.teacherName || video.instructor}</span>
-                          </span>
-                          <span className="meta-item">
-                            <span className="label">📅 Class Date:</span>
-                            <span className="value">{new Date(video.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</span>
-                          </span>
+                      <div className="video-right">
+                        <div className="video-info">
+                          <div className="video-title">{video.title}</div>
+                          
+                          <div className="video-meta">
+                            <span className="meta-item">
+                              <span className="label">👨‍🏫 Teacher:</span>
+                              <span className="value">{selectedBatch.teacherName || video.instructor}</span>
+                            </span>
+                            <span className="meta-item">
+                              <span className="label">📅 Class Date:</span>
+                              <span className="value">{new Date(video.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</span>
+                            </span>
+                          </div>
+                          {video.notesAvailable && video.notesFilePath && (
+                            <div className="video-notes" style={{ marginTop: '8px' }}>
+                              <button
+                                type="button"
+                                className="btn-secondary"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  window.open(video.notesFilePath, '_blank');
+                                }}
+                                style={{ fontSize: '12px', padding: '4px 8px' }}
+                              >
+                                📄 Download Notes{video.notesFileName ? ` (${video.notesFileName})` : ''}
+                              </button>
+                            </div>
+                          )}
                         </div>
-                      </div>
-                      
-                      {/* Video Actions */}
-                      <div className="video-actions" style={{ 
-                        display: 'flex', 
-                        gap: '8px', 
-                        padding: '10px',
-                        borderTop: '1px solid #eee'
-                      }}>
-                        <button 
-                          onClick={(e) => {
-                            e.stopPropagation(); // Prevent video play
-                            handleEditVideo(video);
-                          }}
-                          className="btn-edit"
-                          style={{ 
-                            padding: '4px 8px', 
-                            fontSize: '12px',
-                            background: '#667eea',
-                            color: 'white',
-                            border: 'none',
-                            borderRadius: '4px',
-                            cursor: 'pointer'
-                          }}
-                          title="Edit Video"
-                        >
-                          ✏️ Edit
-                        </button>
-                        <button 
-                          onClick={(e) => {
-                            e.stopPropagation(); // Prevent video play
-                            if (window.confirm(`Remove "${video.title}" from this batch? This will not delete the video, only unassign it from this batch.`)) {
-                              // Handle video deletion
-                              handleDeleteVideo(video);
-                            }
-                          }}
-                          className="btn-delete"
-                          style={{ 
-                            padding: '4px 8px', 
-                            fontSize: '12px',
-                            background: '#ef4444',
-                            color: 'white',
-                            border: 'none',
-                            borderRadius: '4px',
-                            cursor: 'pointer'
-                          }}
-                          title="Remove Video from Batch"
-                        >
-                          🗑️ Remove
-                        </button>
+                        
+                        {/* Video Actions */}
+                        <div className="video-actions">
+                          <button 
+                            onClick={(e) => {
+                              e.stopPropagation(); // Prevent video play
+                              handleEditVideo(video);
+                            }}
+                            className="btn-edit"
+                            title="Edit Video"
+                          >
+                            ✏️ Edit
+                          </button>
+                          <button 
+                            onClick={(e) => {
+                              e.stopPropagation(); // Prevent video play
+                              if (window.confirm(`Remove "${video.title}" from this batch? This will not delete the video, only unassign it from this batch.`)) {
+                                // Handle video deletion
+                                handleDeleteVideo(video);
+                              }
+                            }}
+                            className="btn-delete"
+                            title="Remove Video from Batch"
+                          >
+                            🗑️ Remove
+                          </button>
+                        </div>
                       </div>
                     </div>
                   ))}
@@ -1155,7 +1170,7 @@ const BatchDetailsPage = () => {
       <div className="modal-overlay" onClick={() => {
         setShowAddVideoModal(false);
         setEditingVideo(null);
-        setVideoFormData({ title: '', youtubeVideoUrl: '', description: '', date: '', time: '' });
+        setVideoFormData({ title: '', youtubeVideoUrl: '', description: '', date: '', time: '', notesAvailable: false, notesFileName: '', notesFile: null });
       }}>
         <div className="modal" onClick={(e) => e.stopPropagation()}>
           <div className="modal-header">
@@ -1165,7 +1180,7 @@ const BatchDetailsPage = () => {
               onClick={() => {
                 setShowAddVideoModal(false);
                 setEditingVideo(null);
-                setVideoFormData({ title: '', youtubeVideoUrl: '', description: '', date: '', time: '' });
+                setVideoFormData({ title: '', youtubeVideoUrl: '', description: '', date: '', time: '', notesAvailable: false, notesFileName: '', notesFile: null });
               }}
             >
               ×
@@ -1214,6 +1229,59 @@ const BatchDetailsPage = () => {
               value={videoFormData.description}
               onChange={(e) => setVideoFormData({ ...videoFormData, description: e.target.value })}
             />
+
+            {/* Notes section */}
+            <div style={{ marginTop: '15px', padding: '10px', borderRadius: '4px', border: '1px solid #e2e8f0', backgroundColor: '#f7fafc' }}>
+              <label style={{ display: 'block', marginBottom: '8px', fontWeight: 'bold' }}>
+                Notes Available?
+              </label>
+              <select
+                value={videoFormData.notesAvailable ? 'yes' : 'no'}
+                onChange={(e) => {
+                  const value = e.target.value === 'yes';
+                  setVideoFormData(prev => ({
+                    ...prev,
+                    notesAvailable: value,
+                    notesFile: value ? prev.notesFile : null,
+                    notesFileName: value ? prev.notesFileName : ''
+                  }));
+                }}
+                style={{ marginBottom: '10px', padding: '8px', border: '1px solid #ddd', borderRadius: '4px' }}
+              >
+                <option value="no">No</option>
+                <option value="yes">Yes</option>
+              </select>
+
+              {videoFormData.notesAvailable && (
+                <>
+                  <input
+                    type="text"
+                    placeholder="Notes File Name (e.g., Session 1 Notes)"
+                    value={videoFormData.notesFileName || ''}
+                    onChange={(e) => setVideoFormData({ ...videoFormData, notesFileName: e.target.value })}
+                    style={{
+                      width: '100%',
+                      padding: '8px',
+                      border: '1px solid #ddd',
+                      borderRadius: '4px',
+                      marginBottom: '10px'
+                    }}
+                  />
+                  <input
+                    type="file"
+                    accept=".pdf,.doc,.docx,.txt"
+                    onChange={(e) => {
+                      const file = e.target.files && e.target.files[0];
+                      setVideoFormData(prev => ({ ...prev, notesFile: file || null }));
+                    }}
+                    style={{ marginBottom: '5px' }}
+                  />
+                  <small style={{ color: '#718096', display: 'block' }}>
+                    Upload notes or resources for this class (PDF/Word/Text, up to 50MB).
+                  </small>
+                </>
+              )}
+            </div>
           </div>
 
           <div className="modal-actions">
@@ -1221,7 +1289,7 @@ const BatchDetailsPage = () => {
               className="btn-cancel"
               onClick={() => {
                 setShowAddVideoModal(false);
-                setVideoFormData({ title: '', youtubeVideoUrl: '', description: '', date: '', time: '' });
+                setVideoFormData({ title: '', youtubeVideoUrl: '', description: '', date: '', time: '', notesAvailable: false, notesFileName: '', notesFile: null });
               }}
             >
               Cancel
