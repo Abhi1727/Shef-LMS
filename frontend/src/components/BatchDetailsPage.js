@@ -60,6 +60,7 @@ const BatchDetailsPage = () => {
   const [selectedBatch, setSelectedBatch] = useState(null);
   const [classroomVideos, setClassroomVideos] = useState([]);
   const [students, setStudents] = useState([]);
+  const [allStudents, setAllStudents] = useState([]);
   const [selectedVideo, setSelectedVideo] = useState(null);
   const [loading, setLoading] = useState(true);
   const [activeView, setActiveView] = useState('videos');
@@ -77,14 +78,17 @@ const BatchDetailsPage = () => {
   const [timeRange, setTimeRange] = useState({ start: '', end: '' });
   const [isAdmin, setIsAdmin] = useState(false);
   const [addStudentsSearch, setAddStudentsSearch] = useState('');
+  const [courses, setCourses] = useState([]);
+  const [allBatches, setAllBatches] = useState([]);
+  const [availableBatches, setAvailableBatches] = useState([]);
   const [newStudentForm, setNewStudentForm] = useState({
     name: '',
     email: '',
     password: '',
     phone: '',
     address: '',
-    course: selectedBatch?.course || '',
-    batchId: selectedBatch?.id || selectedBatch?._id || '',
+    course: '',
+    batchId: '',
     status: 'active'
   });
   const [videoFormData, setVideoFormData] = useState({
@@ -92,7 +96,9 @@ const BatchDetailsPage = () => {
     youtubeVideoUrl: '',
     description: '',
     date: '',
-    time: ''
+    time: '',
+    notesAvailable: false,
+    notesFile: null
   });
   const [studentFormData, setStudentFormData] = useState({
     name: '',
@@ -120,11 +126,61 @@ const BatchDetailsPage = () => {
     }
   }, []);
 
+  // Load courses and batches data for add student form
+  const loadCoursesAndBatches = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      const apiUrl = window.location.hostname === 'localhost' ? 'http://31.220.55.193:5000' : 'http://31.220.55.193:5000';
+
+      // Load courses
+      const coursesResponse = await fetch(`${apiUrl}/api/admin/courses`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      
+      if (coursesResponse.ok) {
+        const coursesData = await coursesResponse.json();
+        setCourses(coursesData);
+      }
+
+      // Load all batches
+      const batchesResponse = await fetch(`${apiUrl}/api/admin/batches`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      
+      if (batchesResponse.ok) {
+        const batchesData = await batchesResponse.json();
+        setAllBatches(batchesData.batches || []);
+      }
+    } catch (error) {
+      console.error('Error loading courses and batches:', error);
+    }
+  };
+
+  // Filter batches based on selected course
+  const filterBatchesByCourse = (courseName) => {
+    if (!courseName) {
+      setAvailableBatches([]);
+      return;
+    }
+    
+    const filtered = allBatches.filter(batch => batch.course === courseName);
+    setAvailableBatches(filtered);
+    
+    // Reset batch selection when course changes
+    setNewStudentForm(prev => ({ ...prev, batchId: '' }));
+  };
+
+  // Handle course change in add student form
+  const handleCourseChange = (courseName) => {
+    setNewStudentForm(prev => ({ ...prev, course: courseName, batchId: '' }));
+    filterBatchesByCourse(courseName);
+  };
+
   // Load batch data
   const loadBatchData = useCallback(async () => {
     try {
       const token = localStorage.getItem('token');
-      const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
+      const apiUrl = window.location.hostname === 'localhost' ? 'http://31.220.55.193:5000' : 'http://31.220.55.193:5000';
 
       // Load batch details
       const batchesResponse = await fetch(`${apiUrl}/api/admin/batches`, {
@@ -169,7 +225,10 @@ const BatchDetailsPage = () => {
             const allUsers = await studentsResponse.json();
             const studentUsers = allUsers.filter(user => user.role === 'student');
             
-            // Filter students by batchId for consistency with Dashboard
+            // Store ALL students for the "Add Existing Students" modal
+            setAllStudents(studentUsers);
+            
+            // Filter students by batchId for consistency with Dashboard (for display)
             const batchStudents = studentUsers.filter(student => 
               student.batchId === batchId
             );
@@ -186,7 +245,11 @@ const BatchDetailsPage = () => {
                 address: s.address,
                 hasPhone: !!s.phone,
                 hasAddress: !!s.address
-              }))
+              })),
+              unassignedStudents: studentUsers.filter(s => !s.batchId).length,
+              cyberSecurityStudents: studentUsers.filter(s => 
+                s.course && (s.course.toLowerCase().includes('cyber') || s.course.toLowerCase().includes('security'))
+              ).length
             });
             
             setStudents(batchStudents);
@@ -247,6 +310,7 @@ const BatchDetailsPage = () => {
 
   useEffect(() => {
     loadBatchData();
+    loadCoursesAndBatches();
   }, [loadBatchData]);
 
   // Update new student form when batch changes
@@ -257,6 +321,8 @@ const BatchDetailsPage = () => {
         course: selectedBatch.course || '',
         batchId: selectedBatch.id || selectedBatch._id || ''
       }));
+      // Filter batches for the current batch's course
+      filterBatchesByCourse(selectedBatch.course);
     }
   }, [selectedBatch]);
 
@@ -282,7 +348,7 @@ const BatchDetailsPage = () => {
 
     try {
       const token = localStorage.getItem('token');
-      const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
+      const apiUrl = window.location.hostname === 'localhost' ? 'http://31.220.55.193:5000' : 'http://31.220.55.193:5000';
       const batchIdForApi = selectedBatch?.id || selectedBatch?._id;
 
       const body = {
@@ -346,7 +412,7 @@ const BatchDetailsPage = () => {
   const handleAddNewStudent = async () => {
     try {
       const token = localStorage.getItem('token');
-      const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
+      const apiUrl = window.location.hostname === 'localhost' ? 'http://31.220.55.193:5000' : 'http://31.220.55.193:5000';
 
       // Validate required fields
       if (!newStudentForm.name || !newStudentForm.email || !newStudentForm.password || !newStudentForm.course) {
@@ -391,10 +457,11 @@ const BatchDetailsPage = () => {
           password: '',
           phone: '',
           address: '',
-          course: selectedBatch?.course || '',
-          batchId: selectedBatch?.id || selectedBatch?._id || '',
+          course: '',
+          batchId: '',
           status: 'active'
         });
+        setAvailableBatches([]);
         setShowAddStudentModal(false);
       } else {
         showToast(data.message || 'Failed to add student', 'error');
@@ -416,7 +483,7 @@ const BatchDetailsPage = () => {
   const handleSaveStudent = async () => {
     try {
       const token = localStorage.getItem('token');
-      const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
+      const apiUrl = window.location.hostname === 'localhost' ? 'http://31.220.55.193:5000' : 'http://31.220.55.193:5000';
 
       const updateData = {
         name: studentFormData.name,
@@ -467,7 +534,7 @@ const BatchDetailsPage = () => {
 
     try {
       const token = localStorage.getItem('token');
-      const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
+      const apiUrl = window.location.hostname === 'localhost' ? 'http://31.220.55.193:5000' : 'http://31.220.55.193:5000';
       const batchIdForApi = selectedBatch?.id || selectedBatch?._id;
 
       const response = await fetch(`${apiUrl}/api/batches/${batchIdForApi}/students`, {
@@ -513,9 +580,14 @@ const BatchDetailsPage = () => {
 
   const handleAddVideoToBatch = async () => {
     try {
-      const { title, youtubeVideoUrl, description, date } = videoFormData;
+      const { title, youtubeVideoUrl, description, date, notesAvailable, notesFile } = videoFormData;
       if (!title || !youtubeVideoUrl || !date) {
         showToast('Please fill in all required fields (Title, YouTube URL, Class Date)', 'warning');
+        return;
+      }
+
+      if (notesAvailable && !notesFile) {
+        showToast('Please select a notes file or uncheck "Notes Available"', 'warning');
         return;
       }
 
@@ -526,23 +598,28 @@ const BatchDetailsPage = () => {
       }
 
       const token = localStorage.getItem('token');
-      const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
+      const apiUrl = window.location.hostname === 'localhost' ? 'http://31.220.55.193:5000' : 'http://31.220.55.193:5000';
       const batchIdForApi = selectedBatch?.id || selectedBatch?._id;
 
-      const lectureData = {
-        title,
-        instructor: 'Admin',
-        description: description || '',
-        courseId: selectedBatch?.course,
-        batchId: batchIdForApi,
-        type: 'Lecture',
-        videoSource: 'youtube-url',
-        youtubeVideoId: videoId,
-        youtubeVideoUrl,
-        youtubeEmbedUrl: YouTubeUtils.getEmbedUrl(videoId),
-        date: date,
-        time: videoFormData.time || ''
-      };
+      // Create FormData for file upload
+      const formData = new FormData();
+      formData.append('title', title);
+      formData.append('instructor', 'Admin');
+      formData.append('description', description || '');
+      formData.append('courseId', selectedBatch?.course);
+      formData.append('batchId', batchIdForApi);
+      formData.append('type', 'Lecture');
+      formData.append('videoSource', 'youtube-url');
+      formData.append('youtubeVideoId', videoId);
+      formData.append('youtubeVideoUrl', youtubeVideoUrl);
+      formData.append('youtubeEmbedUrl', YouTubeUtils.getEmbedUrl(videoId));
+      formData.append('date', date);
+      formData.append('time', videoFormData.time || '');
+      formData.append('notesAvailable', notesAvailable);
+      
+      if (notesAvailable && notesFile) {
+        formData.append('notesFile', notesFile);
+      }
 
       let response;
       
@@ -551,20 +628,18 @@ const BatchDetailsPage = () => {
         response = await fetch(`${apiUrl}/api/admin/classroom/${editingVideo.id}`, {
           method: 'PUT',
           headers: {
-            'Content-Type': 'application/json',
             'Authorization': `Bearer ${token}`
           },
-          body: JSON.stringify(lectureData)
+          body: formData
         });
       } else {
         // Create new video
         response = await fetch(`${apiUrl}/api/admin/classroom/youtube-url`, {
           method: 'POST',
           headers: {
-            'Content-Type': 'application/json',
             'Authorization': `Bearer ${token}`
           },
-          body: JSON.stringify(lectureData)
+          body: formData
         });
       }
 
@@ -586,13 +661,99 @@ const BatchDetailsPage = () => {
 
         setShowAddVideoModal(false);
         setEditingVideo(null);
-        setVideoFormData({ title: '', youtubeVideoUrl: '', description: '', date: '', time: '' });
+        setVideoFormData({ title: '', youtubeVideoUrl: '', description: '', date: '', time: '', notesAvailable: false, notesFile: null });
       } else {
         showToast('Error: ' + (data.message || 'Failed to save YouTube video'), 'error');
       }
     } catch (error) {
       console.error('Error saving classroom video:', error);
       showToast('Failed to save YouTube video. Please try again.', 'error');
+    }
+  };
+
+  const handleDownloadNotes = async (video) => {
+    try {
+      const token = localStorage.getItem('token');
+      const apiUrl = window.location.hostname === 'localhost' ? 'http://31.220.55.193:5000' : 'http://31.220.55.193:5000';
+      
+      // Try different possible endpoints for notes download
+      let response;
+      const endpoints = [
+        `${apiUrl}/api/classroom/${video.id}/notes`,
+        `${apiUrl}/api/admin/classroom/${video.id}/notes`,
+        `${apiUrl}/api/classroom/notes/${video.id}`,
+        `${apiUrl}/api/admin/classroom/notes/${video.id}`
+      ];
+      
+      for (const endpoint of endpoints) {
+        try {
+          response = await fetch(endpoint, {
+            headers: {
+              'Authorization': `Bearer ${token}`
+            }
+          });
+          
+          if (response.ok) {
+            break; // Found working endpoint
+          }
+        } catch (e) {
+          continue; // Try next endpoint
+        }
+      }
+
+      if (response && response.ok) {
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        
+        // Try to get filename from response headers or use default
+        const contentDisposition = response.headers.get('content-disposition');
+        let filename = `notes-${video.title}.pdf`;
+        
+        if (contentDisposition) {
+          const filenameMatch = contentDisposition.match(/filename="(.+)"/);
+          if (filenameMatch) {
+            filename = filenameMatch[1];
+          }
+        }
+        
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+        showToast('Notes downloaded successfully!', 'success');
+      } else {
+        // If no endpoint works, try to get notes from video object directly
+        if (video.notesFileUrl || video.notesUrl) {
+          const notesUrl = video.notesFileUrl || video.notesUrl;
+          const notesResponse = await fetch(`${apiUrl}${notesUrl}`, {
+            headers: {
+              'Authorization': `Bearer ${token}`
+            }
+          });
+          
+          if (notesResponse.ok) {
+            const blob = await notesResponse.blob();
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `notes-${video.title}.pdf`;
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(url);
+            document.body.removeChild(a);
+            showToast('Notes downloaded successfully!', 'success');
+            return;
+          }
+        }
+        
+        showToast('Failed to download notes. The notes file may not be available yet.', 'error');
+      }
+    } catch (error) {
+      console.error('Error downloading notes:', error);
+      showToast('Error downloading notes. Please try again later.', 'error');
     }
   };
 
@@ -606,7 +767,9 @@ const BatchDetailsPage = () => {
       youtubeVideoUrl: video.youtubeVideoUrl || '',
       description: video.description || '',
       date: video.date || new Date().toISOString().split('T')[0],
-      time: video.time || ''
+      time: video.time || '',
+      notesAvailable: video.notesAvailable || false,
+      notesFile: null
     });
     
     // Open the add video modal with populated data
@@ -623,7 +786,7 @@ const BatchDetailsPage = () => {
     if (window.confirm(`Remove "${video.title}" from this batch? This will not delete the video, only unassign it from this batch.`)) {
       try {
         const token = localStorage.getItem('token');
-        const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
+        const apiUrl = window.location.hostname === 'localhost' ? 'http://31.220.55.193:5000' : 'http://31.220.55.193:5000';
 
         // Remove video from batch (disassociate, not delete)
         const response = await fetch(`${apiUrl}/api/batches/${selectedBatchId}/videos/${video.id}`, {
@@ -652,7 +815,7 @@ const BatchDetailsPage = () => {
   const refreshBatchData = async () => {
     try {
       const token = localStorage.getItem('token');
-      const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
+      const apiUrl = window.location.hostname === 'localhost' ? 'http://31.220.55.193:5000' : 'http://31.220.55.193:5000';
       
       const response = await fetch(`${apiUrl}/api/batches`, {
         headers: { 'Authorization': `Bearer ${token}` }
@@ -682,7 +845,7 @@ const BatchDetailsPage = () => {
     if (window.confirm(`Remove ${student.name} from this batch? This will not delete the student, only unassign them from this batch.`)) {
       try {
         const token = localStorage.getItem('token');
-        const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
+        const apiUrl = window.location.hostname === 'localhost' ? 'http://31.220.55.193:5000' : 'http://31.220.55.193:5000';
 
         const response = await fetch(`${apiUrl}/api/batches/${selectedBatchId}/students/${student.id}`, {
           method: 'DELETE',
@@ -760,9 +923,38 @@ const BatchDetailsPage = () => {
 
   // Students list for "Add Students" modal with search by name/email
   const searchTerm = addStudentsSearch.trim().toLowerCase();
-  const studentsForAddModal = students.filter(student => {
-    // Only show students whose course matches this batch's course
-    if (selectedBatch?.course && student.course !== selectedBatch.course) {
+  const studentsForAddModal = allStudents.filter(student => {
+    // Debug logging
+    console.log('Filtering student:', {
+      name: student.name,
+      course: student.course,
+      batchId: student.batchId,
+      batchCourse: selectedBatch?.course,
+      courseMatch: selectedBatch?.course && student.course === selectedBatch.course,
+      hasNoBatch: !student.batchId
+    });
+
+    // Only show students whose course matches this batch's course (case-insensitive and flexible matching)
+    if (selectedBatch?.course) {
+      const batchCourseLower = selectedBatch.course.toLowerCase();
+      const studentCourseLower = (student.course || '').toLowerCase();
+      
+      // Handle different course name variations
+      const isCyberSecurityCourse = batchCourseLower.includes('cyber') || batchCourseLower.includes('security') || batchCourseLower.includes('cs&eh');
+      const studentIsCyberSecurityCourse = studentCourseLower.includes('cyber') || studentCourseLower.includes('security') || studentCourseLower.includes('cs&eh');
+      
+      const isDataScienceCourse = batchCourseLower.includes('data') || batchCourseLower.includes('science') || batchCourseLower.includes('ai');
+      const studentIsDataScienceCourse = studentCourseLower.includes('data') || studentCourseLower.includes('science') || studentCourseLower.includes('ai');
+      
+      if (!((isCyberSecurityCourse && studentIsCyberSecurityCourse) || 
+            (isDataScienceCourse && studentIsDataScienceCourse) ||
+            batchCourseLower === studentCourseLower)) {
+        return false;
+      }
+    }
+
+    // Only show students who don't have a batch assigned (batchId is null, undefined, or empty)
+    if (student.batchId) {
       return false;
     }
 
@@ -771,6 +963,8 @@ const BatchDetailsPage = () => {
     const email = (student.email || '').toLowerCase();
     return name.includes(searchTerm) || email.includes(searchTerm);
   });
+
+  console.log('Final filtered students for add modal:', studentsForAddModal.length);
 
   return (
     <>
@@ -901,69 +1095,60 @@ const BatchDetailsPage = () => {
                           </div>
                         )}
                       </div>
-                      <div className="video-info">
-                        <div className="video-title">{video.title}</div>
-                        
-                        <div className="video-meta">
-                          <span className="meta-item">
-                            <span className="label">👨‍🏫 Teacher:</span>
-                            <span className="value">{selectedBatch.teacherName || video.instructor}</span>
-                          </span>
-                          <span className="meta-item">
-                            <span className="label">📅 Class Date:</span>
-                            <span className="value">{new Date(video.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</span>
-                          </span>
+                      <div className="video-right">
+                        <div className="video-info">
+                          <div className="video-title">{video.title}</div>
+                          <div className="video-meta">
+                            <span className="meta-item">
+                              <span className="label">👨‍🏫 Teacher:</span>
+                              <span className="value">{selectedBatch.teacherName || video.instructor}</span>
+                            </span>
+                            <span className="meta-item">
+                              <span className="label">📅 Class Date:</span>
+                              <span className="value">{new Date(video.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</span>
+                            </span>
+                          </div>
                         </div>
-                      </div>
-                      
-                      {/* Video Actions */}
-                      <div className="video-actions" style={{ 
-                        display: 'flex', 
-                        gap: '8px', 
-                        padding: '10px',
-                        borderTop: '1px solid #eee'
-                      }}>
-                        <button 
-                          onClick={(e) => {
-                            e.stopPropagation(); // Prevent video play
-                            handleEditVideo(video);
-                          }}
-                          className="btn-edit"
-                          style={{ 
-                            padding: '4px 8px', 
-                            fontSize: '12px',
-                            background: '#667eea',
-                            color: 'white',
-                            border: 'none',
-                            borderRadius: '4px',
-                            cursor: 'pointer'
-                          }}
-                          title="Edit Video"
-                        >
-                          ✏️ Edit
-                        </button>
-                        <button 
-                          onClick={(e) => {
-                            e.stopPropagation(); // Prevent video play
-                            if (window.confirm(`Remove "${video.title}" from this batch? This will not delete the video, only unassign it from this batch.`)) {
-                              // Handle video deletion
-                              handleDeleteVideo(video);
-                            }
-                          }}
-                          className="btn-delete"
-                          style={{ 
-                            padding: '4px 8px', 
-                            fontSize: '12px',
-                            background: '#ef4444',
-                            color: 'white',
-                            border: 'none',
-                            borderRadius: '4px',
-                            cursor: 'pointer'
-                          }}
-                          title="Remove Video from Batch"
-                        >
-                          🗑️ Remove
-                        </button>
+                        <div className="video-actions">
+                          {video.notesAvailable && (
+                            <button 
+                              onClick={(e) => {
+                                e.stopPropagation(); // Prevent video play
+                                handleDownloadNotes(video);
+                              }}
+                              className="btn-notes"
+                              title="Download Notes"
+                            >
+                              📄 Notes
+                            </button>
+                          )}
+                          {isAdmin && (
+                            <>
+                              <button 
+                                onClick={(e) => {
+                                  e.stopPropagation(); // Prevent video play
+                                  handleEditVideo(video);
+                                }}
+                                className="btn-edit"
+                                title="Edit Video"
+                              >
+                                ✏️ Edit
+                              </button>
+                              <button 
+                                onClick={(e) => {
+                                  e.stopPropagation(); // Prevent video play
+                                  if (window.confirm(`Remove "${video.title}" from this batch? This will not delete the video, only unassign it from this batch.`)) {
+                                  handleDeleteVideo(video);
+                                  }
+                                }}
+                                className="btn-delete"
+                                title="Remove Video from Batch"
+                              >
+                                🗑️ Remove
+                              </button>
+                            </>
+                          )}
+                        </div>
                       </div>
                     </div>
                   ))}
@@ -1015,10 +1200,16 @@ const BatchDetailsPage = () => {
                         <tr 
                           key={student.id}
                           className="student-row"
-                          onClick={() => handleViewStudentDetails(student)}
-                          style={{ cursor: 'pointer' }}
                         >
-                          <td>{student.name}</td>
+                          <td>
+                            <button 
+                              onClick={() => handleViewStudentDetails(student)}
+                              className="btn-link"
+                              title="View Student Details"
+                            >
+                              {student.name}
+                            </button>
+                          </td>
                           <td>{student.email}</td>
                           <td>{student.batchId || 'N/A'}</td>
                           <td>{student.course}</td>
@@ -1029,18 +1220,14 @@ const BatchDetailsPage = () => {
                           </td>
                           <td>
                             <button 
-                              onClick={(e) => {
-                                e.stopPropagation(); // Prevent row click
-                                handleEditStudent(student);
-                              }}
+                              onClick={() => handleEditStudent(student)}
                               className="btn-edit"
                               title="Edit Student"
                             >
                               ✏️ Edit
                             </button>
                             <button 
-                              onClick={(e) => {
-                                e.stopPropagation(); // Prevent row click
+                              onClick={() => {
                                 if (window.confirm(`Remove ${student.name} from this batch? This will not delete the student, only unassign them from this batch.`)) {
                                   // Handle student deletion
                                   handleDeleteStudent(student);
@@ -1155,7 +1342,7 @@ const BatchDetailsPage = () => {
       <div className="modal-overlay" onClick={() => {
         setShowAddVideoModal(false);
         setEditingVideo(null);
-        setVideoFormData({ title: '', youtubeVideoUrl: '', description: '', date: '', time: '' });
+        setVideoFormData({ title: '', youtubeVideoUrl: '', description: '', date: '', time: '', notesAvailable: false, notesFile: null });
       }}>
         <div className="modal" onClick={(e) => e.stopPropagation()}>
           <div className="modal-header">
@@ -1165,7 +1352,7 @@ const BatchDetailsPage = () => {
               onClick={() => {
                 setShowAddVideoModal(false);
                 setEditingVideo(null);
-                setVideoFormData({ title: '', youtubeVideoUrl: '', description: '', date: '', time: '' });
+                setVideoFormData({ title: '', youtubeVideoUrl: '', description: '', date: '', time: '', notesAvailable: false, notesFile: null });
               }}
             >
               ×
@@ -1214,6 +1401,36 @@ const BatchDetailsPage = () => {
               value={videoFormData.description}
               onChange={(e) => setVideoFormData({ ...videoFormData, description: e.target.value })}
             />
+            
+            <div className="notes-section">
+              <label className="notes-label">
+                <input
+                  type="checkbox"
+                  checked={videoFormData.notesAvailable}
+                  onChange={(e) => setVideoFormData({ ...videoFormData, notesAvailable: e.target.checked, notesFile: e.target.checked ? null : null })}
+                />
+                Notes Available
+              </label>
+              
+              {videoFormData.notesAvailable && (
+                <div className="notes-file-input">
+                  <label className="file-input-label">
+                    Select Notes File:
+                    <input
+                      type="file"
+                      accept=".pdf,.doc,.docx,.txt,.ppt,.pptx"
+                      onChange={(e) => setVideoFormData({ ...videoFormData, notesFile: e.target.files[0] })}
+                      className="file-input"
+                    />
+                  </label>
+                  {videoFormData.notesFile && (
+                    <div className="selected-file">
+                      Selected: {videoFormData.notesFile.name}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
 
           <div className="modal-actions">
@@ -1221,7 +1438,7 @@ const BatchDetailsPage = () => {
               className="btn-cancel"
               onClick={() => {
                 setShowAddVideoModal(false);
-                setVideoFormData({ title: '', youtubeVideoUrl: '', description: '', date: '', time: '' });
+                setVideoFormData({ title: '', youtubeVideoUrl: '', description: '', date: '', time: '', notesAvailable: false, notesFile: null });
               }}
             >
               Cancel
@@ -1542,12 +1759,30 @@ const BatchDetailsPage = () => {
             />
             <select
               value={newStudentForm.course}
-              onChange={(e) => setNewStudentForm({...newStudentForm, course: e.target.value})}
+              onChange={(e) => handleCourseChange(e.target.value)}
               required
             >
               <option value="">Select Course *</option>
-              <option value="Data Science & AI">Data Science & AI</option>
-              <option value="Cyber Security & Ethical Hacking">Cyber Security & Ethical Hacking</option>
+              {courses.map(course => (
+                <option key={course.id || course.title} value={course.title || course}>
+                  {course.title || course}
+                </option>
+              ))}
+            </select>
+            <select
+              value={newStudentForm.batchId}
+              onChange={(e) => setNewStudentForm({...newStudentForm, batchId: e.target.value})}
+              required
+              disabled={!newStudentForm.course}
+            >
+              <option value="">
+                {newStudentForm.course ? 'Select Batch *' : 'Select Course First'}
+              </option>
+              {availableBatches.map(batch => (
+                <option key={batch.id || batch._id} value={batch.id || batch._id}>
+                  {batch.name}
+                </option>
+              ))}
             </select>
             <select
               value={newStudentForm.status}

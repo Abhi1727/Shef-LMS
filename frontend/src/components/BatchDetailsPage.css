@@ -452,12 +452,23 @@
   justify-content: center;
 }
 
-.video-info {
+.video-right {
   flex: 1;
-  padding: 15px;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
+  min-width: 0;
+}
+
+.video-info {
+  padding: 15px 15px 8px 15px;
+  flex: 1;
+}
+
+.video-actions {
+  padding: 8px 15px 15px 15px;
+  display: flex;
+  gap: 8px;
 }
 
 .video-title {
@@ -513,39 +524,108 @@
 
 /* Edit Button Styles */
 .btn-edit {
-  background: #ffc107;
-  color: #212529;
+  background: #667eea;
+  color: white;
   border: none;
-  padding: 6px 12px;
+  padding: 4px 8px;
   border-radius: 4px;
-  cursor: pointer;
   font-size: 12px;
-  font-weight: 500;
+  cursor: pointer;
   transition: all 0.3s ease;
-  margin-right: 5px;
 }
 
 .btn-edit:hover {
-  background: #e0a800;
+  background: #5a67d8;
   transform: translateY(-1px);
 }
 
 /* Delete Button Styles */
 .btn-delete {
-  background: #dc3545;
+  background: #ef4444;
   color: white;
   border: none;
-  padding: 6px 12px;
+  padding: 4px 8px;
   border-radius: 4px;
-  cursor: pointer;
   font-size: 12px;
-  font-weight: 500;
+  cursor: pointer;
   transition: all 0.3s ease;
 }
 
 .btn-delete:hover {
-  background: #c82333;
+  background: #dc2626;
   transform: translateY(-1px);
+}
+
+/* Notes Button Styles */
+.btn-notes {
+  background: #10b981;
+  color: white;
+  border: none;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.btn-notes:hover {
+  background: #059669;
+  transform: translateY(-1px);
+}
+
+/* Notes Section Styles */
+.notes-section {
+  margin-top: 20px;
+  padding: 15px;
+  border: 1px solid #e9ecef;
+  border-radius: 8px;
+  background: #f8f9fa;
+}
+
+.notes-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  color: #2d3748;
+  margin-bottom: 10px;
+  cursor: pointer;
+}
+
+.notes-label input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  accent-color: #667eea;
+}
+
+.notes-file-input {
+  margin-top: 10px;
+}
+
+.file-input-label {
+  display: block;
+  font-weight: 500;
+  color: #4a5568;
+  margin-bottom: 8px;
+}
+
+.file-input {
+  width: 100%;
+  padding: 8px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 14px;
+  background: white;
+}
+
+.selected-file {
+  margin-top: 8px;
+  padding: 8px;
+  background: #e6fffa;
+  border: 1px solid #10b981;
+  border-radius: 4px;
+  font-size: 13px;
+  color: #059669;
 }
 
 /* Modal Styles */

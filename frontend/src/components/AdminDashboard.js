@@ -45,22 +45,22 @@ const StudentSearch = memo(({ onStudentClick, searchEmail, setSearchEmail, searc
       
       {showSearchResults && (
         <div className="search-results">
-          <h4>Search Results ({searchResults.length})</h4>
-          {searchResults.length > 0 ? (
+          <h4>Search Results {(searchResults || []).length}</h4>
+          {(searchResults || []).length > 0 ? (
             <div className="search-results-list">
-              {searchResults.map(student => (
-                <div key={student.id} className="search-result-item">
+              {(searchResults || []).map(student => (
+                <div key={student && student.id} className="search-result-item">
                   <div className="student-info">
-                    <strong>{student.name}</strong>
-                    <span className="student-email">{student.email}</span>
-                    <span className="student-course">{student.course || 'No Course'}</span>
+                    <button 
+                      onClick={() => onStudentClick(student)} 
+                      className="btn-link"
+                      title="View Student Details"
+                    >
+                      {student && student.name}
+                    </button>
+                    <span className="student-email">{student && student.email}</span>
+                    <span className="student-course">{student && student.course || 'No Course'}</span>
                   </div>
-                  <button 
-                    onClick={() => onStudentClick(student)} 
-                    className="btn-select-student"
-                  >
-                    Select
-                  </button>
                 </div>
               ))}
             </div>
@@ -169,10 +169,10 @@ const AdminDashboard = ({ user, onLogout }) => {
       setIsSearching(true);
       try {
         const token = localStorage.getItem('token');
-        const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
+        const apiUrl = 'http://31.220.55.193:5000';
         
         // Search in local students array first for instant results
-        const localResults = students.filter(student => 
+        const localResults = (students || []).filter(student => 
           student.email && student.email.toLowerCase().includes(email.toLowerCase())
         );
         
@@ -357,7 +357,7 @@ const AdminDashboard = ({ user, onLogout }) => {
     if (modalType !== 'batch' || !formData.course) {
       return teachers;
     }
-    return teachers.filter(teacher => teacher.domain === formData.course);
+    return (teachers || []).filter(teacher => teacher.domain === formData.course);
   }, [modalType, formData.course, teachers]);
 
   useEffect(() => {
@@ -393,7 +393,7 @@ const AdminDashboard = ({ user, onLogout }) => {
     setDataLoading(prev => ({ ...prev, students: true }));
     try {
       const token = localStorage.getItem('token');
-      const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
+      const apiUrl = 'http://31.220.55.193:5000';
       const response = await fetch(`${apiUrl}/api/admin/users`, { 
         headers: { 'Authorization': `Bearer ${token}` } 
       });
@@ -437,7 +437,7 @@ const AdminDashboard = ({ user, onLogout }) => {
     setDataLoading(prev => ({ ...prev, teachers: true }));
     try {
       const token = localStorage.getItem('token');
-      const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
+      const apiUrl = 'http://31.220.55.193:5000';
       const response = await fetch(`${apiUrl}/api/admin/teachers`, { 
         headers: { 'Authorization': `Bearer ${token}` } 
       });
@@ -476,7 +476,7 @@ const AdminDashboard = ({ user, onLogout }) => {
     setDataLoading(prev => ({ ...prev, courses: true }));
     try {
       const token = localStorage.getItem('token');
-      const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
+      const apiUrl = 'http://31.220.55.193:5000';
       const response = await fetch(`${apiUrl}/api/admin/courses`, { 
         headers: { 'Authorization': `Bearer ${token}` } 
       });
@@ -515,7 +515,7 @@ const AdminDashboard = ({ user, onLogout }) => {
     setDataLoading(prev => ({ ...prev, batches: true }));
     try {
       const token = localStorage.getItem('token');
-      const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
+      const apiUrl = 'http://31.220.55.193:5000';
       const response = await fetch(`${apiUrl}/api/admin/batches`, { 
         headers: { 'Authorization': `Bearer ${token}` } 
       });
@@ -554,7 +554,7 @@ const AdminDashboard = ({ user, onLogout }) => {
     setDataLoading(prev => ({ ...prev, modules: true }));
     try {
       const token = localStorage.getItem('token');
-      const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
+      const apiUrl = 'http://31.220.55.193:5000';
       const response = await fetch(`${apiUrl}/api/admin/modules`, { 
         headers: { 'Authorization': `Bearer ${token}` } 
       });
@@ -587,7 +587,7 @@ const AdminDashboard = ({ user, onLogout }) => {
     setDataLoading(prev => ({ ...prev, lessons: true }));
     try {
       const token = localStorage.getItem('token');
-      const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
+      const apiUrl = 'http://31.220.55.193:5000';
       const response = await fetch(`${apiUrl}/api/admin/lessons`, { 
         headers: { 'Authorization': `Bearer ${token}` } 
       });
@@ -620,7 +620,7 @@ const AdminDashboard = ({ user, onLogout }) => {
     setDataLoading(prev => ({ ...prev, classroom: true }));
     try {
       const token = localStorage.getItem('token');
-      const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
+      const apiUrl = 'http://31.220.55.193:5000';
       const response = await fetch(`${apiUrl}/api/admin/classroom`, { 
         headers: { 'Authorization': `Bearer ${token}` } 
       });
@@ -653,7 +653,7 @@ const AdminDashboard = ({ user, onLogout }) => {
     setDataLoading(prev => ({ ...prev, mentors: true }));
     try {
       const token = localStorage.getItem('token');
-      const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
+      const apiUrl = 'http://31.220.55.193:5000';
       const response = await fetch(`${apiUrl}/api/admin/mentors`, { 
         headers: { 'Authorization': `Bearer ${token}` } 
       });
@@ -710,7 +710,8 @@ const AdminDashboard = ({ user, onLogout }) => {
       case 'modules':
         await Promise.all([
           loadCourses(),
-          loadModules()
+          loadModules(),
+          loadBatches()
         ]);
         break;
       case 'lessons':
@@ -793,7 +794,7 @@ const AdminDashboard = ({ user, onLogout }) => {
 
     try {
       const token = localStorage.getItem('token');
-      const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
+      const apiUrl = 'http://31.220.55.193:5000';
       const response = await fetch(`${apiUrl}/api/admin/batches/${courseId}`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
@@ -812,10 +813,10 @@ const AdminDashboard = ({ user, onLogout }) => {
 
   const calculateStats = (studentData, courseData, jobData) => {
     const totalStudents = studentData.length;
-    const activeStudents = studentData.filter(s => s.status === 'active').length;
+    const activeStudents = (studentData || []).filter(s => s.status === 'active').length;
     const totalCourses = courseData.length;
-    const activeJobs = jobData.filter(j => j.status === 'active').length;
-    const totalRevenue = studentData.reduce((sum, s) => sum + (s.tuitionPaid || 0), 0);
+    const activeJobs = (jobData || []).filter(j => j.status === 'active').length;
+    const totalRevenue = (studentData || []).reduce((sum, s) => sum + (s.tuitionPaid || 0), 0);
 
     setStats({
       totalStudents,
@@ -838,12 +839,16 @@ const AdminDashboard = ({ user, onLogout }) => {
       cleanDefaults.email = '';
       cleanDefaults.password = '';
       setFormData(cleanDefaults);
-      // Load batches if course is selected for new student or classroom
-      if ((type === 'student' || type === 'classroom') && cleanDefaults.course) {
+      // Load batches if course is selected for new student, classroom, or module
+      if ((type === 'student' || type === 'classroom' || type === 'module') && cleanDefaults.course) {
         loadBatchesByCourse(cleanDefaults.course);
       }
+      // For modules, always load all batches since they might need to select one
+      if (type === 'module') {
+        loadBatches();
+      }
     } else {
-      // For classroom videos, map courseId to course field for the form
+      // For classroom videos, map courseId to course field for form
       if (type === 'classroom') {
         const formData = {
           ...item,
@@ -858,6 +863,15 @@ const AdminDashboard = ({ user, onLogout }) => {
         // Load batches if course is specified
         if (formData.course) {
           loadBatchesByCourse(formData.course);
+        }
+      } else if (type === 'module') {
+        setFormData(item);
+        // Load batches if editing module with course
+        if (item.courseId || item.course) {
+          loadBatchesByCourse(item.courseId || item.course);
+        } else {
+          // Load all batches for module editing
+          loadBatches();
         }
       } else {
         setFormData(item);
@@ -903,7 +917,7 @@ const AdminDashboard = ({ user, onLogout }) => {
       teacher: { name: '', email: '', password: '', age: '', domain: '', experience: '', status: 'active', role: 'teacher', phone: '', address: '' },
       course: { title: '', description: '', duration: '', modules: 0, status: 'active', instructor: '', price: '' },
       batch: { name: '', course: '', startDate: '', teacherId: '', status: 'active' },
-      module: { name: '', courseId: '', batchId: '', duration: '', contentType: 'text', content: '', externalLink: '', fileUrl: '', fileName: '', fileSize: 0 },
+      module: { name: '', courseId: '', batchId: '', duration: '', contentType: 'link', content: '', externalLink: '', fileUrl: '', fileName: '', fileSize: 0 },
   lesson: { title: '', moduleId: '', content: '', duration: '', videoUrl: '', classLink: '', order: 1, resources: '' },
       project: { title: '', description: '', difficulty: 'Intermediate', duration: '', skills: [], requirements: '', deliverables: '' },
       assessment: { title: '', description: '', questions: 0, duration: '', difficulty: 'Medium', passingScore: 70 },
@@ -932,7 +946,7 @@ const AdminDashboard = ({ user, onLogout }) => {
           try {
             // Check if email already exists via API
             const token = localStorage.getItem('token');
-            const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
+            const apiUrl = 'http://31.220.55.193:5000';
             const usersResponse = await fetch(`${apiUrl}/api/admin/users`, {
               headers: { 'Authorization': `Bearer ${token}` }
             });
@@ -1028,7 +1042,7 @@ const AdminDashboard = ({ user, onLogout }) => {
           try {
             // Check if email already exists via API
             const token = localStorage.getItem('token');
-            const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
+            const apiUrl = 'http://31.220.55.193:5000';
             const teachersResponse = await fetch(`${apiUrl}/api/admin/teachers`, {
               headers: { 'Authorization': `Bearer ${token}` }
             });
@@ -1095,7 +1109,7 @@ const AdminDashboard = ({ user, onLogout }) => {
           // User should use password reset feature
 
           const token = localStorage.getItem('token');
-          const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
+          const apiUrl = 'http://31.220.55.193:5000';
           const updateResponse = await fetch(`${apiUrl}/api/admin/teachers/${editingItem.id}`, {
             method: 'PUT',
             headers: {
@@ -1233,42 +1247,36 @@ const AdminDashboard = ({ user, onLogout }) => {
           return;
         }
         
-        if ((formData.contentType === 'pdf' || formData.contentType === 'word') && !uploadedFile && !formData.fileUrl) {
-          showToast('Please upload a file', 'warning');
-          return;
-        }
-        
-        // Handle file upload for modules
+        // Handle module creation (external links only)
         try {
           const token = localStorage.getItem('token');
-          const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
+          const apiUrl = 'http://31.220.55.193:5000';
           
-          const formDataToSend = new FormData();
-          formDataToSend.append('name', formData.name);
-          formDataToSend.append('courseId', formData.courseId);
-          formDataToSend.append('batchId', formData.batchId || '');
-          formDataToSend.append('duration', formData.duration || '');
-          formDataToSend.append('contentType', formData.contentType || 'text');
-          formDataToSend.append('content', formData.content || '');
-          formDataToSend.append('externalLink', formData.externalLink || '');
-          
-          // Add file if available
-          if (uploadedFile) {
-            formDataToSend.append('file', uploadedFile);
-          }
+          const moduleData = {
+            name: formData.name,
+            courseId: formData.courseId,
+            batchId: formData.batchId || '',
+            duration: formData.duration || '',
+            contentType: 'link',
+            content: formData.content || '',
+            externalLink: formData.externalLink || '',
+            fileUrl: '',
+            fileName: '',
+            fileSize: 0
+          };
           
           const endpoint = editingItem?.id 
-            ? `${apiUrl}/api/admin/modules/${editingItem.id}/upload`
-            : `${apiUrl}/api/admin/modules/upload`;
-            
+            ? `${apiUrl}/api/admin/modules/${editingItem.id}`
+            : `${apiUrl}/api/admin/modules`;
           const method = editingItem?.id ? 'PUT' : 'POST';
           
           const response = await fetch(endpoint, {
             method: method,
             headers: {
+              'Content-Type': 'application/json',
               'Authorization': `Bearer ${token}`
             },
-            body: formDataToSend
+            body: JSON.stringify(moduleData)
           });
           
           const result = await response.json();
@@ -1383,7 +1391,7 @@ const AdminDashboard = ({ user, onLogout }) => {
       if (modalType === 'classroom') {
         try {
           const token = localStorage.getItem('token');
-          const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
+          const apiUrl = 'http://31.220.55.193:5000';
           
           // Validate YouTube URL is provided
           if (!formData.youtubeVideoUrl) {
@@ -1475,7 +1483,7 @@ const AdminDashboard = ({ user, onLogout }) => {
       const collection = collectionMap[modalType];
 
       const token = localStorage.getItem('token');
-      const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
+      const apiUrl = 'http://31.220.55.193:5000';
       let result;
 
       if (editingItem?.id) {
@@ -1534,7 +1542,7 @@ const AdminDashboard = ({ user, onLogout }) => {
     if (window.confirm('Are you sure you want to delete this item?')) {
       try {
         const token = localStorage.getItem('token');
-        const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
+        const apiUrl = 'http://31.220.55.193:5000';
         
         // Map collection names to API endpoints
         const collectionMap = {
@@ -1982,19 +1990,19 @@ const AdminDashboard = ({ user, onLogout }) => {
                     </tr>
                   </thead>
                   <tbody>
-                    {paginatedStudents.map(student => (
+                    {(paginatedStudents || []).map(student => (
                       <tr key={student.id}>
                         <td>
                           <button 
-                            className="link-button"
-                            type="button"
                             onClick={() => openStudentDetails(student)}
+                            className="btn-link"
+                            title="View Student Details"
                           >
                             {student.name}
                           </button>
                         </td>
                         <td>{student.email}</td>
-                        <td>{batches.find(b => b.id === student.batchId)?.name || student.batchName || 'No Batch Assigned'}</td>
+                        <td>{(batches || []).find(b => b.id === student.batchId)?.name || student.batchName || 'No Batch Assigned'}</td>
                         <td>{student.course || 'N/A'}</td>
                         <td>
                           <button onClick={() => openModal('student', student)} className="btn-edit">✏️</button>
@@ -2065,7 +2073,7 @@ const AdminDashboard = ({ user, onLogout }) => {
                     </tr>
                   </thead>
                   <tbody>
-                    {teachers.map(teacher => (
+                    {(teachers || []).map(teacher => (
                       <tr key={teacher.id}>
                         <td>{teacher.name}</td>
                         <td>{teacher.email}</td>
@@ -2115,9 +2123,9 @@ const AdminDashboard = ({ user, onLogout }) => {
                     </tr>
                   </thead>
                   <tbody>
-                    {batches.map(batch => {
+                    {(batches || []).map(batch => {
                       // Calculate actual student count based on batchId
-                      const actualStudentCount = students.filter(student => 
+                      const actualStudentCount = (students || []).filter(student => 
                         student.role === 'student' && student.batchId === (batch.id || batch._id)
                       ).length;
                       
@@ -2178,11 +2186,11 @@ const AdminDashboard = ({ user, onLogout }) => {
                     </tr>
                   </thead>
                   <tbody>
-                    {modules.map(module => (
+                    {(modules || []).map(module => (
                       <tr key={module.id}>
                         <td>{module.name}</td>
-                        <td>{courses.find(c => c.id === module.courseId)?.title || 'N/A'}</td>
-                        <td>{batches.find(b => b.id === module.batchId)?.name || 'N/A'}</td>
+                        <td>{(courses || []).find(c => c.id === module.courseId)?.title || 'N/A'}</td>
+                        <td>{(batches || []).find(b => b.id === module.batchId)?.name || 'N/A'}</td>
                         <td>
                           <span className="content-type-badge">
                             {module.contentType === 'pdf' && '📄 PDF'}
@@ -2250,10 +2258,10 @@ const AdminDashboard = ({ user, onLogout }) => {
                     </tr>
                   </thead>
                   <tbody>
-                    {lessons.map(lesson => (
+                    {(lessons || []).map(lesson => (
                       <tr key={lesson.id}>
                         <td>{lesson.title}</td>
-                        <td>{modules.find(m => m.id === lesson.moduleId)?.name || 'N/A'}</td>
+                        <td>{(modules || []).find(m => m.id === lesson.moduleId)?.name || 'N/A'}</td>
                         <td>{lesson.duration}</td>
                         <td>{lesson.order}</td>
                         <td>
@@ -2287,7 +2295,7 @@ const AdminDashboard = ({ user, onLogout }) => {
               </div>
 
               <div className="cards-grid">
-                {projects.map(project => (
+                {(projects || []).map(project => (
                   <div key={project.id} className="project-card">
                     <h3>{project.title}</h3>
                     <p>{project.description}</p>
@@ -2317,7 +2325,7 @@ const AdminDashboard = ({ user, onLogout }) => {
               </div>
 
               <div className="cards-grid">
-                {assessments.map(assessment => (
+                {(assessments || []).map(assessment => (
                   <div key={assessment.id} className="assessment-card">
                     <h3>{assessment.title}</h3>
                     <p>{assessment.description}</p>
@@ -2361,7 +2369,7 @@ const AdminDashboard = ({ user, onLogout }) => {
                     </tr>
                   </thead>
                   <tbody>
-                    {jobs.map(job => (
+                    {(jobs || []).map(job => (
                       <tr key={job.id}>
                         <td>{job.title}</td>
                         <td>{job.company}</td>
@@ -2397,14 +2405,14 @@ const AdminDashboard = ({ user, onLogout }) => {
               </div>
 
               <div className="cards-grid">
-                {mentors.map(mentor => (
+                {(mentors || []).map(mentor => (
                   <div key={mentor.id} className="mentor-card">
                     <div className="mentor-avatar">{mentor.name?.charAt(0)}</div>
                     <h3>{mentor.name}</h3>
                     <p className="mentor-title">{mentor.title}</p>
                     <p className="mentor-company">{mentor.company} | {mentor.experience}</p>
                     <div className="mentor-skills">
-                      {mentor.skills?.slice(0, 3).map((skill, idx) => (
+                      {(mentor.skills || []).slice(0, 3).map((skill, idx) => (
                         <span key={idx} className="skill-tag">{skill}</span>
                       ))}
                     </div>
@@ -2458,7 +2466,7 @@ const AdminDashboard = ({ user, onLogout }) => {
                         </td>
                       </tr>
                     ) : (
-                      classroomVideos
+                      (classroomVideos || [])
                         .sort((a, b) => new Date(b.date) - new Date(a.date))
                         .map(video => (
                           <tr key={video.id}>
@@ -2471,7 +2479,7 @@ const AdminDashboard = ({ user, onLogout }) => {
                               </span>
                               {video.batchId && (
                                 <small style={{display: 'block', color: '#666', marginTop: '2px'}}>
-                                  Batch: {batches.find(b => b.id === video.batchId)?.name || 'No Batch Assigned'}
+                                  Batch: {(batches || []).find(b => b.id === video.batchId)?.name || 'No Batch Assigned'}
                                 </small>
                               )}
                             </td>
@@ -2642,7 +2650,7 @@ const AdminDashboard = ({ user, onLogout }) => {
                         </td>
                       </tr>
                     ) : (
-                      liveClasses
+                      (liveClasses || [])
                         .sort((a, b) => new Date(a.scheduledDate + ' ' + a.scheduledTime) - new Date(b.scheduledDate + ' ' + b.scheduledTime))
                         .map(liveClass => {
                           const classDateTime = new Date(liveClass.scheduledDate + ' ' + liveClass.scheduledTime);
@@ -2757,7 +2765,7 @@ const AdminDashboard = ({ user, onLogout }) => {
                   <div className="summary-icon" style={{background: '#e8f5e9'}}>💼</div>
                   <div className="summary-content">
                     <h4>Job Opportunities</h4>
-                    <p className="summary-number">{jobs.filter(j => j.status === 'active').length}</p>
+                    <p className="summary-number">{(jobs || []).filter(j => j.status === 'active').length}</p>
                     <span className="summary-change positive">+5 new jobs</span>
                   </div>
                 </div>
@@ -2812,7 +2820,7 @@ const AdminDashboard = ({ user, onLogout }) => {
                 <div className="analytics-card">
                   <h3>📚 Course Distribution</h3>
                   <div className="progress-list">
-                    {courses.slice(0, 5).map((course, idx) => (
+                    {(courses || []).slice(0, 5).map((course, idx) => (
                       <div key={course.id} className="progress-item">
                         <div className="progress-info">
                           <span className="progress-name">{course.title || `Course ${idx + 1}`}</span>
@@ -3216,7 +3224,7 @@ const AdminDashboard = ({ user, onLogout }) => {
                     value={formData.teacherId || ''}
                     onChange={(e) => {
                       const teacherId = e.target.value;
-                      const selectedTeacher = getFilteredTeachers().find(t => t.id === teacherId);
+                      const selectedTeacher = (getFilteredTeachers() || []).find(t => t.id === teacherId);
                       handleInputChange('teacherId', teacherId);
                       handleInputChange('teacherName', selectedTeacher ? selectedTeacher.name : '');
                     }}
@@ -3253,7 +3261,11 @@ const AdminDashboard = ({ user, onLogout }) => {
                   />
                   <select
                     value={formData.courseId || ''}
-                    onChange={(e) => handleInputChange('courseId', e.target.value)}
+                    onChange={(e) => {
+                      handleInputChange('courseId', e.target.value);
+                      // Clear batch selection when course changes
+                      handleInputChange('batchId', '');
+                    }}
                     required
                   >
                     <option value="">Select Course *</option>
@@ -3269,20 +3281,28 @@ const AdminDashboard = ({ user, onLogout }) => {
                     {(() => {
                       const selectedCourse = formData.courseId;
                       const filteredBatches = batches.filter(batch => {
-                        // Try multiple matching approaches
+                        // Debug logging
+                        console.log('Comparing:', {
+                          batchCourse: batch.course,
+                          selectedCourse: selectedCourse,
+                          batchCourseId: batch.courseId,
+                          match: batch.course === selectedCourse || 
+                                 batch.courseId === selectedCourse ||
+                                 (typeof selectedCourse === 'string' && batch.course && batch.course.toLowerCase() === selectedCourse.toLowerCase())
+                        });
+                        
                         return batch.course === selectedCourse || 
                                batch.courseId === selectedCourse ||
                                (typeof selectedCourse === 'string' && batch.course && batch.course.toLowerCase() === selectedCourse.toLowerCase());
                       });
                       
-                      // Debug logging
                       console.log('Selected Course:', selectedCourse);
                       console.log('All Batches:', batches);
                       console.log('Filtered Batches:', filteredBatches);
                       
                       return filteredBatches;
                     })().map(batch => (
-                      <option key={batch.id} value={batch.id}>
+                      <option key={batch._id || batch.id} value={batch._id || batch.id}>
                         {batch.name}
                       </option>
                     ))}
@@ -3290,12 +3310,9 @@ const AdminDashboard = ({ user, onLogout }) => {
                   
                   {/* File Type Selection */}
                   <select
-                    value={formData.contentType || 'text'}
+                    value={formData.contentType || 'link'}
                     onChange={(e) => handleInputChange('contentType', e.target.value)}
                   >
-                    <option value="text">Text Content</option>
-                    <option value="pdf">PDF Document</option>
-                    <option value="word">Word Document</option>
                     <option value="link">External Link</option>
                   </select>
 
@@ -4092,7 +4109,7 @@ const AdminDashboard = ({ user, onLogout }) => {
                                 <tr key={student.id}>
                                   <td>{student.name}</td>
                                   <td>{student.email}</td>
-                                  <td>{batches.find(b => b.id === student.batchId)?.name || 'No Batch Assigned'}</td>
+                                  <td>{(batches || []).find(b => b.id === student.batchId)?.name || 'No Batch Assigned'}</td>
                                   <td>
                                     <span className={`status-badge ${student.status}`}>
                                       {student.status}

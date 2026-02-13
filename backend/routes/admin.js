@@ -9,6 +9,7 @@ const Batch = require('../models/Batch');
 const Course = require('../models/Course');
 const Module = require('../models/Module');
 const Classroom = require('../models/Classroom');
+const OneToOne = require('../models/OneToOne');
 
 // Apply auth and admin role check to all admin routes
 router.use(auth);
@@ -717,8 +718,56 @@ router.delete('/classroom/:id', async (req, res) => {
 // @desc    Create a new module with file upload
 router.post('/modules/upload', moduleUpload.single('file'), async (req, res) => {
   try {
-    return res.status(503).json({
-      message: 'Module file upload is temporarily disabled. Please create modules without file uploads.'
+    const { name, courseId, batchId, duration, contentType, content, externalLink } = req.body;
+    
+    if (!name || !courseId) {
+      return res.status(400).json({ message: 'Module name and course are required' });
+    }
+
+    let fileUrl = '';
+    let fileName = '';
+    let fileSize = 0;
+
+    // Handle file upload
+    if (req.file) {
+      const { buffer, originalname, size } = req.file;
+      
+      // For now, store file as base64 (in production, use cloud storage)
+      const base64File = buffer.toString('base64');
+      fileUrl = `data:${req.file.mimetype};base64,${base64File}`;
+      fileName = originalname;
+      fileSize = size;
+    }
+
+    // Validate and convert courseId
+    let convertedCourseId;
+    try {
+      convertedCourseId = new mongoose.Types.ObjectId(courseId);
+    } catch (error) {
+      console.error('Invalid courseId format:', courseId, error);
+      return res.status(400).json({ message: 'Invalid course ID format' });
+    }
+
+    const moduleData = {
+      name,
+      courseId: convertedCourseId,
+      batchId: batchId || '',
+      duration: duration || '',
+      contentType: contentType || 'text',
+      content: content || '',
+      externalLink: externalLink || '',
+      fileUrl,
+      fileName,
+      fileSize,
+      createdAt: new Date()
+    };
+
+    const module = new Module(moduleData);
+    const savedModule = await module.save();
+
+    res.status(201).json({
+      message: 'Module created successfully',
+      module: { id: String(savedModule._id), ...savedModule.toObject() }
     });
   } catch (err) {
     console.error('Error creating module with upload:', err);
@@ -730,8 +779,40 @@ router.post('/modules/upload', moduleUpload.single('file'), async (req, res) => 
 // @desc    Update a module with file upload
 router.put('/modules/:id/upload', moduleUpload.single('file'), async (req, res) => {
   try {
-    return res.status(503).json({
-      message: 'Module file upload is temporarily disabled. Please update modules without file uploads.'
+    const { id } = req.params;
+    const { name, courseId, batchId, duration, contentType, content, externalLink } = req.body;
+    
+    const module = await Module.findById(id);
+    if (!module) {
+      return res.status(404).json({ message: 'Module not found' });
+    }
+
+    // Update basic fields
+    if (name) module.name = name;
+    if (courseId) module.courseId = new mongoose.Types.ObjectId(courseId); // Convert to ObjectId
+    if (batchId) module.batchId = batchId;
+    if (duration) module.duration = duration;
+    if (contentType) module.contentType = contentType;
+    if (content) module.content = content;
+    if (externalLink) module.externalLink = externalLink;
+
+    // Handle file upload
+    if (req.file) {
+      const { buffer, originalname, size } = req.file;
+      
+      // For now, store file as base64 (in production, use cloud storage)
+      const base64File = buffer.toString('base64');
+      module.fileUrl = `data:${req.file.mimetype};base64,${base64File}`;
+      module.fileName = originalname;
+      module.fileSize = size;
+    }
+
+    module.updatedAt = new Date();
+    const updatedModule = await module.save();
+
+    res.json({
+      message: 'Module updated successfully',
+      module: { id: String(updatedModule._id), ...updatedModule.toObject() }
     });
   } catch (err) {
     console.error('Error updating module with upload:', err);
@@ -801,7 +882,19 @@ collections.forEach(collectionName => {
         const course = new Course(req.body);
         saved = await course.save();
       } else if (collectionName === 'modules') {
-        const module = new Module(req.body);
+        // Handle courseId conversion for modules
+        const moduleData = { ...req.body };
+        console.log('Module creation data received:', moduleData);
+        if (moduleData.courseId) {
+          try {
+            moduleData.courseId = new mongoose.Types.ObjectId(moduleData.courseId);
+            console.log('Converted courseId:', moduleData.courseId);
+          } catch (error) {
+            console.error('Invalid courseId format:', moduleData.courseId, error);
+            return res.status(400).json({ message: 'Invalid course ID format' });
+          }
+        }
+        const module = new Module(moduleData);
         saved = await module.save();
       } else if (collectionName === 'classroom') {
         const classroom = new Classroom(req.body);
@@ -831,6 +924,10 @@ collections.forEach(collectionName => {
         Model = Course;
       } else if (collectionName === 'modules') {
         Model = Module;
+        // Handle courseId conversion for modules
+        if (updateData.courseId) {
+          updateData.courseId = new mongoose.Types.ObjectId(updateData.courseId);
+        }
       } else if (collectionName === 'classroom') {
         Model = Classroom;
       } else {
@@ -1021,6 +1118,64 @@ router.get('/batches', async (req, res) => {
         console.error('Error fetching batches:', error);
         res.status(500).json({ message: 'Error fetching batches' });
     }
+});
+
+// One-to-One Routes
+router.get('/one-to-one', async (req, res) => {
+  try {
+    const oneToOneClasses = await OneToOne.find({}).lean().exec();
+    res.json(oneToOneClasses);
+  } catch (error) {
+    console.error('Error fetching one-to-one classes:', error);
+    res.status(500).json({ message: 'Error fetching one-to-one classes' });
+  }
+});
+
+router.get('/one-to-one/:id', async (req, res) => {
+  try {
+    const oneToOneClass = await OneToOne.findById(req.params.id).lean().exec();
+    if (!oneToOneClass) {
+      return res.status(404).json({ message: 'One-to-one class not found' });
+    }
+    res.json(oneToOneClass);
+  } catch (error) {
+    console.error('Error fetching one-to-one class:', error);
+    res.status(500).json({ message: 'Error fetching one-to-one class' });
+  }
+});
+
+router.post('/one-to-one', async (req, res) => {
+  try {
+    const oneToOneData = new OneToOne(req.body);
+    const savedOneToOne = await oneToOneData.save();
+    res.status(201).json(savedOneToOne);
+  } catch (error) {
+    console.error('Error creating one-to-one class:', error);
+    res.status(500).json({ message: 'Error creating one-to-one class' });
+  }
+});
+
+router.put('/one-to-one/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const updateData = req.body;
+    const updatedOneToOne = await OneToOne.findByIdAndUpdate(id, updateData, { new: true });
+    res.json(updatedOneToOne);
+  } catch (error) {
+    console.error('Error updating one-to-one class:', error);
+    res.status(500).json({ message: 'Error updating one-to-one class' });
+  }
+});
+
+router.delete('/one-to-one/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const deletedOneToOne = await OneToOne.findByIdAndDelete(id);
+    res.json({ message: 'One-to-one class deleted successfully' });
+  } catch (error) {
+    console.error('Error deleting one-to-one class:', error);
+    res.status(500).json({ message: 'Error deleting one-to-one class' });
+  }
 });
 
 module.exports = router;
