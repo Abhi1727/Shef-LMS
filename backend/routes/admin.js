@@ -4,6 +4,8 @@ const auth = require('../middleware/auth');
 const { roleAuth } = require('../middleware/roleAuth');
 const multer = require('multer');
 const mongoose = require('mongoose');
+const path = require('path');
+const fs = require('fs');
 const User = require('../models/User');
 const Batch = require('../models/Batch');
 const Course = require('../models/Course');
@@ -48,6 +50,43 @@ const moduleUpload = multer({
       cb(null, true);
     } else {
       cb(new Error('Only PDF and Word documents are allowed'), false);
+    }
+  }
+});
+
+// Configure multer for lecture notes uploads (PDF/Word/etc.) stored on disk
+const notesUploadStorage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    const notesDir = path.join(__dirname, '..', 'uploads', 'notes');
+    if (!fs.existsSync(notesDir)) {
+      fs.mkdirSync(notesDir, { recursive: true });
+    }
+    cb(null, notesDir);
+  },
+  filename: (req, file, cb) => {
+    const timestamp = Date.now();
+    const safeOriginal = file.originalname.replace(/[^a-zA-Z0-9.\-_/ ]/g, '');
+    cb(null, `${timestamp}-${safeOriginal}`);
+  }
+});
+
+const notesUpload = multer({
+  storage: notesUploadStorage,
+  limits: {
+    fileSize: 50 * 1024 * 1024, // 50MB limit for notes
+  },
+  fileFilter: (req, file, cb) => {
+    // Allow common document types (PDF, Word, text)
+    const allowedTypes = [
+      'application/pdf',
+      'application/msword',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'text/plain'
+    ];
+    if (allowedTypes.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only document files (PDF, Word, text) are allowed for notes'), false);
     }
   }
 });
@@ -473,9 +512,9 @@ router.post('/classroom/youtube-upload', upload.single('video'), async (req, res
 });
 
 // @route   POST /api/admin/classroom/youtube-url
-// @desc    Save manual YouTube URL video metadata
+// @desc    Save manual YouTube URL video metadata (optionally with notes upload)
 // @access  Private (Admin only)
-router.post('/classroom/youtube-url', async (req, res) => {
+router.post('/classroom/youtube-url', notesUpload.single('notesFile'), async (req, res) => {
   try {
     const {
       title,
@@ -490,7 +529,9 @@ router.post('/classroom/youtube-url', async (req, res) => {
       date,
       youtubeVideoId,
       youtubeVideoUrl,
-      youtubeEmbedUrl
+      youtubeEmbedUrl,
+      notesAvailable,
+      notesFileName
     } = req.body;
 
     // Validate required fields
@@ -521,6 +562,16 @@ router.post('/classroom/youtube-url', async (req, res) => {
       updatedAt: new Date().toISOString()
     };
 
+    // Attach notes metadata if provided
+    const notesFlag = String(notesAvailable).trim().toLowerCase() === 'true';
+    if (notesFlag && (req.file || notesFileName)) {
+      lectureData.notesAvailable = true;
+      lectureData.notesFileName = (notesFileName || req.file?.originalname || '').trim() || undefined;
+      if (req.file) {
+        lectureData.notesFilePath = `/uploads/notes/${req.file.filename}`;
+      }
+    }
+
     const lecture = new Classroom(lectureData);
     const saved = await lecture.save();
 
@@ -541,8 +592,8 @@ router.post('/classroom/youtube-url', async (req, res) => {
 });
 
 // @route   POST /api/admin/classroom
-// @desc    Add a new video to classroom (supports both Drive and Zoom)
-router.post('/classroom', async (req, res) => {
+// @desc    Add a new video to classroom (supports both Drive and Zoom, optionally with notes upload)
+router.post('/classroom', notesUpload.single('notesFile'), async (req, res) => {
   try {
     const {
       title,
@@ -558,7 +609,10 @@ router.post('/classroom', async (req, res) => {
       zoomUrl,
       zoomPasscode,
       // Drive specific field (for backward compatibility)
-      driveId
+      driveId,
+      // Notes metadata (optional)
+      notesAvailable,
+      notesFileName
     } = req.body;
 
     // Validate required fields
@@ -598,6 +652,16 @@ router.post('/classroom', async (req, res) => {
       videoData.videoSource = 'drive';
     }
 
+    // Attach notes metadata if provided
+    const notesFlag = String(notesAvailable).trim().toLowerCase() === 'true';
+    if (notesFlag && (req.file || notesFileName)) {
+      videoData.notesAvailable = true;
+      videoData.notesFileName = (notesFileName || req.file?.originalname || '').trim() || undefined;
+      if (req.file) {
+        videoData.notesFilePath = `/uploads/notes/${req.file.filename}`;
+      }
+    }
+
     const video = new Classroom(videoData);
     const saved = await video.save();
 
@@ -613,8 +677,8 @@ router.post('/classroom', async (req, res) => {
 });
 
 // @route   PUT /api/admin/classroom/:id
-// @desc    Update a classroom video
-router.put('/classroom/:id', async (req, res) => {
+// @desc    Update a classroom video (optionally with notes upload)
+router.put('/classroom/:id', notesUpload.single('notesFile'), async (req, res) => {
   try {
     const { id } = req.params;
     const {
@@ -634,7 +698,9 @@ router.put('/classroom/:id', async (req, res) => {
       youtubeEmbedUrl,
       description,
       courseId,
-      batchId
+      batchId,
+      notesAvailable,
+      notesFileName
     } = req.body;
 
     // Validate that at least one video source is provided
@@ -689,6 +755,28 @@ router.put('/classroom/:id', async (req, res) => {
       videoData.zoomUrl = null;
       videoData.zoomPasscode = null;
       videoData.driveId = null;
+    }
+
+    // Attach or update notes metadata if provided
+    if (typeof notesAvailable !== 'undefined') {
+      const notesFlag = String(notesAvailable).trim().toLowerCase() === 'true';
+      if (notesFlag && (req.file || notesFileName)) {
+        videoData.notesAvailable = true;
+        videoData.notesFileName = (notesFileName || req.file?.originalname || '').trim() || undefined;
+        if (req.file) {
+          videoData.notesFilePath = `/uploads/notes/${req.file.filename}`;
+        }
+      } else {
+        // Explicitly clear notes when notesAvailable is false
+        videoData.notesAvailable = false;
+        videoData.notesFileName = null;
+        videoData.notesFilePath = null;
+      }
+    } else if (req.file) {
+      // If a new notes file is uploaded without explicit flag, assume notes are available
+      videoData.notesAvailable = true;
+      videoData.notesFileName = (notesFileName || req.file.originalname || '').trim() || undefined;
+      videoData.notesFilePath = `/uploads/notes/${req.file.filename}`;
     }
 
     await Classroom.findByIdAndUpdate(id, videoData, { new: true }).exec();

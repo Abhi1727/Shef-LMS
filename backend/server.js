@@ -1,6 +1,7 @@
 const express = require('express');
 const cors = require('cors');
 const dotenv = require('dotenv');
+const path = require('path');
 const { connectMongo } = require('./config/mongo');
 // const { startRecordingSync } = require('./jobs/syncRecordings');
 const videoProcessor = require('./middleware/videoProcessor');
@@ -28,6 +29,9 @@ app.use(cors({
 }));
 
 app.use(express.json());
+
+// Serve uploaded files (e.g., lecture notes) statically
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // Routes
 app.use('/api/auth', require('./routes/auth'));

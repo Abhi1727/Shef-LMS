@@ -1,0 +1,4 @@
+console.log('Copy and paste this into your browser console:');
+console.log('localStorage.setItem("token", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyIjp7ImlkIjoiNjk4YTg0OGZhMmM5NjI0OTIwYjc2YmZhIiwibmFtZSI6IlN5c3RlbSBBZG1pbmlzdHJhdG9yIiwiZW1haWwiOiJhZG1pbkBzaGVmbG1zLmNvbSIsInJvbGUiOiJhZG1pbiIsInN0YXR1cyI6ImFjdGl2ZSIsImN1cnJlbnRDb3Vyc2UiOiJTeXN0ZW0gQWRtaW5pc3RyYXRpb24iLCJlbnJvbGxtZW50TnVtYmVyIjoiQURNSU4tMDAxIiwicGhvbmUiOiIiLCJhZGRyZXNzIjoiIiwibGFzdExvZ2luIjp7InRpbWVzdGFtcCI6IjIwMjYtMDItMTBUMTk6NTc6MjIuNzQ4WiIsImlwQWRkcmVzcyI6Ijo6MSIsImNpdHkiOiJVbmtub3duIiwiY291bnRyeSI6IlVua25vd24iLCJpc3AiOiJVbmtub3duIn19LCJpYXQiOjE3NzA3NTM0NDIsImV4cCI6MTc3MTM1ODI0Mn0.-vqlNRPkSDL_Qt4k1rOrklaq-nRfq2uUnyzFIG09BrI");');
+console.log('localStorage.setItem("user", JSON.stringify({"id":"698a848fa2c9624920b76bfa","name":"System Administrator","email":"admin@sheflms.com","role":"admin","status":"active"}));');
+console.log('console.log("Admin credentials set! Refresh the page.");');

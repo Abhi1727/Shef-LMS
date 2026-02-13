@@ -25,6 +25,10 @@ const classroomSchema = new mongoose.Schema({
   youtubeEmbedUrl: { type: String },
   // Firebase storage (if needed later)
   storagePath: { type: String },
+  // Notes / resources attached to this lecture
+  notesAvailable: { type: Boolean, default: false },
+  notesFileName: { type: String },
+  notesFilePath: { type: String },
   uploadedBy: { type: String },
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now },

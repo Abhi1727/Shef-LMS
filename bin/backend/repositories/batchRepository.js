@@ -1,6 +1,6 @@
 // Moved legacy Firestore-backed batch repository from backend/repositories/batchRepository.js
 
-const Batch = require('../../backend/models/Batch');
+const Batch = require('../../../backend/models/Batch');
 const { initFirebaseAdmin } = require('../config/firebaseMigration');
 
 async function createBatchMongo(data) {

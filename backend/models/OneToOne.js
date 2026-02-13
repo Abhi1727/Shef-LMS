@@ -1,7 +1,7 @@
 const mongoose = require('mongoose');
 
 const oneToOneSchema = new mongoose.Schema({
-  className: {
+  name: {
     type: String,
     required: true,
     trim: true
@@ -12,10 +12,6 @@ const oneToOneSchema = new mongoose.Schema({
     enum: ['Data Science & AI', 'Cyber Security & Ethical Hacking']
   },
   teacherId: {
-    type: String,
-    required: true
-  },
-  teacherName: {
     type: String,
     required: true
   },
