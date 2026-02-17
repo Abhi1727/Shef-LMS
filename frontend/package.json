@@ -34,7 +34,7 @@
       "last 1 safari version"
     ]
   },
-  "proxy": "http://31.220.55.193:5000",
+  "proxy": "http://localhost:5000",
   "devDependencies": {
     "react-scripts": "^5.0.1"
   }
