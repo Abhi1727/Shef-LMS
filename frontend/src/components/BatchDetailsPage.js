@@ -130,7 +130,7 @@ const BatchDetailsPage = () => {
   const loadCoursesAndBatches = async () => {
     try {
       const token = localStorage.getItem('token');
-      const apiUrl = window.location.hostname === 'localhost' ? 'http://31.220.55.193:5000' : 'http://31.220.55.193:5000';
+      const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
 
       // Load courses
       const coursesResponse = await fetch(`${apiUrl}/api/admin/courses`, {
@@ -182,7 +182,7 @@ const BatchDetailsPage = () => {
       const token = localStorage.getItem('token');
     const apiUrl = window.location.hostname === 'localhost'
       ? 'http://localhost:5000'
-      : 'http://31.220.55.193:5000';
+      : '';
       let foundBatch = null;
 
       // Load batch details
@@ -350,7 +350,7 @@ const BatchDetailsPage = () => {
       const token = localStorage.getItem('token');
       const apiUrl = window.location.hostname === 'localhost'
         ? 'http://localhost:5000'
-        : 'http://31.220.55.193:5000';
+        : '';
       const batchIdForApi = selectedBatch?.id || selectedBatch?._id;
 
       const body = {
@@ -416,7 +416,7 @@ const BatchDetailsPage = () => {
       const token = localStorage.getItem('token');
     const apiUrl = window.location.hostname === 'localhost'
       ? 'http://localhost:5000'
-      : 'http://31.220.55.193:5000';
+      : '';
 
       // Validate required fields
       if (!newStudentForm.name || !newStudentForm.email || !newStudentForm.password || !newStudentForm.course) {
@@ -489,7 +489,7 @@ const BatchDetailsPage = () => {
       const token = localStorage.getItem('token');
     const apiUrl = window.location.hostname === 'localhost'
       ? 'http://localhost:5000'
-      : 'http://31.220.55.193:5000';
+      : '';
 
       const updateData = {
         name: studentFormData.name,
@@ -542,7 +542,7 @@ const BatchDetailsPage = () => {
       const token = localStorage.getItem('token');
       const apiUrl = window.location.hostname === 'localhost'
         ? 'http://localhost:5000'
-        : 'http://31.220.55.193:5000';
+        : '';
       const batchIdForApi = selectedBatch?.id || selectedBatch?._id;
 
       const response = await fetch(`${apiUrl}/api/batches/${batchIdForApi}/students`, {
@@ -608,7 +608,7 @@ const BatchDetailsPage = () => {
       const token = localStorage.getItem('token');
       const apiUrl = window.location.hostname === 'localhost'
         ? 'http://localhost:5000'
-        : 'http://31.220.55.193:5000';
+        : '';
       const batchIdForApi = selectedBatch?.id || selectedBatch?._id;
 
       // Create FormData for file upload
@@ -684,7 +684,7 @@ const BatchDetailsPage = () => {
   const handleDownloadNotes = async (video) => {
     try {
       const token = localStorage.getItem('token');
-      const apiUrl = window.location.hostname === 'localhost' ? 'http://31.220.55.193:5000' : 'http://31.220.55.193:5000';
+      const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
       
       // Try different possible endpoints for notes download
       let response;
@@ -798,7 +798,7 @@ const BatchDetailsPage = () => {
         const token = localStorage.getItem('token');
         const apiUrl = window.location.hostname === 'localhost'
           ? 'http://localhost:5000'
-          : 'http://31.220.55.193:5000';
+          : '';
 
         // Remove video from batch (disassociate, not delete)
         const response = await fetch(`${apiUrl}/api/batches/${selectedBatchId}/videos/${video.id}`, {
@@ -829,7 +829,7 @@ const BatchDetailsPage = () => {
       const token = localStorage.getItem('token');
     const apiUrl = window.location.hostname === 'localhost'
       ? 'http://localhost:5000'
-      : 'http://31.220.55.193:5000';
+      : '';
       
       const response = await fetch(`${apiUrl}/api/batches`, {
         headers: { 'Authorization': `Bearer ${token}` }
@@ -861,7 +861,7 @@ const BatchDetailsPage = () => {
         const token = localStorage.getItem('token');
         const apiUrl = window.location.hostname === 'localhost'
           ? 'http://localhost:5000'
-          : 'http://31.220.55.193:5000';
+          : '';
 
         const response = await fetch(`${apiUrl}/api/batches/${selectedBatchId}/students/${student.id}`, {
           method: 'DELETE',

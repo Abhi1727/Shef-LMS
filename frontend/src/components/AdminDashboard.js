@@ -271,7 +271,10 @@ const AdminDashboard = ({ user, onLogout }) => {
 
   useEffect(() => {
     loadAllData();
-  }, [loadAllData]);
+    // Intentionally run once on mount. Including `loadAllData` here can throw
+    // at runtime because `loadAllData` is declared later in this file.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Reset form when modal type changes to prevent data leakage
   useEffect(() => {
@@ -315,7 +318,7 @@ const AdminDashboard = ({ user, onLogout }) => {
     const timeoutId = setTimeout(() => controller.abort(), 10000);
     try {
       const token = localStorage.getItem('token');
-      const apiUrl = isLocalhost ? 'http://localhost:5000' : 'http://31.220.55.193:5000';
+      const apiUrl = isLocalhost ? 'http://localhost:5000' : '';
       const response = await fetch(`${apiUrl}/api/admin/users`, {
         headers: { 'Authorization': `Bearer ${token}` },
         signal: controller.signal
@@ -371,7 +374,7 @@ const AdminDashboard = ({ user, onLogout }) => {
     setDataLoading(prev => ({ ...prev, teachers: true }));
     try {
       const token = localStorage.getItem('token');
-      const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'http://31.220.55.193:5000';
+      const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
       const response = await fetch(`${apiUrl}/api/admin/teachers`, { 
         headers: { 'Authorization': `Bearer ${token}` } 
       });
@@ -410,7 +413,7 @@ const AdminDashboard = ({ user, onLogout }) => {
     setDataLoading(prev => ({ ...prev, courses: true }));
     try {
       const token = localStorage.getItem('token');
-      const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'http://31.220.55.193:5000';
+      const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
       const response = await fetch(`${apiUrl}/api/admin/courses`, { 
         headers: { 'Authorization': `Bearer ${token}` } 
       });
@@ -449,7 +452,7 @@ const AdminDashboard = ({ user, onLogout }) => {
     setDataLoading(prev => ({ ...prev, batches: true }));
     try {
       const token = localStorage.getItem('token');
-      const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'http://31.220.55.193:5000';
+      const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
       const response = await fetch(`${apiUrl}/api/admin/batches`, { 
         headers: { 'Authorization': `Bearer ${token}` } 
       });
@@ -487,7 +490,7 @@ const AdminDashboard = ({ user, onLogout }) => {
     setDataLoading(prev => ({ ...prev, modules: true }));
     try {
       const token = localStorage.getItem('token');
-      const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'http://31.220.55.193:5000';
+      const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
       const response = await fetch(`${apiUrl}/api/admin/modules`, { 
         headers: { 'Authorization': `Bearer ${token}` } 
       });
@@ -520,7 +523,7 @@ const AdminDashboard = ({ user, onLogout }) => {
     setDataLoading(prev => ({ ...prev, lessons: true }));
     try {
       const token = localStorage.getItem('token');
-      const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'http://31.220.55.193:5000';
+      const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
       const response = await fetch(`${apiUrl}/api/admin/lessons`, { 
         headers: { 'Authorization': `Bearer ${token}` } 
       });
@@ -553,7 +556,7 @@ const AdminDashboard = ({ user, onLogout }) => {
     setDataLoading(prev => ({ ...prev, classroom: true }));
     try {
       const token = localStorage.getItem('token');
-      const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'http://31.220.55.193:5000';
+      const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
       const response = await fetch(`${apiUrl}/api/admin/classroom`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
@@ -586,7 +589,7 @@ const AdminDashboard = ({ user, onLogout }) => {
     setDataLoading(prev => ({ ...prev, mentors: true }));
     try {
       const token = localStorage.getItem('token');
-      const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'http://31.220.55.193:5000';
+      const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
       const response = await fetch(`${apiUrl}/api/admin/mentors`, { 
         headers: { 'Authorization': `Bearer ${token}` } 
       });
@@ -619,7 +622,7 @@ const AdminDashboard = ({ user, onLogout }) => {
     setDataLoading(prev => ({ ...prev, projects: true }));
     try {
       const token = localStorage.getItem('token');
-      const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'http://31.220.55.193:5000';
+      const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
       const response = await fetch(`${apiUrl}/api/admin/projects`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
@@ -652,7 +655,7 @@ const AdminDashboard = ({ user, onLogout }) => {
     setDataLoading(prev => ({ ...prev, assessments: true }));
     try {
       const token = localStorage.getItem('token');
-      const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'http://31.220.55.193:5000';
+      const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
       const response = await fetch(`${apiUrl}/api/admin/assessments`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
@@ -685,7 +688,7 @@ const AdminDashboard = ({ user, onLogout }) => {
     setDataLoading(prev => ({ ...prev, jobs: true }));
     try {
       const token = localStorage.getItem('token');
-      const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'http://31.220.55.193:5000';
+      const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
       const response = await fetch(`${apiUrl}/api/admin/jobs`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
@@ -718,7 +721,7 @@ const AdminDashboard = ({ user, onLogout }) => {
     setDataLoading(prev => ({ ...prev, liveClasses: true }));
     try {
       const token = localStorage.getItem('token');
-      const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'http://31.220.55.193:5000';
+      const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
       const response = await fetch(`${apiUrl}/api/admin/liveClasses`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
@@ -927,7 +930,7 @@ const AdminDashboard = ({ user, onLogout }) => {
 
     try {
       const token = localStorage.getItem('token');
-      const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'http://31.220.55.193:5000';
+      const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
       const response = await fetch(`${apiUrl}/api/admin/batches/${courseId}`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
@@ -1079,7 +1082,7 @@ const AdminDashboard = ({ user, onLogout }) => {
           try {
             // Check if email already exists via API
             const token = localStorage.getItem('token');
-            const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'http://31.220.55.193:5000';
+            const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
             const usersResponse = await fetch(`${apiUrl}/api/admin/users`, {
               headers: { 'Authorization': `Bearer ${token}` }
             });
@@ -1144,7 +1147,7 @@ const AdminDashboard = ({ user, onLogout }) => {
           // User should use password reset feature
           
           const token = localStorage.getItem('token');
-          const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'http://31.220.55.193:5000';
+          const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
           const updateResponse = await fetch(`${apiUrl}/api/admin/users/${editingItem.id}`, {
             method: 'PUT',
             headers: {
@@ -1176,7 +1179,7 @@ const AdminDashboard = ({ user, onLogout }) => {
           try {
             // Check if email already exists via API
             const token = localStorage.getItem('token');
-            const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'http://31.220.55.193:5000';
+            const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
             const teachersResponse = await fetch(`${apiUrl}/api/admin/teachers`, {
               headers: { 'Authorization': `Bearer ${token}` }
             });
@@ -1243,7 +1246,7 @@ const AdminDashboard = ({ user, onLogout }) => {
           // User should use password reset feature
 
           const token = localStorage.getItem('token');
-          const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'http://31.220.55.193:5000';
+          const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
           const updateResponse = await fetch(`${apiUrl}/api/admin/teachers/${editingItem.id}`, {
             method: 'PUT',
             headers: {
@@ -1384,7 +1387,7 @@ const AdminDashboard = ({ user, onLogout }) => {
         // Handle module creation (external links only)
         try {
           const token = localStorage.getItem('token');
-          const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'http://31.220.55.193:5000';
+          const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
           
           const moduleData = {
             name: formData.name,
@@ -1525,7 +1528,7 @@ const AdminDashboard = ({ user, onLogout }) => {
       if (modalType === 'classroom') {
         try {
           const token = localStorage.getItem('token');
-          const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'http://31.220.55.193:5000';
+          const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
           
           // Validate YouTube URL is provided
           if (!formData.youtubeVideoUrl) {
@@ -1617,7 +1620,7 @@ const AdminDashboard = ({ user, onLogout }) => {
       const collection = collectionMap[modalType];
 
       const token = localStorage.getItem('token');
-      const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'http://31.220.55.193:5000';
+      const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
       let result;
 
       if (editingItem?.id) {
@@ -1676,7 +1679,7 @@ const AdminDashboard = ({ user, onLogout }) => {
     if (window.confirm('Are you sure you want to delete this item?')) {
       try {
         const token = localStorage.getItem('token');
-        const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'http://31.220.55.193:5000';
+        const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
         
         // Map collection names to API endpoints
         const collectionMap = {
