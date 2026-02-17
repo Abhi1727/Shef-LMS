@@ -1,4 +1,4 @@
-# robots.txt for SHEF LMS
+# robots.txt for LMS
 User-agent: *
 Allow: /
 

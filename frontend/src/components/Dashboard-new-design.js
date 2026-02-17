@@ -174,7 +174,7 @@ const Dashboard = ({ user, onLogout }) => {
       {/* Learning Sidebar */}
       <aside className={`sidebar ${sidebarOpen ? 'open' : 'closed'}`}>
         <div className="sidebar-header">
-          <h2>SHEF LMS</h2>
+          <h2>LMS</h2>
           <div className="subtitle">Learning Portal</div>
         </div>
 
