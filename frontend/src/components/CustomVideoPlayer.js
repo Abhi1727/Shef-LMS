@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import './CustomVideoPlayer.css';
 
 // YouTube IFrame API loader
@@ -119,7 +119,7 @@ const CustomVideoPlayer = ({ video, onClose, resumePosition = 0, onProgressUpdat
       }
 
       // Create YouTube player
-      const player = new window.YT.Player(youtubeContainerRef.current, {
+      new window.YT.Player(youtubeContainerRef.current, {
         videoId: videoId,
         playerVars: {
           autoplay: 0,

@@ -1,5 +1,6 @@
 const express = require('express');
 const router = express.Router();
+const mongoose = require('mongoose');
 const { isAdmin } = require('../middleware/roleAuth');
 const Batch = require('../models/Batch');
 const User = require('../models/User');
@@ -103,15 +104,20 @@ router.put('/:id/students', isAdmin, async (req, res) => {
     // that no student ends up in multiple batches.
     const allBatches = await Batch.find({}).exec();
 
+    // Normalize provided student IDs to string form once for comparisons
+    const studentIdStrings = (studentIds || []).map(id => String(id));
+
     await Promise.all(
       allBatches
         .filter(doc => String(doc._id) !== String(batchId))
         .map(doc => {
           const existingStudents = doc.students || [];
-          const hasOverlap = studentIds.some(id => existingStudents.includes(id));
+          const existingStudentStrings = existingStudents.map(id => String(id));
+
+          const hasOverlap = existingStudentStrings.some(id => studentIdStrings.includes(id));
           if (!hasOverlap) return Promise.resolve();
 
-          doc.students = existingStudents.filter(id => !studentIds.includes(id));
+          doc.students = existingStudents.filter(id => !studentIdStrings.includes(String(id)));
           doc.updatedAt = new Date();
           return doc.save();
         })
@@ -119,9 +125,10 @@ router.put('/:id/students', isAdmin, async (req, res) => {
 
     // Now add students to the target batch (avoid duplicates)
     const currentStudents = batchDoc.students || [];
-    const updatedStudents = [...new Set([...currentStudents, ...studentIds])];
+    const currentStudentStrings = currentStudents.map(id => String(id));
+    const mergedStudentStrings = Array.from(new Set([...currentStudentStrings, ...studentIdStrings]));
 
-    batchDoc.students = updatedStudents;
+    batchDoc.students = mergedStudentStrings.map(id => new mongoose.Types.ObjectId(id));
     batchDoc.updatedAt = new Date();
     await batchDoc.save();
 
@@ -177,7 +184,7 @@ router.delete('/:batchId/students/:studentId', isAdmin, async (req, res) => {
     }
 
     const currentStudents = batchDoc.students || [];
-    batchDoc.students = currentStudents.filter(id => id !== studentId);
+    batchDoc.students = currentStudents.filter(id => String(id) !== String(studentId));
     batchDoc.updatedAt = new Date();
     await batchDoc.save();
 

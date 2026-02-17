@@ -9,7 +9,7 @@ services:
     env_file:
       - .env
     environment:
-      - MONGODB_URI=mongodb://mongo:27017/shef-lms
+      - MONGODB_URI=mongodb://shef-lms-mongo:27017/shef-lms
     volumes:
       - ./logs:/app/logs
     restart: unless-stopped

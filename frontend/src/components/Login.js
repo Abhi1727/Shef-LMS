@@ -260,7 +260,7 @@ const Login = ({ onLogin }) => {
         </div>
 
         <div className="hero-text hero-below">
-          <h1>Shef LMS</h1>
+          <h1>LMS</h1>
           <p>Streamlined classes, recorded lectures, and progress in one place.</p>
           <div className="hero-tags">
             <span>Secure Login</span>

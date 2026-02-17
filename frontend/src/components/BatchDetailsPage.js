@@ -180,7 +180,10 @@ const BatchDetailsPage = () => {
   const loadBatchData = useCallback(async () => {
     try {
       const token = localStorage.getItem('token');
-      const apiUrl = window.location.hostname === 'localhost' ? 'http://31.220.55.193:5000' : 'http://31.220.55.193:5000';
+    const apiUrl = window.location.hostname === 'localhost'
+      ? 'http://localhost:5000'
+      : 'http://31.220.55.193:5000';
+      let foundBatch = null;
 
       // Load batch details
       const batchesResponse = await fetch(`${apiUrl}/api/admin/batches`, {
@@ -204,6 +207,7 @@ const BatchDetailsPage = () => {
         });
         
         if (batch) {
+          foundBatch = batch;
           setSelectedBatch(batch);
           
           if (batch.schedule) {
@@ -224,20 +228,16 @@ const BatchDetailsPage = () => {
           if (studentsResponse.ok) {
             const allUsers = await studentsResponse.json();
             const studentUsers = allUsers.filter(user => user.role === 'student');
-            
             // Store ALL students for the "Add Existing Students" modal
             setAllStudents(studentUsers);
-            
-            // Filter students by batchId for consistency with Dashboard (for display)
-            const batchStudents = studentUsers.filter(student => 
-              student.batchId === batchId
-            );
-            
+
+            // Filter students by batchId for display
+            const batchStudents = studentUsers.filter(student => student.batchId === batchId);
             console.log('🔍 BatchDetails Debug - Students for batch:', {
               batchId,
               totalStudents: studentUsers.length,
               batchStudents: batchStudents.length,
-              batchStudentsArray: batch.students?.length || 0,
+              batchStudentsArray: foundBatch?.students?.length || 0,
               sampleStudentData: batchStudents.slice(0, 2).map(s => ({
                 id: s.id,
                 name: s.name,
@@ -251,7 +251,7 @@ const BatchDetailsPage = () => {
                 s.course && (s.course.toLowerCase().includes('cyber') || s.course.toLowerCase().includes('security'))
               ).length
             });
-            
+
             setStudents(batchStudents);
           }
         } else {
@@ -279,7 +279,7 @@ const BatchDetailsPage = () => {
           
           // For videos without batchId, check if they belong to this batch's course
           // This is for backward compatibility with older videos
-          if (!video.batchId && selectedBatch && video.courseId === selectedBatch.course) {
+          if (!video.batchId && foundBatch && video.courseId === foundBatch.course) {
             return true;
           }
           
@@ -288,7 +288,7 @@ const BatchDetailsPage = () => {
         
         console.log('🔍 BatchDetails Debug - Videos for batch:', {
           batchId,
-          batchName: selectedBatch?.name,
+          batchName: foundBatch?.name,
           totalVideos: allVideos.length,
           filteredVideos: batchVideos.length,
           sampleVideos: batchVideos.slice(0, 3).map(v => ({
@@ -348,7 +348,9 @@ const BatchDetailsPage = () => {
 
     try {
       const token = localStorage.getItem('token');
-      const apiUrl = window.location.hostname === 'localhost' ? 'http://31.220.55.193:5000' : 'http://31.220.55.193:5000';
+      const apiUrl = window.location.hostname === 'localhost'
+        ? 'http://localhost:5000'
+        : 'http://31.220.55.193:5000';
       const batchIdForApi = selectedBatch?.id || selectedBatch?._id;
 
       const body = {
@@ -412,7 +414,9 @@ const BatchDetailsPage = () => {
   const handleAddNewStudent = async () => {
     try {
       const token = localStorage.getItem('token');
-      const apiUrl = window.location.hostname === 'localhost' ? 'http://31.220.55.193:5000' : 'http://31.220.55.193:5000';
+    const apiUrl = window.location.hostname === 'localhost'
+      ? 'http://localhost:5000'
+      : 'http://31.220.55.193:5000';
 
       // Validate required fields
       if (!newStudentForm.name || !newStudentForm.email || !newStudentForm.password || !newStudentForm.course) {
@@ -483,7 +487,9 @@ const BatchDetailsPage = () => {
   const handleSaveStudent = async () => {
     try {
       const token = localStorage.getItem('token');
-      const apiUrl = window.location.hostname === 'localhost' ? 'http://31.220.55.193:5000' : 'http://31.220.55.193:5000';
+    const apiUrl = window.location.hostname === 'localhost'
+      ? 'http://localhost:5000'
+      : 'http://31.220.55.193:5000';
 
       const updateData = {
         name: studentFormData.name,
@@ -534,7 +540,9 @@ const BatchDetailsPage = () => {
 
     try {
       const token = localStorage.getItem('token');
-      const apiUrl = window.location.hostname === 'localhost' ? 'http://31.220.55.193:5000' : 'http://31.220.55.193:5000';
+      const apiUrl = window.location.hostname === 'localhost'
+        ? 'http://localhost:5000'
+        : 'http://31.220.55.193:5000';
       const batchIdForApi = selectedBatch?.id || selectedBatch?._id;
 
       const response = await fetch(`${apiUrl}/api/batches/${batchIdForApi}/students`, {
@@ -598,7 +606,9 @@ const BatchDetailsPage = () => {
       }
 
       const token = localStorage.getItem('token');
-      const apiUrl = window.location.hostname === 'localhost' ? 'http://31.220.55.193:5000' : 'http://31.220.55.193:5000';
+      const apiUrl = window.location.hostname === 'localhost'
+        ? 'http://localhost:5000'
+        : 'http://31.220.55.193:5000';
       const batchIdForApi = selectedBatch?.id || selectedBatch?._id;
 
       // Create FormData for file upload
@@ -786,7 +796,9 @@ const BatchDetailsPage = () => {
     if (window.confirm(`Remove "${video.title}" from this batch? This will not delete the video, only unassign it from this batch.`)) {
       try {
         const token = localStorage.getItem('token');
-        const apiUrl = window.location.hostname === 'localhost' ? 'http://31.220.55.193:5000' : 'http://31.220.55.193:5000';
+        const apiUrl = window.location.hostname === 'localhost'
+          ? 'http://localhost:5000'
+          : 'http://31.220.55.193:5000';
 
         // Remove video from batch (disassociate, not delete)
         const response = await fetch(`${apiUrl}/api/batches/${selectedBatchId}/videos/${video.id}`, {
@@ -815,7 +827,9 @@ const BatchDetailsPage = () => {
   const refreshBatchData = async () => {
     try {
       const token = localStorage.getItem('token');
-      const apiUrl = window.location.hostname === 'localhost' ? 'http://31.220.55.193:5000' : 'http://31.220.55.193:5000';
+    const apiUrl = window.location.hostname === 'localhost'
+      ? 'http://localhost:5000'
+      : 'http://31.220.55.193:5000';
       
       const response = await fetch(`${apiUrl}/api/batches`, {
         headers: { 'Authorization': `Bearer ${token}` }
@@ -845,7 +859,9 @@ const BatchDetailsPage = () => {
     if (window.confirm(`Remove ${student.name} from this batch? This will not delete the student, only unassign them from this batch.`)) {
       try {
         const token = localStorage.getItem('token');
-        const apiUrl = window.location.hostname === 'localhost' ? 'http://31.220.55.193:5000' : 'http://31.220.55.193:5000';
+        const apiUrl = window.location.hostname === 'localhost'
+          ? 'http://localhost:5000'
+          : 'http://31.220.55.193:5000';
 
         const response = await fetch(`${apiUrl}/api/batches/${selectedBatchId}/students/${student.id}`, {
           method: 'DELETE',
@@ -921,7 +937,14 @@ const BatchDetailsPage = () => {
   // Filter students by batchId for consistency with Dashboard
   const batchStudents = students.filter(student => student.batchId === selectedBatchId);
 
-  // Students list for "Add Students" modal with search by name/email
+  const hasValidBatch = (student) => {
+    if (!student.batchId) return false;
+    const val = String(student.batchId).trim();
+    if (!val || val === 'null' || val === 'undefined') return false;
+    return true;
+  };
+
+  // Students list for "Add Existing Students" modal: only show students with no batch yet
   const searchTerm = addStudentsSearch.trim().toLowerCase();
   const studentsForAddModal = allStudents.filter(student => {
     // Debug logging
@@ -955,6 +978,11 @@ const BatchDetailsPage = () => {
 
     // Only show students who don't have a batch assigned (batchId is null, undefined, or empty)
     if (student.batchId) {
+      return false;
+    }
+
+    // Only show students who are not assigned to any batch yet
+    if (hasValidBatch(student)) {
       return false;
     }
 

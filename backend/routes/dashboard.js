@@ -42,6 +42,16 @@ router.get('/classroom', async (req, res) => {
       console.error('Dashboard classroom: failed to refresh user from Mongo, using token values instead:', lookupError);
     }
     
+    // Normalize batch ID: treat null/undefined/"null"/"undefined"/empty as no batch
+    const normalizeId = (val) => {
+      if (!val) return '';
+      const str = String(val).trim();
+      if (!str || str === 'null' || str === 'undefined') return '';
+      return str;
+    };
+
+    userBatchId = normalizeId(userBatchId);
+
     console.log('🔍 Dashboard Debug - User info:', {
       email: userEmail,
       course: userCourse,
@@ -54,9 +64,16 @@ router.get('/classroom', async (req, res) => {
     const allVideos = classroomDocs.map(doc => ({ id: String(doc._id), ...doc }));
     
     console.log('🔍 Dashboard Debug - Total videos found:', allVideos.length);
-    
-    // Optionally load batches (currently unused but kept for future logic)
-    await Batch.find({}).lean().exec();
+
+    // Load batches and build a set of valid batch IDs
+    const batchDocs = await Batch.find({}).lean().exec();
+    const validBatchIds = new Set(batchDocs.map(b => String(b._id)));
+
+    // If the student's batchId does not correspond to a real batch, treat as no batch
+    if (userBatchId && !validBatchIds.has(userBatchId)) {
+      console.log('🔍 Dashboard Debug - User batchId is not a valid batch, treating as unassigned:', userBatchId);
+      userBatchId = '';
+    }
 
     // Filter videos based on user's role, course, and batch (Mongo-only, no Firestore)
     let filteredVideos = allVideos.filter(video => {
@@ -72,27 +89,30 @@ router.get('/classroom', async (req, res) => {
         return !!videoCourse && !!userCourse && videoCourse === userCourse;
       }
 
-      // Students must match course; if a video is batch-specific, batch must match too
+      // Students must have a *valid* batch assigned and match both course and batch.
+      // If a student has no valid batch, they should see no classroom videos.
       if (tokenUser.role === 'student') {
+        if (!userBatchId) {
+          return false;
+        }
+
         const courseMatch = !!videoCourse && !!userCourse && videoCourse === userCourse;
         if (!courseMatch) return false;
 
-        if (video.batchId) {
-          return !!userBatchId && String(video.batchId) === String(userBatchId);
+        // Only show videos explicitly tied to a valid batch.
+        if (!video.batchId) {
+          return false;
         }
-        return true;
+        const videoBatchId = normalizeId(video.batchId);
+        if (!videoBatchId || !validBatchIds.has(videoBatchId)) {
+          return false;
+        }
+
+        return videoBatchId === userBatchId;
       }
 
       return false;
     });
-
-    // If no videos matched (likely due to course/batch mismatch from migration),
-    // fall back to showing all videos for non-admin users so students and teachers
-    // can still access their allotted content.
-    if (filteredVideos.length === 0) {
-      console.log('🔍 Dashboard Debug - No videos matched filters, falling back to all videos');
-      filteredVideos = allVideos;
-    }
 
     console.log('🔍 Dashboard Debug - Filtered videos count:', filteredVideos.length);
     

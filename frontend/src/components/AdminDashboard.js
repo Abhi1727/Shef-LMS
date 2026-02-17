@@ -1,40 +1,44 @@
 import React, { useState, useEffect, useCallback, useMemo, memo } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
-import { firebaseService, COLLECTIONS } from '../services/firebaseService';
-import bcrypt from 'bcryptjs';
+import { COLLECTIONS } from '../services/firebaseService';
 import { ToastContainer, showToast } from './Toast';
 import fallbackData from '../data/fallbackData';
 import { YouTubeUtils } from '../utils/youtubeUtils';
 import './AdminDashboard.css';
 
-// Move StudentSearch component outside to prevent re-creation on every render
-const StudentSearch = memo(({ onStudentClick, searchEmail, setSearchEmail, searchResults, isSearching, showSearchResults, clearSearch, searchStudentByEmail, handleSearchSubmit }) => {
+const CACHE_DURATION = 15 * 60 * 1000; // 15 minutes
+
+// Student search bar that filters the main students table
+const StudentSearch = memo(({ searchEmail, setSearchEmail, clearSearch }) => {
   const handleInputChange = useCallback((e) => {
     const value = e.target.value;
     setSearchEmail(value);
     if (value === '') {
       clearSearch();
-    } else {
-      searchStudentByEmail(value);
     }
-  }, [clearSearch, searchStudentByEmail, setSearchEmail]);
+  }, [clearSearch, setSearchEmail]);
+
+  const handleSearchSubmit = useCallback((e) => {
+    // Prevent page reload; filtering happens as you type
+    e.preventDefault();
+  }, []);
 
   return (
     <div className="student-search-section">
-      <h3>🔍 Search Student by Email</h3>
+      <div className="student-search-header">
+        <h3>🔍 Search Students</h3>
+        <p className="student-search-subtitle">Filter the students list by email or name.</p>
+      </div>
       <form onSubmit={handleSearchSubmit} className="search-form">
         <div className="search-input-group">
           <input
-            type="email"
-            placeholder="Enter student email address..."
+            type="search"
+            placeholder="Type an email or name to filter students..."
             value={searchEmail}
             onChange={handleInputChange}
             className="search-input"
           />
-          <button type="submit" className="btn-search" disabled={isSearching}>
-            {isSearching ? '🔄 Searching...' : '🔍 Search'}
-          </button>
           {searchEmail && (
             <button type="button" onClick={clearSearch} className="btn-clear">
               ✖️ Clear
@@ -42,33 +46,6 @@ const StudentSearch = memo(({ onStudentClick, searchEmail, setSearchEmail, searc
           )}
         </div>
       </form>
-      
-      {showSearchResults && (
-        <div className="search-results">
-          <h4>Search Results {(searchResults || []).length}</h4>
-          {(searchResults || []).length > 0 ? (
-            <div className="search-results-list">
-              {(searchResults || []).map(student => (
-                <div key={student && student.id} className="search-result-item">
-                  <div className="student-info">
-                    <button 
-                      onClick={() => onStudentClick(student)} 
-                      className="btn-link"
-                      title="View Student Details"
-                    >
-                      {student && student.name}
-                    </button>
-                    <span className="student-email">{student && student.email}</span>
-                    <span className="student-course">{student && student.course || 'No Course'}</span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <p className="no-results">No students found with that email.</p>
-          )}
-        </div>
-      )}
     </div>
   );
 });
@@ -76,7 +53,6 @@ const StudentSearch = memo(({ onStudentClick, searchEmail, setSearchEmail, searc
 const AdminDashboard = ({ user, onLogout }) => {
   const navigate = useNavigate();
   const [activeSection, setActiveSection] = useState('overview');
-  const [sidebarOpen, setSidebarOpen] = useState(true);
   const [loading, setLoading] = useState(true);
   
   // Data states
@@ -93,7 +69,6 @@ const AdminDashboard = ({ user, onLogout }) => {
   const [classroomVideos, setClassroomVideos] = useState([]);
   const [liveClasses, setLiveClasses] = useState([]);
   const [stats, setStats] = useState({});
-  const [domains, setDomains] = useState([]);
   
   // Loading states for individual data types
   const [dataLoading, setDataLoading] = useState({
@@ -150,116 +125,19 @@ const AdminDashboard = ({ user, onLogout }) => {
       });
     }
   }, []);
-  
-  // Search functionality with debouncing
+
+  // Search functionality (filters the students table)
   const [searchEmail, setSearchEmail] = useState('');
-  const [searchResults, setSearchResults] = useState([]);
-  const [isSearching, setIsSearching] = useState(false);
-  const [showSearchResults, setShowSearchResults] = useState(false);
-
-  // Debounced search function
-  const debouncedSearch = useMemo(
-    () => debounce(async (email) => {
-      if (!email.trim()) {
-        setSearchResults([]);
-        setShowSearchResults(false);
-        return;
-      }
-
-      setIsSearching(true);
-      try {
-        const token = localStorage.getItem('token');
-        const apiUrl = 'http://31.220.55.193:5000';
-        
-        // Search in local students array first for instant results
-        const localResults = (students || []).filter(student => 
-          student.email && student.email.toLowerCase().includes(email.toLowerCase())
-        );
-        
-        setSearchResults(localResults);
-        setShowSearchResults(true);
-        
-        // If no local results, try API search
-        if (localResults.length === 0) {
-          const response = await fetch(`${apiUrl}/api/admin/users/search?email=${encodeURIComponent(email)}`, {
-            headers: { 'Authorization': `Bearer ${token}` }
-          });
-          
-          if (response.ok) {
-            const data = await response.json();
-            setSearchResults(data);
-            setShowSearchResults(true);
-          }
-        }
-      } catch (error) {
-        console.error('Error searching student:', error);
-        showToast('Error searching student. Please try again.', 'error');
-      } finally {
-        setIsSearching(false);
-      }
-    }, 300),
-    [students]
-  );
-
-  const searchStudentByEmail = useCallback((email) => {
-    debouncedSearch(email);
-  }, [debouncedSearch]);
-
-  // Simple debounce function
-  function debounce(func, wait) {
-    let timeout;
-    return function executedFunction(...args) {
-      const later = () => {
-        clearTimeout(timeout);
-        func(...args);
-      };
-      clearTimeout(timeout);
-      timeout = setTimeout(later, wait);
-    };
-  }
-
-  const handleSearchSubmit = (e) => {
-    e.preventDefault();
-    searchStudentByEmail(searchEmail);
-  };
 
   const clearSearch = useCallback(() => {
     setSearchEmail('');
-    setSearchResults([]);
-    setShowSearchResults(false);
+    setStudentPage(1);
   }, []);
 
   const openStudentDetails = useCallback((student) => {
     openModal('student', student);
     clearSearch();
   }, [clearSearch]);
-
-  const handleFileUpload = useCallback((e) => {
-    const file = e.target.files[0];
-    if (file) {
-      // Check file size (50MB limit)
-      if (file.size > 50 * 1024 * 1024) {
-        showToast('File size must be less than 50MB', 'error');
-        e.target.value = ''; // Clear the input
-        return;
-      }
-      
-      // Check file type
-      const allowedTypes = ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
-      if (!allowedTypes.includes(file.type)) {
-        showToast('Only PDF and Word documents are allowed', 'error');
-        e.target.value = ''; // Clear the input
-        return;
-      }
-      
-      setUploadedFile(file);
-      setFormData(prev => ({
-        ...prev,
-        fileName: file.name,
-        fileSize: file.size
-      }));
-    }
-  }, []);
 
   const handleBatchClick = useCallback((batch) => {
     const batchId = batch.id || batch._id;
@@ -331,7 +209,7 @@ const AdminDashboard = ({ user, onLogout }) => {
   const [selectedBatch, setSelectedBatch] = useState(null);
   const [batchView, setBatchView] = useState(''); // 'videos' or 'students'
   const [studentPage, setStudentPage] = useState(1);
-  const studentsPerPage = 25;
+  const [studentsPerPage, setStudentsPerPage] = useState(5);
 
   // Manage body scroll when modal is open
   useEffect(() => {
@@ -352,6 +230,37 @@ const AdminDashboard = ({ user, onLogout }) => {
   const [saving, setSaving] = useState(false);
   const [uploadedFile, setUploadedFile] = useState(null);
 
+  const handleFileUpload = useCallback((e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Validate file size (max 5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      showToast('File size must be less than 5MB', 'error');
+      e.target.value = '';
+      return;
+    }
+    
+    // Check file type
+    const allowedTypes = [
+      'application/pdf',
+      'application/msword',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+    ];
+    if (!allowedTypes.includes(file.type)) {
+      showToast('Only PDF and Word documents are allowed', 'error');
+      e.target.value = '';
+      return;
+    }
+    
+    setUploadedFile(file);
+    setFormData(prev => ({
+      ...prev,
+      fileName: file.name,
+      fileSize: file.size
+    }));
+  }, []);
+
   // Filter teachers by selected course for batch modal
   const getFilteredTeachers = useCallback(() => {
     if (modalType !== 'batch' || !formData.course) {
@@ -362,7 +271,7 @@ const AdminDashboard = ({ user, onLogout }) => {
 
   useEffect(() => {
     loadAllData();
-  }, []);
+  }, [loadAllData]);
 
   // Reset form when modal type changes to prevent data leakage
   useEffect(() => {
@@ -373,17 +282,28 @@ const AdminDashboard = ({ user, onLogout }) => {
       cleanDefaults.password = '';
       setFormData(cleanDefaults);
     }
-  }, [modalType]);
+  }, [modalType, editingItem]);
 
-  // Derived pagination data for students section
-  const totalStudentPages = Math.max(1, Math.ceil(students.length / studentsPerPage));
+  // Derived filtered & paginated data for students section
+  const filteredStudents = useMemo(() => {
+    if (!searchEmail.trim()) return students;
+    const term = searchEmail.trim().toLowerCase();
+    return students.filter(student => {
+      const email = (student.email || '').toLowerCase();
+      const name = (student.name || '').toLowerCase();
+      return email.includes(term) || name.includes(term);
+    });
+  }, [students, searchEmail]);
+
+  const totalStudentPages = Math.max(1, Math.ceil(filteredStudents.length / studentsPerPage));
   const currentStudentPage = Math.min(studentPage, totalStudentPages);
   const studentStartIndex = (currentStudentPage - 1) * studentsPerPage;
   const studentEndIndex = studentStartIndex + studentsPerPage;
-  const paginatedStudents = students.slice(studentStartIndex, studentEndIndex);
+  const paginatedStudents = filteredStudents.slice(studentStartIndex, studentEndIndex);
 
   // Optimized individual data loading functions
-  const loadStudents = async (forceRefresh = false) => {
+  const loadStudents = useCallback(async (forceRefresh = false) => {
+    const isLocalhost = window.location.hostname === 'localhost';
     const cachedData = getCachedData('students');
     if (cachedData && !forceRefresh) {
       setStudents(cachedData);
@@ -391,11 +311,14 @@ const AdminDashboard = ({ user, onLogout }) => {
     }
 
     setDataLoading(prev => ({ ...prev, students: true }));
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000);
     try {
       const token = localStorage.getItem('token');
-      const apiUrl = 'http://31.220.55.193:5000';
-      const response = await fetch(`${apiUrl}/api/admin/users`, { 
-        headers: { 'Authorization': `Bearer ${token}` } 
+      const apiUrl = isLocalhost ? 'http://localhost:5000' : 'http://31.220.55.193:5000';
+      const response = await fetch(`${apiUrl}/api/admin/users`, {
+        headers: { 'Authorization': `Bearer ${token}` },
+        signal: controller.signal
       });
       
       if (response.ok) {
@@ -405,29 +328,40 @@ const AdminDashboard = ({ user, onLogout }) => {
         setStudentPage(1);
         return data;
       } else {
-        // Use fallback data when API fails
-        console.log('Using fallback student data');
-        setStudents(fallbackData.users);
-        setCachedData('students', fallbackData.users);
+        // In production, never silently fall back to demo data.
+        const errorText = await response.text();
+        console.error('Failed to load students:', response.status, errorText);
+        showToast('Failed to load students from server. Please re-login and try again.', 'error');
+        setStudents([]);
+        setCachedData('students', []);
         setStudentPage(1);
-        showToast('⚠️ Using demo data - Firebase quota exceeded. Contact admin to upgrade Firebase plan.', 'warning');
-        return fallbackData.users;
+        return [];
       }
     } catch (error) {
-      console.error('Error loading students:', error);
-      // Use fallback data when error occurs
-      console.log('Using fallback student data due to error');
-      setStudents(fallbackData.users);
-      setCachedData('students', fallbackData.users);
+      if (error.name === 'AbortError') {
+        console.warn('Students request timed out');
+        showToast('Students loading timed out. Showing last cached data if available.', 'warning');
+        const cached = getCachedData('students');
+        if (cached) {
+          setStudents(cached);
+          return cached;
+        }
+      } else {
+        console.error('Error loading students:', error);
+      }
+      // Do not use demo data in production; surface the error instead.
+      setStudents([]);
+      setCachedData('students', []);
       setStudentPage(1);
-      showToast('⚠️ Using demo data - Firebase quota exceeded. Contact admin to upgrade Firebase plan.', 'warning');
-      return fallbackData.users;
+      showToast('Failed to load students. Please check network and try again.', 'error');
+      return [];
     } finally {
+      clearTimeout(timeoutId);
       setDataLoading(prev => ({ ...prev, students: false }));
     }
-  };
+  }, [getCachedData, setCachedData]);
 
-  const loadTeachers = async (forceRefresh = false) => {
+  const loadTeachers = useCallback(async (forceRefresh = false) => {
     const cachedData = getCachedData('teachers');
     if (cachedData && !forceRefresh) {
       setTeachers(cachedData);
@@ -437,7 +371,7 @@ const AdminDashboard = ({ user, onLogout }) => {
     setDataLoading(prev => ({ ...prev, teachers: true }));
     try {
       const token = localStorage.getItem('token');
-      const apiUrl = 'http://31.220.55.193:5000';
+      const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'http://31.220.55.193:5000';
       const response = await fetch(`${apiUrl}/api/admin/teachers`, { 
         headers: { 'Authorization': `Bearer ${token}` } 
       });
@@ -464,9 +398,9 @@ const AdminDashboard = ({ user, onLogout }) => {
     } finally {
       setDataLoading(prev => ({ ...prev, teachers: false }));
     }
-  };
+  }, [getCachedData, setCachedData]);
 
-  const loadCourses = async (forceRefresh = false) => {
+  const loadCourses = useCallback(async (forceRefresh = false) => {
     const cachedData = getCachedData('courses');
     if (cachedData && !forceRefresh) {
       setCourses(cachedData);
@@ -476,7 +410,7 @@ const AdminDashboard = ({ user, onLogout }) => {
     setDataLoading(prev => ({ ...prev, courses: true }));
     try {
       const token = localStorage.getItem('token');
-      const apiUrl = 'http://31.220.55.193:5000';
+      const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'http://31.220.55.193:5000';
       const response = await fetch(`${apiUrl}/api/admin/courses`, { 
         headers: { 'Authorization': `Bearer ${token}` } 
       });
@@ -503,48 +437,47 @@ const AdminDashboard = ({ user, onLogout }) => {
     } finally {
       setDataLoading(prev => ({ ...prev, courses: false }));
     }
-  };
+  }, [getCachedData, setCachedData]);
 
-  const loadBatches = async (forceRefresh = false) => {
+  const loadBatches = useCallback(async (forceRefresh = false) => {
     const cachedData = getCachedData('batches');
     if (cachedData && !forceRefresh) {
-      setBatches(cachedData.batches || []);
-      return cachedData.batches || [];
+      setBatches(cachedData);
+      return cachedData;
     }
 
     setDataLoading(prev => ({ ...prev, batches: true }));
     try {
       const token = localStorage.getItem('token');
-      const apiUrl = 'http://31.220.55.193:5000';
+      const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'http://31.220.55.193:5000';
       const response = await fetch(`${apiUrl}/api/admin/batches`, { 
         headers: { 'Authorization': `Bearer ${token}` } 
       });
       
       if (response.ok) {
         const data = await response.json();
-        setBatches(data.batches || []);
-        setCachedData('batches', data);
-        return data.batches || [];
+        const normalized = data.batches || data || [];
+        setBatches(normalized);
+        setCachedData('batches', normalized);
+        return normalized;
       } else {
-        // Use fallback data when API fails
         console.log('Using fallback batch data');
         setBatches(fallbackData.batches);
-        setCachedData('batches', { batches: fallbackData.batches });
+        setCachedData('batches', fallbackData.batches);
         return fallbackData.batches;
       }
     } catch (error) {
       console.error('Error loading batches:', error);
-      // Use fallback data when error occurs
       console.log('Using fallback batch data due to error');
       setBatches(fallbackData.batches);
-      setCachedData('batches', { batches: fallbackData.batches });
+      setCachedData('batches', fallbackData.batches);
       return fallbackData.batches;
     } finally {
       setDataLoading(prev => ({ ...prev, batches: false }));
     }
-  };
+  }, [getCachedData, setCachedData]);
 
-  const loadModules = async (forceRefresh = false) => {
+  const loadModules = useCallback(async (forceRefresh = false) => {
     const cachedData = getCachedData('modules');
     if (cachedData && !forceRefresh) {
       setModules(cachedData);
@@ -554,7 +487,7 @@ const AdminDashboard = ({ user, onLogout }) => {
     setDataLoading(prev => ({ ...prev, modules: true }));
     try {
       const token = localStorage.getItem('token');
-      const apiUrl = 'http://31.220.55.193:5000';
+      const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'http://31.220.55.193:5000';
       const response = await fetch(`${apiUrl}/api/admin/modules`, { 
         headers: { 'Authorization': `Bearer ${token}` } 
       });
@@ -575,9 +508,9 @@ const AdminDashboard = ({ user, onLogout }) => {
     } finally {
       setDataLoading(prev => ({ ...prev, modules: false }));
     }
-  };
+  }, [getCachedData, setCachedData]);
 
-  const loadLessons = async (forceRefresh = false) => {
+  const loadLessons = useCallback(async (forceRefresh = false) => {
     const cachedData = getCachedData('lessons');
     if (cachedData && !forceRefresh) {
       setLessons(cachedData);
@@ -587,7 +520,7 @@ const AdminDashboard = ({ user, onLogout }) => {
     setDataLoading(prev => ({ ...prev, lessons: true }));
     try {
       const token = localStorage.getItem('token');
-      const apiUrl = 'http://31.220.55.193:5000';
+      const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'http://31.220.55.193:5000';
       const response = await fetch(`${apiUrl}/api/admin/lessons`, { 
         headers: { 'Authorization': `Bearer ${token}` } 
       });
@@ -608,9 +541,9 @@ const AdminDashboard = ({ user, onLogout }) => {
     } finally {
       setDataLoading(prev => ({ ...prev, lessons: false }));
     }
-  };
+  }, [getCachedData, setCachedData]);
 
-  const loadClassroomVideos = async (forceRefresh = false) => {
+  const loadClassroomVideos = useCallback(async (forceRefresh = false) => {
     const cachedData = getCachedData('classroom');
     if (cachedData && !forceRefresh) {
       setClassroomVideos(cachedData);
@@ -620,20 +553,20 @@ const AdminDashboard = ({ user, onLogout }) => {
     setDataLoading(prev => ({ ...prev, classroom: true }));
     try {
       const token = localStorage.getItem('token');
-      const apiUrl = 'http://31.220.55.193:5000';
-      const response = await fetch(`${apiUrl}/api/admin/classroom`, { 
-        headers: { 'Authorization': `Bearer ${token}` } 
+      const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'http://31.220.55.193:5000';
+      const response = await fetch(`${apiUrl}/api/admin/classroom`, {
+        headers: { 'Authorization': `Bearer ${token}` }
       });
-      
+
       if (response.ok) {
         const data = await response.json();
         setClassroomVideos(data);
         setCachedData('classroom', data);
         return data;
-      } else {
-        setClassroomVideos([]);
-        return [];
       }
+
+      setClassroomVideos([]);
+      return [];
     } catch (error) {
       console.error('Error loading classroom videos:', error);
       setClassroomVideos([]);
@@ -641,9 +574,9 @@ const AdminDashboard = ({ user, onLogout }) => {
     } finally {
       setDataLoading(prev => ({ ...prev, classroom: false }));
     }
-  };
+  }, [getCachedData, setCachedData]);
 
-  const loadMentors = async (forceRefresh = false) => {
+  const loadMentors = useCallback(async (forceRefresh = false) => {
     const cachedData = getCachedData('mentors');
     if (cachedData && !forceRefresh) {
       setMentors(cachedData);
@@ -653,7 +586,7 @@ const AdminDashboard = ({ user, onLogout }) => {
     setDataLoading(prev => ({ ...prev, mentors: true }));
     try {
       const token = localStorage.getItem('token');
-      const apiUrl = 'http://31.220.55.193:5000';
+      const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'http://31.220.55.193:5000';
       const response = await fetch(`${apiUrl}/api/admin/mentors`, { 
         headers: { 'Authorization': `Bearer ${token}` } 
       });
@@ -674,80 +607,268 @@ const AdminDashboard = ({ user, onLogout }) => {
     } finally {
       setDataLoading(prev => ({ ...prev, mentors: false }));
     }
-  };
+  }, [getCachedData, setCachedData]);
 
-  // Load data based on active section (on-demand loading)
-  const loadSectionData = async (section) => {
-    switch (section) {
-      case 'overview':
-        // Load only essential data for overview
-        await Promise.all([
-          loadStudents(),
-          loadCourses(),
-          loadTeachers(),
-          loadBatches()
-        ]);
-        break;
-      case 'students':
-        await Promise.all([
-          loadStudents(),
-          loadBatches()
-        ]);
-        break;
-      case 'teachers':
-        await loadTeachers();
-        break;
-      case 'courses':
-        await loadCourses();
-        break;
-      case 'batches':
-        await Promise.all([
-          loadCourses(),
-          loadBatches(),
-          loadTeachers()
-        ]);
-        break;
-      case 'modules':
-        await Promise.all([
-          loadCourses(),
-          loadModules(),
-          loadBatches()
-        ]);
-        break;
-      case 'lessons':
-        await Promise.all([
-          loadCourses(),
-          loadModules(),
-          loadLessons()
-        ]);
-        break;
-      case 'classroom':
-        await Promise.all([
-          loadCourses(),
-          loadBatches(),
-          loadClassroomVideos()
-        ]);
-        break;
-      default:
-        // Load minimal data for other sections
-        await loadCourses();
-        break;
+  const loadProjects = useCallback(async (forceRefresh = false) => {
+    const cachedData = getCachedData('projects');
+    if (cachedData && !forceRefresh) {
+      setProjects(cachedData);
+      return cachedData;
     }
-    setLoading(false);
-  };
+
+    setDataLoading(prev => ({ ...prev, projects: true }));
+    try {
+      const token = localStorage.getItem('token');
+      const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'http://31.220.55.193:5000';
+      const response = await fetch(`${apiUrl}/api/admin/projects`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setProjects(data);
+        setCachedData('projects', data);
+        return data;
+      }
+
+      setProjects([]);
+      return [];
+    } catch (error) {
+      console.error('Error loading projects:', error);
+      setProjects([]);
+      return [];
+    } finally {
+      setDataLoading(prev => ({ ...prev, projects: false }));
+    }
+  }, [getCachedData, setCachedData]);
+
+  const loadAssessments = useCallback(async (forceRefresh = false) => {
+    const cachedData = getCachedData('assessments');
+    if (cachedData && !forceRefresh) {
+      setAssessments(cachedData);
+      return cachedData;
+    }
+
+    setDataLoading(prev => ({ ...prev, assessments: true }));
+    try {
+      const token = localStorage.getItem('token');
+      const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'http://31.220.55.193:5000';
+      const response = await fetch(`${apiUrl}/api/admin/assessments`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setAssessments(data);
+        setCachedData('assessments', data);
+        return data;
+      }
+
+      setAssessments([]);
+      return [];
+    } catch (error) {
+      console.error('Error loading assessments:', error);
+      setAssessments([]);
+      return [];
+    } finally {
+      setDataLoading(prev => ({ ...prev, assessments: false }));
+    }
+  }, [getCachedData, setCachedData]);
+
+  const loadJobs = useCallback(async (forceRefresh = false) => {
+    const cachedData = getCachedData('jobs');
+    if (cachedData && !forceRefresh) {
+      setJobs(cachedData);
+      return cachedData;
+    }
+
+    setDataLoading(prev => ({ ...prev, jobs: true }));
+    try {
+      const token = localStorage.getItem('token');
+      const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'http://31.220.55.193:5000';
+      const response = await fetch(`${apiUrl}/api/admin/jobs`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setJobs(data);
+        setCachedData('jobs', data);
+        return data;
+      }
+
+      setJobs([]);
+      return [];
+    } catch (error) {
+      console.error('Error loading jobs:', error);
+      setJobs([]);
+      return [];
+    } finally {
+      setDataLoading(prev => ({ ...prev, jobs: false }));
+    }
+  }, [getCachedData, setCachedData]);
+
+  const loadLiveClasses = useCallback(async (forceRefresh = false) => {
+    const cachedData = getCachedData('liveClasses');
+    if (cachedData && !forceRefresh) {
+      setLiveClasses(cachedData);
+      return cachedData;
+    }
+
+    setDataLoading(prev => ({ ...prev, liveClasses: true }));
+    try {
+      const token = localStorage.getItem('token');
+      const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'http://31.220.55.193:5000';
+      const response = await fetch(`${apiUrl}/api/admin/liveClasses`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setLiveClasses(data);
+        setCachedData('liveClasses', data);
+        return data;
+      }
+
+      setLiveClasses([]);
+      return [];
+    } catch (error) {
+      console.error('Error loading live classes:', error);
+      setLiveClasses([]);
+      return [];
+    } finally {
+      setDataLoading(prev => ({ ...prev, liveClasses: false }));
+    }
+  }, [getCachedData, setCachedData]);
+
+  // Load data based on active section (on-demand loading with timeout)
+  const loadSectionData = useCallback(async (section) => {
+    const timeout = (ms) => new Promise((_, reject) => setTimeout(() => reject(new Error('Request timeout')), ms));
+
+    try {
+      switch (section) {
+        case 'overview':
+          await Promise.race([
+            Promise.all([
+              loadStudents(true),
+              loadCourses(true),
+              loadTeachers(true),
+              loadBatches(true)
+            ]),
+            timeout(10000)
+          ]);
+          break;
+        case 'students':
+          await Promise.race([
+            Promise.all([
+              loadStudents(true),
+              loadBatches(true)
+            ]),
+            timeout(8000)
+          ]);
+          break;
+        case 'teachers':
+          await Promise.race([loadTeachers(true), timeout(5000)]);
+          break;
+        case 'courses':
+          await Promise.race([loadCourses(true), timeout(5000)]);
+          break;
+        case 'batches':
+          await Promise.race([
+            Promise.all([
+              loadCourses(true),
+              loadBatches(true),
+              loadTeachers(true)
+            ]),
+            timeout(8000)
+          ]);
+          break;
+        case 'modules':
+          await Promise.race([
+            Promise.all([
+              loadCourses(true),
+              loadModules(true),
+              loadBatches(true)
+            ]),
+            timeout(8000)
+          ]);
+          break;
+        case 'lessons':
+          await Promise.race([
+            Promise.all([
+              loadCourses(true),
+              loadModules(true),
+              loadLessons(true)
+            ]),
+            timeout(8000)
+          ]);
+          break;
+        case 'classroom':
+          await Promise.race([
+            Promise.all([
+              loadCourses(true),
+              loadBatches(true),
+              loadClassroomVideos(true)
+            ]),
+            timeout(10000)
+          ]);
+          break;
+        case 'projects':
+          await Promise.race([loadProjects(true), timeout(5000)]);
+          break;
+        case 'assessments':
+          await Promise.race([loadAssessments(true), timeout(5000)]);
+          break;
+        case 'jobs':
+          await Promise.race([loadJobs(true), timeout(5000)]);
+          break;
+        case 'liveClasses':
+          await Promise.race([loadLiveClasses(true), timeout(5000)]);
+          break;
+        case 'mentors':
+          await Promise.race([loadMentors(true), timeout(5000)]);
+          break;
+        default:
+          await Promise.race([loadCourses(true), timeout(5000)]);
+          break;
+      }
+    } catch (error) {
+      console.error(`Error loading ${section} data:`, error);
+      if (error.message === 'Request timeout') {
+        showToast('Loading timeout. Please try refreshing.', 'warning');
+      } else {
+        showToast('Failed to load data. Please try again.', 'error');
+      }
+    } finally {
+      setLoading(false);
+    }
+  }, [
+    loadStudents,
+    loadCourses,
+    loadTeachers,
+    loadBatches,
+    loadModules,
+    loadLessons,
+    loadClassroomVideos,
+    loadMentors,
+    loadProjects,
+    loadAssessments,
+    loadJobs,
+    loadLiveClasses
+  ]);
 
   // Initial load - only load overview data
-  const loadAllData = async () => {
+  const loadAllData = useCallback(async () => {
     setLoading(true);
     await loadSectionData('overview');
-  };
+  }, [loadSectionData]);
 
   // Load data when section changes
   useEffect(() => {
     if (activeSection !== 'overview') {
       loadSectionData(activeSection);
     }
-  }, [activeSection]);
+  }, [activeSection, loadSectionData]);
 
   // Optimized refresh function - only refresh specific data types
   const refreshData = async (dataType = null, forceRefresh = true) => {
@@ -777,6 +898,18 @@ const AdminDashboard = ({ user, onLogout }) => {
         case 'mentors':
           await loadMentors(forceRefresh);
           break;
+        case 'projects':
+          await loadProjects(forceRefresh);
+          break;
+        case 'assessments':
+          await loadAssessments(forceRefresh);
+          break;
+        case 'jobs':
+          await loadJobs(forceRefresh);
+          break;
+        case 'liveClasses':
+          await loadLiveClasses(forceRefresh);
+          break;
         default:
           break;
       }
@@ -794,7 +927,7 @@ const AdminDashboard = ({ user, onLogout }) => {
 
     try {
       const token = localStorage.getItem('token');
-      const apiUrl = 'http://31.220.55.193:5000';
+      const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'http://31.220.55.193:5000';
       const response = await fetch(`${apiUrl}/api/admin/batches/${courseId}`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
@@ -811,12 +944,12 @@ const AdminDashboard = ({ user, onLogout }) => {
     }
   }, []);
 
-  const calculateStats = (studentData, courseData, jobData) => {
-    const totalStudents = studentData.length;
-    const activeStudents = (studentData || []).filter(s => s.status === 'active').length;
-    const totalCourses = courseData.length;
-    const activeJobs = (jobData || []).filter(j => j.status === 'active').length;
-    const totalRevenue = (studentData || []).reduce((sum, s) => sum + (s.tuitionPaid || 0), 0);
+  useEffect(() => {
+    const totalStudents = students.length;
+    const activeStudents = students.filter(s => s.status === 'active').length;
+    const totalCourses = courses.length;
+    const activeJobs = jobs.filter(j => j.status === 'active').length;
+    const totalRevenue = students.reduce((sum, s) => sum + (s.tuitionPaid || 0), 0);
 
     setStats({
       totalStudents,
@@ -826,7 +959,7 @@ const AdminDashboard = ({ user, onLogout }) => {
       totalRevenue,
       completionRate: totalStudents > 0 ? ((activeStudents / totalStudents) * 100).toFixed(1) : 0
     });
-  };
+  }, [students, courses, jobs]);
 
   const openModal = (type, item = null) => {
     setModalType(type);
@@ -946,7 +1079,7 @@ const AdminDashboard = ({ user, onLogout }) => {
           try {
             // Check if email already exists via API
             const token = localStorage.getItem('token');
-            const apiUrl = 'http://31.220.55.193:5000';
+            const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'http://31.220.55.193:5000';
             const usersResponse = await fetch(`${apiUrl}/api/admin/users`, {
               headers: { 'Authorization': `Bearer ${token}` }
             });
@@ -1011,7 +1144,8 @@ const AdminDashboard = ({ user, onLogout }) => {
           // User should use password reset feature
           
           const token = localStorage.getItem('token');
-          const updateResponse = await fetch(`/api/admin/users/${editingItem.id}`, {
+          const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'http://31.220.55.193:5000';
+          const updateResponse = await fetch(`${apiUrl}/api/admin/users/${editingItem.id}`, {
             method: 'PUT',
             headers: {
               'Content-Type': 'application/json',
@@ -1042,7 +1176,7 @@ const AdminDashboard = ({ user, onLogout }) => {
           try {
             // Check if email already exists via API
             const token = localStorage.getItem('token');
-            const apiUrl = 'http://31.220.55.193:5000';
+            const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'http://31.220.55.193:5000';
             const teachersResponse = await fetch(`${apiUrl}/api/admin/teachers`, {
               headers: { 'Authorization': `Bearer ${token}` }
             });
@@ -1109,7 +1243,7 @@ const AdminDashboard = ({ user, onLogout }) => {
           // User should use password reset feature
 
           const token = localStorage.getItem('token');
-          const apiUrl = 'http://31.220.55.193:5000';
+          const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'http://31.220.55.193:5000';
           const updateResponse = await fetch(`${apiUrl}/api/admin/teachers/${editingItem.id}`, {
             method: 'PUT',
             headers: {
@@ -1250,7 +1384,7 @@ const AdminDashboard = ({ user, onLogout }) => {
         // Handle module creation (external links only)
         try {
           const token = localStorage.getItem('token');
-          const apiUrl = 'http://31.220.55.193:5000';
+          const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'http://31.220.55.193:5000';
           
           const moduleData = {
             name: formData.name,
@@ -1391,7 +1525,7 @@ const AdminDashboard = ({ user, onLogout }) => {
       if (modalType === 'classroom') {
         try {
           const token = localStorage.getItem('token');
-          const apiUrl = 'http://31.220.55.193:5000';
+          const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'http://31.220.55.193:5000';
           
           // Validate YouTube URL is provided
           if (!formData.youtubeVideoUrl) {
@@ -1483,7 +1617,7 @@ const AdminDashboard = ({ user, onLogout }) => {
       const collection = collectionMap[modalType];
 
       const token = localStorage.getItem('token');
-      const apiUrl = 'http://31.220.55.193:5000';
+      const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'http://31.220.55.193:5000';
       let result;
 
       if (editingItem?.id) {
@@ -1542,7 +1676,7 @@ const AdminDashboard = ({ user, onLogout }) => {
     if (window.confirm('Are you sure you want to delete this item?')) {
       try {
         const token = localStorage.getItem('token');
-        const apiUrl = 'http://31.220.55.193:5000';
+        const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'http://31.220.55.193:5000';
         
         // Map collection names to API endpoints
         const collectionMap = {
@@ -1598,42 +1732,6 @@ const AdminDashboard = ({ user, onLogout }) => {
         console.error('Error deleting item:', error);
         showToast('Failed to delete item. Please try again.', 'error');
       }
-    }
-  };
-
-  const handleToggleAccountStatus = async (student) => {
-    const newStatus = student.status === 'active' ? 'inactive' : 'active';
-    const action = newStatus === 'active' ? 'activate' : 'deactivate';
-
-    if (!window.confirm(`Are you sure you want to ${action} this student's account?`)) {
-      return;
-    }
-
-    try {
-      const token = localStorage.getItem('token');
-      const updateData = {
-        status: newStatus
-      };
-
-      const response = await fetch(`/api/admin/users/${student.id}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify(updateData)
-      });
-
-      if (response.ok) {
-        showToast(`Student account ${action}d successfully!`, 'success');
-        await refreshData('students');
-      } else {
-        const data = await response.json();
-        showToast('Error: ' + (data.message || `Failed to ${action} account`), 'error');
-      }
-    } catch (error) {
-      console.error('Error updating account status:', error);
-      showToast(`Failed to ${action} account. Please try again.`, 'error');
     }
   };
 
@@ -1879,15 +1977,9 @@ const AdminDashboard = ({ user, onLogout }) => {
               
               {/* Student Search Section */}
               <StudentSearch 
-                onStudentClick={openStudentDetails}
                 searchEmail={searchEmail}
                 setSearchEmail={setSearchEmail}
-                searchResults={searchResults}
-                isSearching={isSearching}
-                showSearchResults={showSearchResults}
                 clearSearch={clearSearch}
-                searchStudentByEmail={searchStudentByEmail}
-                handleSearchSubmit={handleSearchSubmit}
               />
               
               <StatsCards stats={stats} />
@@ -1967,15 +2059,9 @@ const AdminDashboard = ({ user, onLogout }) => {
 
               {/* Student Search Section */}
               <StudentSearch 
-                onStudentClick={openStudentDetails}
                 searchEmail={searchEmail}
                 setSearchEmail={setSearchEmail}
-                searchResults={searchResults}
-                isSearching={isSearching}
-                showSearchResults={showSearchResults}
                 clearSearch={clearSearch}
-                searchStudentByEmail={searchStudentByEmail}
-                handleSearchSubmit={handleSearchSubmit}
               />
 
               <div className="data-table-container">
@@ -2006,23 +2092,41 @@ const AdminDashboard = ({ user, onLogout }) => {
                         <td>{student.course || 'N/A'}</td>
                         <td>
                           <button onClick={() => openModal('student', student)} className="btn-edit">✏️</button>
-                          {/* Commented out - Deactivate/Activate action disabled */}
-                          {/* <button 
-                            onClick={() => handleToggleAccountStatus(student)} 
-                            className={`btn-status ${student.status === 'active' ? 'deactivate' : 'activate'}`}
-                            title={student.status === 'active' ? 'Deactivate Account (Deny Access)' : 'Activate Account (Grant Access)'}
-                          >
-                            {student.status === 'active' ? '🚫 Deactivate' : '✅ Activate'}
-                          </button> */}
                           <button onClick={() => handleDelete(COLLECTIONS.USERS, student.id)} className="btn-delete">🗑️</button>
                         </td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
-                {students.length === 0 && <p className="no-data">No students found. Add your first student!</p>}
+                {filteredStudents.length === 0 && (
+                  <p className="no-data">No matching students. Try a different email or name.</p>
+                )}
 
-                {students.length > studentsPerPage && (
+                {filteredStudents.length > 0 && (
+                  <div className="table-footer">
+                    <div className="rows-per-page">
+                      <span>Rows per page:</span>
+                      {[5, 10, 15].map(size => (
+                        <button
+                          key={size}
+                          type="button"
+                          className={`rows-per-page-button ${studentsPerPage === size ? 'active' : ''}`}
+                          onClick={() => {
+                            setStudentsPerPage(size);
+                            setStudentPage(1);
+                          }}
+                        >
+                          {size}
+                        </button>
+                      ))}
+                    </div>
+                    <div className="pagination-info">
+                      Showing {studentStartIndex + 1}–{Math.min(studentEndIndex, filteredStudents.length)} of {filteredStudents.length} students
+                    </div>
+                  </div>
+                )}
+
+                {filteredStudents.length > studentsPerPage && (
                   <div className="pagination-controls">
                     <button
                       className="btn-secondary"
@@ -4074,7 +4178,6 @@ const AdminDashboard = ({ user, onLogout }) => {
                       const batchStudents = students.filter(student => {
                         // Filter students by selected batch name or ID
                         const selectedBatchId = selectedBatch?.id || selectedBatch?._id;
-                        const selectedBatchName = selectedBatch?.name;
                         const selectedBatchCourse = selectedBatch?.course;
                         
                         const studentMatch = student.batchId === selectedBatchId || 

@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { firebaseService, COLLECTIONS } from '../services/firebaseService';
 import CustomVideoPlayer from './CustomVideoPlayer';
 import StudentProfile from './StudentProfile';
 import { YouTubeUtils } from '../utils/youtubeUtils';
@@ -149,27 +148,15 @@ const TypingAnimation = ({ texts, speed = 100, pauseDuration = 2000 }) => {
 };
 
 const Dashboard = ({ user, onLogout }) => {
-  const [stats, setStats] = useState(null);
-  const [courses, setCourses] = useState([]);
-  const [activities, setActivities] = useState([]);
-  const [projects, setProjects] = useState([]);
-  const [jobs, setJobs] = useState([]);
-  const [mentors, setMentors] = useState([]);
-  const [lessons, setLessons] = useState([]);
-  const [liveClasses, setLiveClasses] = useState([]);
+  const [lessons] = useState([]);
   const [loading, setLoading] = useState(true);
   const [activeSection, setActiveSection] = useState('overview');
   const [sidebarOpen, setSidebarOpen] = useState(true);
-  const [selectedModule, setSelectedModule] = useState(1);
-  const [showProfileModal, setShowProfileModal] = useState(false);
-  const [showHelpMenu, setShowHelpMenu] = useState(false);
   const [selectedVideo, setSelectedVideo] = useState(null);
   const [darkMode, setDarkMode] = useState(true);
   
   // Course content state
   const [courseContent, setCourseContent] = useState(null);
-  const [contentLoading, setContentLoading] = useState(false);
-  const [expandedModules, setExpandedModules] = useState({});
   
   // Progress tracking state
   const [viewedFiles, setViewedFiles] = useState([]);
@@ -186,15 +173,6 @@ const Dashboard = ({ user, onLogout }) => {
   const [batches, setBatches] = useState([]);
   const [videoThumbnails, setVideoThumbnails] = useState({});
   const [videoDurations, setVideoDurations] = useState({});
-
-  // Toggle module expansion
-  const toggleModule = (moduleId) => {
-    setExpandedModules(prev => ({
-      ...prev,
-      [moduleId]: !prev[moduleId]
-
-    }));
-  };
 
   // Dark mode toggle
   const toggleDarkMode = () => {
@@ -253,16 +231,6 @@ const Dashboard = ({ user, onLogout }) => {
     setVideoWatchHistory([]);
   }, []);
 
-  // Save progress (no-op now that Firebase is removed)
-  const saveUserProgress = async (newViewedFiles) => {
-    setViewedFiles(newViewedFiles);
-  };
-
-  // Save video watching history (local only)
-  const saveVideoWatchHistory = async (newVideoWatchHistory) => {
-    setVideoWatchHistory(newVideoWatchHistory);
-  };
-
   // Update video progress tracking (local only)
   const updateVideoProgress = async (videoId, progress, position) => {
     setVideoWatchHistory(prevHistory => {
@@ -287,12 +255,6 @@ const Dashboard = ({ user, onLogout }) => {
   const getVideoResumePosition = (videoId) => {
     const videoRecord = videoWatchHistory.find(record => record.videoId === videoId);
     return videoRecord ? videoRecord.lastWatchedPosition : 0;
-  };
-
-  // Get video progress percentage
-  const getVideoProgress = (videoId) => {
-    const videoRecord = videoWatchHistory.find(record => record.videoId === videoId);
-    return videoRecord ? videoRecord.watchProgress : 0;
   };
 
   // Calculate progress percentage
@@ -477,10 +439,24 @@ const Dashboard = ({ user, onLogout }) => {
 
   // Load classroom videos on mount and when course changes
   useEffect(() => {
+    const loadInitialData = async () => {
+      try {
+        await Promise.all([
+          loadClassroomVideos(),
+          loadBatches(),
+          loadBatchInfo()
+        ]);
+      } catch (error) {
+        console.error('Error loading initial dashboard data:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
     if (user?.currentCourse) {
-      loadClassroomVideos();
-      loadBatches();
-      loadBatchInfo();
+      loadInitialData();
+    } else {
+      setLoading(false);
     }
   }, [user?.currentCourse, loadClassroomVideos, loadBatches, loadBatchInfo]);
 
@@ -503,24 +479,18 @@ const Dashboard = ({ user, onLogout }) => {
   // Load course content from API
   const loadCourseContent = useCallback(async () => {
     const slug = getCourseSlug();
-    setContentLoading(true);
     try {
       const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000/api' : '/api';
       const response = await fetch(`${apiUrl}/content/${slug}`);
       const data = await response.json();
       if (data && data.success) {
         setCourseContent(data);
-        const modules = Array.isArray(data.modules) ? data.modules : [];
-        if (modules.length > 0 && modules[0]?.id != null) {
-          setSelectedModule(modules[0].id);
-        }
       } else {
         setCourseContent(null);
       }
     } catch (error) {
       console.error('Error loading course content:', error);
     }
-    setContentLoading(false);
   }, [getCourseSlug]);
 
   // Load course content on mount and when course changes
@@ -530,218 +500,52 @@ const Dashboard = ({ user, onLogout }) => {
     }
   }, [user?.currentCourse, loadCourseContent]);
 
-  // Enhanced logout function to clear all cached data
-  const handleLogout = () => {
-    // Clear all authentication data
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
-    sessionStorage.clear();
-    
-    // Force complete page reload to clear any cached state
-    window.location.href = '/login';
-  };
-
-  // Handle file click - open in Colab for notebooks, otherwise download/view
-  const handleFileClick = (file) => {
-    // Mark file as viewed for progress tracking
-    const fileKey = file.path || file.name;
-    if (!viewedFiles.includes(fileKey)) {
-      const newViewedFiles = [...viewedFiles, fileKey];
-      setViewedFiles(newViewedFiles);
-      saveUserProgress(newViewedFiles);
-    }
-    
-    if (file.canOpenInColab) {
-      // Open notebook in Google Colab
-      const fileUrl = `https://learnwithus.sbs${file.path}`;
-      const colabUrl = `https://colab.research.google.com/drive/`;
-      // Since we're serving from our own server, we'll open a viewer or download
-      // For now, open directly which will trigger download, or use nbviewer
-      window.open(fileUrl, '_blank');
-    } else if (file.extension === '.pdf') {
-      // Open PDF in new tab
-      window.open(`https://learnwithus.sbs${file.path}`, '_blank');
-    } else if (file.extension === '.sql') {
-      // Download SQL file
-      window.open(`https://learnwithus.sbs${file.path}`, '_blank');
-    } else {
-      // Default: download the file
-      window.open(`https://learnwithus.sbs${file.path}`, '_blank');
-    }
-  };
-
   // Check if user is Data Science or Cybersecurity
   const isDataScience = () => {
     const courseName = user?.currentCourse || '';
     return courseName.toLowerCase().includes('data science') || courseName.toLowerCase().includes('ai');
   };
 
-  // Use classroom videos from Firebase (already filtered by course)
-  const classroomSessions = classroomVideos.map((video, index) => ({
-    id: video.id || `video-${index}`,
-    date: video.date || new Date().toISOString().split('T')[0],
-    title: video.title || 'Untitled Class',
-    type: video.type || 'Live Class',
-    instructor: video.instructor || 'Instructor',
-    instructorInitial: (video.instructor || 'I').charAt(0).toUpperCase(),
-    instructorColor: video.instructorColor || '#E91E63',
-    duration: video.duration || 'N/A',
-    driveId: video.driveId || '',
-    zoomUrl: video.zoomUrl || '',
-    zoomPasscode: video.zoomPasscode || '',
-    videoSource: video.videoSource || 'drive', // 'drive' or 'zoom'
-    hasAccess: video.hasAccess !== false, // Default to true unless explicitly false
-    accessDeniedReason: video.accessDeniedReason || null
-  }));
-
-  // Handle video access validation
-  const handleVideoAccess = async (session) => {
-    console.log('🔍 Frontend Debug - handleVideoAccess called with:', {
-      title: session.title,
-      hasAccess: session.hasAccess,
-      accessDeniedReason: session.accessDeniedReason
-    });
-    
-    // Check if user has access
-    if (!session.hasAccess) {
-      console.log('🔍 Frontend Debug - Access denied, showing alert');
-      alert(session.accessDeniedReason || 'You do not have access to this video.');
-      return;
-    }
-
-    // Record video watching history with progress
-    const watchRecord = {
-      videoId: session.id,
-      videoTitle: session.title,
-      watchedAt: new Date().toISOString(),
-      videoSource: session.videoSource,
-      date: session.date,
-      watchProgress: 0, // Progress percentage (0-100)
-      lastWatchedPosition: 0, // Last position in seconds
-      totalDuration: session.duration || 0,
-      isCompleted: false
-    };
-
-    // Update video watch history
-    const existingHistory = videoWatchHistory.filter(record => record.videoId !== session.id);
-    const newHistory = [watchRecord, ...existingHistory];
-    setVideoWatchHistory(newHistory);
-    saveVideoWatchHistory(newHistory);
-
-    // For Zoom videos, validate access via API
-    if (session.videoSource === 'zoom') {
-      try {
-        const token = localStorage.getItem('token');
-        const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
-        
-        console.log('🔍 Frontend Debug - Making access validation request to:', `${apiUrl}/api/dashboard/classroom/${session.id}/access`);
-        
-        const response = await fetch(`${apiUrl}/api/dashboard/classroom/${session.id}/access`, {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json'
-          }
-        });
-
-        console.log('🔍 Frontend Debug - Access validation response status:', response.status);
-
-        if (response.ok) {
-          const data = await response.json();
-          console.log('🔍 Frontend Debug - Access validation response data:', data);
-          
-          if (data.hasAccess) {
-            // Create enhanced Zoom URL with automatic passcode
-            const enhancedZoomUrl = createEnhancedZoomUrl(data.video.zoomUrl, data.video.zoomPasscode);
-            
-            // Update session with validated video data
-            const updatedSession = {
-              ...session,
-              zoomUrl: enhancedZoomUrl,
-              zoomPasscode: data.video.zoomPasscode
-            };
-            setSelectedVideo(updatedSession);
-          } else {
-            console.log('🔍 Frontend Debug - Access denied from API:', data.message);
-            alert(data.message || 'Access denied');
-          }
-        } else {
-          const errorData = await response.json();
-          console.error('🔍 Frontend Debug - Access validation error:', errorData);
-          alert(errorData.message || 'Failed to validate access');
-        }
-      } catch (error) {
-        console.error('🔍 Frontend Debug - Error validating video access:', error);
-        alert('Failed to validate video access. Please try again.');
-      }
-    } else {
-      // For Drive videos, direct access
-      setSelectedVideo(session);
-    }
-  };
-
-  // Convert IST time range to other time zones (EST, CST, PST)
-  const convertIstRangeToZone = (range, offsetHours, offsetMinutes = 0) => {
+  const convertIstRangeToZone = (range, offsetHours, offsetMinutes) => {
     if (!range || typeof range !== 'string') return null;
-
-    const parts = range.split('-').map(p => p.trim());
+    const parts = range.split('-');
     if (parts.length !== 2) return null;
 
-    const parseTime = (str) => {
-      const match = str.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
+    const parseTimeToMinutes = (timeStr) => {
+      const match = timeStr.trim().match(/(\d{1,2}):(\d{2})\s*(AM|PM)/i);
       if (!match) return null;
-      let [ , h, m, ap ] = match;
-      let hour = parseInt(h, 10);
-      const minute = parseInt(m, 10);
-      const isPM = ap.toUpperCase() === 'PM';
-      if (hour === 12) {
-        hour = isPM ? 12 : 0;
-      } else if (isPM) {
-        hour += 12;
-      }
+      let hour = parseInt(match[1], 10);
+      const minute = parseInt(match[2], 10);
+      const period = match[3].toUpperCase();
+      if (period === 'PM' && hour !== 12) hour += 12;
+      if (period === 'AM' && hour === 12) hour = 0;
       return hour * 60 + minute;
     };
 
-    const formatTime = (minutes) => {
-      minutes = ((minutes % (24 * 60)) + (24 * 60)) % (24 * 60);
-      let h = Math.floor(minutes / 60);
-      const m = minutes % 60;
-      const ap = h >= 12 ? 'PM' : 'AM';
-      if (h === 0) h = 12;
-      else if (h > 12) h -= 12;
-      return `${h}:${m.toString().padStart(2, '0')} ${ap}`;
+    const formatMinutesToTime = (totalMinutes) => {
+      let mins = ((totalMinutes % (24 * 60)) + (24 * 60)) % (24 * 60);
+      let hour24 = Math.floor(mins / 60);
+      const minute = mins % 60;
+      const period = hour24 >= 12 ? 'PM' : 'AM';
+      let hour12 = hour24 % 12;
+      if (hour12 === 0) hour12 = 12;
+      return `${hour12}:${String(minute).padStart(2, '0')} ${period}`;
     };
 
-    const startIst = parseTime(parts[0]);
-    const endIst = parseTime(parts[1]);
+    const startIst = parseTimeToMinutes(parts[0]);
+    const endIst = parseTimeToMinutes(parts[1]);
     if (startIst == null || endIst == null) return null;
 
-    const delta = offsetHours * 60 + offsetMinutes;
+    const delta = (offsetHours * 60) + offsetMinutes;
     const startLocal = startIst + delta;
     const endLocal = endIst + delta;
 
-    return `${formatTime(startLocal)} - ${formatTime(endLocal)}`;
+    return `${formatMinutesToTime(startLocal)} - ${formatMinutesToTime(endLocal)}`;
   };
 
+  // Complete Course Curriculum - DATA SCIENCE & AI
+
   // Get the most recent video played by user
-  const getLastPlayedVideo = useCallback(() => {
-    const history = Array.isArray(videoWatchHistory) ? videoWatchHistory : [];
-    const videos = Array.isArray(classroomVideos) ? classroomVideos : [];
-
-    if (history.length === 0) {
-      // No watch history, return the newest video
-      return videos.length > 0 ? videos[0] : null;
-    }
-
-    // Get the most recently watched video
-    const mostRecentRecord = history
-      .sort((a, b) => new Date(b.watchedAt) - new Date(a.watchedAt))[0];
-    if (!mostRecentRecord) return videos.length > 0 ? videos[0] : null;
-
-    const video = videos.find(v => v.id === mostRecentRecord.videoId);
-    return video ? { ...video, watchedAt: mostRecentRecord.watchedAt, lastWatchedPosition: mostRecentRecord.lastWatchedPosition } : null;
-  }, [videoWatchHistory, classroomVideos]);
-
   // Create enhanced Zoom URL with automatic passcode
   const createEnhancedZoomUrl = (zoomUrl, passcode) => {
     // Remove any existing query parameters
@@ -759,16 +563,6 @@ const Dashboard = ({ user, onLogout }) => {
     const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
     return `${days[date.getDay()]} ${date.getDate()} ${months[date.getMonth()]}`;
   };
-
-  // Group sessions by date
-  const groupedSessions = classroomSessions.reduce((groups, session) => {
-    const date = session.date;
-    if (!groups[date]) {
-      groups[date] = [];
-    }
-    groups[date].push(session);
-    return groups;
-  }, {});
 
   // Complete Course Curriculum - DATA SCIENCE & AI
   const dsCourseData = {
@@ -1345,9 +1139,6 @@ const Dashboard = ({ user, onLogout }) => {
   const relevantJobTypes = isDataScience() ? dsJobTypes : cyberJobTypes;
 
   useEffect(() => {
-    fetchDashboardData();
-    
-    // Handle responsive sidebar
     const handleResize = () => {
       if (window.innerWidth <= 1024) {
         setSidebarOpen(false);
@@ -1367,107 +1158,6 @@ const Dashboard = ({ user, onLogout }) => {
       loadCourseContent();
     }
   }, [activeSection]);
-
-  const fetchDashboardData = async () => {
-    try {
-      // Set minimum loading time to 2 seconds
-      const startTime = Date.now();
-      
-      // Fetch all data from Firebase
-      const [coursesRes, modulesRes, lessonsRes, projectsRes, jobsRes, mentorsRes, contentRes, liveClassesRes] = await Promise.all([
-        firebaseService.getAll(COLLECTIONS.COURSES),
-        firebaseService.getAll(COLLECTIONS.MODULES),
-        firebaseService.getAll(COLLECTIONS.LESSONS),
-        firebaseService.getAll(COLLECTIONS.PROJECTS),
-        firebaseService.getAll(COLLECTIONS.JOBS),
-        firebaseService.getAll(COLLECTIONS.MENTORS),
-        firebaseService.getAll(COLLECTIONS.CONTENT),
-        firebaseService.getAll(COLLECTIONS.LIVE_CLASSES)
-      ]);
-
-      // Extract data
-      const coursesData = coursesRes.success ? coursesRes.data : [];
-      const modulesData = modulesRes.success ? modulesRes.data : [];
-      const lessonsData = lessonsRes.success ? lessonsRes.data : [];
-      const projectsData = projectsRes.success ? projectsRes.data : [];
-      const jobsData = jobsRes.success ? jobsRes.data : [];
-      const mentorsData = mentorsRes.success ? mentorsRes.data : [];
-      const contentData = contentRes.success ? contentRes.data : [];
-      const liveClassesData = liveClassesRes.success ? liveClassesRes.data : [];
-
-      // Calculate stats from real data
-      const calculatedStats = {
-        enrolled: coursesData.length,
-        completed: 0,
-        inProgress: coursesData.length,
-        totalHours: coursesData.length * 40, // Estimate 40 hours per course
-        certificates: 0,
-        upcomingClasses: lessonsData.length
-      };
-
-      // Map courses with real data
-      const mappedCourses = coursesData.map(course => ({
-        ...course,
-        progress: 0,
-        modules: modulesData.filter(m => m.courseId === course.id).length,
-        lessons: lessonsData.filter(l => {
-          const module = modulesData.find(m => m.id === l.moduleId);
-          return module && module.courseId === course.id;
-        }).length
-      }));
-
-      // Create recent activities from content
-      const recentActivities = contentData
-        .filter(c => c.type === 'announcement')
-        .slice(0, 5)
-        .map(announcement => ({
-          type: 'announcement',
-          title: announcement.title,
-          description: announcement.content,
-          time: announcement.createdAt ? new Date(announcement.createdAt.seconds * 1000).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'Recently'
-        }));
-
-      setStats(calculatedStats);
-      setCourses(mappedCourses);
-  setLessons(lessonsData);
-      setActivities(recentActivities);
-      setProjects(projectsData);
-      setJobs(jobsData.filter(j => j.status === 'active'));
-      setMentors(mentorsData);
-      setLiveClasses(liveClassesData);
-      
-      // Store additional data for other sections
-      window.dashboardData = {
-        courses: coursesData,
-        modules: modulesData,
-        lessons: lessonsData,
-        projects: projectsData,
-        jobs: jobsData,
-        mentors: mentorsData,
-        content: contentData,
-        liveClasses: liveClassesData
-      };
-      
-      // Ensure loading animation shows for at least 2 seconds
-      const elapsedTime = Date.now() - startTime;
-      const remainingTime = Math.max(2000 - elapsedTime, 0);
-      
-      setTimeout(() => {
-        setLoading(false);
-      }, remainingTime);
-    } catch (err) {
-      console.error('Error fetching dashboard data:', err);
-      // Reset to 0 on error
-      setStats({ enrolled: 0, completed: 0, inProgress: 0, totalHours: 0, certificates: 0, upcomingClasses: 0 });
-      setCourses([]);
-      setActivities([]);
-      
-      // Still respect 2-second minimum on error
-      setTimeout(() => {
-        setLoading(false);
-      }, 2000);
-    }
-  };
 
   if (loading) {
     return (
