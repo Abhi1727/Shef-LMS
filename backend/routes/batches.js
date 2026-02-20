@@ -215,6 +215,30 @@ router.delete('/:batchId/students/:studentId', isAdmin, async (req, res) => {
   }
 });
 
+// @route   PUT /api/batches/:batchId/videos/:videoId
+// @desc    Assign a video to a batch
+// @access  Admin only
+router.put('/:batchId/videos/:videoId', isAdmin, async (req, res) => {
+  try {
+    const { batchId, videoId } = req.params;
+    const batchDoc = await Batch.findById(batchId).lean().exec();
+    if (!batchDoc) {
+      return res.status(404).json({ success: false, message: 'Batch not found' });
+    }
+    const videoDoc = await Classroom.findById(videoId).exec();
+    if (!videoDoc) {
+      return res.status(404).json({ success: false, message: 'Video not found' });
+    }
+    videoDoc.batchId = batchId;
+    videoDoc.course = videoDoc.course || batchDoc.course;
+    await videoDoc.save();
+    res.json({ success: true, message: 'Video assigned to batch successfully' });
+  } catch (error) {
+    console.error('Error assigning video to batch:', error);
+    res.status(500).json({ success: false, message: 'Failed to assign video to batch' });
+  }
+});
+
 // @route   DELETE /api/batches/:batchId/videos/:videoId
 // @desc    Remove a video from a batch (does NOT delete the video from database)
 // @access  Admin only

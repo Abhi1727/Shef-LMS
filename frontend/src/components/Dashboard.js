@@ -276,27 +276,13 @@ const Dashboard = ({ user, onLogout }) => {
     try {
       const token = localStorage.getItem('token');
       const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
-      
-      // Debug: Log the token and user info
-      if (token) {
-        try {
-          const payload = JSON.parse(atob(token.split('.')[1]));
-          console.log('🔍 Frontend Debug - User from token:', payload.user);
-        } catch (e) {
-          console.error('🔍 Frontend Debug - Error parsing token:', e);
-        }
-      }
-      
-      console.log('🔍 Frontend Debug - Making request to:', `${apiUrl}/api/dashboard/classroom`);
-      
+
       const response = await fetch(`${apiUrl}/api/dashboard/classroom`, {
         headers: {
           'Authorization': `Bearer ${token}`
         }
       });
-      
-      console.log('🔍 Frontend Debug - Response status:', response.status);
-      
+
       if (response.ok) {
         const raw = await response.json();
         const videos = Array.isArray(raw)
@@ -304,13 +290,6 @@ const Dashboard = ({ user, onLogout }) => {
           : Array.isArray(raw?.videos)
             ? raw.videos
             : [];
-
-        console.log('🔍 Frontend Debug - Videos received:', videos.length);
-        if (videos.length > 0) {
-          console.log('🔍 Frontend Debug - Sample video:', videos[0]);
-        } else {
-          console.log('🔍 Frontend Debug - No classroom videos available for this student.');
-        }
 
         // Additional sorting on frontend to ensure latest videos are first
         const sortedVideos = videos.sort((a, b) => {

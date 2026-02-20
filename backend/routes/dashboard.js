@@ -4,6 +4,7 @@ const auth = require('../middleware/auth');
 const User = require('../models/User');
 const Classroom = require('../models/Classroom');
 const Batch = require('../models/Batch');
+const logger = require('../utils/logger');
 
 // Apply auth middleware to all dashboard routes
 router.use(auth);
@@ -39,7 +40,7 @@ router.get('/classroom', async (req, res) => {
         }
       }
     } catch (lookupError) {
-      console.error('Dashboard classroom: failed to refresh user from Mongo, using token values instead:', lookupError);
+      logger.warn('Dashboard classroom: failed to refresh user from Mongo, using token values', { error: lookupError.message });
     }
     
     // Normalize batch ID: treat null/undefined/"null"/"undefined"/empty as no batch
@@ -52,18 +53,9 @@ router.get('/classroom', async (req, res) => {
 
     userBatchId = normalizeId(userBatchId);
 
-    console.log('🔍 Dashboard Debug - User info:', {
-      email: userEmail,
-      course: userCourse,
-      batchId: userBatchId,
-      role: tokenUser.role
-    });
-    
     // Get all classroom videos from Mongo
     const classroomDocs = await Classroom.find({}).lean().exec();
     const allVideos = classroomDocs.map(doc => ({ id: String(doc._id), ...doc }));
-    
-    console.log('🔍 Dashboard Debug - Total videos found:', allVideos.length);
 
     // Load batches and build a set of valid batch IDs
     const batchDocs = await Batch.find({}).lean().exec();
@@ -71,13 +63,19 @@ router.get('/classroom', async (req, res) => {
 
     // If the student's batchId does not correspond to a real batch, treat as no batch
     if (userBatchId && !validBatchIds.has(userBatchId)) {
-      console.log('🔍 Dashboard Debug - User batchId is not a valid batch, treating as unassigned:', userBatchId);
       userBatchId = '';
     }
 
     // Filter videos based on user's role, course, and batch (Mongo-only, no Firestore)
+    const courseMatches = (videoCourse, vidCourseType) => {
+      if (!userCourse) return false;
+      if (videoCourse && videoCourse === userCourse) return true;
+      if (vidCourseType && userCourse.includes(vidCourseType)) return true;
+      return false;
+    };
+
     let filteredVideos = allVideos.filter(video => {
-      const videoCourse = video.courseId || video.course || '';
+      const videoCourse = video.courseId || video.course || video.courseType || '';
 
       // Admin can see everything
       if (tokenUser.role === 'admin') {
@@ -86,17 +84,16 @@ router.get('/classroom', async (req, res) => {
 
       // Teachers see videos for their course
       if (tokenUser.role === 'teacher') {
-        return !!videoCourse && !!userCourse && videoCourse === userCourse;
+        return courseMatches(videoCourse, video.courseType);
       }
 
       // Students must have a *valid* batch assigned and match both course and batch.
-      // If a student has no valid batch, they should see no classroom videos.
       if (tokenUser.role === 'student') {
         if (!userBatchId) {
           return false;
         }
 
-        const courseMatch = !!videoCourse && !!userCourse && videoCourse === userCourse;
+        const courseMatch = courseMatches(videoCourse, video.courseType);
         if (!courseMatch) return false;
 
         // Only show videos explicitly tied to a valid batch.
@@ -114,34 +111,16 @@ router.get('/classroom', async (req, res) => {
       return false;
     });
 
-    console.log('🔍 Dashboard Debug - Filtered videos count:', filteredVideos.length);
-    
     // Sort videos by creation date (newest first)
     const sortedVideos = filteredVideos.sort((a, b) => {
-      // Use createdAt primarily, fallback to date, then to document ID
       const dateA = new Date(a.createdAt || a.date || 0);
       const dateB = new Date(b.createdAt || b.date || 0);
-      
-      console.log('🔍 Dashboard Debug - Sorting:', {
-        videoA: a.title,
-        dateA: dateA,
-        videoB: b.title,
-        dateB: dateB,
-        comparison: dateB - dateA
-      });
-      
       return dateB - dateA; // Newest first (descending order)
     });
-    
-    console.log('🔍 Dashboard Debug - Sorted videos (first 3):', sortedVideos.slice(0, 3).map(v => ({
-      title: v.title,
-      createdAt: v.createdAt,
-      date: v.date
-    })));
-    
+
     res.json(sortedVideos);
   } catch (error) {
-    console.error('Error fetching classroom videos:', error);
+    logger.error('Error fetching classroom videos', { error: error.message });
     res.status(500).json({ message: 'Error fetching classroom videos' });
   }
 });
@@ -160,7 +139,7 @@ router.get('/stats', async (req, res) => {
     };
     res.json(stats);
   } catch (err) {
-    console.error(err.message);
+    logger.error('Dashboard stats error', { error: err.message });
     res.status(500).send('Server error');
   }
 });
@@ -213,7 +192,7 @@ router.get('/activity', async (req, res) => {
     ];
     res.json(activities);
   } catch (err) {
-    console.error(err.message);
+    logger.error('Dashboard activity error', { error: err.message });
     res.status(500).send('Server error');
   }
 });

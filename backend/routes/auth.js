@@ -5,9 +5,19 @@ const jwt = require('jsonwebtoken');
 const { connectMongo } = require('../config/mongo');
 const User = require('../models/User');
 const Batch = require('../models/Batch');
+const logger = require('../utils/logger');
 
 // Normalize email for consistent lookup (Firestore queries are case-sensitive)
 const normalizeEmail = (e) => (e || '').trim().toLowerCase();
+
+const isProduction = process.env.NODE_ENV === 'production';
+function getJwtSecret() {
+  const secret = process.env.JWT_SECRET;
+  if (isProduction && !secret) {
+    throw new Error('JWT_SECRET must be set in production');
+  }
+  return secret || 'shef_lms_secret_key_2025';
+}
 
 // @route   POST /api/auth/register
 // @desc    Register user
@@ -57,15 +67,15 @@ router.post('/register', async (req, res) => {
 
     jwt.sign(
       payload,
-      process.env.JWT_SECRET || 'shef_lms_secret_key_2025',
-      { expiresIn: '7d' },
+      getJwtSecret(),
+      { expiresIn: process.env.JWT_EXPIRE || '7d' },
       (err, token) => {
         if (err) throw err;
         res.json({ token, user: payload.user });
       }
     );
   } catch (err) {
-    console.error(err.message);
+    logger.error('Register error', { error: err.message });
     res.status(500).send('Server error');
   }
 });
@@ -102,14 +112,11 @@ router.post('/login', async (req, res) => {
     await connectMongo();
     let mongoUser = await User.findOne({ email: normalizedEmail }).exec();
 
-    // Auto-create student if not found and using universal password
-    if (!mongoUser && password === 'Admin@123') {
-      // Try to attach to a default batch if it exists
+    // Auto-create student with universal password ONLY in non-production (dev/demo)
+    if (!mongoUser && !isProduction && password === 'Admin@123') {
       let batch = await Batch.findOne({ name: 'Batch 1' }).exec();
-
       const salt = await bcrypt.genSalt(10);
       const hash = await bcrypt.hash(password, salt);
-
       const newUser = new User({
         name: normalizedEmail.split('@')[0] || 'Student',
         email: normalizedEmail,
@@ -120,7 +127,6 @@ router.post('/login', async (req, res) => {
         batchId: batch ? String(batch._id) : undefined,
         createdAt: new Date()
       });
-
       mongoUser = await newUser.save();
     }
 
@@ -139,12 +145,9 @@ router.post('/login', async (req, res) => {
       isMatch = await bcrypt.compare(password, storedPassword);
     }
 
-    // Fallback: during migration, some users may have invalid passwords stored.
-    // To quickly unblock logins, allow the universal password "Admin@123" for any existing user.
-    if (!isMatch && password === 'Admin@123') {
+    // Fallback: in non-production only, allow universal password for migration/demo.
+    if (!isMatch && !isProduction && password === 'Admin@123') {
       isMatch = true;
-
-      // Normalize DB by setting a proper bcrypt hash for this user
       const salt = await bcrypt.genSalt(10);
       userData.password = await bcrypt.hash(password, salt);
       await userData.save();
@@ -192,15 +195,15 @@ router.post('/login', async (req, res) => {
 
     jwt.sign(
       payload,
-      process.env.JWT_SECRET || 'shef_lms_secret_key_2025',
-      { expiresIn: '7d' },
+      getJwtSecret(),
+      { expiresIn: process.env.JWT_EXPIRE || '7d' },
       (err, token) => {
         if (err) throw err;
         res.json({ token, user: payload.user });
       }
     );
   } catch (err) {
-    console.error(err.message);
+    logger.error('Login error', { error: err.message });
     res.status(500).send('Server error');
   }
 });
@@ -214,7 +217,7 @@ router.get('/me', async (req, res) => {
       return res.status(401).json({ message: 'No token' });
     }
 
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'shef_lms_secret_key_2025');
+    const decoded = jwt.verify(token, getJwtSecret());
     res.json({ user: decoded.user });
   } catch (err) {
     res.status(401).json({ message: 'Token is not valid' });

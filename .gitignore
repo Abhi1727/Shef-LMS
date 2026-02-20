@@ -1,5 +1,14 @@
 node_modules/
 .env
+.env.*
+!.env.example
+backend/.env
+backend/.env.backup
+backend/.env.*
+!.env.example
+frontend/.env
+frontend/.env.local
+frontend/.env.production.local
 .DS_Store
 *.log
 npm-debug.log*
@@ -16,3 +25,14 @@ coverage/
 
 # Local MongoDB data (do not commit)
 backend/mongo-data/
+mongo-dump/
+
+# Backup files (may contain secrets)
+*.backup
+*.bak
+
+# Markdown files
+*.md
+
+# Bin folder
+bin/

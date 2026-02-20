@@ -43,6 +43,15 @@ async function syncBatchIds() {
     batchId: { $ne: null, $ne: '' }
   }).exec();
 
+  // Build course -> batches map for fallback when batchId is Firestore ID (no Mongo match)
+  const batchesByCourse = new Map();
+  for (const b of batches) {
+    const course = (b.course || '').trim();
+    if (!course) continue;
+    if (!batchesByCourse.has(course)) batchesByCourse.set(course, []);
+    batchesByCourse.get(course).push(b);
+  }
+
   for (const user of users) {
     const current = user.batchId;
     let targetBatch = null;
@@ -51,6 +60,16 @@ async function syncBatchIds() {
       targetBatch = batchesById.get(current);
     } else if (batchesByName.has(current)) {
       targetBatch = batchesByName.get(current);
+    } else {
+      // Fallback: batchId is Firestore ID - match by user's course when exactly one batch
+      const userCourse = (user.course || '').trim();
+      const courseBatches = batchesByCourse.get(userCourse);
+      if (courseBatches && courseBatches.length === 1) {
+        targetBatch = courseBatches[0];
+      } else if (courseBatches && courseBatches.length > 1) {
+        // Multiple batches: assign to first (user should review and reassign if needed)
+        targetBatch = courseBatches[0];
+      }
     }
 
     if (targetBatch) {
@@ -83,6 +102,13 @@ async function syncBatchIds() {
       targetBatch = batchesByName.get(video.batchName);
     } else if (batchesByName.has(current)) {
       targetBatch = batchesByName.get(current);
+    } else {
+      // Fallback: batchId is Firestore ID - match by video's course
+      const vidCourse = (video.course || video.courseId || '').trim();
+      const courseBatches = batchesByCourse.get(vidCourse);
+      if (courseBatches && courseBatches.length >= 1) {
+        targetBatch = courseBatches[0];
+      }
     }
 
     if (targetBatch) {
@@ -98,6 +124,57 @@ async function syncBatchIds() {
   }
 
   console.log(`✅ Classroom videos processed. Updated: ${updatedVideos}, Skipped (no matching batch): ${skippedVideos}`);
+
+  // Rebuild Batch.students from User.batchId (source of truth for student-batch mapping)
+  console.log('🔄 Rebuilding Batch.students from User.batchId...');
+  let batchesUpdated = 0;
+  for (const batch of batches) {
+    const batchIdStr = String(batch._id);
+    const studentsInBatch = await User.find({
+      role: 'student',
+      $or: [
+        { batchId: batchIdStr },
+        { batchId: batch._id }
+      ]
+    })
+      .select('_id')
+      .lean()
+      .exec();
+
+    const studentIds = studentsInBatch.map((u) => u._id);
+    const batchDoc = await Batch.findById(batch._id).exec();
+    if (!batchDoc) continue;
+
+    const currentIds = (batchDoc.students || []).map((id) => String(id)).sort().join(',');
+    const newIds = studentIds.map((id) => String(id)).sort().join(',');
+    if (currentIds !== newIds) {
+      batchDoc.students = studentIds;
+      batchDoc.updatedAt = new Date();
+      await batchDoc.save();
+      batchesUpdated++;
+    }
+  }
+  console.log(`✅ Batch.students rebuilt. Batches updated: ${batchesUpdated}`);
+
+  // Fix videos with no batchId: assign to batch when course matches and exactly one batch has that course
+  const videosNoBatch = await Classroom.find({
+    $or: [{ batchId: null }, { batchId: '' }, { batchId: { $exists: false } }]
+  }).exec();
+
+  let videosAssignedByCourse = 0;
+  for (const video of videosNoBatch) {
+    const vidCourse = String(video.course || video.courseId || '').trim();
+    if (!vidCourse) continue; // Skip videos with no course info
+    const batchesWithCourse = batchesByCourse.get(vidCourse);
+    if (!batchesWithCourse || batchesWithCourse.length !== 1) continue;
+    const targetBatch = batchesWithCourse[0];
+    video.batchId = String(targetBatch._id);
+    await video.save();
+    videosAssignedByCourse++;
+  }
+  if (videosAssignedByCourse > 0) {
+    console.log(`✅ Videos assigned by course (single-batch match): ${videosAssignedByCourse}`);
+  }
 
   console.log('🎉 syncBatchIds completed.');
   process.exit(0);

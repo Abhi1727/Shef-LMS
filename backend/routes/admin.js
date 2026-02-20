@@ -17,6 +17,19 @@ const OneToOne = require('../models/OneToOne');
 router.use(auth);
 router.use(roleAuth('admin'));
 
+// Helper: resolve course name for dashboard filtering (User.course is course name)
+async function resolveCourseNameForVideo(courseIdOrName) {
+  if (!courseIdOrName || typeof courseIdOrName !== 'string') return courseIdOrName;
+  const trimmed = courseIdOrName.trim();
+  if (!trimmed) return null;
+  const isObjectId = /^[a-fA-F0-9]{24}$/.test(trimmed);
+  if (isObjectId) {
+    const doc = await Course.findById(trimmed).select('title').lean().exec();
+    return doc ? doc.title : trimmed;
+  }
+  return trimmed;
+}
+
 // Configure multer for memory storage (for large video files)
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -117,11 +130,13 @@ router.get('/users/search', async (req, res) => {
 
     const normalized = normalizeEmail(email);
 
+    const reEscaped = normalized.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const users = await User.find({
       role: 'student',
-      email: { $regex: normalized, $options: 'i' }
+      email: { $regex: reEscaped, $options: 'i' }
     })
       .limit(10)
+      .select('-password')
       .lean()
       .exec();
 
@@ -133,12 +148,15 @@ router.get('/users/search', async (req, res) => {
   }
 });
 
+// Normalize batchId for consistent API responses (handles ObjectId/string)
+const normalizeBatchId = (v) => (v != null && v !== '' ? String(v) : null);
+
 // @route   GET /api/admin/users
 // @desc    Get all users (students)
 router.get('/users', async (req, res) => {
   try {
-    const users = await User.find({ role: 'student' }).lean().exec();
-    const mapped = users.map(u => ({ id: String(u._id), ...u }));
+    const users = await User.find({ role: 'student' }).select('-password').lean().exec();
+    const mapped = users.map(u => ({ id: String(u._id), ...u, batchId: normalizeBatchId(u.batchId) }));
     res.json(mapped);
   } catch (err) {
     console.error('Error fetching users:', err);
@@ -206,6 +224,7 @@ router.put('/users/:id', async (req, res) => {
       ...req.body,
       updatedAt: new Date()
     };
+    delete updateData.password; // Never update password via this endpoint; use dedicated flow
 
     await User.findByIdAndUpdate(id, updateData, { new: true }).exec();
     res.json({ message: 'User updated successfully' });
@@ -232,7 +251,7 @@ router.delete('/users/:id', async (req, res) => {
 // @desc    Get all mentors
 router.get('/mentors', async (req, res) => {
   try {
-    const mentors = await User.find({ role: 'mentor' }).lean().exec();
+    const mentors = await User.find({ role: 'mentor' }).select('-password').lean().exec();
     const mapped = mentors.map(m => ({ id: String(m._id), ...m }));
     res.json(mapped);
   } catch (err) {
@@ -327,7 +346,7 @@ router.delete('/mentors/:id', async (req, res) => {
 // @desc    Get all teachers
 router.get('/teachers', async (req, res) => {
   try {
-    const teachers = await User.find({ role: 'teacher' }).lean().exec();
+    const teachers = await User.find({ role: 'teacher' }).select('-password').lean().exec();
     const mapped = teachers.map(t => ({ id: String(t._id), ...t }));
     res.json(mapped);
   } catch (err) {
@@ -541,12 +560,13 @@ router.post('/classroom/youtube-url', notesUpload.single('notesFile'), async (re
       });
     }
 
-    // Prepare lecture data
+    const resolvedCourse = await resolveCourseNameForVideo(courseId);
     const lectureData = {
       title: title.trim(),
       instructor: instructor?.trim() || 'Admin',
       description: description?.trim() || '',
       courseId: courseId.trim(),
+      course: resolvedCourse || courseId.trim(),
       batchId: batchId?.trim() || null,
       domain: domain?.trim() || null,
       duration: duration || null,
@@ -627,6 +647,7 @@ router.post('/classroom', notesUpload.single('notesFile'), async (req, res) => {
 
     // Passcode extraction is handled by middleware if needed
 
+    const resolvedCourse = await resolveCourseNameForVideo(courseId || courseType);
     const videoData = {
       title,
       instructor,
@@ -635,10 +656,10 @@ router.post('/classroom', notesUpload.single('notesFile'), async (req, res) => {
       courseType,
       type: type || 'Live Class',
       instructorColor: instructorColor || '#E91E63',
+      course: resolvedCourse || courseId || courseType || null,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
-      // Optional course and batch association for stricter access control
-      courseId: courseId || null,
+      courseId: courseId || courseType || null,
       batchId: batchId || null
     };
 
@@ -724,7 +745,10 @@ router.put('/classroom/:id', notesUpload.single('notesFile'), async (req, res) =
     if (type) videoData.type = type;
     if (instructorColor) videoData.instructorColor = instructorColor;
     if (description !== undefined) videoData.description = description;
-    if (courseId) videoData.courseId = courseId;
+    if (courseId) {
+      videoData.courseId = courseId;
+      videoData.course = await resolveCourseNameForVideo(courseId);
+    }
     if (batchId !== undefined) videoData.batchId = batchId;
 
     // Add video source specific fields
@@ -924,7 +948,7 @@ collections.forEach(collectionName => {
         items = items.map(m => ({ id: String(m._id), ...m }));
       } else if (collectionName === 'classroom') {
         items = await Classroom.find({}).lean().exec();
-        items = items.map(cl => ({ id: String(cl._id), ...cl }));
+        items = items.map(cl => ({ id: String(cl._id), ...cl, batchId: normalizeBatchId(cl.batchId) }));
       } else {
         const Model = getDynamicModel(collectionName);
         const docs = await Model.find({}).lean().exec();
@@ -1180,11 +1204,30 @@ router.put('/batches/:id', async (req, res) => {
     });
 
 // @route   DELETE /api/admin/batches/:id
-// @desc    Delete a batch
+// @desc    Delete a batch (cascade: clear User.batchId and Classroom.batchId for affected records)
 router.delete('/batches/:id', async (req, res) => {
     try {
-    await Batch.findByIdAndDelete(req.params.id).exec();
-        
+        const batchId = req.params.id;
+        const batchDoc = await Batch.findById(batchId).lean().exec();
+        if (!batchDoc) {
+            return res.status(404).json({ message: 'Batch not found' });
+        }
+
+        // 1. Clear batchId for all users (students) who were in this batch
+        await User.updateMany(
+            { batchId: batchId },
+            { $unset: { batchId: '' } }
+        ).exec();
+
+        // 2. Clear batchId for all classroom videos assigned to this batch
+        await Classroom.updateMany(
+            { batchId: batchId },
+            { $set: { batchId: null, updatedAt: new Date() } }
+        ).exec();
+
+        // 3. Delete the batch
+        await Batch.findByIdAndDelete(batchId).exec();
+
         res.json({
             success: true,
             message: 'Batch deleted successfully'

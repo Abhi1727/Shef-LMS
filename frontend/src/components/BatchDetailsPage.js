@@ -231,8 +231,10 @@ const BatchDetailsPage = () => {
             // Store ALL students for the "Add Existing Students" modal
             setAllStudents(studentUsers);
 
-            // Filter students by batchId for display
-            const batchStudents = studentUsers.filter(student => student.batchId === batchId);
+            // Filter students by batchId for display (normalize IDs - handles ObjectId/string)
+            const norm = (v) => (v != null && v !== '' ? String(v).trim() : '');
+            const batchIdNorm = norm(batchId) || norm(foundBatch?.id || foundBatch?._id);
+            const batchStudents = studentUsers.filter(student => norm(student.batchId) === batchIdNorm);
             console.log('🔍 BatchDetails Debug - Students for batch:', {
               batchId,
               totalStudents: studentUsers.length,
@@ -270,19 +272,17 @@ const BatchDetailsPage = () => {
       if (videosResponse.ok) {
         const allVideos = await videosResponse.json();
         
-        // Filter videos to show only those belonging to this batch
+        // Filter videos to show only those belonging to this batch (normalize IDs)
+        const norm = (v) => (v != null && v !== '' ? String(v).trim() : '');
+        const batchIdNorm = norm(batchId) || norm(foundBatch?.id || foundBatch?._id);
         const batchVideos = allVideos.filter(video => {
-          // Check if video belongs to this batch by batchId
-          if (video.batchId === batchId) {
-            return true;
+          if (norm(video.batchId) === batchIdNorm) return true;
+          // Legacy: videos without batchId match by course
+          if (!norm(video.batchId) && foundBatch) {
+            const vidCourse = video.course || video.courseId || '';
+            const batchCourse = foundBatch.course || '';
+            if (norm(vidCourse) && norm(vidCourse) === norm(batchCourse)) return true;
           }
-          
-          // For videos without batchId, check if they belong to this batch's course
-          // This is for backward compatibility with older videos
-          if (!video.batchId && foundBatch && video.courseId === foundBatch.course) {
-            return true;
-          }
-          
           return false;
         });
         
@@ -913,19 +913,19 @@ const BatchDetailsPage = () => {
   }
 
   const selectedBatchId = selectedBatch?.id || selectedBatch?._id;
+  const normId = (v) => (v != null && v !== '' ? String(v).trim() : '');
+  const selectedBatchIdNorm = normId(selectedBatchId);
 
   // Filter videos for this batch and sort by newest first
   const batchVideos = classroomVideos
     .filter(video => {
-      if (!selectedBatchId) return false;
-
-      // If a video is assigned to a specific batch, only show it for that batch
-      if (video.batchId) {
-        return video.batchId === selectedBatchId;
+      if (!selectedBatchIdNorm) return false;
+      if (normId(video.batchId) === selectedBatchIdNorm) return true;
+      // Legacy: videos without batchId fall back to course match
+      if (!normId(video.batchId)) {
+        return normId(video.courseId || video.course) === normId(selectedBatch?.course);
       }
-
-      // Legacy/course-level videos without batchId fall back to course match
-      return video.courseId === selectedBatch?.course;
+      return false;
     })
     .sort((a, b) => {
       // Sort by date (newest first)
@@ -935,7 +935,7 @@ const BatchDetailsPage = () => {
     });
 
   // Filter students by batchId for consistency with Dashboard
-  const batchStudents = students.filter(student => student.batchId === selectedBatchId);
+  const batchStudents = students.filter(student => normId(student.batchId) === selectedBatchIdNorm);
 
   const hasValidBatch = (student) => {
     if (!student.batchId) return false;

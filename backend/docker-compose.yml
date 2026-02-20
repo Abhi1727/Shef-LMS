@@ -1,32 +1,26 @@
+# Shef-LMS Backend - MongoDB Atlas only (MONGODB_URI in .env)
 services:
   backend:
     build:
       context: .
       dockerfile: Dockerfile
     container_name: shef-lms-backend
-    ports:
-      - "5000:5000"
+    # ports omitted - network_mode: host binds app directly to host :5000
     env_file:
       - .env
     environment:
-      - MONGODB_URI=mongodb://shef-lms-mongo:27017/shef-lms
+      - NODE_OPTIONS=--dns-result-order=ipv4first
+      - MONGODB_USERNAME=${MONGODB_USERNAME}
+      - MONGODB_PASSWORD=${MONGODB_PASSWORD}
+      - MONGODB_CLUSTER=${MONGODB_CLUSTER}
+      - MONGODB_DATABASE=${MONGODB_DATABASE}
+    dns:
+      - 8.8.8.8
+      - 8.8.4.4
     volumes:
       - ./logs:/app/logs
+      - ./.env:/app/.env:ro
     restart: unless-stopped
-    networks:
-      - shef-lms-network
+    network_mode: host
 
-  mongo:
-    image: mongo:6
-    container_name: shef-lms-mongo
-    restart: unless-stopped
-    ports:
-      - "27017:27017"
-    volumes:
-      - ./mongo-data:/data/db
-    networks:
-      - shef-lms-network
-
-networks:
-  shef-lms-network:
-    driver: bridge
+# Use host network so container shares host's network (Atlas connectivity works)

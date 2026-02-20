@@ -1,34 +1,70 @@
 const express = require('express');
 const cors = require('cors');
+const helmet = require('helmet');
+const rateLimit = require('express-rate-limit');
 const dotenv = require('dotenv');
 const path = require('path');
 const { connectMongo } = require('./config/mongo');
+const logger = require('./utils/logger');
 // const { startRecordingSync } = require('./jobs/syncRecordings');
 const videoProcessor = require('./middleware/videoProcessor');
 
 dotenv.config();
 
 const app = express();
+const isProduction = process.env.NODE_ENV === 'production';
+
+// Trust proxy (Nginx, etc.) so rate limit and X-Forwarded-Proto work correctly
+app.set('trust proxy', 1);
+
+// Security headers
+app.use(helmet({
+  contentSecurityPolicy: false, // API returns JSON; CSP is for HTML
+  crossOriginResourcePolicy: { policy: 'cross-origin' }
+}));
+
+// HTTPS redirect in production when behind a proxy that sets X-Forwarded-Proto
+if (isProduction) {
+  app.use((req, res, next) => {
+    const proto = req.get('x-forwarded-proto');
+    if (proto === 'http') {
+      const host = req.get('host') || req.hostname;
+      return res.redirect(301, `https://${host}${req.originalUrl}`);
+    }
+    next();
+  });
+}
 
 // CORS Configuration for Production
-const allowedOrigins = process.env.ALLOWED_ORIGINS 
-  ? process.env.ALLOWED_ORIGINS.split(',') 
+const allowedOrigins = process.env.ALLOWED_ORIGINS
+  ? process.env.ALLOWED_ORIGINS.split(',').map((o) => o.trim()).filter(Boolean)
   : ['http://localhost:3000'];
 
 app.use(cors({
   origin: function(origin, callback) {
-    // Allow requests with no origin (mobile apps, curl, etc.)
-    if (!origin) return callback(null, true);
+    if (!origin) return callback(null, true); // Allow no-origin (e.g. Postman, mobile)
     if (allowedOrigins.indexOf(origin) !== -1) {
-      callback(null, true);
-    } else {
-      callback(null, true); // Allow all in development, restrict in production if needed
+      return callback(null, true);
     }
+    if (isProduction) {
+      return callback(null, false);
+    }
+    callback(null, true); // Allow all in development
   },
   credentials: true
 }));
 
 app.use(express.json());
+
+// Rate limit auth endpoints (login/register) to reduce brute-force risk
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: parseInt(process.env.AUTH_RATE_LIMIT_MAX || '50', 10),
+  message: { message: 'Too many attempts; please try again later.' },
+  standardHeaders: true,
+  legacyHeaders: false
+});
+app.use('/api/auth', authLimiter);
 
 // Serve uploaded files (e.g., lecture notes) statically
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
@@ -70,13 +106,10 @@ const PORT = process.env.PORT || 5000;
 connectMongo()
   .then(() => {
     app.listen(PORT, () => {
-      console.log(`Server running on port ${PORT}`);
-
-      // Start Zoom recording sync scheduler - COMMENTED OUT
-      // startRecordingSync();
+      logger.info('Server running', { port: PORT, env: process.env.NODE_ENV || 'development' });
     });
   })
   .catch((err) => {
-    console.error('Failed to start server due to MongoDB error:', err.message);
+    logger.error('Failed to start server due to MongoDB error', { error: err.message });
     process.exit(1);
   });
