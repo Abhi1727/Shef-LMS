@@ -9,18 +9,26 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - name: Verify secrets are set
+      - name: Verify secrets and prepare SSH key
+        env:
+          SSH_KEY_B64: ${{ secrets.VPS_SSH_KEY }}
         run: |
-          if [ -z "${{ secrets.VPS_SSH_KEY }}" ]; then echo "::error::VPS_SSH_KEY secret is empty. Add the private key from cat ~/.ssh/github_deploy"; exit 1; fi
-          if [ -z "${{ secrets.VPS_HOST }}" ]; then echo "::error::VPS_HOST secret is empty. Use your VPS IP e.g. 31.220.55.193"; exit 1; fi
-          if [ -z "${{ secrets.VPS_USER }}" ]; then echo "::error::VPS_USER secret is empty. Use e.g. root"; exit 1; fi
-          echo "All required secrets are set"
+          if [ -z "$SSH_KEY_B64" ]; then echo "::error::VPS_SSH_KEY is empty"; exit 1; fi
+          if [ -z "${{ secrets.VPS_HOST }}" ]; then echo "::error::VPS_HOST is empty"; exit 1; fi
+          if [ -z "${{ secrets.VPS_USER }}" ]; then echo "::error::VPS_USER is empty"; exit 1; fi
+          # Support both raw key and base64 (avoids multiline paste issues)
+          if echo "$SSH_KEY_B64" | grep -q "BEGIN OPENSSH PRIVATE KEY"; then
+            echo "$SSH_KEY_B64" > "$GITHUB_WORKSPACE/deploy_key.pem"
+          else
+            echo "$SSH_KEY_B64" | base64 -d > "$GITHUB_WORKSPACE/deploy_key.pem"
+          fi
+          chmod 644 "$GITHUB_WORKSPACE/deploy_key.pem"
       - name: Deploy to VPS via SSH
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
-          key: ${{ secrets.VPS_SSH_KEY }}
+          key_path: /github/workspace/deploy_key.pem
           command_timeout: 15m
           script: |
             set -e
