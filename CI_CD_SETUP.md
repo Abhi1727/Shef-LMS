@@ -47,7 +47,7 @@ This will:
 | Secret name   | Value                                      |
 |---------------|--------------------------------------------|
 | `VPS_HOST`    | Your VPS IP address only (e.g. `31.220.55.193`) — no `https://`, no port, no path |
-| `VPS_USER`    | SSH username (e.g. `root`)                 |
+| `VPS_USER`    | SSH username only — use `root` (not the key!) |
 | `VPS_SSH_KEY` | **Base64** (recommended): `cat ~/.ssh/github_deploy | base64 -w 0` — one line, no paste issues. Or the raw key (all lines). |
 
 ---

@@ -22,6 +22,10 @@ jobs:
             echo "::error::VPS_HOST should be an IP. Got length ${#HOST}"
             exit 1
           fi
+          if [ ${#USER} -gt 20 ]; then
+            echo "::error::VPS_USER should be 'root' (short). Got length ${#USER} - did you put the SSH key in VPS_USER by mistake?"
+            exit 1
+          fi
       - name: Deploy to VPS via SSH
         env:
           SSH_KEY: ${{ secrets.VPS_SSH_KEY }}

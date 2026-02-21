@@ -12,7 +12,7 @@ fi
 if echo "$HOST" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$'; then
   :  # HOST looks like IP
 else
-  echo "::error::HOST should be IP address, got: [${HOST}]"
+  echo "::error::HOST should be IP address, length=${#HOST} firstchars=${HOST:0:20}"
   exit 1
 fi
 ssh -o StrictHostKeyChecking=no -o BatchMode=yes -i "$KEY_FILE" "${USER}@${HOST}" '
