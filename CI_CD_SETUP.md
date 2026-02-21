@@ -46,7 +46,7 @@ This will:
 
 | Secret name   | Value                                      |
 |---------------|--------------------------------------------|
-| `VPS_HOST`    | Your VPS IP address (e.g. `123.45.67.89`)  |
+| `VPS_HOST`    | Your VPS IP address only (e.g. `31.220.55.193`) — no `https://`, no port, no path |
 | `VPS_USER`    | SSH username (e.g. `root`)                 |
 | `VPS_SSH_KEY` | Paste the **entire private key** from Step 2 (from `-----BEGIN OPENSSH PRIVATE KEY-----` to `-----END OPENSSH PRIVATE KEY-----`) |
 
