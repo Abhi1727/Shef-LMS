@@ -9,12 +9,16 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
+      - name: Prepare SSH key
+        run: |
+          echo "${{ secrets.VPS_SSH_KEY }}" > deploy_key.pem
+          chmod 600 deploy_key.pem
       - name: Deploy to VPS via SSH
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
-          key: ${{ secrets.VPS_SSH_KEY }}
+          key_path: deploy_key.pem
           command_timeout: 15m
           script: |
             set -e
