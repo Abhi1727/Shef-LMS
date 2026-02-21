@@ -52,34 +52,34 @@ sudo certbot --nginx -d dev.learnwithus.sbs --non-interactive
 
 ---
 
-## Git Workflow
+## Git Workflow (CI/CD – no VPS access needed)
 
 ```
-develop  ──►  (test on dev.learnwithus.sbs)  ──►  main  ──►  (deploy to production)
+develop  ──►  push  ──►  auto-deploy to dev.learnwithus.sbs
+                │
+                └──►  merge to main  ──►  push  ──►  auto-deploy to learnwithus.sbs
 ```
 
-- **develop** – your day-to-day work; deploy to dev
-- **main** – production-ready; deploy to production
+- **develop** – work here; push → auto-deploys to dev
+- **main** – merge from develop; push → auto-deploys to production
 
 ### Branch commands
 
 ```bash
-# Create develop branch (one-time)
-git checkout -b develop
-git push -u origin develop
-
-# Daily: work on develop, deploy to dev
+# Daily: work on develop (you + juniors, from laptops)
 git checkout develop
 # ... make changes ...
 git add -A && git commit -m "Feature: ..." && git push origin develop
-./scripts/deploy-dev.sh
+# → CI/CD auto-deploys to dev.learnwithus.sbs
 
-# When ready: merge to main, deploy to production
+# When ready: merge to main (admin only)
 git checkout main
 git merge develop
 git push origin main
-./scripts/deploy-production.sh
+# → CI/CD auto-deploys to learnwithus.sbs (production)
 ```
+
+No SSH, no manual deploy scripts. See [CI_CD_SETUP.md](CI_CD_SETUP.md) for GitHub Secrets setup.
 
 ---
 
@@ -116,7 +116,9 @@ git push origin main
 | Dev backend logs | `docker logs -f shef-lms-backend-dev` |
 | Prod backend logs | `docker logs -f shef-lms-backend` |
 | Restart dev backend | `cd backend && docker compose -f docker-compose.dev.yml restart` |
-| **Auto-deploy dev on push** | See [CI_CD_SETUP.md](CI_CD_SETUP.md) |
+| **Auto-deploy dev** | Push to `develop` → dev.learnwithus.sbs |
+| **Auto-deploy prod** | Push to `main` → learnwithus.sbs |
+| **Setup** | [CI_CD_SETUP.md](CI_CD_SETUP.md) |
 
 ---
 

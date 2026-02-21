@@ -14,12 +14,17 @@ echo "🚀 Deploying to PRODUCTION (learnwithus.sbs)"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
 
-# Ensure we're on main
+# Ensure we're on main (skip prompt when non-interactive e.g. CI/CD)
 BRANCH=$(git rev-parse --abbrev-ref HEAD)
 if [ "$BRANCH" != "main" ]; then
-    echo "⚠️  You're on branch '$BRANCH'. Production deploys from main."
-    read -p "Deploy anyway? (y/n): " confirm
-    [ "$confirm" != "y" ] && exit 1
+    if [ -t 0 ]; then
+        echo "⚠️  You're on branch '$BRANCH'. Production deploys from main."
+        read -p "Deploy anyway? (y/n): " confirm
+        [ "$confirm" != "y" ] && exit 1
+    else
+        echo "::error::Not on main. Refusing production deploy."
+        exit 1
+    fi
 fi
 
 echo "📦 Building frontend (production)..."

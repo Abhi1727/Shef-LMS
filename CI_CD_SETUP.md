@@ -1,6 +1,11 @@
 # CI/CD Pipeline Setup
 
-Automatically deploy to **dev.learnwithus.sbs** when code is pushed to the `develop` branch.
+**Full auto-deploy:** No need to SSH or run deploy scripts. Everything runs via GitHub Actions.
+
+| Branch | Trigger | Deploys to |
+|--------|---------|------------|
+| `develop` | Push | dev.learnwithus.sbs |
+| `main` | Push | learnwithus.sbs (production) |
 
 ---
 
@@ -89,10 +94,12 @@ git remote add origin https://github.com/YOUR_USER/Shef-LMS.git
 
 ## Workflow summary
 
-| Event                    | Action                                    |
-|--------------------------|-------------------------------------------|
-| Push to `develop`        | GitHub Actions SSHs to VPS, pulls code, runs `./scripts/deploy-dev.sh` |
-| Result                   | dev.learnwithus.sbs is updated            |
+| Event | Action |
+|-------|--------|
+| Push to `develop` | Deploys to **dev.learnwithus.sbs** |
+| Push to `main` | Deploys to **learnwithus.sbs** (production) |
+
+Both use the same GitHub Secrets (VPS_HOST, VPS_USER, VPS_SSH_KEY). No manual deploy needed.
 
 ---
 
