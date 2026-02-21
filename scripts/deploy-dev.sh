@@ -37,8 +37,8 @@ sudo chown -R www-data:www-data /var/www/shef-lms-dev
 echo ""
 echo "🐳 Rebuilding and restarting dev backend (port 5001)..."
 cd backend
-docker compose -f docker-compose.dev.yml build --no-cache 2>/dev/null || docker-compose -f docker-compose.dev.yml build --no-cache 2>/dev/null || true
-docker compose -f docker-compose.dev.yml up -d 2>/dev/null || docker-compose -f docker-compose.dev.yml up -d 2>/dev/null || true
+docker compose -p shef-lms-dev -f docker-compose.dev.yml build --no-cache 2>/dev/null || docker-compose -p shef-lms-dev -f docker-compose.dev.yml build --no-cache 2>/dev/null || true
+docker compose -p shef-lms-dev -f docker-compose.dev.yml up -d 2>/dev/null || docker-compose -p shef-lms-dev -f docker-compose.dev.yml up -d 2>/dev/null || true
 cd ..
 
 echo ""

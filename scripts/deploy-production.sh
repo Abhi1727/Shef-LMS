@@ -32,8 +32,8 @@ sudo chown -R www-data:www-data /var/www/shef-lms
 echo ""
 echo "🐳 Rebuilding and restarting production backend..."
 cd backend
-(docker compose build --no-cache 2>/dev/null || docker-compose build --no-cache 2>/dev/null) || true
-(docker compose up -d 2>/dev/null || docker-compose up -d 2>/dev/null) || true
+(docker compose -p shef-lms-prod -f docker-compose.yml build --no-cache 2>/dev/null || docker-compose -p shef-lms-prod -f docker-compose.yml build --no-cache 2>/dev/null) || true
+(docker compose -p shef-lms-prod -f docker-compose.yml up -d 2>/dev/null || docker-compose -p shef-lms-prod -f docker-compose.yml up -d 2>/dev/null) || true
 cd ..
 
 echo ""
