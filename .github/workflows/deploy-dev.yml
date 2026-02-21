@@ -9,33 +9,25 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - name: Prepare SSH key
-        id: ssh-key
-        env:
-          SSH_KEY_B64: ${{ secrets.VPS_SSH_KEY }}
-        run: |
-          if [ -z "$SSH_KEY_B64" ]; then echo "::error::VPS_SSH_KEY is empty"; exit 1; fi
-          if [ -z "${{ secrets.VPS_HOST }}" ]; then echo "::error::VPS_HOST is empty"; exit 1; fi
-          if [ -z "${{ secrets.VPS_USER }}" ]; then echo "::error::VPS_USER is empty"; exit 1; fi
-          if printf '%s' "$SSH_KEY_B64" | grep -q "BEGIN OPENSSH PRIVATE KEY"; then
-            KEY=$(printf '%s\n' "$SSH_KEY_B64")
-          else
-            KEY=$(printf '%s' "$SSH_KEY_B64" | base64 -d)
-          fi
-          echo "key<<ENDOFKEY" >> $GITHUB_OUTPUT
-          printf '%s\n' "$KEY" >> $GITHUB_OUTPUT
-          echo "ENDOFKEY" >> $GITHUB_OUTPUT
       - name: Deploy to VPS via SSH
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.VPS_HOST }}
-          username: ${{ secrets.VPS_USER }}
-          key: ${{ steps.ssh-key.outputs.key }}
-          command_timeout: 15m
-          script: |
+        env:
+          SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+        run: |
+          set -e
+          mkdir -p ~/.ssh
+          if printf '%s' "$SSH_KEY" | grep -q "BEGIN OPENSSH PRIVATE KEY"; then
+            printf '%s\n' "$SSH_KEY" > ~/.ssh/deploy_key
+          else
+            printf '%s' "$SSH_KEY" | base64 -d > ~/.ssh/deploy_key
+          fi
+          chmod 600 ~/.ssh/deploy_key
+          ssh -o StrictHostKeyChecking=no -o BatchMode=yes -i ~/.ssh/deploy_key ${VPS_USER}@${VPS_HOST} '
             set -e
             cd /root/Shef-LMS
             git fetch origin develop
             git checkout develop
             git pull origin develop
             ./scripts/deploy-dev.sh
+          '
