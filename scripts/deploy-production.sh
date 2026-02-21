@@ -4,6 +4,10 @@
 
 set -e
 
+# Load nvm (SSH non-interactive sessions don't load .bashrc)
+export NVM_DIR="$HOME/.nvm"
+[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+
 cd "$(dirname "$0")/.."
 
 echo "🚀 Deploying to PRODUCTION (learnwithus.sbs)"
