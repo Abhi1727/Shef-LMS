@@ -109,10 +109,16 @@ Then add `VPS_FINGERPRINT` secret and use `fingerprint: ${{ secrets.VPS_FINGERPR
 ### "command not found" (npm, docker, node)
 The SSH session may not load your shell profile. Ensure Node and Docker are in the default `PATH` (e.g. `/usr/local/bin`). If you use `nvm`, consider switching to a system-wide Node install for the deploy user.
 
-### Permission denied (publickey)
-- Verify `VPS_SSH_KEY` contains the full private key including BEGIN/END lines
-- Ensure the public key is in `~/.ssh/authorized_keys` on the VPS
-- Check `VPS_USER` and `VPS_HOST` are correct
+### "no such host"
+- `VPS_HOST` must be your VPS IP only, e.g. `31.220.55.193`
+- No `https://`, no port `:22`, no spaces or quotes
+- Use the IP address, not a hostname (DNS may not resolve from GitHub)
+
+### Permission denied (publickey) / "no key found"
+- Verify `VPS_SSH_KEY` contains the **entire** private key
+- Copy from `-----BEGIN OPENSSH PRIVATE KEY-----` through `-----END OPENSSH PRIVATE KEY-----` (all lines)
+- No extra spaces at start/end; paste carefully into GitHub Secrets
+- Re-run `./scripts/setup-github-deploy-key.sh` and copy the key again if needed
 
 ### Wrong project path
 If your repo is not at `/root/Shef-LMS`, edit `.github/workflows/deploy-dev.yml` and change the `cd` path in the script.
