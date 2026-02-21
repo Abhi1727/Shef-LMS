@@ -9,6 +9,12 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
+      - name: Verify secrets are set
+        run: |
+          if [ -z "${{ secrets.VPS_SSH_KEY }}" ]; then echo "::error::VPS_SSH_KEY secret is empty. Add the private key from cat ~/.ssh/github_deploy"; exit 1; fi
+          if [ -z "${{ secrets.VPS_HOST }}" ]; then echo "::error::VPS_HOST secret is empty. Use your VPS IP e.g. 31.220.55.193"; exit 1; fi
+          if [ -z "${{ secrets.VPS_USER }}" ]; then echo "::error::VPS_USER secret is empty. Use e.g. root"; exit 1; fi
+          echo "All required secrets are set"
       - name: Deploy to VPS via SSH
         uses: appleboy/ssh-action@v1.0.3
         with:
