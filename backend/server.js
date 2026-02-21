@@ -56,6 +56,14 @@ app.use(cors({
 
 app.use(express.json());
 
+// Prevent API response caching - ensures fresh data for users
+app.use('/api', (req, res, next) => {
+  res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  res.set('Pragma', 'no-cache');
+  res.set('Expires', '0');
+  next();
+});
+
 // Rate limit auth endpoints (login/register) to reduce brute-force risk
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
@@ -85,6 +93,7 @@ app.use('/api/video', require('./routes/video'));
 app.use('/api/teacher', require('./routes/teacher'));
 app.use('/api/batches', require('./routes/batches'));
 app.use('/api/student', require('./routes/student'));
+app.use('/api/activity', require('./routes/activity'));
 
 // Health check & API root
 app.get('/api/health', (req, res) => {

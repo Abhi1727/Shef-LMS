@@ -8,6 +8,7 @@ const path = require('path');
 const fs = require('fs');
 const User = require('../models/User');
 const Batch = require('../models/Batch');
+const ActivityLog = require('../models/ActivityLog');
 const Course = require('../models/Course');
 const Module = require('../models/Module');
 const Classroom = require('../models/Classroom');
@@ -243,6 +244,143 @@ router.delete('/users/:id', async (req, res) => {
     res.json({ message: 'User deleted successfully' });
   } catch (err) {
     console.error('Error deleting user:', err);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// @route   GET /api/admin/debug-ip
+// @desc    Debug: see what IP/headers the server receives (for verifying geo works)
+router.get('/debug-ip', async (req, res) => {
+  try {
+    const { getClientIP, getGeoFromIP } = require('../utils/geoIP');
+    const clientIP = getClientIP(req);
+    const geo = await getGeoFromIP(clientIP);
+    const headers = {
+      'x-forwarded-for': req.headers['x-forwarded-for'],
+      'x-real-ip': req.headers['x-real-ip'],
+      'cf-connecting-ip': req.headers['cf-connecting-ip'],
+      'true-client-ip': req.headers['true-client-ip']
+    };
+    res.json({ clientIP, geo, headers });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// @route   GET /api/admin/activity
+// @desc    Get activity log (logins, video views, etc.) from ActivityLog + User fallback
+router.get('/activity', async (req, res) => {
+  try {
+    const { role, action, limit = 200, source = 'all' } = req.query;
+    const maxLimit = Math.min(parseInt(limit, 10) || 200, 500);
+
+    const fromLog = [];
+    const fromUsers = [];
+
+    // 1. Read from ActivityLog (primary source for new data)
+    if (source !== 'users') {
+      const logFilter = {};
+      if (role && ['student', 'teacher', 'mentor', 'admin', 'instructor'].includes(role)) {
+        logFilter.userRole = role;
+      }
+      if (action) logFilter.action = action;
+
+      const logs = await ActivityLog.find(logFilter)
+        .sort({ timestamp: -1 })
+        .limit(maxLimit)
+        .lean()
+        .exec();
+
+      fromLog.push(...logs.map(doc => ({
+        action: doc.action,
+        userId: doc.userId,
+        userName: doc.userName || '',
+        userEmail: doc.userEmail || '',
+        userRole: doc.userRole || 'student',
+        timestamp: doc.timestamp ? new Date(doc.timestamp).toISOString() : null,
+        ipAddress: doc.ipAddress || null,
+        city: doc.city || null,
+        country: doc.country || null,
+        isp: doc.isp || null,
+        videoId: doc.videoId || null,
+        videoTitle: doc.videoTitle || null,
+        assessmentId: doc.assessmentId || null,
+        assessmentTitle: doc.assessmentTitle || null,
+        score: doc.score,
+        path: doc.path || null
+      })));
+    }
+
+    // 2. Fallback: aggregate from User.loginHistory (for historical data before ActivityLog)
+    if ((source === 'all' || source === 'users') && fromLog.length < 50) {
+      const roles = ['student', 'teacher', 'mentor', 'admin', 'instructor'];
+      const userFilter = role && roles.includes(role) ? { role } : { role: { $in: roles } };
+      const users = await User.find(userFilter)
+        .select('name email role loginHistory lastLogin lastLoginIP lastLoginTimestamp')
+        .lean()
+        .exec();
+
+      for (const u of users) {
+        const userId = String(u._id);
+        const userName = u.name || 'Unknown';
+        const userEmail = u.email || '';
+        const userRole = u.role || 'student';
+        const history = Array.isArray(u.loginHistory) ? u.loginHistory : [];
+
+        for (const h of history) {
+          const ts = h.timestamp ? new Date(h.timestamp) : null;
+          if (ts && !isNaN(ts.getTime())) {
+            fromUsers.push({
+              action: 'login',
+              userId,
+              userName,
+              userEmail,
+              userRole,
+              timestamp: ts.toISOString(),
+              ipAddress: h.ipAddress || null,
+              city: h.city || null,
+              country: h.country || null,
+              isp: h.isp || null
+            });
+          }
+        }
+        if (history.length === 0 && u.lastLogin) {
+          const lastTs = u.lastLogin.timestamp ? new Date(u.lastLogin.timestamp) : (u.lastLoginTimestamp ? new Date(u.lastLoginTimestamp) : null);
+          if (lastTs && !isNaN(lastTs.getTime())) {
+            fromUsers.push({
+              action: 'login',
+              userId,
+              userName,
+              userEmail,
+              userRole,
+              timestamp: lastTs.toISOString(),
+              ipAddress: u.lastLogin.ipAddress || u.lastLoginIP || null,
+              city: u.lastLogin.city || null,
+              country: u.lastLogin.country || null,
+              isp: u.lastLogin.isp || null
+            });
+          }
+        }
+      }
+      fromUsers.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+    }
+
+    // Merge and dedupe by userId+timestamp (same second = same event)
+    const seen = new Set();
+    const merged = [];
+    for (const a of [...fromLog, ...fromUsers]) {
+      const ts = new Date(a.timestamp).getTime();
+      const key = `${a.userId}_${isNaN(ts) ? 0 : Math.floor(ts / 1000)}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      merged.push(a);
+    }
+    merged.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+    const sliced = merged.slice(0, maxLimit);
+
+    res.json({ activities: sliced, total: merged.length });
+  } catch (err) {
+    console.error('Error fetching activity:', err);
     res.status(500).json({ message: 'Server error' });
   }
 });
@@ -558,6 +696,20 @@ router.post('/classroom/youtube-url', notesUpload.single('notesFile'), async (re
       return res.status(400).json({ 
         message: 'Title, courseId, and YouTube URL are required' 
       });
+    }
+
+    // Prevent duplicate: same YouTube video already assigned to this batch
+    const batchIdNorm = (batchId && typeof batchId === 'string') ? batchId.trim() : null;
+    if (batchIdNorm) {
+      const existing = await Classroom.findOne({
+        youtubeVideoId: youtubeVideoId.trim(),
+        batchId: batchIdNorm
+      }).lean().exec();
+      if (existing) {
+        return res.status(400).json({
+          message: 'This video is already assigned to this batch. Each video can only be in a batch once.'
+        });
+      }
     }
 
     const resolvedCourse = await resolveCourseNameForVideo(courseId);

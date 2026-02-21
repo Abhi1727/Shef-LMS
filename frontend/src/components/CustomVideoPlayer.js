@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import './CustomVideoPlayer.css';
 
 // YouTube IFrame API loader
@@ -57,6 +57,7 @@ const CustomVideoPlayer = ({ video, onClose, resumePosition = 0, onProgressUpdat
   const youtubeContainerRef = useRef(null);
   const containerRef = useRef(null);
   const controlsTimeoutRef = useRef(null);
+  const videoViewLoggedRef = useRef(false);
 
   // Determine video source and initialize player
   useEffect(() => {
@@ -100,6 +101,22 @@ const CustomVideoPlayer = ({ video, onClose, resumePosition = 0, onProgressUpdat
       setIsLoading(false);
     }
   }, [video]);
+
+  // Log video view to activity when user first starts playing (once per video)
+  useEffect(() => {
+    if (hasStartedPlaying && video?.id && !videoViewLoggedRef.current) {
+      videoViewLoggedRef.current = true;
+      const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
+      fetch(`${apiUrl}/api/activity/video-view`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        },
+        body: JSON.stringify({ videoId: video.id })
+      }).catch(() => {});
+    }
+  }, [hasStartedPlaying, video?.id]);
 
   // Initialize YouTube player
   const initializeYouTubePlayer = async (embedUrl) => {
@@ -279,6 +296,7 @@ const CustomVideoPlayer = ({ video, onClose, resumePosition = 0, onProgressUpdat
 
   const handlePlay = () => {
     setIsPlaying(true);
+    setHasStartedPlaying(true);
   };
 
   const handlePause = () => {

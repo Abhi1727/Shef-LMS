@@ -5,6 +5,7 @@ import { COLLECTIONS } from '../services/firebaseService';
 import { ToastContainer, showToast } from './Toast';
 import fallbackData from '../data/fallbackData';
 import { YouTubeUtils } from '../utils/youtubeUtils';
+import StudentsActivity from './StudentsActivity';
 import './AdminDashboard.css';
 
 const CACHE_DURATION = 15 * 60 * 1000; // 15 minutes
@@ -69,6 +70,7 @@ const AdminDashboard = ({ user, onLogout }) => {
   const [classroomVideos, setClassroomVideos] = useState([]);
   const [liveClasses, setLiveClasses] = useState([]);
   const [stats, setStats] = useState({});
+  const [activities, setActivities] = useState([]);
   
   // Loading states for individual data types
   const [dataLoading, setDataLoading] = useState({
@@ -83,11 +85,12 @@ const AdminDashboard = ({ user, onLogout }) => {
     jobs: false,
     mentors: false,
     classroom: false,
-    liveClasses: false
+    liveClasses: false,
+    activity: false
   });
   
   // Cache management
-  const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
+  const CACHE_DURATION = 90 * 1000; // 90 seconds - reduces stale data, still limits API calls
   const getCachedData = useCallback((key) => {
     try {
       const cached = localStorage.getItem(`admin_cache_${key}`);
@@ -210,6 +213,8 @@ const AdminDashboard = ({ user, onLogout }) => {
   const [batchView, setBatchView] = useState(''); // 'videos' or 'students'
   const [studentPage, setStudentPage] = useState(1);
   const [studentsPerPage, setStudentsPerPage] = useState(5);
+  const [moreOpen, setMoreOpen] = useState(false);
+  const moreRef = React.useRef(null);
 
   // Manage body scroll when modal is open
   useEffect(() => {
@@ -227,6 +232,14 @@ const AdminDashboard = ({ user, onLogout }) => {
       document.body.classList.remove('modal-open');
     };
   }, [showModal]);
+
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (moreRef.current && !moreRef.current.contains(e.target)) setMoreOpen(false);
+    };
+    document.addEventListener('click', handleClickOutside);
+    return () => document.removeEventListener('click', handleClickOutside);
+  }, []);
   const [saving, setSaving] = useState(false);
   const [uploadedFile, setUploadedFile] = useState(null);
 
@@ -744,6 +757,30 @@ const AdminDashboard = ({ user, onLogout }) => {
     }
   }, [getCachedData, setCachedData]);
 
+  const loadActivity = useCallback(async (forceRefresh = true) => {
+    setDataLoading(prev => ({ ...prev, activity: true }));
+    try {
+      const token = localStorage.getItem('token');
+      const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
+      const response = await fetch(`${apiUrl}/api/admin/activity?limit=200`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (response.ok) {
+        const { activities: list } = await response.json();
+        setActivities(list || []);
+        return list || [];
+      }
+      setActivities([]);
+      return [];
+    } catch (error) {
+      console.error('Error loading activity:', error);
+      setActivities([]);
+      return [];
+    } finally {
+      setDataLoading(prev => ({ ...prev, activity: false }));
+    }
+  }, []);
+
   // Load data based on active section (on-demand loading with timeout)
   const loadSectionData = useCallback(async (section) => {
     const timeout = (ms) => new Promise((_, reject) => setTimeout(() => reject(new Error('Request timeout')), ms));
@@ -831,6 +868,9 @@ const AdminDashboard = ({ user, onLogout }) => {
         case 'mentors':
           await Promise.race([loadMentors(true), timeout(5000)]);
           break;
+        case 'activity':
+          await Promise.race([loadActivity(true), timeout(8000)]);
+          break;
         default:
           await Promise.race([loadCourses(true), timeout(5000)]);
           break;
@@ -857,7 +897,8 @@ const AdminDashboard = ({ user, onLogout }) => {
     loadProjects,
     loadAssessments,
     loadJobs,
-    loadLiveClasses
+    loadLiveClasses,
+    loadActivity
   ]);
 
   // Initial load - only load overview data
@@ -912,6 +953,9 @@ const AdminDashboard = ({ user, onLogout }) => {
           break;
         case 'liveClasses':
           await loadLiveClasses(forceRefresh);
+          break;
+        case 'activity':
+          await loadActivity(forceRefresh);
           break;
         default:
           break;
@@ -1811,166 +1855,91 @@ const AdminDashboard = ({ user, onLogout }) => {
     );
   }
 
+  const moreSections = ['teachers', 'modules', 'projects', 'assessments', 'jobs', 'mentors', 'content', 'activity'];
+  const isMoreActive = moreSections.includes(activeSection);
+  const moreItems = [
+    { id: 'teachers', label: 'Teachers', icon: '👨‍🏫' },
+    { id: 'modules', label: 'Modules', icon: '📖' },
+    { id: 'projects', label: 'Projects', icon: '📁' },
+    { id: 'assessments', label: 'Assessments', icon: '✏️' },
+    { id: 'jobs', label: 'Jobs', icon: '💼' },
+    { id: 'mentors', label: 'Mentors', icon: '👨‍🏫' },
+    { id: 'content', label: 'Content', icon: '📢' },
+    { id: 'activity', label: 'Activity Log', icon: '📋' }
+  ];
+
   return (
-    <div className="admin-dashboard">
-      {/* Sidebar */}
-      <aside className="admin-sidebar open">
-        <div className="sidebar-header">
-          <div className="logo">
-            <h2>LMS</h2>
+    <div className="admin-dashboard admin-dashboard-horizontal">
+      {/* Top Header with Horizontal Nav */}
+      <header className="admin-top-header admin-header-full">
+        <div className="header-row-1">
+          <div className="header-brand">
+            <h1 className="page-title">LMS Admin</h1>
           </div>
-        </div>
-
-        <nav className="sidebar-nav">
-          <button 
-            className={`nav-item ${activeSection === 'overview' ? 'active' : ''}`}
-            onClick={() => setActiveSection('overview')}
-          >
-            <span className="icon">📊</span>
-            <span>Overview</span>
-          </button>
-          <button 
-            className={`nav-item ${activeSection === 'students' ? 'active' : ''}`}
-            onClick={() => setActiveSection('students')}
-          >
-            <span className="icon">👥</span>
-            <span>Students</span>
-          </button>
-          <button 
-            className={`nav-item ${activeSection === 'teachers' ? 'active' : ''}`}
-            onClick={() => setActiveSection('teachers')}
-          >
-            <span className="icon">👨‍🏫</span>
-            <span>Teachers</span>
-          </button>
-          <button 
-            className={`nav-item ${activeSection === 'batches' ? 'active' : ''}`}
-            onClick={() => setActiveSection('batches')}
-          >
-            <span className="icon">📚</span>
-            <span>Batches</span>
-          </button>
-          
-          <button 
-            className={`nav-item ${activeSection === 'modules' ? 'active' : ''}`}
-            onClick={() => setActiveSection('modules')}
-          >
-            <span className="icon">📖</span>
-            <span>Modules</span>
-          </button>
-          
-          {/* Commented out menu items - not needed */}
-          {/* <button 
-            className={`nav-item ${activeSection === 'lessons' ? 'active' : ''}`}
-            onClick={() => setActiveSection('lessons')}
-          >
-            <span className="icon">📝</span>
-            <span>Lessons</span>
-          </button> */}
-          <button 
-            className={`nav-item ${activeSection === 'classroom' ? 'active' : ''}`}
-            onClick={() => setActiveSection('classroom')}
-          >
-            <span className="icon">🎥</span>
-            <span>Classroom</span>
-          </button>
-          {/* <button 
-            className={`nav-item ${activeSection === 'liveClasses' ? 'active' : ''}`}
-            onClick={() => setActiveSection('liveClasses')}
-          >
-            <span className="icon">📡</span>
-            <span>Live Classes</span>
-          </button>
-          <button 
-            className={`nav-item ${activeSection === 'projects' ? 'active' : ''}`}
-            onClick={() => setActiveSection('projects')}
-          >
-            <span className="icon">📁</span>
-            <span>Projects</span>
-          </button>
-          <button 
-            className={`nav-item ${activeSection === 'assessments' ? 'active' : ''}`}
-            onClick={() => setActiveSection('assessments')}
-          >
-            <span className="icon">✏️</span>
-            <span>Assessments</span>
-          </button>
-          <button 
-            className={`nav-item ${activeSection === 'jobs' ? 'active' : ''}`}
-            onClick={() => setActiveSection('jobs')}
-          >
-            <span className="icon">💼</span>
-            <span>Job Board</span>
-          </button>
-          <button 
-            className={`nav-item ${activeSection === 'mentors' ? 'active' : ''}`}
-            onClick={() => setActiveSection('mentors')}
-          >
-            <span className="icon">👨‍🏫</span>
-            <span>Mentors</span>
-          </button>
-          <button 
-            className={`nav-item ${activeSection === 'content' ? 'active' : ''}`}
-            onClick={() => setActiveSection('content')}
-          >
-            <span className="icon">📢</span>
-            <span>Content</span>
-          </button>
-          <button 
-            className={`nav-item ${activeSection === 'analytics' ? 'active' : ''}`}
-            onClick={() => setActiveSection('analytics')}
-          >
-            <span className="icon">📈</span>
-            <span>Analytics</span>
-          </button> */}
-        </nav>
-
-        <div className="sidebar-footer">
-          <button className="logout-btn" onClick={onLogout}>
-            <span className="icon">🚪</span>
-            <span>Logout</span>
-          </button>
-        </div>
-      </aside>
-
-
-
-      {/* Main Content */}
-      <main className="admin-main-content sidebar-open">
-        {/* Top Header */}
-        <header className="admin-top-header">
-          <div className="header-left">
-            <h1 className="page-title">LMS Admin Dashboard</h1>
-          </div>
-          <div className="header-right">
+          <div className="header-actions">
             <button 
               onClick={() => {
                 clearCache();
                 showToast('Cache cleared successfully!', 'success');
                 refreshData();
               }}
-              className="btn-secondary"
-              style={{ marginRight: '10px' }}
+              className="btn-secondary btn-header"
             >
               🗑️ Clear Cache
             </button>
             <button 
               onClick={() => refreshData()}
-              className="btn-primary"
+              className="btn-primary btn-header"
               disabled={loading}
             >
-              🔄 Refresh Data
+              🔄 Refresh
             </button>
             <div className="user-menu">
-              <button className="notification-btn">🔔</button>
-              <div className="user-avatar">
-                {user?.name?.charAt(0)}
-              </div>
               <span className="user-name">{user?.name}</span>
+              <div className="user-avatar">{user?.name?.charAt(0)}</div>
+              <button className="logout-btn-header" onClick={onLogout} title="Logout">
+                🚪 Logout
+              </button>
             </div>
           </div>
-        </header>
+        </div>
+        {/* Horizontal Nav Bar - Primary + More dropdown */}
+        <nav className="admin-horizontal-nav">
+          <div className="horizontal-nav-inner">
+            <button className={`nav-btn-h ${activeSection === 'overview' ? 'active' : ''}`} onClick={() => setActiveSection('overview')}>📊 Overview</button>
+            <button className={`nav-btn-h ${activeSection === 'students' ? 'active' : ''}`} onClick={() => setActiveSection('students')}>👥 Students</button>
+            <button className={`nav-btn-h ${activeSection === 'studentsActivity' ? 'active' : ''}`} onClick={() => setActiveSection('studentsActivity')}>📊 Activity</button>
+            <button className={`nav-btn-h ${activeSection === 'batches' ? 'active' : ''}`} onClick={() => setActiveSection('batches')}>📚 Batches</button>
+            <button className={`nav-btn-h ${activeSection === 'classroom' ? 'active' : ''}`} onClick={() => setActiveSection('classroom')}>🎥 Classroom</button>
+            <div className="nav-more-wrapper" ref={moreRef}>
+              <button
+                className={`nav-btn-h nav-btn-more ${isMoreActive ? 'active' : ''} ${moreOpen ? 'open' : ''}`}
+                onClick={(e) => { e.stopPropagation(); setMoreOpen(!moreOpen); }}
+              >
+                <span>More</span>
+                <span className="more-chevron">▾</span>
+              </button>
+              {moreOpen && (
+                <div className="nav-more-dropdown">
+                  {moreItems.map(({ id, label, icon }) => (
+                    <button
+                      key={id}
+                      className={`nav-more-item ${activeSection === id ? 'active' : ''}`}
+                      onClick={() => { setActiveSection(id); setMoreOpen(false); }}
+                    >
+                      <span>{icon}</span>
+                      <span>{label}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </nav>
+      </header>
 
+      {/* Main Content - Full Width */}
+      <main className="admin-main-content admin-main-full">
         {/* Dashboard Content */}
         <div className="admin-content">
           {/* Overview Section */}
@@ -2844,6 +2813,74 @@ const AdminDashboard = ({ user, onLogout }) => {
             </div>
           )}
 
+          {/* Students Activity Section - Full dedicated component */}
+          {activeSection === 'studentsActivity' && (
+            <div className="admin-section students-activity-section">
+              <StudentsActivity token={typeof localStorage !== 'undefined' ? localStorage.getItem('token') : null} />
+            </div>
+          )}
+
+          {/* Activity Section */}
+          {activeSection === 'activity' && (
+            <div className="admin-section">
+              <div className="section-header">
+                <h2>📋 Activity Log</h2>
+                <button onClick={() => refreshData('activity')} className="btn-add" disabled={dataLoading.activity}>
+                  {dataLoading.activity ? '⏳ Loading…' : '🔄 Refresh'}
+                </button>
+              </div>
+              <p className="section-description">
+                Login activity from all users (students, teachers, mentors, admins). Shows IP, location, and ISP.
+              </p>
+              <div className="data-table-container">
+                {dataLoading.activity ? (
+                  <p className="no-data">Loading activity…</p>
+                ) : activities.length === 0 ? (
+                  <p className="no-data">No activity recorded yet. Logins will appear here.</p>
+                ) : (
+                  <table className="data-table">
+                    <thead>
+                      <tr>
+                        <th>Time</th>
+                        <th>User</th>
+                        <th>Role</th>
+                        <th>Action</th>
+                        <th>IP</th>
+                        <th>Location</th>
+                        <th>ISP</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {activities.map((a, i) => (
+                        <tr key={i}>
+                          <td>{new Date(a.timestamp).toLocaleString()}</td>
+                          <td>
+                            <span className="activity-user">{a.userName}</span>
+                            <br />
+                            <small className="activity-email">{a.userEmail}</small>
+                          </td>
+                          <td>
+                            <span className={`role-badge role-${a.userRole}`}>{a.userRole}</span>
+                          </td>
+                          <td>
+                            {a.action === 'video_view' && a.videoTitle
+                              ? `📹 ${a.videoTitle}`
+                              : a.action === 'assessment_submit' && a.assessmentTitle
+                                ? `✏️ ${a.assessmentTitle}${a.score != null ? ` (${a.score})` : ''}`
+                                : a.action}
+                          </td>
+                          <td><span className="ip-address">{a.ipAddress || '—'}</span></td>
+                          <td>{[a.city, a.country].filter(Boolean).join(', ') || '—'}</td>
+                          <td>{a.isp || '—'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+            </div>
+          )}
+
           {/* Analytics Section */}
           {activeSection === 'analytics' && (
             <div className="admin-section">
@@ -3161,6 +3198,37 @@ const AdminDashboard = ({ user, onLogout }) => {
                     <option value="graduated">Graduated</option>
                     <option value="suspended">Suspended</option> */}
                   </select>
+                  {editingItem && (editingItem.lastLogin || editingItem.lastLoginIP) && (
+                    <div className="login-activity-section">
+                      <h4>📍 Login Activity</h4>
+                      <div className="activity-detail">
+                        <strong>Last Login:</strong>{' '}
+                        {editingItem.lastLogin?.timestamp ? new Date(editingItem.lastLogin.timestamp).toLocaleString() : editingItem.lastLoginTimestamp ? new Date(editingItem.lastLoginTimestamp).toLocaleString() : 'Never'}
+                      </div>
+                      <div className="activity-detail">
+                        <strong>Last IP:</strong> <span className="ip-address">{editingItem.lastLoginIP || editingItem.lastLogin?.ipAddress || 'N/A'}</span>
+                      </div>
+                      <div className="activity-detail">
+                        <strong>Location:</strong>{' '}
+                        {[editingItem.lastLogin?.city, editingItem.lastLogin?.country].filter(Boolean).join(', ') || 'N/A'}
+                      </div>
+                      <div className="activity-detail">
+                        <strong>ISP:</strong> {editingItem.lastLogin?.isp || 'N/A'}
+                      </div>
+                      {editingItem.loginHistory?.length > 0 && (
+                        <div className="login-history">
+                          <strong>Recent logins:</strong>
+                          <ul>
+                            {editingItem.loginHistory.slice(0, 5).map((h, i) => (
+                              <li key={i}>
+                                {new Date(h.timestamp).toLocaleString()} — {h.ipAddress} ({h.city && h.country ? `${h.city}, ${h.country}` : 'N/A'})
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </>
               )}
 
@@ -4101,12 +4169,11 @@ const AdminDashboard = ({ user, onLogout }) => {
                 {batchView === 'videos' && (
                   <div className="videos-view">
                     {(() => {
-                      const batchVideos = classroomVideos.filter(video => {
-                        // Match by batchId first, then by courseId as fallback
-                        return video.batchId === selectedBatch?.id || 
-                               video.batchId === selectedBatch?._id ||
-                               video.courseId === selectedBatch?.course;
-                      });
+                      const batchIdNorm = (v) => (v != null && v !== '' ? String(v).trim() : '');
+                      const selId = batchIdNorm(selectedBatch?.id || selectedBatch?._id);
+                      const batchVideos = classroomVideos.filter(video =>
+                        batchIdNorm(video.batchId) === selId
+                      );
                       
                       return batchVideos.length > 0 ? (
                         <div className="videos-list">
@@ -4179,13 +4246,10 @@ const AdminDashboard = ({ user, onLogout }) => {
                       console.log('All Students:', students);
                       
                       const batchStudents = students.filter(student => {
-                        // Filter students by selected batch name or ID
-                        const selectedBatchId = selectedBatch?.id || selectedBatch?._id;
-                        const selectedBatchCourse = selectedBatch?.course;
-                        
-                        const studentMatch = student.batchId === selectedBatchId || 
-                                             student.batchId === selectedBatchId ||
-                                             (selectedBatchCourse && student.course === selectedBatchCourse);
+                        // Filter students by batchId only (no course fallback)
+                        const normId = (v) => (v != null && v !== '' ? String(v).trim() : '');
+                        const selectedBatchId = normId(selectedBatch?.id || selectedBatch?._id);
+                        const studentMatch = normId(student.batchId) === selectedBatchId;
                         
                         console.log('Filtering student:', {
                           studentName: student.name,

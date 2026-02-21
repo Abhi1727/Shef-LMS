@@ -5,7 +5,9 @@ const jwt = require('jsonwebtoken');
 const { connectMongo } = require('../config/mongo');
 const User = require('../models/User');
 const Batch = require('../models/Batch');
+const ActivityLog = require('../models/ActivityLog');
 const logger = require('../utils/logger');
+const { getClientIP, getGeoFromIP } = require('../utils/geoIP');
 
 // Normalize email for consistent lookup (Firestore queries are case-sensitive)
 const normalizeEmail = (e) => (e || '').trim().toLowerCase();
@@ -16,7 +18,7 @@ function getJwtSecret() {
   if (isProduction && !secret) {
     throw new Error('JWT_SECRET must be set in production');
   }
-  return secret || 'shef_lms_secret_key_2025';
+  return secret || (process.env.NODE_ENV === 'production' ? null : 'dev_only_fallback');
 }
 
 // @route   POST /api/auth/register
@@ -81,31 +83,24 @@ router.post('/register', async (req, res) => {
 });
 
 // @route   POST /api/auth/login
-// @desc    Login user
+// @desc    Login user (captures IP + location for production)
 router.post('/login', async (req, res) => {
   try {
-    const { email, password, ipAddress, ipDetails } = req.body;
+    const { email, password } = req.body;
     const normalizedEmail = normalizeEmail(email);
 
     if (!normalizedEmail || !password) {
       return res.status(400).json({ message: 'Missing email or password' });
     }
 
-    // Get IP from request headers as fallback
-    const clientIP = ipAddress || 
-                     req.headers['x-forwarded-for'] || 
-                     req.headers['x-real-ip'] || 
-                     req.connection.remoteAddress || 
-                     req.socket.remoteAddress ||
-                     'Unknown';
-
-    // Store login timestamp and IP
+    const clientIP = getClientIP(req);
+    const geo = await getGeoFromIP(clientIP);
     const loginInfo = {
       timestamp: new Date().toISOString(),
       ipAddress: clientIP,
-      city: ipDetails?.city || 'Unknown',
-      country: ipDetails?.country || 'Unknown',
-      isp: ipDetails?.isp || 'Unknown'
+      city: geo.city,
+      country: geo.country,
+      isp: geo.isp
     };
 
     // Look up user in Mongo only (students/teachers/admins/mentors)
@@ -168,11 +163,33 @@ router.post('/login', async (req, res) => {
     //   return res.status(403).json({ message: 'Account is deactivated. Please contact administrator.' });
     // }
 
-    // Update user's last login info in Mongo
+    // Update user's last login and append to loginHistory
     userData.lastLogin = loginInfo;
     userData.lastLoginIP = clientIP;
     userData.lastLoginTimestamp = new Date();
+    const historyEntry = { timestamp: new Date(), ipAddress: clientIP, city: geo.city, country: geo.country, isp: geo.isp };
+    userData.loginHistory = userData.loginHistory || [];
+    userData.loginHistory.unshift(historyEntry);
+    if (userData.loginHistory.length > 20) userData.loginHistory = userData.loginHistory.slice(0, 20);
     await userData.save();
+
+    // Log to centralized ActivityLog (non-blocking)
+    try {
+      await ActivityLog.create({
+        action: 'login',
+        userId,
+        userName: userData.name || '',
+        userEmail: userData.email || '',
+        userRole: userData.role || 'student',
+        timestamp: new Date(),
+        ipAddress: clientIP,
+        city: geo.city,
+        country: geo.country,
+        isp: geo.isp
+      });
+    } catch (logErr) {
+      logger.warn('ActivityLog insert failed', { error: logErr.message });
+    }
 
     const payload = {
       user: {

@@ -272,19 +272,11 @@ const BatchDetailsPage = () => {
       if (videosResponse.ok) {
         const allVideos = await videosResponse.json();
         
-        // Filter videos to show only those belonging to this batch (normalize IDs)
+        // Filter videos to show only those explicitly assigned to this batch (batchId match only).
+        // No course-based fallback - ensures admin view matches what students see.
         const norm = (v) => (v != null && v !== '' ? String(v).trim() : '');
         const batchIdNorm = norm(batchId) || norm(foundBatch?.id || foundBatch?._id);
-        const batchVideos = allVideos.filter(video => {
-          if (norm(video.batchId) === batchIdNorm) return true;
-          // Legacy: videos without batchId match by course
-          if (!norm(video.batchId) && foundBatch) {
-            const vidCourse = video.course || video.courseId || '';
-            const batchCourse = foundBatch.course || '';
-            if (norm(vidCourse) && norm(vidCourse) === norm(batchCourse)) return true;
-          }
-          return false;
-        });
+        const batchVideos = allVideos.filter(video => norm(video.batchId) === batchIdNorm);
         
         console.log('🔍 BatchDetails Debug - Videos for batch:', {
           batchId,
@@ -605,6 +597,19 @@ const BatchDetailsPage = () => {
         return;
       }
 
+      // Prevent duplicate: same YouTube video already in this batch (client-side check)
+      if (!editingVideo && selectedBatch) {
+        const selId = (selectedBatch?.id || selectedBatch?._id || '').toString().trim();
+        const alreadyInBatch = classroomVideos.some(
+          v => (v.batchId || '').toString().trim() === selId &&
+               (v.youtubeVideoId || '') === videoId
+        );
+        if (alreadyInBatch) {
+          showToast('This video is already in this batch. Each video can only be added once.', 'warning');
+          return;
+        }
+      }
+
       const token = localStorage.getItem('token');
       const apiUrl = window.location.hostname === 'localhost'
         ? 'http://localhost:5000'
@@ -916,16 +921,11 @@ const BatchDetailsPage = () => {
   const normId = (v) => (v != null && v !== '' ? String(v).trim() : '');
   const selectedBatchIdNorm = normId(selectedBatchId);
 
-  // Filter videos for this batch and sort by newest first
+  // Filter videos for this batch (explicit batchId match only - no course fallback)
   const batchVideos = classroomVideos
     .filter(video => {
       if (!selectedBatchIdNorm) return false;
-      if (normId(video.batchId) === selectedBatchIdNorm) return true;
-      // Legacy: videos without batchId fall back to course match
-      if (!normId(video.batchId)) {
-        return normId(video.courseId || video.course) === normId(selectedBatch?.course);
-      }
-      return false;
+      return normId(video.batchId) === selectedBatchIdNorm;
     })
     .sort((a, b) => {
       // Sort by date (newest first)
@@ -1184,7 +1184,7 @@ const BatchDetailsPage = () => {
               ) : (
                 <div className="no-data">
                   <p>📹 No videos found for this batch</p>
-                  <small>Click "Add Video to Batch" to upload a new lecture for this batch.</small>
+                  <small>Only videos explicitly assigned to this batch are shown (same as students see). Click "Add Video to Batch" to add lectures.</small>
                 </div>
               )}
             </div>
@@ -1388,7 +1388,7 @@ const BatchDetailsPage = () => {
           </div>
 
           <div className="modal-content">
-            <p className="modal-subtitle">Paste a YouTube video URL to add it for this batch only.</p>
+            <p className="modal-subtitle">Paste a YouTube video URL to add it for this batch only. Each video can only be added once per batch.</p>
 
             <input
               type="text"
@@ -1717,6 +1717,44 @@ const BatchDetailsPage = () => {
                     {selectedStudentDetails?.status || 'N/A'}
                   </span>
                 </div>
+              </div>
+
+              <div className="detail-section login-activity-section">
+                <h4>📍 Login Activity</h4>
+                {(selectedStudentDetails?.lastLogin || selectedStudentDetails?.lastLoginIP) ? (
+                  <>
+                    <div className="detail-item">
+                      <label>Last Login:</label>
+                      <span>{selectedStudentDetails?.lastLogin?.timestamp ? new Date(selectedStudentDetails.lastLogin.timestamp).toLocaleString() : selectedStudentDetails?.lastLoginTimestamp ? new Date(selectedStudentDetails.lastLoginTimestamp).toLocaleString() : 'Never'}</span>
+                    </div>
+                    <div className="detail-item">
+                      <label>Last IP:</label>
+                      <span className="ip-address">{selectedStudentDetails?.lastLoginIP || selectedStudentDetails?.lastLogin?.ipAddress || 'N/A'}</span>
+                    </div>
+                    <div className="detail-item">
+                      <label>Location:</label>
+                      <span>{[selectedStudentDetails?.lastLogin?.city, selectedStudentDetails?.lastLogin?.country].filter(Boolean).join(', ') || 'N/A'}</span>
+                    </div>
+                    <div className="detail-item">
+                      <label>ISP:</label>
+                      <span>{selectedStudentDetails?.lastLogin?.isp || 'N/A'}</span>
+                    </div>
+                    {(selectedStudentDetails?.loginHistory?.length > 0) && (
+                      <div className="login-history">
+                        <label>Recent logins:</label>
+                        <ul>
+                          {selectedStudentDetails.loginHistory.slice(0, 5).map((h, i) => (
+                            <li key={i}>
+                              {new Date(h.timestamp).toLocaleString()} — {h.ipAddress} ({h.city && h.country ? `${h.city}, ${h.country}` : 'N/A'})
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <p className="no-activity">No login activity recorded yet.</p>
+                )}
               </div>
             </div>
             

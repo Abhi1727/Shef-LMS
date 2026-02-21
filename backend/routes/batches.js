@@ -229,6 +229,21 @@ router.put('/:batchId/videos/:videoId', isAdmin, async (req, res) => {
     if (!videoDoc) {
       return res.status(404).json({ success: false, message: 'Video not found' });
     }
+    // Prevent duplicate: same YouTube video already in this batch
+    const ytId = videoDoc.youtubeVideoId;
+    if (ytId) {
+      const existing = await Classroom.findOne({
+        youtubeVideoId: ytId,
+        batchId: batchId,
+        _id: { $ne: videoId }
+      }).lean().exec();
+      if (existing) {
+        return res.status(400).json({
+          success: false,
+          message: 'This video is already assigned to this batch.'
+        });
+      }
+    }
     videoDoc.batchId = batchId;
     videoDoc.course = videoDoc.course || batchDoc.course;
     await videoDoc.save();

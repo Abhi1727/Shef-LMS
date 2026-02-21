@@ -6,7 +6,7 @@ function getJwtSecret() {
   if (process.env.NODE_ENV === 'production' && !secret) {
     throw new Error('JWT_SECRET must be set in production');
   }
-  return secret || 'shef_lms_secret_key_2025';
+  return secret || (process.env.NODE_ENV === 'production' ? null : 'dev_only_fallback');
 }
 
 // Middleware to check user role and permissions

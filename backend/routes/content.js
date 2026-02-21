@@ -4,7 +4,13 @@ const path = require('path');
 const fs = require('fs');
 
 // Base path for content on VPS
-const CONTENT_BASE_PATH = '/var/www/shef-lms/content';
+const CONTENT_BASE_PATH = path.resolve(process.env.CONTENT_BASE_PATH || '/var/www/shef-lms/content');
+
+function isPathSafe(requestedPath) {
+  const resolved = path.resolve(CONTENT_BASE_PATH, requestedPath);
+  const base = path.resolve(CONTENT_BASE_PATH);
+  return resolved.startsWith(base) && resolved !== base;
+}
 
 // Get file icon based on extension
 const getFileIcon = (filename) => {
@@ -53,7 +59,13 @@ const canOpenInColab = (filename) => {
 // Get list of files for a course
 router.get('/:course', (req, res) => {
   const { course } = req.params;
+  if (!course || course.includes('..')) {
+    return res.status(400).json({ success: false, message: 'Invalid course' });
+  }
   const coursePath = path.join(CONTENT_BASE_PATH, course);
+  if (!isPathSafe(course)) {
+    return res.status(400).json({ success: false, message: 'Invalid path' });
+  }
 
   // Check if course directory exists
   if (!fs.existsSync(coursePath)) {
@@ -132,7 +144,13 @@ router.get('/:course', (req, res) => {
 // Get file info and Colab URL
 router.get('/:course/:module/:filename', (req, res) => {
   const { course, module, filename } = req.params;
+  if (!course || !module || !filename || [course, module, filename].some(p => p.includes('..'))) {
+    return res.status(400).json({ success: false, message: 'Invalid path' });
+  }
   const filePath = path.join(CONTENT_BASE_PATH, course, module, filename);
+  if (!isPathSafe(path.join(course, module, filename))) {
+    return res.status(400).json({ success: false, message: 'Invalid path' });
+  }
 
   if (!fs.existsSync(filePath)) {
     return res.status(404).json({ success: false, message: 'File not found' });

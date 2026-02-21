@@ -4,6 +4,7 @@ const multer = require('multer');
 const auth = require('../middleware/auth');
 const { roleAuth } = require('../middleware/roleAuth');
 const classroomService = require('../services/classroomService');
+const { logActivity } = require('../utils/activityLogger');
 
 // Configure multer for memory storage (for large video files)
 const upload = multer({
@@ -188,6 +189,21 @@ router.get('/play/:lectureId', async (req, res) => {
 
     // Generate signed URL for video playback (2 hours validity)
     const signedUrl = await classroomService.getSignedUrl(lecture.firebaseStoragePath);
+
+    // Log video view
+    try {
+      await logActivity({
+        action: 'video_view',
+        userId: user.id,
+        userName: user.name || '',
+        userEmail: user.email || '',
+        userRole: user.role || 'student',
+        videoId: lectureId,
+        videoTitle: lecture.title || null
+      });
+    } catch (logErr) {
+      console.warn('ActivityLog video_view failed:', logErr.message);
+    }
 
     res.json({
       lectureId: lecture.id,

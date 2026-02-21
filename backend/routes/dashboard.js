@@ -87,16 +87,14 @@ router.get('/classroom', async (req, res) => {
         return courseMatches(videoCourse, video.courseType);
       }
 
-      // Students must have a *valid* batch assigned and match both course and batch.
+      // Students: show videos explicitly assigned to their batch. Batch assignment is source of truth.
+      // Course match is NOT required - if admin assigned video to batch, student in that batch sees it.
       if (tokenUser.role === 'student') {
         if (!userBatchId) {
           return false;
         }
 
-        const courseMatch = courseMatches(videoCourse, video.courseType);
-        if (!courseMatch) return false;
-
-        // Only show videos explicitly tied to a valid batch.
+        // Only show videos explicitly tied to a valid batch that matches the student's batch.
         if (!video.batchId) {
           return false;
         }
