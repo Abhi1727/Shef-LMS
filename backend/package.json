@@ -15,7 +15,8 @@
     "migrate:firestoreGeneric": "node scripts/migrateGenericCollectionsFromFirestore.js",
     "map:batchRelations": "node scripts/mapBatchRelationsFromFirestore.js",
     "sync:batches": "node scripts/syncBatchIds.js",
-    "sync:firestore": "node scripts/auditAndSyncFromFirestore.js"
+    "sync:firestore": "node scripts/auditAndSyncFromFirestore.js",
+    "clone:prod-to-dev": "node scripts/cloneProdToDev.js"
   },
   "keywords": [
     "lms",
