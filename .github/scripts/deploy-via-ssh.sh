@@ -6,7 +6,13 @@ KEY_FILE="$1"
 HOST="$2"
 USER="$3"
 if [ -z "$KEY_FILE" ] || [ -z "$HOST" ] || [ -z "$USER" ]; then
-  echo "Usage: $0 <key_file> <host> <user>"
+  echo "::error::Missing args. Usage: $0 <key_file> <host> <user>"
+  exit 1
+fi
+if echo "$HOST" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$'; then
+  :  # HOST looks like IP
+else
+  echo "::error::HOST should be IP address, got: [${HOST}]"
   exit 1
 fi
 ssh -o StrictHostKeyChecking=no -o BatchMode=yes -i "$KEY_FILE" "${USER}@${HOST}" '
