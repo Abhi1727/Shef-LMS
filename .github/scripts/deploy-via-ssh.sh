@@ -24,5 +24,6 @@ ssh -o StrictHostKeyChecking=no -o BatchMode=yes -i "$KEY_FILE" "${USER}@${HOST}
   git fetch origin $BRANCH
   git checkout $BRANCH
   git pull origin $BRANCH
+  chmod +x scripts/$SCRIPT
   ./scripts/$SCRIPT
 "
