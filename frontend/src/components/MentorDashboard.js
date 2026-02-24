@@ -366,10 +366,28 @@ const MentorDashboard = ({ user, onLogout }) => {
                       <div className="play-overlay">▶</div>
                     </div>
                     <div className="video-info">
-                      <h3>{video.title}</h3>
-                      <p>{video.description}</p>
-                      <p>Instructor: {video.instructor}</p>
-                      <p>Duration: {video.duration}</p>
+                      <h3 className="video-title">{video.title}</h3>
+                      <div className="video-meta">
+                        <span className="meta-item">
+                          <span className="label">👨‍🏫 Teacher:</span>
+                          <span className="value">{video.instructor || video.teacherName || 'N/A'}</span>
+                        </span>
+                        {video.date && (
+                          <span className="meta-item">
+                            <span className="label">📅 Class Date:</span>
+                            <span className="value">{new Date(video.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</span>
+                          </span>
+                        )}
+                        {video.duration && (
+                          <span className="meta-item">
+                            <span className="label">⏱️ Duration:</span>
+                            <span className="value">{video.duration}</span>
+                          </span>
+                        )}
+                      </div>
+                      {video.description && (
+                        <p className="video-description">{video.description}</p>
+                      )}
                     </div>
                     <button
                       className="watch-btn"

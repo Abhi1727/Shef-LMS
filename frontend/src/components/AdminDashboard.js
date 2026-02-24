@@ -6,6 +6,7 @@ import { ToastContainer, showToast } from './Toast';
 import fallbackData from '../data/fallbackData';
 import { YouTubeUtils } from '../utils/youtubeUtils';
 import StudentsActivity from './StudentsActivity';
+import OneToOneCourseSelection from './OneToOneCourseSelection';
 import './AdminDashboard.css';
 
 const CACHE_DURATION = 15 * 60 * 1000; // 15 minutes
@@ -61,6 +62,7 @@ const AdminDashboard = ({ user, onLogout }) => {
   const [teachers, setTeachers] = useState([]);
   const [courses, setCourses] = useState([]);
   const [batches, setBatches] = useState([]);
+  const [oneToOneBatches, setOneToOneBatches] = useState([]);
   const [modules, setModules] = useState([]);
   const [lessons, setLessons] = useState([]);
   const [projects, setProjects] = useState([]);
@@ -459,6 +461,8 @@ const AdminDashboard = ({ user, onLogout }) => {
     const cachedData = getCachedData('batches');
     if (cachedData && !forceRefresh) {
       setBatches(cachedData);
+      // Also load one-to-one batches
+      loadOneToOneBatches(forceRefresh);
       return cachedData;
     }
 
@@ -466,6 +470,8 @@ const AdminDashboard = ({ user, onLogout }) => {
     try {
       const token = localStorage.getItem('token');
       const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
+      
+      // Load regular batches
       const response = await fetch(`${apiUrl}/api/admin/batches`, { 
         headers: { 'Authorization': `Bearer ${token}` } 
       });
@@ -475,6 +481,10 @@ const AdminDashboard = ({ user, onLogout }) => {
         const normalized = data.batches || data || [];
         setBatches(normalized);
         setCachedData('batches', normalized);
+        
+        // Also load one-to-one batches
+        loadOneToOneBatches(forceRefresh);
+        
         return normalized;
       } else {
         console.log('Using fallback batch data');
@@ -490,6 +500,44 @@ const AdminDashboard = ({ user, onLogout }) => {
       return fallbackData.batches;
     } finally {
       setDataLoading(prev => ({ ...prev, batches: false }));
+    }
+  }, [getCachedData, setCachedData]);
+
+  const loadOneToOneBatches = useCallback(async (forceRefresh = false) => {
+    const cachedData = getCachedData('oneToOneBatches');
+    if (cachedData && !forceRefresh) {
+      setOneToOneBatches(cachedData);
+      return cachedData;
+    }
+
+    try {
+      const token = localStorage.getItem('token');
+      const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
+      
+      // Load one-to-one batches
+      const response = await fetch(`${apiUrl}/api/one-to-one-batches`, { 
+        headers: { 'Authorization': `Bearer ${token}` } 
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        const normalized = (data.batches || data || []).map(batch => ({
+          ...batch,
+          id: batch.id || String(batch._id),
+          name: batch.name || 'Unnamed Batch'
+        }));
+        setOneToOneBatches(normalized);
+        setCachedData('oneToOneBatches', normalized);
+        return normalized;
+      } else {
+        console.log('Failed to load one-to-one batches');
+        setOneToOneBatches([]);
+        return [];
+      }
+    } catch (error) {
+      console.error('Error loading one-to-one batches:', error);
+      setOneToOneBatches([]);
+      return [];
     }
   }, [getCachedData, setCachedData]);
 
@@ -1910,6 +1958,7 @@ const AdminDashboard = ({ user, onLogout }) => {
             <button className={`nav-btn-h ${activeSection === 'students' ? 'active' : ''}`} onClick={() => setActiveSection('students')}>👥 Students</button>
             <button className={`nav-btn-h ${activeSection === 'studentsActivity' ? 'active' : ''}`} onClick={() => setActiveSection('studentsActivity')}>📊 Activity</button>
             <button className={`nav-btn-h ${activeSection === 'batches' ? 'active' : ''}`} onClick={() => setActiveSection('batches')}>📚 Batches</button>
+            <button className={`nav-btn-h ${activeSection === 'oneToOne' ? 'active' : ''}`} onClick={() => setActiveSection('oneToOne')}>👤 One to One</button>
             <button className={`nav-btn-h ${activeSection === 'classroom' ? 'active' : ''}`} onClick={() => setActiveSection('classroom')}>🎥 Classroom</button>
             <div className="nav-more-wrapper" ref={moreRef}>
               <button
@@ -2060,7 +2109,9 @@ const AdminDashboard = ({ user, onLogout }) => {
                           </button>
                         </td>
                         <td>{student.email}</td>
-                        <td>{(batches || []).find(b => b.id === student.batchId)?.name || student.batchName || 'No Batch Assigned'}</td>
+                        <td>{(batches || []).find(b => b.id === student.batchId)?.name || 
+              (oneToOneBatches || []).find(b => b.id === student.batchId)?.name || 
+              student.batchName || 'No Batch Assigned'}</td>
                         <td>{student.course || 'N/A'}</td>
                         <td>
                           <button onClick={() => openModal('student', student)} className="btn-edit">✏️</button>
@@ -2266,7 +2317,8 @@ const AdminDashboard = ({ user, onLogout }) => {
                       <tr key={module.id}>
                         <td>{module.name}</td>
                         <td>{(courses || []).find(c => c.id === module.courseId)?.title || 'N/A'}</td>
-                        <td>{(batches || []).find(b => b.id === module.batchId)?.name || 'N/A'}</td>
+                        <td>{(batches || []).find(b => b.id === module.batchId)?.name || 
+              (oneToOneBatches || []).find(b => b.id === module.batchId)?.name || 'N/A'}</td>
                         <td>
                           <span className="content-type-badge">
                             {module.contentType === 'pdf' && '📄 PDF'}
@@ -2503,6 +2555,17 @@ const AdminDashboard = ({ user, onLogout }) => {
             </div>
           )}
 
+          {/* One to One Section */}
+          {activeSection === 'oneToOne' && (
+            <div className="admin-section">
+              <div className="section-header">
+                <h2>One to One Batches</h2>
+                <p className="section-description">Manage private one-to-one batches for individual students</p>
+              </div>
+              <OneToOneCourseSelection />
+            </div>
+          )}
+
           {/* Classroom Videos Section */}
           {activeSection === 'classroom' && (
             <div className="admin-section">
@@ -2555,7 +2618,8 @@ const AdminDashboard = ({ user, onLogout }) => {
                               </span>
                               {video.batchId && (
                                 <small style={{display: 'block', color: '#666', marginTop: '2px'}}>
-                                  Batch: {(batches || []).find(b => b.id === video.batchId)?.name || 'No Batch Assigned'}
+                                  Batch: {(batches || []).find(b => b.id === video.batchId)?.name || 
+              (oneToOneBatches || []).find(b => b.id === video.batchId)?.name || 'No Batch Assigned'}
                                 </small>
                               )}
                             </td>
@@ -4171,9 +4235,16 @@ const AdminDashboard = ({ user, onLogout }) => {
                     {(() => {
                       const batchIdNorm = (v) => (v != null && v !== '' ? String(v).trim() : '');
                       const selId = batchIdNorm(selectedBatch?.id || selectedBatch?._id);
-                      const batchVideos = classroomVideos.filter(video =>
-                        batchIdNorm(video.batchId) === selId
-                      );
+                      const batchVideos = classroomVideos
+                        .filter(video =>
+                          batchIdNorm(video.batchId) === selId
+                        )
+                        .sort((a, b) => {
+                          // Sort by newest first - use multiple date fields for one-to-one videos
+                          const dateA = new Date(a.addedAt || a.date || a.createdAt || 0);
+                          const dateB = new Date(b.addedAt || b.date || b.createdAt || 0);
+                          return dateB - dateA; // Newest first (descending order)
+                        });
                       
                       return batchVideos.length > 0 ? (
                         <div className="videos-list">
@@ -4279,7 +4350,8 @@ const AdminDashboard = ({ user, onLogout }) => {
                                 <tr key={student.id}>
                                   <td>{student.name}</td>
                                   <td>{student.email}</td>
-                                  <td>{(batches || []).find(b => b.id === student.batchId)?.name || 'No Batch Assigned'}</td>
+                                  <td>{(batches || []).find(b => b.id === student.batchId)?.name || 
+              (oneToOneBatches || []).find(b => b.id === student.batchId)?.name || 'No Batch Assigned'}</td>
                                   <td>
                                     <span className={`status-badge ${student.status}`}>
                                       {student.status}

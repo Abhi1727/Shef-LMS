@@ -9,6 +9,7 @@ const MentorDashboard = lazy(() => import('./components/MentorDashboard'));
 const TeacherDashboard = lazy(() => import('./components/TeacherDashboard'));
 const AdminDashboard = lazy(() => import('./components/AdminDashboard'));
 const BatchDetailsPage = lazy(() => import('./components/BatchDetailsPage'));
+const OneToOneBatchManagement = lazy(() => import('./components/OneToOneBatchManagement'));
 
 // Loading component for lazy loaded components
 const LoadingSpinner = () => (
@@ -149,6 +150,20 @@ function App() {
               <Suspense fallback={<LoadingSpinner />}>
                 {isAuthenticated && user?.role === 'admin' ? 
                 <BatchDetailsPage /> : 
+                !isAuthenticated ?
+                <Navigate to="/login" replace /> :
+                user?.role === 'mentor' ?
+                <Navigate to="/mentor" replace /> :
+                <Navigate to="/dashboard" replace />}
+              </Suspense>
+            } 
+          />
+          <Route 
+            path="/admin/one-to-one-batch/:batchId" 
+            element={
+              <Suspense fallback={<LoadingSpinner />}>
+                {isAuthenticated && user?.role === 'admin' ? 
+                <OneToOneBatchManagement /> : 
                 !isAuthenticated ?
                 <Navigate to="/login" replace /> :
                 user?.role === 'mentor' ?

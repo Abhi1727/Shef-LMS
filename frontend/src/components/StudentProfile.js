@@ -2,32 +2,11 @@ import React, { useState, useEffect } from 'react';
 import './StudentProfile.css';
 
 const StudentProfile = ({ user, onProfileUpdate }) => {
-  const [isEditing, setIsEditing] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [message, setMessage] = useState('');
   const [messageType, setMessageType] = useState('');
   const [activeTab, setActiveTab] = useState('personal');
   
-  // Profile data state
-  const [profileData, setProfileData] = useState({
-    name: '',
-    email: '',
-    currentCourse: '',
-    phone: '',
-    bio: '',
-    location: '',
-    joinDate: ''
-  });
-
-  // Learning stats
-  const [learningStats, setLearningStats] = useState({
-    completedLessons: 0,
-    totalLessons: 0,
-    streakDays: 0,
-    certificates: 0,
-    studyHours: 0
-  });
-
   // Password change state
   const [passwordData, setPasswordData] = useState({
     currentPassword: '',
@@ -40,35 +19,8 @@ const StudentProfile = ({ user, onProfileUpdate }) => {
   const [passwordStrength, setPasswordStrength] = useState('');
 
   useEffect(() => {
-    if (user) {
-      setProfileData({
-        name: user.name || '',
-        email: user.email || '',
-        currentCourse: user.currentCourse || user.course || '',
-        phone: user.phone || '',
-        bio: user.bio || '',
-        location: user.location || '',
-        joinDate: user.enrollmentDate || user.createdAt || new Date().toISOString()
-      });
-      
-      // Simulate learning stats (in real app, fetch from API)
-      setLearningStats({
-        completedLessons: Math.floor(Math.random() * 50) + 10,
-        totalLessons: 157,
-        streakDays: Math.floor(Math.random() * 30) + 1,
-        certificates: Math.floor(Math.random() * 3),
-        studyHours: Math.floor(Math.random() * 100) + 20
-      });
-    }
-  }, [user]);
-
-  const handleInputChange = (e) => {
-    const { name, value } = e.target;
-    setProfileData(prev => ({
-      ...prev,
-      [name]: value
-    }));
-  };
+    // Component is simplified - no profile data to initialize
+  }, []);
 
   const handlePasswordChange = (e) => {
     const { name, value } = e.target;
@@ -128,56 +80,6 @@ const StudentProfile = ({ user, onProfileUpdate }) => {
     }, 3000);
   };
 
-  const handleSaveProfile = async () => {
-    setIsLoading(true);
-    try {
-      const token = localStorage.getItem('token');
-      const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
-      
-      // Only send password data to backend, not name/email changes
-      const response = await fetch(`${apiUrl}/api/student/profile`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({
-          currentPassword: passwordData.currentPassword,
-          newPassword: passwordData.newPassword
-        })
-      });
-
-      const data = await response.json();
-
-      if (response.ok) {
-        showMessage('Password updated successfully!', 'success');
-        setIsEditing(false);
-        
-        // Update user data in localStorage (only password changes)
-        const updatedUser = { ...user, currentPassword: passwordData.newPassword };
-        localStorage.setItem('user', JSON.stringify(updatedUser));
-        
-        // If email was changed, we need to update the token
-        if (user.email !== data.profile.email) {
-          // For email changes, the user might need to re-login with new email
-          showMessage('Email updated! You may need to login again with your new email.', 'success');
-        }
-        
-        // Notify parent component of the update
-        if (onProfileUpdate) {
-          onProfileUpdate(updatedUser);
-        }
-      } else {
-        showMessage(data.message || 'Failed to update profile', 'error');
-      }
-    } catch (error) {
-      console.error('Error updating profile:', error);
-      showMessage('Network error. Please try again.', 'error');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
   const handlePasswordUpdate = async () => {
     // Validate password matching
     if (passwordData.newPassword !== passwordData.confirmPassword) {
@@ -235,17 +137,8 @@ const StudentProfile = ({ user, onProfileUpdate }) => {
   };
 
   const handleCancel = () => {
-    setIsEditing(false);
     setShowPasswordChange(false);
     setPasswordError('');
-    // Reset form data to original user data
-    if (user) {
-      setProfileData({
-        name: user.name || '',
-        email: user.email || '',
-        currentCourse: user.currentCourse || user.course || ''
-      });
-    }
     // Reset password data
     setPasswordData({
       currentPassword: '',
@@ -261,24 +154,23 @@ const StudentProfile = ({ user, onProfileUpdate }) => {
         <div className="profile-avatar-section">
           <div className="profile-avatar">
             <span className="avatar-text">
-              {profileData.name ? profileData.name.charAt(0).toUpperCase() : 'U'}
+              {user ? user.name.charAt(0).toUpperCase() : 'U'}
             </span>
           </div>
           <div className="profile-info">
-            <h2>{profileData.name || 'Student Name'}</h2>
-            <p className="profile-email">{profileData.email || 'email@example.com'}</p>
+            <h2>{user ? user.name : 'Student Name'}</h2>
+            <p className="profile-email">{user ? user.email : 'email@example.com'}</p>
             <div className="profile-badges">
               <span className="badge badge-primary">Active Learner</span>
-              <span className="badge badge-secondary">{learningStats.streakDays} Day Streak</span>
             </div>
           </div>
         </div>
-        {!isEditing && !showPasswordChange && (
+        {!showPasswordChange && (
           <button 
             className="edit-btn"
-            onClick={() => setIsEditing(true)}
+            onClick={() => setShowPasswordChange(true)}
           >
-            ✏️ Edit Profile
+            🔑 Change Password
           </button>
         )}
       </div>
@@ -308,115 +200,27 @@ const StudentProfile = ({ user, onProfileUpdate }) => {
               <div className="profile-grid">
                 <div className="profile-field">
                   <label>Full Name</label>
-                  {isEditing ? (
-                    <input
-                      type="text"
-                      name="name"
-                      value={profileData.name}
-                      onChange={handleInputChange}
-                      className="profile-input"
-                      placeholder="Enter your full name"
-                    />
-                  ) : (
-                    <span className="profile-value">{profileData.name || 'Not set'}</span>
-                  )}
+                  <div className="profile-value">{user ? user.name : 'Student Name'}</div>
                 </div>
-
                 <div className="profile-field">
-                  <label>Email Address</label>
-                  <span className="profile-value readonly">{profileData.email || 'Not set'}</span>
+                  <label>Email</label>
+                  <div className="profile-value">{user ? user.email : 'email@example.com'}</div>
                 </div>
-
                 <div className="profile-field">
-                  <label>Phone Number</label>
-                  {isEditing ? (
-                    <input
-                      type="tel"
-                      name="phone"
-                      value={profileData.phone}
-                      onChange={handleInputChange}
-                      className="profile-input"
-                      placeholder="Enter your phone number"
-                    />
-                  ) : (
-                    <span className="profile-value">{profileData.phone || 'Not set'}</span>
-                  )}
+                  <label>Course</label>
+                  <div className="profile-value">{user ? (user.currentCourse || user.course || 'Not assigned') : 'Not assigned'}</div>
                 </div>
-
                 <div className="profile-field">
-                  <label>Location</label>
-                  {isEditing ? (
-                    <input
-                      type="text"
-                      name="location"
-                      value={profileData.location}
-                      onChange={handleInputChange}
-                      className="profile-input"
-                      placeholder="Enter your location"
-                    />
-                  ) : (
-                    <span className="profile-value">{profileData.location || 'Not set'}</span>
-                  )}
-                </div>
-
-                <div className="profile-field full-width">
-                  <label>Bio</label>
-                  {isEditing ? (
-                    <textarea
-                      name="bio"
-                      value={profileData.bio}
-                      onChange={handleInputChange}
-                      className="profile-input profile-textarea"
-                      placeholder="Tell us about yourself..."
-                      rows="4"
-                    />
-                  ) : (
-                    <span className="profile-value">{profileData.bio || 'No bio added yet'}</span>
-                  )}
+                  <label>Role</label>
+                  <div className="profile-value">{user ? user.role : 'student'}</div>
                 </div>
               </div>
             </div>
-          </div>
-        )}
 
-        {/* Security Tab (temporarily disabled) */}
-        {false && activeTab === 'security' && (
-          <div className="tab-content">
+            {/* Password Change Section */}
             <div className="profile-section">
-              <h3>🔒 Security Settings</h3>
-              {!showPasswordChange ? (
-                <div className="password-section">
-                  <div className="security-info">
-                    <div className="security-item">
-                      <span className="security-icon">🔐</span>
-                      <div>
-                        <h4>Password</h4>
-                        <p>Last changed recently</p>
-                      </div>
-                    </div>
-                    <div className="security-item">
-                      <span className="security-icon">📧</span>
-                      <div>
-                        <h4>Email Verification</h4>
-                        <p>Verified</p>
-                      </div>
-                    </div>
-                    <div className="security-item">
-                      <span className="security-icon">🛡️</span>
-                      <div>
-                        <h4>Two-Factor Authentication</h4>
-                        <p>Not enabled</p>
-                      </div>
-                    </div>
-                  </div>
-                  <button 
-                    className="change-password-btn"
-                    onClick={() => setShowPasswordChange(true)}
-                  >
-                    🔑 Change Password
-                  </button>
-                </div>
-              ) : (
+              <h3>🔐 Security Settings</h3>
+              {showPasswordChange ? (
                 <div className="password-form">
                   <div className="profile-field">
                     <label>Current Password</label>
@@ -468,6 +272,30 @@ const StudentProfile = ({ user, onProfileUpdate }) => {
                     )}
                   </div>
                 </div>
+              ) : (
+                <div className="security-info">
+                  <div className="security-item">
+                    <span className="security-icon">🔒</span>
+                    <div>
+                      <h4>Password</h4>
+                      <p>Click "Change Password" to update your password</p>
+                    </div>
+                  </div>
+                  <div className="security-item">
+                    <span className="security-icon">✅</span>
+                    <div>
+                      <h4>Email Verification</h4>
+                      <p>Verified</p>
+                    </div>
+                  </div>
+                  <div className="security-item">
+                    <span className="security-icon">🛡️</span>
+                    <div>
+                      <h4>Two-Factor Authentication</h4>
+                      <p>Not enabled</p>
+                    </div>
+                  </div>
+                </div>
               )}
             </div>
           </div>
@@ -494,27 +322,20 @@ const StudentProfile = ({ user, onProfileUpdate }) => {
                   <h4>Knowledge Seeker</h4>
                   <p>Completed 10 lessons</p>
                 </div>
-                {learningStats.certificates > 0 && (
-                  <div className="achievement-card certificate">
-                    <div className="achievement-icon">🏆</div>
-                    <h4>Course Graduate</h4>
-                    <p>Completed a full course</p>
-                  </div>
-                )}
               </div>
             </div>
           </div>
         )}
 
         {/* Action Buttons */}
-        {(isEditing || showPasswordChange) && (
+        {showPasswordChange && (
           <div className="profile-actions">
             <button 
               className="save-btn"
-              onClick={showPasswordChange ? handlePasswordUpdate : handleSaveProfile}
+              onClick={handlePasswordUpdate}
               disabled={isLoading}
             >
-              {isLoading ? '💾 Saving...' : (showPasswordChange ? '🔑 Update Password' : '💾 Save Changes')}
+              {isLoading ? '💾 Saving...' : '🔑 Update Password'}
             </button>
             <button 
               className="cancel-btn"
