@@ -17,3 +17,272 @@ code {
   font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
     monospace;
 }
+
+/* Global Mobile-First Responsive Styles */
+
+/* CSS Custom Properties for Mobile Responsiveness */
+:root {
+  /* Mobile-specific variables */
+  --mobile-padding: 15px;
+  --mobile-gap: 12px;
+  --mobile-font-size: 14px;
+  --touch-target-size: 44px;
+  
+  /* Responsive breakpoints */
+  --mobile-breakpoint: 480px;
+  --tablet-breakpoint: 768px;
+  --desktop-breakpoint: 1024px;
+  --large-desktop-breakpoint: 1200px;
+}
+
+/* Base mobile-first styles */
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  line-height: 1.5;
+}
+
+/* Mobile-first approach - mobile styles are default */
+@media (max-width: 480px) {
+  html {
+    font-size: 14px;
+  }
+  
+  /* Ensure all interactive elements are touch-friendly */
+  button, .btn, input, textarea, select, a {
+    min-height: var(--touch-target-size);
+    min-width: var(--touch-target-size);
+  }
+  
+  /* Improve readability on small screens */
+  h1 { font-size: 1.5rem; }
+  h2 { font-size: 1.3rem; }
+  h3 { font-size: 1.1rem; }
+  h4 { font-size: 1rem; }
+  
+  /* Compact spacing for mobile */
+  .container, .content, .main {
+    padding: var(--mobile-padding);
+  }
+  
+  /* Stack elements vertically on mobile */
+  .row, .flex-row {
+    flex-direction: column;
+    gap: var(--mobile-gap);
+  }
+  
+  .grid {
+    grid-template-columns: 1fr;
+    gap: var(--mobile-gap);
+  }
+  
+  /* Hide desktop elements */
+  .desktop-only {
+    display: none !important;
+  }
+  
+  /* Show mobile elements */
+  .mobile-only {
+    display: block !important;
+  }
+}
+
+/* Tablet styles */
+@media (min-width: 481px) and (max-width: 768px) {
+  html {
+    font-size: 15px;
+  }
+  
+  .container, .content, .main {
+    padding: 20px;
+  }
+  
+  .grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 15px;
+  }
+  
+  .row, .flex-row {
+    flex-direction: row;
+    gap: 15px;
+  }
+  
+  /* Tablet-specific elements */
+  .tablet-only {
+    display: block;
+  }
+  
+  .mobile-only {
+    display: none;
+  }
+}
+
+/* Desktop styles */
+@media (min-width: 769px) {
+  html {
+    font-size: 16px;
+  }
+  
+  .container, .content, .main {
+    padding: 25px;
+    max-width: 1200px;
+    margin: 0 auto;
+  }
+  
+  .grid {
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 20px;
+  }
+  
+  /* Hide mobile/tablet elements */
+  .mobile-only,
+  .tablet-only {
+    display: none !important;
+  }
+  
+  /* Show desktop elements */
+  .desktop-only {
+    display: block;
+  }
+}
+
+/* Large desktop optimizations */
+@media (min-width: 1024px) {
+  .container, .content, .main {
+    max-width: 1400px;
+  }
+}
+
+/* Touch device optimizations */
+@media (hover: none) and (pointer: coarse) {
+  button, .btn, a, .clickable, .nav-item {
+    min-height: var(--touch-target-size);
+    min-width: var(--touch-target-size);
+    padding: 12px 16px;
+  }
+}
+
+/* High DPI displays */
+@media (-webkit-min-device-pixel-ratio: 2), (min-resolution: 192dpi) {
+  .loader {
+    border-width: 2px;
+  }
+  
+  img {
+    image-rendering: -webkit-optimize-contrast;
+    image-rendering: crisp-edges;
+  }
+}
+
+/* Landscape orientation optimizations */
+@media (max-width: 768px) and (orientation: landscape) {
+  .modal, .dropdown {
+    max-height: 80vh;
+  }
+}
+
+/* Portrait orientation optimizations */
+@media (max-width: 768px) and (orientation: portrait) {
+  .login-container {
+    padding: 10px;
+  }
+}
+
+/* Reduce motion preferences */
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* Dark mode support (future enhancement) */
+@media (prefers-color-scheme: dark) {
+  /* Dark mode styles can be added here */
+}
+
+/* Print styles */
+@media print {
+  .no-print {
+    display: none !important;
+  }
+  
+  body {
+    font-size: 12pt;
+    line-height: 1.4;
+  }
+  
+  a {
+    text-decoration: none;
+    color: #000;
+  }
+}
+
+/* Utility classes for responsive development */
+.container {
+  width: 100%;
+  padding: var(--mobile-padding);
+}
+
+@media (min-width: 769px) {
+  .container {
+    padding: 25px;
+    max-width: 1200px;
+    margin: 0 auto;
+  }
+}
+
+.text-center-mobile {
+  text-align: center;
+}
+
+@media (min-width: 769px) {
+  .text-center-mobile {
+    text-align: left;
+  }
+}
+
+.hide-mobile {
+  display: none;
+}
+
+@media (min-width: 769px) {
+  .hide-mobile {
+    display: block;
+  }
+}
+
+.show-mobile {
+  display: block;
+}
+
+@media (min-width: 769px) {
+  .show-mobile {
+    display: none;
+  }
+}
+
+/* Responsive typography */
+.responsive-text {
+  font-size: var(--mobile-font-size);
+}
+
+@media (min-width: 769px) {
+  .responsive-text {
+    font-size: 16px;
+  }
+}
+
+@media (min-width: 1024px) {
+  .responsive-text {
+    font-size: 18px;
+  }
+}
