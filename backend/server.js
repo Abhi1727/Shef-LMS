@@ -92,6 +92,7 @@ app.use('/api/admin', require('./routes/admin'));
 app.use('/api/video', require('./routes/video'));
 app.use('/api/teacher', require('./routes/teacher'));
 app.use('/api/batches', require('./routes/batches'));
+app.use('/api/one-to-one-batches', require('./routes/oneToOneBatches'));
 app.use('/api/student', require('./routes/student'));
 app.use('/api/activity', require('./routes/activity'));
 
