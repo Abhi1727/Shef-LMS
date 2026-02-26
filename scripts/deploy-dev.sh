@@ -28,8 +28,8 @@ fi
 
 echo "📦 Building frontend for dev..."
 cd frontend
-# Frontend uses relative /api when not localhost - dev.learnwithus.sbs/api will be proxied to backend
-CI=false npm run build
+# So the built app calls dev API, not production (npm run build uses production env by default)
+REACT_APP_API_URL=https://dev.learnwithus.sbs CI=false npm run build
 cd ..
 
 echo ""
@@ -46,8 +46,15 @@ docker compose -p shef-lms-dev -f docker-compose.dev.yml up -d 2>/dev/null || do
 cd ..
 
 echo ""
+echo "🔐 Ensuring admin exists in dev DB..."
+cd backend
+ENV_PATH=.env.dev node scripts/createAdmin.js 2>/dev/null || true
+cd ..
+
+echo ""
 echo "✅ Dev deployment complete!"
 echo "   Frontend: https://dev.learnwithus.sbs"
 echo "   Backend:  https://dev.learnwithus.sbs/api"
+echo "   Admin: admin@sheflms.com / SuperAdmin@123"
 echo ""
 echo "   Uses MongoDB database: shef-lms-dev (production data untouched)"
