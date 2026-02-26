@@ -54,6 +54,7 @@ const StudentSearch = memo(({ searchEmail, setSearchEmail, clearSearch }) => {
 
 const AdminDashboard = ({ user, onLogout }) => {
   const navigate = useNavigate();
+  const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
   const [activeSection, setActiveSection] = useState('overview');
   const [loading, setLoading] = useState(true);
   
@@ -73,6 +74,19 @@ const AdminDashboard = ({ user, onLogout }) => {
   const [liveClasses, setLiveClasses] = useState([]);
   const [stats, setStats] = useState({});
   const [activities, setActivities] = useState([]);
+  
+  // Student Profile Modal states
+  const [showStudentDetailsModal, setShowStudentDetailsModal] = useState(false);
+  const [selectedStudentDetails, setSelectedStudentDetails] = useState(null);
+  const [activeProfileTab, setActiveProfileTab] = useState('profile');
+  const [editMode, setEditMode] = useState(false);
+  const [editedProfile, setEditedProfile] = useState({});
+  const [studentActivities, setStudentActivities] = useState([]);
+  const [activityFilter, setActivityFilter] = useState({ action: '', dateRange: 'all' });
+  const [activityPagination, setActivityPagination] = useState({ page: 1, totalPages: 1, total: 0 });
+  const [reportPeriod, setReportPeriod] = useState('7days');
+  const [customDateRange, setCustomDateRange] = useState({ start: '', end: '' });
+  const [reportData, setReportData] = useState(null);
   
   // Loading states for individual data types
   const [dataLoading, setDataLoading] = useState({
@@ -140,7 +154,11 @@ const AdminDashboard = ({ user, onLogout }) => {
   }, []);
 
   const openStudentDetails = useCallback((student) => {
-    openModal('student', student);
+    setSelectedStudentDetails(student);
+    setActiveProfileTab('profile');
+    setEditMode(false);
+    setEditedProfile({});
+    setShowStudentDetailsModal(true);
     clearSearch();
   }, [clearSearch]);
 
@@ -1829,6 +1847,292 @@ const AdminDashboard = ({ user, onLogout }) => {
       }
     }
   };
+
+  // Student Profile Modal Functions
+  const handleViewStudentDetails = useCallback((student) => {
+    setSelectedStudentDetails(student);
+    setActiveProfileTab('profile');
+    setEditMode(false);
+    setEditedProfile({});
+    setShowStudentDetailsModal(true);
+  }, []);
+
+  const loadStudentActivities = useCallback(async (studentId, page = 1, filters = {}) => {
+    try {
+      const token = localStorage.getItem('token');
+      const params = new URLSearchParams({
+        page: page.toString(),
+        limit: '50'
+      });
+
+      if (filters.action) params.append('action', filters.action);
+      if (filters.dateRange && filters.dateRange !== 'all') {
+        const now = new Date();
+        let startDate = new Date();
+        
+        switch (filters.dateRange) {
+          case '7days':
+            startDate.setDate(now.getDate() - 7);
+            break;
+          case '30days':
+            startDate.setDate(now.getDate() - 30);
+            break;
+          case '90days':
+            startDate.setDate(now.getDate() - 90);
+            break;
+        }
+        
+        params.append('startDate', startDate.toISOString());
+        params.append('endDate', now.toISOString());
+      }
+
+      const response = await fetch(`${apiUrl}/api/admin/activity/${studentId}?${params}`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setStudentActivities(data.activities || []);
+        setActivityPagination({
+          page: data.page || 1,
+          totalPages: data.totalPages || 1,
+          total: data.total || 0
+        });
+      } else {
+        showToast('Failed to load student activities', 'error');
+      }
+    } catch (error) {
+      console.error('Error loading student activities:', error);
+      showToast('Error loading student activities', 'error');
+    }
+  }, []);
+
+  const handleActivityFilter = useCallback(() => {
+    if (selectedStudentDetails) {
+      loadStudentActivities(selectedStudentDetails.id || selectedStudentDetails._id, 1, activityFilter);
+    }
+  }, [selectedStudentDetails, activityFilter, loadStudentActivities]);
+
+  const handleActivityPageChange = useCallback((newPage) => {
+    if (selectedStudentDetails) {
+      loadStudentActivities(selectedStudentDetails.id || selectedStudentDetails._id, newPage, activityFilter);
+    }
+  }, [selectedStudentDetails, activityFilter, loadStudentActivities]);
+
+  const handleEditProfile = useCallback(() => {
+    setEditedProfile({
+      name: selectedStudentDetails?.name || '',
+      email: selectedStudentDetails?.email || '',
+      phone: selectedStudentDetails?.phone || '',
+      address: selectedStudentDetails?.address || '',
+      course: selectedStudentDetails?.course || '',
+      status: selectedStudentDetails?.status || 'active'
+    });
+    setEditMode(true);
+  }, [selectedStudentDetails]);
+
+  const handleSaveProfile = useCallback(async () => {
+    try {
+      const token = localStorage.getItem('token');
+      const studentId = selectedStudentDetails?.id || selectedStudentDetails?._id;
+
+      const response = await fetch(`${apiUrl}/api/admin/users/${studentId}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify(editedProfile)
+      });
+
+      if (response.ok) {
+        const updatedStudent = await response.json();
+        setSelectedStudentDetails(updatedStudent);
+        setEditMode(false);
+        showToast('Profile updated successfully!', 'success');
+        
+        // Refresh students list
+        await refreshData('students');
+      } else {
+        const data = await response.json();
+        showToast('Error: ' + (data.message || 'Failed to update profile'), 'error');
+      }
+    } catch (error) {
+      console.error('Error updating profile:', error);
+      showToast('Failed to update profile. Please try again.', 'error');
+    }
+  }, [selectedStudentDetails, editedProfile]);
+
+  const handleCancelEdit = useCallback(() => {
+    setEditMode(false);
+    setEditedProfile({});
+  }, []);
+
+  const handleDownloadActivityCSV = useCallback(async () => {
+    try {
+      const token = localStorage.getItem('token');
+      const studentId = selectedStudentDetails?.id || selectedStudentDetails?._id;
+      
+      const params = new URLSearchParams({
+        download: 'csv'
+      });
+
+      if (activityFilter.action) params.append('action', activityFilter.action);
+      if (activityFilter.dateRange && activityFilter.dateRange !== 'all') {
+        const now = new Date();
+        let startDate = new Date();
+        
+        switch (activityFilter.dateRange) {
+          case '7days':
+            startDate.setDate(now.getDate() - 7);
+            break;
+          case '30days':
+            startDate.setDate(now.getDate() - 30);
+            break;
+          case '90days':
+            startDate.setDate(now.getDate() - 90);
+            break;
+        }
+        
+        params.append('startDate', startDate.toISOString());
+        params.append('endDate', now.toISOString());
+      }
+
+      const response = await fetch(`${apiUrl}/api/admin/activity/${studentId}?${params}`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      if (response.ok) {
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `activity-${selectedStudentDetails?.name || 'student'}-${new Date().toISOString().split('T')[0]}.csv`;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+        showToast('Activity CSV downloaded successfully!', 'success');
+      } else {
+        showToast('Failed to download activity CSV', 'error');
+      }
+    } catch (error) {
+      console.error('Error downloading activity CSV:', error);
+      showToast('Error downloading activity CSV', 'error');
+    }
+  }, [selectedStudentDetails, activityFilter]);
+
+  const handleGenerateReport = useCallback(async () => {
+    try {
+      const token = localStorage.getItem('token');
+      const studentId = selectedStudentDetails?.id || selectedStudentDetails?._id;
+      
+      let startDate = new Date();
+      let endDate = new Date();
+      
+      switch (reportPeriod) {
+        case '7days':
+          startDate.setDate(endDate.getDate() - 7);
+          break;
+        case '30days':
+          startDate.setDate(endDate.getDate() - 30);
+          break;
+        case '90days':
+          startDate.setDate(endDate.getDate() - 90);
+          break;
+        case 'custom':
+          if (customDateRange.start && customDateRange.end) {
+            startDate = new Date(customDateRange.start);
+            endDate = new Date(customDateRange.end);
+          } else {
+            showToast('Please select both start and end dates', 'error');
+            return;
+          }
+          break;
+      }
+
+      const response = await fetch(`${apiUrl}/api/admin/activity/${studentId}?startDate=${startDate.toISOString()}&endDate=${endDate.toISOString()}`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        const reportSummary = {
+          period: reportPeriod,
+          startDate: startDate.toISOString(),
+          endDate: endDate.toISOString(),
+          totalActivities: data.total || 0,
+          activities: data.activities || [],
+          summary: {
+            videoViews: data.activities?.filter(a => a.action === 'video_view').length || 0,
+            logins: data.activities?.filter(a => a.action === 'login').length || 0,
+            assessments: data.activities?.filter(a => a.action === 'assessment_submit').length || 0,
+            pageViews: data.activities?.filter(a => a.action === 'page_view').length || 0
+          }
+        };
+        setReportData(reportSummary);
+        showToast('Report generated successfully!', 'success');
+      } else {
+        showToast('Failed to generate report', 'error');
+      }
+    } catch (error) {
+      console.error('Error generating report:', error);
+      showToast('Error generating report', 'error');
+    }
+  }, [selectedStudentDetails, reportPeriod, customDateRange]);
+
+  const handleDownloadReport = useCallback(() => {
+    if (!reportData) return;
+
+    const csvContent = [
+      ['Student Activity Report'],
+      ['Student:', selectedStudentDetails?.name || 'N/A'],
+      ['Email:', selectedStudentDetails?.email || 'N/A'],
+      ['Period:', reportPeriod],
+      ['Generated:', new Date().toLocaleString()],
+      [],
+      ['Summary'],
+      ['Total Activities:', reportData.totalActivities],
+      ['Video Views:', reportData.summary.videoViews],
+      ['Logins:', reportData.summary.logins],
+      ['Assessments:', reportData.summary.assessments],
+      ['Page Views:', reportData.summary.pageViews],
+      [],
+      ['Activity Details'],
+      ['Date', 'Action', 'IP Address', 'Location', 'Details'],
+      ...reportData.activities.map(activity => [
+        new Date(activity.timestamp).toLocaleString(),
+        activity.action,
+        activity.ipAddress || 'N/A',
+        [activity.city, activity.country].filter(Boolean).join(', ') || 'N/A',
+        activity.videoTitle || activity.assessmentTitle || activity.path || 'N/A'
+      ])
+    ].map(row => row.join(',')).join('\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `report-${selectedStudentDetails?.name || 'student'}-${new Date().toISOString().split('T')[0]}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    window.URL.revokeObjectURL(url);
+    document.body.removeChild(a);
+    showToast('Report downloaded successfully!', 'success');
+  }, [reportData, selectedStudentDetails, reportPeriod]);
+
+  // Load activities when profile tab is opened
+  useEffect(() => {
+    if (showStudentDetailsModal && selectedStudentDetails && activeProfileTab === 'activity') {
+      loadStudentActivities(selectedStudentDetails.id || selectedStudentDetails._id, 1, activityFilter);
+    }
+  }, [showStudentDetailsModal, selectedStudentDetails, activeProfileTab, loadStudentActivities, activityFilter]);
 
   // Sync Zoom recordings to classroom
   const handleSyncRecordings = async () => {
@@ -4380,6 +4684,439 @@ const AdminDashboard = ({ user, onLogout }) => {
 
             <div className="modal-actions">
               <button onClick={closeBatchDetailsModal} className="btn-cancel">Close</button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* Student Profile Full-Screen Modal */}
+      {showStudentDetailsModal && createPortal(
+        <div className="fullscreen-modal-overlay" onClick={() => setShowStudentDetailsModal(false)}>
+          <div className="fullscreen-modal" onClick={(e) => e.stopPropagation()}>
+            {/* Modal Header */}
+            <div className="fullscreen-modal-header">
+              <div className="student-header-info">
+                <div className="student-avatar">
+                  <span className="avatar-text">
+                    {selectedStudentDetails?.name?.charAt(0).toUpperCase() || 'S'}
+                  </span>
+                </div>
+                <div className="student-basic-info">
+                  <h2>{selectedStudentDetails?.name || 'Student Name'}</h2>
+                  <p className="student-email">{selectedStudentDetails?.email || 'N/A'}</p>
+                  <div className="student-badges">
+                    <span className={`badge ${selectedStudentDetails?.status || 'active'}`}>
+                      {selectedStudentDetails?.status || 'Active'}
+                    </span>
+                    <span className="badge">
+                      {selectedStudentDetails?.course || 'No Course'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+              <div className="modal-header-actions">
+                {activeProfileTab === 'profile' && !editMode && (
+                  <button className="btn-edit-profile" onClick={handleEditProfile}>
+                    ✏️ Edit Profile
+                  </button>
+                )}
+                <button className="modal-close-fullscreen" onClick={() => setShowStudentDetailsModal(false)}>
+                  ×
+                </button>
+              </div>
+            </div>
+
+            {/* Tab Navigation */}
+            <div className="profile-tabs-nav">
+              <button
+                className={`tab-btn ${activeProfileTab === 'profile' ? 'active' : ''}`}
+                onClick={() => setActiveProfileTab('profile')}
+              >
+                👤 Profile
+              </button>
+              <button
+                className={`tab-btn ${activeProfileTab === 'activity' ? 'active' : ''}`}
+                onClick={() => setActiveProfileTab('activity')}
+              >
+                📊 Activity Log
+              </button>
+              <button
+                className={`tab-btn ${activeProfileTab === 'reports' ? 'active' : ''}`}
+                onClick={() => setActiveProfileTab('reports')}
+              >
+                📈 Reports
+              </button>
+            </div>
+
+            {/* Modal Content */}
+            <div className="fullscreen-modal-content">
+              {/* Profile Tab */}
+              {activeProfileTab === 'profile' && (
+                <div className="profile-tab-content">
+                  {!editMode ? (
+                    <div className="profile-grid">
+                      <div className="profile-section">
+                        <h3>📝 Personal Information</h3>
+                        <div className="profile-details">
+                          <div className="detail-item">
+                            <label>Full Name:</label>
+                            <span>{selectedStudentDetails?.name || 'N/A'}</span>
+                          </div>
+                          <div className="detail-item">
+                            <label>Email Address:</label>
+                            <span>{selectedStudentDetails?.email || 'N/A'}</span>
+                          </div>
+                          <div className="detail-item">
+                            <label>Phone Number:</label>
+                            <span>{selectedStudentDetails?.phone || 'N/A'}</span>
+                          </div>
+                          <div className="detail-item">
+                            <label>Address:</label>
+                            <span>{selectedStudentDetails?.address || 'N/A'}</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="profile-section">
+                        <h3>🎓 Academic Information</h3>
+                        <div className="profile-details">
+                          <div className="detail-item">
+                            <label>Course:</label>
+                            <span>{selectedStudentDetails?.course || 'N/A'}</span>
+                          </div>
+                          <div className="detail-item">
+                            <label>Status:</label>
+                            <span className={`status-badge ${selectedStudentDetails?.status || 'inactive'}`}>
+                              {selectedStudentDetails?.status || 'N/A'}
+                            </span>
+                          </div>
+                          <div className="detail-item">
+                            <label>Batch Name:</label>
+                            <span>{selectedStudentDetails?.batchName || 'N/A'}</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="profile-section">
+                        <h3>📍 Login Activity</h3>
+                        <div className="profile-details">
+                          <div className="detail-item">
+                            <label>Last Login:</label>
+                            <span>
+                              {selectedStudentDetails?.lastLogin?.timestamp ? 
+                                new Date(selectedStudentDetails.lastLogin.timestamp).toLocaleString() : 
+                                selectedStudentDetails?.lastLoginTimestamp ? 
+                                new Date(selectedStudentDetails.lastLoginTimestamp).toLocaleString() : 
+                                'Never'
+                              }
+                            </span>
+                          </div>
+                          <div className="detail-item">
+                            <label>Last IP:</label>
+                            <span className="ip-address">
+                              {selectedStudentDetails?.lastLoginIP || 
+                               selectedStudentDetails?.lastLogin?.ipAddress || 
+                               'N/A'
+                              }
+                            </span>
+                          </div>
+                          <div className="detail-item">
+                            <label>Location:</label>
+                            <span>
+                              {[selectedStudentDetails?.lastLogin?.city, selectedStudentDetails?.lastLogin?.country]
+                                .filter(Boolean).join(', ') || 'N/A'}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="profile-grid">
+                      <div className="profile-section">
+                        <h3>✏️ Edit Profile</h3>
+                        <form className="edit-profile-form" onSubmit={(e) => { e.preventDefault(); handleSaveProfile(); }}>
+                          <div className="form-row">
+                            <div className="form-group">
+                              <label>Full Name</label>
+                              <input
+                                type="text"
+                                className="profile-input"
+                                value={editedProfile.name || ''}
+                                onChange={(e) => setEditedProfile({...editedProfile, name: e.target.value})}
+                                required
+                              />
+                            </div>
+                            <div className="form-group">
+                              <label>Email Address</label>
+                              <input
+                                type="email"
+                                className="profile-input"
+                                value={editedProfile.email || ''}
+                                onChange={(e) => setEditedProfile({...editedProfile, email: e.target.value})}
+                                required
+                              />
+                            </div>
+                          </div>
+                          <div className="form-row">
+                            <div className="form-group">
+                              <label>Phone Number</label>
+                              <input
+                                type="tel"
+                                className="profile-input"
+                                value={editedProfile.phone || ''}
+                                onChange={(e) => setEditedProfile({...editedProfile, phone: e.target.value})}
+                              />
+                            </div>
+                            <div className="form-group">
+                              <label>Course</label>
+                              <select
+                                className="profile-input"
+                                value={editedProfile.course || ''}
+                                onChange={(e) => setEditedProfile({...editedProfile, course: e.target.value})}
+                              >
+                                <option value="">Select Course</option>
+                                <option value="Data Science & AI">Data Science & AI</option>
+                                <option value="Cyber Security & Ethical Hacking">Cyber Security & Ethical Hacking</option>
+                              </select>
+                            </div>
+                          </div>
+                          <div className="form-group full-width">
+                            <label>Address</label>
+                            <textarea
+                              className="profile-input"
+                              value={editedProfile.address || ''}
+                              onChange={(e) => setEditedProfile({...editedProfile, address: e.target.value})}
+                              rows="3"
+                            />
+                          </div>
+                          <div className="form-group">
+                            <label>Status</label>
+                            <select
+                              className="profile-input"
+                              value={editedProfile.status || ''}
+                              onChange={(e) => setEditedProfile({...editedProfile, status: e.target.value})}
+                            >
+                              <option value="active">Active</option>
+                              <option value="inactive">Inactive</option>
+                              <option value="suspended">Suspended</option>
+                            </select>
+                          </div>
+                          <div className="form-actions">
+                            <button type="submit" className="btn-save">💾 Save Changes</button>
+                            <button type="button" className="btn-cancel" onClick={handleCancelEdit}>❌ Cancel</button>
+                          </div>
+                        </form>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Activity Tab */}
+              {activeProfileTab === 'activity' && (
+                <div className="activity-tab-content">
+                  <div className="activity-filters">
+                    <div className="filter-row">
+                      <div className="filter-group">
+                        <label>Action Type</label>
+                        <select
+                          className="filter-input"
+                          value={activityFilter.action}
+                          onChange={(e) => setActivityFilter({...activityFilter, action: e.target.value})}
+                        >
+                          <option value="">All Actions</option>
+                          <option value="login">Login</option>
+                          <option value="video_view">Video View</option>
+                          <option value="assessment_submit">Assessment Submit</option>
+                          <option value="page_view">Page View</option>
+                        </select>
+                      </div>
+                      <div className="filter-group">
+                        <label>Date Range</label>
+                        <select
+                          className="filter-input"
+                          value={activityFilter.dateRange}
+                          onChange={(e) => setActivityFilter({...activityFilter, dateRange: e.target.value})}
+                        >
+                          <option value="all">All Time</option>
+                          <option value="7days">Last 7 Days</option>
+                          <option value="30days">Last 30 Days</option>
+                          <option value="90days">Last 90 Days</option>
+                        </select>
+                      </div>
+                      <div className="filter-actions">
+                        <button className="btn-filter" onClick={handleActivityFilter}>🔍 Apply</button>
+                        <button className="btn-clear" onClick={() => {
+                          setActivityFilter({ action: '', dateRange: 'all' });
+                          if (selectedStudentDetails) {
+                            loadStudentActivities(selectedStudentDetails.id || selectedStudentDetails._id, 1, {});
+                          }
+                        }}>🔄 Clear</button>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="activity-list">
+                    <div className="activity-summary">
+                      <h3>📊 Activity Log</h3>
+                      <button className="btn-download-csv" onClick={handleDownloadActivityCSV}>
+                        📥 Download CSV
+                      </button>
+                    </div>
+
+                    {studentActivities.length > 0 ? (
+                      <>
+                        {studentActivities.map((activity, index) => (
+                          <div key={index} className="activity-item">
+                            <div className="activity-header">
+                              <span className="activity-action">{activity.action}</span>
+                              <span className="activity-timestamp">
+                                {new Date(activity.timestamp).toLocaleString()}
+                              </span>
+                            </div>
+                            <div className="activity-details">
+                              <div className="activity-detail">
+                                <label>IP:</label>
+                                <span>{activity.ipAddress || 'N/A'}</span>
+                              </div>
+                              <div className="activity-detail">
+                                <label>Location:</label>
+                                <span>
+                                  {[activity.city, activity.country].filter(Boolean).join(', ') || 'N/A'}
+                                </span>
+                              </div>
+                              {activity.videoTitle && (
+                                <div className="activity-detail">
+                                  <label>Video:</label>
+                                  <span>{activity.videoTitle}</span>
+                                </div>
+                              )}
+                              {activity.assessmentTitle && (
+                                <div className="activity-detail">
+                                  <label>Assessment:</label>
+                                  <span>{activity.assessmentTitle}</span>
+                                </div>
+                              )}
+                              {activity.path && (
+                                <div className="activity-detail">
+                                  <label>Page:</label>
+                                  <span>{activity.path}</span>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+
+                        <div className="pagination">
+                          <button 
+                            className="btn-page" 
+                            onClick={() => handleActivityPageChange(activityPagination.page - 1)}
+                            disabled={activityPagination.page <= 1}
+                          >
+                            ← Previous
+                          </button>
+                          <span className="page-info">
+                            Page {activityPagination.page} of {activityPagination.totalPages} 
+                            ({activityPagination.total} total)
+                          </span>
+                          <button 
+                            className="btn-page" 
+                            onClick={() => handleActivityPageChange(activityPagination.page + 1)}
+                            disabled={activityPagination.page >= activityPagination.totalPages}
+                          >
+                            Next →
+                          </button>
+                        </div>
+                      </>
+                    ) : (
+                      <div className="no-activity-data">
+                        <p>📋 No activity data found</p>
+                        <small>Try adjusting the filters or check back later</small>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Reports Tab */}
+              {activeProfileTab === 'reports' && (
+                <div className="reports-tab-content">
+                  <div className="reports-header">
+                    <h3>📈 Student Reports</h3>
+                    <div className="report-actions">
+                      <div className="date-range-selector">
+                        <label>Report Period</label>
+                        <select
+                          className="period-select"
+                          value={reportPeriod}
+                          onChange={(e) => setReportPeriod(e.target.value)}
+                        >
+                          <option value="7days">Last 7 Days</option>
+                          <option value="30days">Last 30 Days</option>
+                          <option value="90days">Last 90 Days</option>
+                          <option value="custom">Custom Range</option>
+                        </select>
+                      </div>
+                      {reportPeriod === 'custom' && (
+                        <div className="custom-date-range">
+                          <input
+                            type="date"
+                            className="date-input"
+                            value={customDateRange.start}
+                            onChange={(e) => setCustomDateRange({...customDateRange, start: e.target.value})}
+                          />
+                          <span>to</span>
+                          <input
+                            type="date"
+                            className="date-input"
+                            value={customDateRange.end}
+                            onChange={(e) => setCustomDateRange({...customDateRange, end: e.target.value})}
+                          />
+                        </div>
+                      )}
+                      <button className="btn-generate-report" onClick={handleGenerateReport}>
+                        📊 Generate Report
+                      </button>
+                    </div>
+                  </div>
+
+                  {reportData ? (
+                    <div className="report-content">
+                      <div className="report-summary">
+                        <div className="summary-cards">
+                          <div className="summary-card">
+                            <h4>Total Activities</h4>
+                            <p className="summary-value">{reportData.totalActivities}</p>
+                          </div>
+                          <div className="summary-card">
+                            <h4>Video Views</h4>
+                            <p className="summary-value">{reportData.summary.videoViews}</p>
+                          </div>
+                          <div className="summary-card">
+                            <h4>Logins</h4>
+                            <p className="summary-value">{reportData.summary.logins}</p>
+                          </div>
+                          <div className="summary-card">
+                            <h4>Assessments</h4>
+                            <p className="summary-value">{reportData.summary.assessments}</p>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="report-actions-bottom">
+                        <button className="btn-download-report" onClick={handleDownloadReport}>
+                          📥 Download Full Report
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="no-report">
+                      <p>📊 No report data available</p>
+                      <small>Generate a report to see student activity summary</small>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           </div>
         </div>,

@@ -259,7 +259,7 @@
 
 .login-header h2 {
   font-size: 24px;
-  color: #f8f4e6;
+  color: #000000;
   margin-bottom: 8px;
 }
 
@@ -279,7 +279,7 @@
 .form-group label {
   display: block;
   margin-bottom: 8px;
-  color: #f8f4e6;
+  color: #000000;
   font-weight: 600;
   font-size: 14px;
 }
@@ -308,7 +308,7 @@
   font-size: 14px;
   transition: all 0.3s ease;
   background: rgba(248, 244, 230, 0.1);
-  color: #f8f4e6;
+  color: #000000;
   backdrop-filter: blur(10px);
 }
 
@@ -425,7 +425,7 @@
   right: 12px;
   background: transparent;
   border: none;
-  color: #f8f4e6;
+  color: #000000;
   font-size: 16px;
   cursor: pointer;
   padding: 0;
