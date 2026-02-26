@@ -8,6 +8,7 @@
     "dev": "nodemon server.js",
     "reactivate-admin": "node scripts/reactivateAdmin.js",
     "create-admin": "node scripts/createAdmin.js",
+    "create-admin:dev": "ENV_PATH=.env.dev node scripts/createAdmin.js",
     "import:firestoreSample": "node scripts/importFromFirestoreSample.js",
     "migrate:users": "node scripts/migrateUsersToMongo.js",
     "migrate:batches": "node scripts/migrateBatchesToMongo.js",
@@ -16,7 +17,8 @@
     "map:batchRelations": "node scripts/mapBatchRelationsFromFirestore.js",
     "sync:batches": "node scripts/syncBatchIds.js",
     "sync:firestore": "node scripts/auditAndSyncFromFirestore.js",
-    "clone:prod-to-dev": "node scripts/cloneProdToDev.js"
+    "clone:prod-to-dev": "node scripts/cloneProdToDev.js",
+    "clone:dev-to-prod": "node scripts/cloneDevToProd.js"
   },
   "keywords": [
     "lms",
