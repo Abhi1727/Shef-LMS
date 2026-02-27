@@ -111,9 +111,20 @@ const OneToOneCourseSelection = () => {
     showToast('One-to-one batch created successfully', 'success');
   };
 
-  // If API errors occurred, show fallback component
+  const handleRetry = () => {
+    setUseFallback(false);
+    setApiError(null);
+    if (selectedCourse) loadBatches();
+  };
+
+  // If API errors occurred, show fallback component with retry option
   if (useFallback || apiError) {
-    return <OneToOneCourseSelectionFallback />;
+    return (
+      <OneToOneCourseSelectionFallback
+        onRetry={handleRetry}
+        errorMessage={apiError ? `Error: ${apiError}` : null}
+      />
+    );
   }
 
   const handleAssignStudentToBatch = async () => {

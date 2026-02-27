@@ -143,6 +143,23 @@ const BatchDetailsPage = () => {
   });
   const [isSendingEmail, setIsSendingEmail] = useState(false);
 
+  // Lock body scroll when any modal is open (prevents double scrollbar)
+  useEffect(() => {
+    const anyModalOpen = showAddStudentModal || showAddStudentsModal || showStudentModal ||
+      showStudentDetailsModal || showScheduleModal || showAddVideoModal;
+    if (anyModalOpen) {
+      document.body.classList.add('modal-open');
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.classList.remove('modal-open');
+      document.body.style.overflow = '';
+    }
+    return () => {
+      document.body.classList.remove('modal-open');
+      document.body.style.overflow = '';
+    };
+  }, [showAddStudentModal, showAddStudentsModal, showStudentModal, showStudentDetailsModal, showScheduleModal, showAddVideoModal]);
+
   // Determine if current user is an admin (from JWT)
   useEffect(() => {
     try {

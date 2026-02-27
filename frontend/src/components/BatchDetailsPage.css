@@ -670,6 +670,11 @@
   align-items: center;
   justify-content: center;
   z-index: 1000;
+  overflow: hidden;
+}
+
+body.modal-open {
+  overflow: hidden !important;
 }
 
 .modal {
@@ -1078,8 +1083,7 @@
 /* Email View Styles */
 .email-view {
   width: 100%;
-  max-width: 720px;
-  margin: 0 auto;
+  max-width: 100%;
 }
 
 .email-header {

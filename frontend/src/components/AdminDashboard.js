@@ -533,7 +533,7 @@ const AdminDashboard = ({ user, onLogout }) => {
       const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
       
       // Load one-to-one batches
-      const response = await fetch(`${apiUrl}/api/one-to-one-batches`, { 
+      const response = await fetch(`${apiUrl}/api/admin/one-to-one-batches`, { 
         headers: { 'Authorization': `Bearer ${token}` } 
       });
       

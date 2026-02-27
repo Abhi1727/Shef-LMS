@@ -1590,6 +1590,25 @@ router.delete('/one-to-one/:id', async (req, res) => {
   }
 });
 
+// One-to-One Batches - full mirror of /api/one-to-one-batches (avoids 404 on deployments where that path fails)
+const oneToOneBatchController = require('../controllers/oneToOneBatchController');
+// Debug: verify route is reachable (GET /api/admin/one-to-one-batches/ping)
+router.get('/one-to-one-batches/ping', (req, res) => res.json({ ok: true, path: 'admin/one-to-one-batches' }));
+router.get('/one-to-one-batches/course/:courseName', (req, res) => oneToOneBatchController.getBatchesByCourse(req, res));
+router.get('/one-to-one-batches/unassigned-students/:course', (req, res) => oneToOneBatchController.getUnassignedStudents(req, res));
+router.post('/one-to-one-batches', (req, res) => oneToOneBatchController.createBatch(req, res));
+router.get('/one-to-one-batches', (req, res) => oneToOneBatchController.getAllBatches(req, res));
+router.get('/one-to-one-batches/:id', (req, res) => oneToOneBatchController.getBatchById(req, res));
+router.put('/one-to-one-batches/:id', (req, res) => oneToOneBatchController.updateBatch(req, res));
+router.delete('/one-to-one-batches/:id', (req, res) => oneToOneBatchController.deleteBatch(req, res));
+router.post('/one-to-one-batches/:id/videos', (req, res) => oneToOneBatchController.addVideo(req, res));
+router.put('/one-to-one-batches/:id/videos/:videoId', (req, res) => oneToOneBatchController.updateVideo(req, res));
+router.delete('/one-to-one-batches/:id/videos/:videoId', (req, res) => oneToOneBatchController.removeVideo(req, res));
+router.delete('/one-to-one-batches/:id/videos/:videoIndex/index', (req, res) => oneToOneBatchController.removeVideoByIndex(req, res));
+router.post('/one-to-one-batches/:id/students', (req, res) => oneToOneBatchController.updateStudent(req, res));
+router.delete('/one-to-one-batches/:id/students', (req, res) => oneToOneBatchController.removeStudent(req, res));
+router.put('/one-to-one-batches/:id/progress', (req, res) => oneToOneBatchController.updateProgress(req, res));
+
 // Email Routes
 router.post('/send-batch-email', async (req, res) => {
   try {

@@ -1962,10 +1962,10 @@
   justify-content: center !important;
   z-index: 99999 !important;
   backdrop-filter: blur(4px);
-  padding: 20px;
   box-sizing: border-box;
   margin: 0 !important;
   padding: 0 !important;
+  overflow: hidden !important;
 }
 
 /* Prevent body scroll when modal is open */

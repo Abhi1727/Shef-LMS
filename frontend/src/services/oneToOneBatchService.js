@@ -1,4 +1,29 @@
-const API_BASE_URL = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
+const getApiBaseUrl = () => {
+  const env = process.env.REACT_APP_API_URL;
+  if (env && String(env).trim()) return String(env).replace(/\/$/, '');
+  return window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
+};
+
+const API_BASE_URL = getApiBaseUrl();
+// Try admin path first; fallback to standalone path if 404 (handles different deployment setups)
+const ONE_TO_ONE_API_ADMIN = `${API_BASE_URL}/api/admin/one-to-one-batches`;
+const ONE_TO_ONE_API_STANDALONE = `${API_BASE_URL}/api/one-to-one-batches`;
+
+// Resolve which base URL works (cached after first check)
+// Admin path exists if we get 200 or 401; use standalone only on 404/network error
+let _resolvedBase = null;
+const resolveBaseUrl = async () => {
+  if (_resolvedBase) return _resolvedBase;
+  try {
+    const r = await fetch(`${ONE_TO_ONE_API_ADMIN}/ping`, { headers: getAuthHeaders() });
+    if (r.status !== 404) {
+      _resolvedBase = ONE_TO_ONE_API_ADMIN;
+      return _resolvedBase;
+    }
+  } catch (_) {}
+  _resolvedBase = ONE_TO_ONE_API_STANDALONE;
+  return _resolvedBase;
+};
 
 const getAuthHeaders = () => {
   const token = localStorage.getItem('token');
@@ -17,25 +42,21 @@ const handleResponse = async (response) => {
 };
 
 export const oneToOneBatchService = {
-  // Get all one-to-one batches
   getAllBatches: async () => {
-    const response = await fetch(`${API_BASE_URL}/api/one-to-one-batches`, {
-      headers: getAuthHeaders()
-    });
+    const base = await resolveBaseUrl();
+    const response = await fetch(`${base}`, { headers: getAuthHeaders() });
     return handleResponse(response);
   },
 
-  // Get specific one-to-one batch by ID
   getBatchById: async (id) => {
-    const response = await fetch(`${API_BASE_URL}/api/one-to-one-batches/${id}`, {
-      headers: getAuthHeaders()
-    });
+    const base = await resolveBaseUrl();
+    const response = await fetch(`${base}/${id}`, { headers: getAuthHeaders() });
     return handleResponse(response);
   },
 
-  // Create new one-to-one batch
   createBatch: async (batchData) => {
-    const response = await fetch(`${API_BASE_URL}/api/one-to-one-batches`, {
+    const base = await resolveBaseUrl();
+    const response = await fetch(`${base}`, {
       method: 'POST',
       headers: getAuthHeaders(),
       body: JSON.stringify(batchData)
@@ -43,9 +64,9 @@ export const oneToOneBatchService = {
     return handleResponse(response);
   },
 
-  // Update one-to-one batch
   updateBatch: async (id, batchData) => {
-    const response = await fetch(`${API_BASE_URL}/api/one-to-one-batches/${id}`, {
+    const base = await resolveBaseUrl();
+    const response = await fetch(`${base}/${id}`, {
       method: 'PUT',
       headers: getAuthHeaders(),
       body: JSON.stringify(batchData)
@@ -53,18 +74,18 @@ export const oneToOneBatchService = {
     return handleResponse(response);
   },
 
-  // Delete one-to-one batch
   deleteBatch: async (id) => {
-    const response = await fetch(`${API_BASE_URL}/api/one-to-one-batches/${id}`, {
+    const base = await resolveBaseUrl();
+    const response = await fetch(`${base}/${id}`, {
       method: 'DELETE',
       headers: getAuthHeaders()
     });
     return handleResponse(response);
   },
 
-  // Add video to batch
   addVideo: async (batchId, video) => {
-    const response = await fetch(`${API_BASE_URL}/api/one-to-one-batches/${batchId}/videos`, {
+    const base = await resolveBaseUrl();
+    const response = await fetch(`${base}/${batchId}/videos`, {
       method: 'POST',
       headers: getAuthHeaders(),
       body: JSON.stringify(video)
@@ -72,47 +93,37 @@ export const oneToOneBatchService = {
     return handleResponse(response);
   },
 
-  // Update video in batch
   updateVideo: async (batchId, videoId, video) => {
-    console.log('oneToOneBatchService.updateVideo called with:', { batchId, videoId, video });
-    const url = `${API_BASE_URL}/api/one-to-one-batches/${batchId}/videos/${videoId}`;
-    console.log('Making PUT request to:', url);
-    
-    const response = await fetch(url, {
+    const base = await resolveBaseUrl();
+    const response = await fetch(`${base}/${batchId}/videos/${videoId}`, {
       method: 'PUT',
       headers: getAuthHeaders(),
       body: JSON.stringify(video)
     });
-    
-    console.log('Response status:', response.status);
-    console.log('Response ok:', response.ok);
-    
-    const result = await handleResponse(response);
-    console.log('Service response:', result);
-    return result;
+    return handleResponse(response);
   },
 
-  // Remove video from batch
   deleteVideo: async (batchId, videoId) => {
-    const response = await fetch(`${API_BASE_URL}/api/one-to-one-batches/${batchId}/videos/${videoId}`, {
+    const base = await resolveBaseUrl();
+    const response = await fetch(`${base}/${batchId}/videos/${videoId}`, {
       method: 'DELETE',
       headers: getAuthHeaders()
     });
     return handleResponse(response);
   },
 
-  // Remove video from batch by index
   removeVideo: async (batchId, videoIndex) => {
-    const response = await fetch(`${API_BASE_URL}/api/one-to-one-batches/${batchId}/videos/${videoIndex}/index`, {
+    const base = await resolveBaseUrl();
+    const response = await fetch(`${base}/${batchId}/videos/${videoIndex}/index`, {
       method: 'DELETE',
       headers: getAuthHeaders()
     });
     return handleResponse(response);
   },
 
-  // Update student in batch
   updateStudent: async (batchId, studentData) => {
-    const response = await fetch(`${API_BASE_URL}/api/one-to-one-batches/${batchId}/students`, {
+    const base = await resolveBaseUrl();
+    const response = await fetch(`${base}/${batchId}/students`, {
       method: 'POST',
       headers: getAuthHeaders(),
       body: JSON.stringify(studentData)
@@ -120,26 +131,25 @@ export const oneToOneBatchService = {
     return handleResponse(response);
   },
 
-  // Remove student from batch
   removeStudent: async (batchId) => {
-    const response = await fetch(`${API_BASE_URL}/api/one-to-one-batches/${batchId}/students`, {
+    const base = await resolveBaseUrl();
+    const response = await fetch(`${base}/${batchId}/students`, {
       method: 'DELETE',
       headers: getAuthHeaders()
     });
     return handleResponse(response);
   },
 
-  // Get batches by course
   getBatchesByCourse: async (courseName) => {
-    const response = await fetch(`${API_BASE_URL}/api/one-to-one-batches/course/${encodeURIComponent(courseName)}`, {
-      headers: getAuthHeaders()
-    });
+    const base = await resolveBaseUrl();
+    const url = `${base}/course/${encodeURIComponent(courseName)}`;
+    const response = await fetch(url, { headers: getAuthHeaders() });
     return handleResponse(response);
   },
 
-  // Update batch progress
   updateProgress: async (batchId, progress) => {
-    const response = await fetch(`${API_BASE_URL}/api/one-to-one-batches/${batchId}/progress`, {
+    const base = await resolveBaseUrl();
+    const response = await fetch(`${base}/${batchId}/progress`, {
       method: 'PUT',
       headers: getAuthHeaders(),
       body: JSON.stringify({ progress })
@@ -147,9 +157,9 @@ export const oneToOneBatchService = {
     return handleResponse(response);
   },
 
-  // Get unassigned students for a course
   getUnassignedStudents: async (course, currentBatchId = null) => {
-    let url = `${API_BASE_URL}/api/one-to-one-batches/unassigned-students/${encodeURIComponent(course)}`;
+    const base = await resolveBaseUrl();
+    let url = `${base}/unassigned-students/${encodeURIComponent(course)}`;
     if (currentBatchId) {
       url += `?currentBatchId=${currentBatchId}`;
     }
