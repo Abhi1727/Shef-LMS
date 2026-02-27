@@ -1610,28 +1610,31 @@ const BatchDetailsPage = () => {
           {activeView === 'email' && (
             <div className="email-view">
               <div className="email-header">
-                <h2>📧 Send Email to {selectedBatch.name}</h2>
+                <div className="email-header-icon">✉️</div>
+                <h2>Send Email to Batch</h2>
+                <p className="email-header-subtitle">{selectedBatch?.name}</p>
               </div>
               
               <div className="email-modal">
                 <div className="email-content">
                   {/* Sender Email Display */}
-                  <div className="email-sender">
-                    <label className="field-label">From (Sender Email)</label>
-                    <input
-                      type="email"
-                      value="support@skystates.us"
-                      disabled
-                      className="email-sender-input"
-                    />
-                    <small className="email-sender-note">Email will be sent from support@skystates.us</small>
+                  <div className="email-sender-card">
+                    <div className="email-sender-label">
+                      <span className="email-sender-icon">📤</span>
+                      <span>From</span>
+                    </div>
+                    <div className="email-sender-value">support@skystates.us</div>
+                    <small className="email-sender-note">Batch notifications will be sent from this address</small>
                   </div>
 
                   {/* Student Selection */}
                   <div className="email-students-section">
                     <div className="email-students-header">
-                      <label className="field-label">Select Students</label>
-                      <div className="email-select-all">
+                      <label className="email-section-label">
+                        <span className="email-section-icon">👥</span>
+                        Select Students
+                      </label>
+                      <label className="email-select-all" htmlFor="select-all-students">
                         <input
                           type="checkbox"
                           id="select-all-students"
@@ -1650,14 +1653,14 @@ const BatchDetailsPage = () => {
                             }
                           }}
                         />
-                        <label htmlFor="select-all-students">Select All ({batchStudents.length})</label>
-                      </div>
+                        <span>Select All ({batchStudents.length})</span>
+                      </label>
                     </div>
                     
                     <div className="email-students-list">
                       {batchStudents.length > 0 ? (
                         batchStudents.map(student => (
-                          <div key={student.id} className="email-student-item">
+                          <label key={student.id} htmlFor={`student-${student.id}`} className="email-student-item">
                             <input
                               type="checkbox"
                               id={`student-${student.id}`}
@@ -1676,15 +1679,15 @@ const BatchDetailsPage = () => {
                                 }
                               }}
                             />
-                            <label htmlFor={`student-${student.id}`} className="email-student-label">
+                            <div className="email-student-info">
                               <span className="student-name">{student.name}</span>
                               <span className="student-email">{student.email}</span>
-                            </label>
-                          </div>
+                            </div>
+                          </label>
                         ))
                       ) : (
                         <div className="no-students-message">
-                          <p>No students found in this batch to email.</p>
+                          <p>No students in this batch to email.</p>
                         </div>
                       )}
                     </div>
@@ -1692,28 +1695,38 @@ const BatchDetailsPage = () => {
 
                   {/* Email Composition */}
                   <div className="email-composition">
+                    <label className="email-section-label">
+                      <span className="email-section-icon">✏️</span>
+                      Compose Message
+                    </label>
                     <div className="email-form">
-                      <input
-                        type="text"
-                        placeholder="Email Subject *"
-                        value={emailForm.subject}
-                        onChange={(e) => setEmailForm(prev => ({ ...prev, subject: e.target.value }))}
-                        className="email-subject-input"
-                        required
-                      />
-                      
-                      <textarea
-                        placeholder="Email Message *"
-                        value={emailForm.message}
-                        onChange={(e) => setEmailForm(prev => ({ ...prev, message: e.target.value }))}
-                        className="email-message-input"
-                        rows="8"
-                        required
-                      />
+                      <div className="email-field-group">
+                        <label className="email-field-label">Subject <span className="required">*</span></label>
+                        <input
+                          type="text"
+                          placeholder="Enter email subject"
+                          value={emailForm.subject}
+                          onChange={(e) => setEmailForm(prev => ({ ...prev, subject: e.target.value }))}
+                          className="email-subject-input"
+                          required
+                        />
+                      </div>
+                      <div className="email-field-group">
+                        <label className="email-field-label">Message <span className="required">*</span></label>
+                        <textarea
+                          placeholder="Write your message to the selected students..."
+                          value={emailForm.message}
+                          onChange={(e) => setEmailForm(prev => ({ ...prev, message: e.target.value }))}
+                          className="email-message-input"
+                          rows="6"
+                          required
+                        />
+                      </div>
                       
                       <div className="email-actions">
                         <button
-                          className="btn-cancel"
+                          type="button"
+                          className="btn-email-cancel"
                           onClick={() => {
                             setEmailForm({ subject: '', message: '', selectedStudents: [] });
                             setActiveView('videos');
@@ -1722,11 +1735,16 @@ const BatchDetailsPage = () => {
                           Cancel
                         </button>
                         <button
-                          className="btn-save btn-send-email"
+                          type="button"
+                          className="btn-send-email"
                           onClick={handleSendEmail}
                           disabled={isSendingEmail || !emailForm.subject.trim() || !emailForm.message.trim() || emailForm.selectedStudents.length === 0}
                         >
-                          {isSendingEmail ? 'Sending...' : `Send Email (${emailForm.selectedStudents.length})`}
+                          {isSendingEmail ? (
+                            <span className="btn-send-loading">⏳ Sending...</span>
+                          ) : (
+                            <span>Send to {emailForm.selectedStudents.length} student{emailForm.selectedStudents.length !== 1 ? 's' : ''}</span>
+                          )}
                         </button>
                       </div>
                     </div>
@@ -1917,9 +1935,10 @@ const BatchDetailsPage = () => {
           </div>
 
           <div className="modal-actions">
-            <button
-              className="btn-cancel"
-              onClick={() => {
+                        <button
+                          type="button"
+                          className="btn-email-cancel"
+                          onClick={() => {
                 setShowAddVideoModal(false);
                 setVideoFormData({ title: '', youtubeVideoUrl: '', description: '', date: '', time: '', notesAvailable: false, notesFile: null });
               }}
@@ -2278,12 +2297,20 @@ const BatchDetailsPage = () => {
                     <h3>🎓 Academic Information</h3>
                     <div className="profile-details">
                       <div className="detail-item">
-                        <label>Batch Name:</label>
-                        <span>{selectedBatch?.name || 'N/A'}</span>
-                      </div>
-                      <div className="detail-item">
                         <label>Course:</label>
                         <span>{selectedStudentDetails?.course || 'N/A'}</span>
+                      </div>
+                      <div className="detail-item">
+                        <label>Status:</label>
+                        <span>
+                          <span className={`status-badge ${(selectedStudentDetails?.status || 'active').toLowerCase()}`}>
+                            {selectedStudentDetails?.status || 'Active'}
+                          </span>
+                        </span>
+                      </div>
+                      <div className="detail-item">
+                        <label>Batch Name:</label>
+                        <span>{selectedBatch?.name || 'N/A'}</span>
                       </div>
                       <div className="detail-item">
                         <label>Student ID:</label>

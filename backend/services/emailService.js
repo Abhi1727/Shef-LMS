@@ -3,33 +3,48 @@ const Imap = require('imap');
 require('dotenv').config();
 
 // Create email transporter configuration
+// Hostinger: smtp.hostinger.com, port 587 (TLS) - matches working local config
 const createTransporter = () => {
+  const port = parseInt(process.env.EMAIL_PORT || '587', 10);
+  const secure = process.env.EMAIL_SECURE === 'true' || port === 465;
+  const host = process.env.EMAIL_HOST || 'smtp.hostinger.com';
+  const auth = {
+    user: process.env.EMAIL_USER,
+    pass: process.env.EMAIL_PASS
+  };
+  if (!auth.user || !auth.pass) {
+    console.warn('Email config missing: EMAIL_USER or EMAIL_PASS not set');
+  }
   return nodemailer.createTransport({
-    host: process.env.EMAIL_HOST || 'smtp.hostinger.com',
-    port: process.env.EMAIL_PORT || 587,
-    secure: false, // false for port 587 (TLS), true for port 465 (SSL)
+    host,
+    port,
+    secure,
     auth: {
-      user: process.env.EMAIL_USER || 'support@skystates.us',
-      pass: process.env.EMAIL_PASS || 'Xziant@123'
+      user: auth.user,
+      pass: auth.pass
     },
+    authMethod: 'LOGIN', // Hostinger/Titan often prefer LOGIN over PLAIN
     tls: {
-      rejectUnauthorized: false // Allow self-signed certificates
+      rejectUnauthorized: false
     }
   });
 };
 
 // Create IMAP connection for saving to sent folder
+// Hostinger: imap.hostinger.com (IMAP uses different host than SMTP)
 const createImapConnection = () => {
+  const smtpHost = process.env.EMAIL_HOST || 'smtp.hostinger.com';
+  const imapHost = process.env.EMAIL_IMAP_HOST || smtpHost.replace('smtp.', 'imap.');
   return new Imap({
-    user: process.env.EMAIL_USER || 'support@skystates.us',
-    password: process.env.EMAIL_PASS || 'Xziant@123',
-    host: process.env.EMAIL_HOST || 'smtp.hostinger.com',
+    user: process.env.EMAIL_USER,
+    password: process.env.EMAIL_PASS,
+    host: imapHost,
     port: 993, // IMAP SSL port
     tls: {
       rejectUnauthorized: false
     },
     tlsOptions: {
-      servername: process.env.EMAIL_HOST || 'smtp.hostinger.com'
+      servername: imapHost
     }
   });
 };
@@ -238,7 +253,7 @@ const sendEmail = async (options) => {
     let errorMessage = 'Failed to send email';
     
     if (error.code === 'EAUTH') {
-      errorMessage = 'Email authentication failed. Please check email credentials.';
+      errorMessage = 'Email authentication failed. Check EMAIL_USER/EMAIL_PASS in .env on the server. If it works locally, ensure VPS .env.dev has the same values.';
     } else if (error.code === 'ECONNECTION') {
       errorMessage = 'Could not connect to email server. Please check email configuration.';
     } else if (error.message.includes('Invalid email addresses')) {

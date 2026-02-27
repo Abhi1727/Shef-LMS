@@ -58,7 +58,7 @@ fi
 
 echo "📦 Building frontend for dev..."
 cd frontend
-CI=false npm run build
+REACT_APP_API_URL=https://dev.learnwithus.sbs CI=false npm run build
 cd ..
 
 echo ""
