@@ -291,11 +291,34 @@ const Dashboard = ({ user, onLogout }) => {
             ? raw.videos
             : [];
 
-        // Additional sorting on frontend to ensure latest videos are first
+        // Additional sorting on frontend to ensure correct ordering
         const sortedVideos = videos.sort((a, b) => {
+          // For one-to-one videos, sort by class date (newest first)
+          if (a.isOneToOne && b.isOneToOne) {
+            // Use classDate if available, otherwise fall back to date or addedAt
+            // Handle dd-mm-yyyy format for classDate
+            const dateA = a.classDate ? new Date(a.classDate.split('-').reverse().join('-')) : new Date(a.date || a.addedAt || 0);
+            const dateB = b.classDate ? new Date(b.classDate.split('-').reverse().join('-')) : new Date(b.date || b.addedAt || 0);
+            return dateB - dateA; // Descending order (newest class date first)
+          }
+          
+          // For one-to-one vs regular video, prioritize by date
+          if (a.isOneToOne && !b.isOneToOne) {
+            const dateA = a.classDate ? new Date(a.classDate.split('-').reverse().join('-')) : new Date(a.date || a.addedAt || 0);
+            const dateB = new Date(b.createdAt || b.date || 0);
+            return dateB - dateA; // Descending order (newest first)
+          }
+          
+          if (!a.isOneToOne && b.isOneToOne) {
+            const dateA = new Date(a.createdAt || a.date || 0);
+            const dateB = b.classDate ? new Date(b.classDate.split('-').reverse().join('-')) : new Date(b.date || b.addedAt || 0);
+            return dateB - dateA; // Descending order (newest first)
+          }
+          
+          // For regular videos, sort by creation date (newest first)
           const dateA = new Date(a.createdAt || a.date || 0);
           const dateB = new Date(b.createdAt || b.date || 0);
-          return dateB - dateA; // Newest first
+          return dateB - dateA; // Newest first (descending order)
         });
 
         // Hide support/utility Zoom rooms from students (e.g. personal meeting rooms)
@@ -537,10 +560,62 @@ const Dashboard = ({ user, onLogout }) => {
     return `${baseUrl}?pwd=${cleanPasscode}`;
   };
   const formatClassDate = (dateStr) => {
-    const date = new Date(dateStr);
-    const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    return `${days[date.getDay()]} ${date.getDate()} ${months[date.getMonth()]}`;
+    console.log('🔍 formatClassDate called with:', dateStr);
+    
+    if (!dateStr || dateStr === '' || dateStr === 'Not specified') {
+      console.log('🔍 No date provided, returning Not specified');
+      return 'Not specified';
+    }
+    
+    // Handle different date formats
+    // If it's in dd-mm-yyyy format (from backend), convert it
+    if (typeof dateStr === 'string' && dateStr.includes('-')) {
+      const parts = dateStr.split('-');
+      if (parts.length === 3) {
+        // Check if it's dd-mm-yyyy format
+        const day = parseInt(parts[0], 10);
+        const month = parseInt(parts[1], 10);
+        const year = parseInt(parts[2], 10);
+        
+        if (!isNaN(day) && !isNaN(month) && !isNaN(year) && day <= 31 && month <= 12) {
+          const date = new Date(year, month - 1, day);
+          const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+          const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+          const formatted = `${days[date.getDay()]} ${date.getDate()} ${months[date.getMonth()]} ${year}`;
+          console.log('🔍 Formatted dd-mm-yyyy date:', formatted);
+          return formatted;
+        }
+      }
+    }
+    
+    // Handle yyyy-mm-dd format (HTML date input format)
+    if (typeof dateStr === 'string' && dateStr.match(/^\d{4}-\d{2}-\d{2}$/)) {
+      const date = new Date(dateStr);
+      if (!isNaN(date.getTime())) {
+        const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+        const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+        const formatted = `${days[date.getDay()]} ${date.getDate()} ${months[date.getMonth()]} ${date.getFullYear()}`;
+        console.log('🔍 Formatted yyyy-mm-dd date:', formatted);
+        return formatted;
+      }
+    }
+    
+    // Fallback to regular date parsing
+    try {
+      const date = new Date(dateStr);
+      if (isNaN(date.getTime())) {
+        console.log('🔍 Could not parse date, returning original:', dateStr);
+        return dateStr; // Return original if can't parse
+      }
+      const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+      const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      const formatted = `${days[date.getDay()]} ${date.getDate()} ${months[date.getMonth()]} ${date.getFullYear()}`;
+      console.log('🔍 Formatted with regular parsing:', formatted);
+      return formatted;
+    } catch (error) {
+      console.log('🔍 Error parsing date, returning original:', dateStr);
+      return dateStr; // Return original if error
+    }
   };
 
   // Complete Course Curriculum - DATA SCIENCE & AI
@@ -1442,14 +1517,35 @@ const Dashboard = ({ user, onLogout }) => {
                         !!video.notesAvailable &&
                         !!video.notesFilePath &&
                         (!videoBatchId || (studentBatchId && videoBatchId === studentBatchId));
+                      
+                      const isOneToOne = video.isOneToOne || video.videoSource === 'one-to-one';
+                      
+                      // Debug logging for one-to-one videos
+                      if (isOneToOne) {
+                        console.log('🔍 One-to-One Video Debug:', {
+                          title: video.title,
+                          classDate: video.classDate,
+                          classTime: video.classTime,
+                          videoSource: video.videoSource,
+                          isOneToOne: video.isOneToOne
+                        });
+                      }
 
                       return (
                       <div 
                         key={video.id} 
-                        className="project-card"
+                        className={`project-card ${isOneToOne ? 'one-to-one-video' : ''}`}
                         style={{ cursor: 'pointer' }}
                         onClick={() => setSelectedVideo(video)}
                       >
+                        {/* Debug: Log video data */}
+                        {console.log('Dashboard video data:', { 
+                          id: video.id, 
+                          title: video.title, 
+                          instructor: video.instructor, 
+                          date: video.date,
+                          createdAt: video.createdAt 
+                        })}
                         <div className="session-rank-badge">
                           {index === 0
                             ? 'Latest Session'
@@ -1457,6 +1553,13 @@ const Dashboard = ({ user, onLogout }) => {
                               ? '2nd Latest'
                               : `Session ${index + 1}`}
                         </div>
+                        
+                        {/* Add one-to-one badge */}
+                        {isOneToOne && (
+                          <div className="video-badge one-to-one-badge">
+                            👥 One-to-One
+                          </div>
+                        )}
                         {/* Video Thumbnail */}
                         <div style={{ 
                           position: 'relative',
@@ -1466,9 +1569,9 @@ const Dashboard = ({ user, onLogout }) => {
                           height: '180px',
                           backgroundColor: '#f7fafc'
                         }}>
-                          {video.videoSource === 'youtube-url' && videoThumbnails[video.id] ? (
+                          {((video.videoSource === 'youtube-url' && videoThumbnails[video.id]) || (video.videoSource === 'one-to-one' && video.youtubeVideoId)) ? (
                             <img 
-                              src={videoThumbnails[video.id]} 
+                              src={video.videoSource === 'youtube-url' ? videoThumbnails[video.id] : `https://img.youtube.com/vi/${video.youtubeVideoId}/mqdefault.jpg`}
                               alt={video.title}
                               style={{
                                 width: '100%',
@@ -1486,7 +1589,7 @@ const Dashboard = ({ user, onLogout }) => {
                           
                           {/* Fallback placeholder */}
                           <div style={{
-                            display: video.videoSource === 'youtube-url' && videoThumbnails[video.id] ? 'none' : 'flex',
+                            display: ((video.videoSource === 'youtube-url' && videoThumbnails[video.id]) || (video.videoSource === 'one-to-one' && video.youtubeVideoId)) ? 'none' : 'flex',
                             alignItems: 'center',
                             justifyContent: 'center',
                             height: '100%',
@@ -1495,7 +1598,8 @@ const Dashboard = ({ user, onLogout }) => {
                             fontSize: '48px'
                           }}>
                             {video.videoSource === 'youtube-url' ? '📺' : 
-                             video.videoSource === 'youtube' ? '📺' : '🎥'}
+                             video.videoSource === 'youtube' ? '📺' : 
+                             video.videoSource === 'one-to-one' ? '👥' : '🎥'}
                           </div>
                           
                           {/* Duration badge */}
@@ -1520,7 +1624,7 @@ const Dashboard = ({ user, onLogout }) => {
                           fontSize: '18px', 
                           fontWeight: '600', 
                           margin: '0 0 12px 0', 
-                          color: '#2d3748',
+                          color: '#000000',
                           lineHeight: '1.4'
                         }}>
                           {video.title}
@@ -1533,7 +1637,7 @@ const Dashboard = ({ user, onLogout }) => {
                           lineHeight: '1.5'
                         }}>
                           <div style={{ marginBottom: '8px' }}>
-                            <strong>👨‍🏫 Teacher:</strong> {getTeacherName(video.batchId)}
+                            <strong>👨‍🏫 Teacher:</strong> {batchInfo?.teacherName || video.teacherName || video.instructor || getTeacherName(video.batchId) || 'Not assigned'}
                           </div>
                           {videoDurations[video.id] && videoDurations[video.id] !== 'Duration not available' && (
                             <div style={{ marginBottom: '8px' }}>
@@ -1541,8 +1645,16 @@ const Dashboard = ({ user, onLogout }) => {
                             </div>
                           )}
                           <div style={{ marginBottom: '8px' }}>
-                            <strong>📅 Class Date:</strong> {new Date(video.date || video.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                            <strong>📅 Class Date:</strong> {isOneToOne ? (video.classDate ? formatClassDate(video.classDate) : (video.date ? formatClassDate(video.date) : 'Not specified')) : new Date(video.date || video.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
                           </div>
+                          {/* Commented out Class Schedule as requested */}
+                          {/* {isOneToOne && (video.classDate || video.classTime || video.date) && (
+                            <div style={{ marginBottom: '8px' }}>
+                              <strong>⏰ Class Schedule:</strong> {formatClassDate(video.classDate || video.date)} 
+                              {(video.classDate || video.date) && video.classTime && ' at '}
+                              {video.classTime && `${video.classTime}`}
+                            </div>
+                          )} */}
                           {canSeeNotes && (
                             <div style={{ marginTop: '4px' }}>
                               <button

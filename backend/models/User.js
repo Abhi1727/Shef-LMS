@@ -36,6 +36,10 @@ const UserSchema = new mongoose.Schema({
   batchId: {
     type: String,
   },
+  // One-to-one batch (1:1 personalized; separate from regular batchId)
+  oneToOneBatchId: {
+    type: String,
+  },
   domain: {
     type: String,
   },

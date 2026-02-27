@@ -37,6 +37,22 @@ const StudentsActivity = ({ token: tokenProp }) => {
     limit: 200
   });
   const [autoRefresh, setAutoRefresh] = useState(false);
+  
+  // New states for individual user features
+  const [showUserModal, setShowUserModal] = useState(false);
+  const [selectedUser, setSelectedUser] = useState(null);
+  const [userSearchResults, setUserSearchResults] = useState([]);
+  const [userSearchLoading, setUserSearchLoading] = useState(false);
+  const [userActivities, setUserActivities] = useState([]);
+  const [userActivitiesLoading, setUserActivitiesLoading] = useState(false);
+  const [userFilters, setUserFilters] = useState({
+    action: '',
+    startDate: '',
+    endDate: '',
+    limit: 100,
+    page: 1
+  });
+  const [userPagination, setUserPagination] = useState({ total: 0, pages: 0 });
 
   const fetchActivities = useCallback(async () => {
     if (!token) return;
@@ -72,6 +88,13 @@ const StudentsActivity = ({ token: tokenProp }) => {
     const id = setInterval(fetchActivities, 30000);
     return () => clearInterval(id);
   }, [autoRefresh, fetchActivities]);
+
+  // Fetch user activities when selected user or filters change
+  useEffect(() => {
+    if (selectedUser) {
+      fetchUserActivities();
+    }
+  }, [selectedUser, userFilters.action, userFilters.startDate, userFilters.endDate, userFilters.limit, userFilters.page]);
 
   const filteredActivities = activities.filter(a => {
     if (!filters.search.trim()) return true;
@@ -122,6 +145,124 @@ const StudentsActivity = ({ token: tokenProp }) => {
     link.download = `students-activity-${new Date().toISOString().slice(0, 10)}.csv`;
     link.click();
     URL.revokeObjectURL(link.href);
+  };
+
+  // New functions for individual user features
+  const searchUsers = async (query) => {
+    if (!query || query.length < 2) {
+      setUserSearchResults([]);
+      return;
+    }
+    
+    setUserSearchLoading(true);
+    try {
+      const params = new URLSearchParams({ q: query, limit: 10 });
+      const res = await fetch(`${API_BASE}/api/admin/activity/users/search?${params}`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (!res.ok) throw new Error('Failed to search users');
+      const data = await res.json();
+      setUserSearchResults(data.users || []);
+    } catch (err) {
+      console.error('Error searching users:', err);
+      setUserSearchResults([]);
+    } finally {
+      setUserSearchLoading(false);
+    }
+  };
+
+  const fetchUserActivities = async () => {
+    if (!selectedUser || !token) return;
+    
+    setUserActivitiesLoading(true);
+    try {
+      const params = new URLSearchParams();
+      if (userFilters.action) params.set('action', userFilters.action);
+      if (userFilters.startDate) params.set('startDate', userFilters.startDate);
+      if (userFilters.endDate) params.set('endDate', userFilters.endDate);
+      params.set('limit', userFilters.limit);
+      params.set('page', userFilters.page);
+      
+      const res = await fetch(`${API_BASE}/api/admin/activity/user/${selectedUser.id}?${params}`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (!res.ok) throw new Error('Failed to load user activity');
+      const data = await res.json();
+      setUserActivities(data.activities || []);
+      setUserPagination({
+        total: data.total || 0,
+        pages: data.pages || 0
+      });
+    } catch (err) {
+      console.error('Error fetching user activities:', err);
+      setUserActivities([]);
+      setUserPagination({ total: 0, pages: 0 });
+    } finally {
+      setUserActivitiesLoading(false);
+    }
+  };
+
+  const handleUserExport = async (format = 'csv') => {
+    if (!selectedUser || !token) return;
+    
+    try {
+      const params = new URLSearchParams({ format });
+      if (userFilters.action) params.set('action', userFilters.action);
+      if (userFilters.startDate) params.set('startDate', userFilters.startDate);
+      if (userFilters.endDate) params.set('endDate', userFilters.endDate);
+      
+      const res = await fetch(`${API_BASE}/api/admin/activity/user/${selectedUser.id}/export?${params}`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      
+      if (!res.ok) throw new Error('Failed to export user activity');
+      
+      if (format === 'json') {
+        const data = await res.json();
+        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = `user-data-${selectedUser.name.replace(/[^a-zA-Z0-9]/g, '_')}-${new Date().toISOString().slice(0, 10)}.json`;
+        link.click();
+        URL.revokeObjectURL(link.href);
+      } else {
+        const blob = await res.blob();
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        const contentDisposition = res.headers.get('content-disposition');
+        const filename = contentDisposition ? contentDisposition.split('filename=')[1].replace(/"/g, '') : `user-activity-${new Date().toISOString().slice(0, 10)}.csv`;
+        link.download = filename;
+        link.click();
+        URL.revokeObjectURL(link.href);
+      }
+    } catch (err) {
+      console.error('Error exporting user activity:', err);
+      alert('Failed to export user activity. Please try again.');
+    }
+  };
+
+  const openUserModal = (user = null) => {
+    setSelectedUser(user);
+    setUserActivities([]);
+    setUserFilters({
+      action: '',
+      startDate: '',
+      endDate: '',
+      limit: 100,
+      page: 1
+    });
+    setShowUserModal(true);
+    
+    if (user) {
+      setTimeout(() => fetchUserActivities(), 100);
+    }
+  };
+
+  const closeUserModal = () => {
+    setShowUserModal(false);
+    setSelectedUser(null);
+    setUserActivities([]);
+    setUserSearchResults([]);
   };
 
   const getActionStyle = (action) => {
@@ -223,6 +364,9 @@ const StudentsActivity = ({ token: tokenProp }) => {
             />
             Auto-refresh (30s)
           </label>
+          <button onClick={() => openUserModal()} className="sa-btn sa-btn-secondary">
+            👤 User Activity
+          </button>
           <button onClick={fetchActivities} disabled={loading} className="sa-btn sa-btn-secondary">
             {loading ? '⏳ Loading…' : '🔄 Refresh'}
           </button>
@@ -256,6 +400,7 @@ const StudentsActivity = ({ token: tokenProp }) => {
                 <th>IP</th>
                 <th>Location</th>
                 <th>ISP</th>
+                <th>Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -303,10 +448,27 @@ const StudentsActivity = ({ token: tokenProp }) => {
                       <td className="sa-ip-cell"><code className="sa-ip">{a.ipAddress || '—'}</code></td>
                       <td className="sa-location-cell">{[a.city, a.country].filter(Boolean).join(', ') || '—'}</td>
                       <td className="sa-isp-cell">{a.isp || '—'}</td>
+                      <td className="sa-actions-cell">
+                        <button 
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            openUserModal({
+                              id: a.userId,
+                              name: a.userName,
+                              email: a.userEmail,
+                              role: a.userRole
+                            });
+                          }}
+                          className="sa-btn-small"
+                          title="View user activity"
+                        >
+                          📥
+                        </button>
+                      </td>
                     </tr>
                     {isExpanded && (
                       <tr className="sa-detail-row">
-                        <td colSpan={9}>
+                        <td colSpan={10}>
                           <div className="sa-full-details">
                             <h4>Full activity details</h4>
                             <div className="sa-detail-grid">
@@ -341,6 +503,192 @@ const StudentsActivity = ({ token: tokenProp }) => {
       {!loading && filteredActivities.length > 0 && (
         <div className="sa-footer">
           Showing {filteredActivities.length} of {total} events • Click a row to expand full details
+        </div>
+      )}
+
+      {/* User Activity Modal */}
+      {showUserModal && (
+        <div className="sa-modal-overlay" onClick={closeUserModal}>
+          <div className="sa-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="sa-modal-header">
+              <h3>👤 Individual User Activity</h3>
+              <button onClick={closeUserModal} className="sa-modal-close">×</button>
+            </div>
+            
+            <div className="sa-modal-body">
+              {!selectedUser ? (
+                <div className="sa-user-search">
+                  <h4>Search for a user</h4>
+                  <input
+                    type="text"
+                    placeholder="Type name, email, or enrollment number..."
+                    onChange={(e) => searchUsers(e.target.value)}
+                    className="sa-search-input"
+                  />
+                  {userSearchLoading && <div className="sa-loading-small">Searching...</div>}
+                  {userSearchResults.length > 0 && (
+                    <div className="sa-search-results">
+                      {userSearchResults.map(user => (
+                        <div 
+                          key={user.id}
+                          className="sa-user-result"
+                          onClick={() => setSelectedUser(user)}
+                        >
+                          <div className="sa-user-info">
+                            <strong>{user.name}</strong>
+                            <small>{user.email}</small>
+                            <span className="sa-user-meta">
+                              {user.role} • {user.activityCount} activities
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="sa-user-activity">
+                  <div className="sa-user-header">
+                    <div className="sa-user-details">
+                      <h4>{selectedUser.name}</h4>
+                      <p>{selectedUser.email} • {selectedUser.role}</p>
+                      {selectedUser.course && <span className="sa-user-course">Course: {selectedUser.course}</span>}
+                    </div>
+                    <div className="sa-user-actions">
+                      <button 
+                        onClick={() => handleUserExport('csv')}
+                        className="sa-btn sa-btn-primary"
+                      >
+                        📥 Export CSV
+                      </button>
+                      <button 
+                        onClick={() => handleUserExport('json')}
+                        className="sa-btn sa-btn-secondary"
+                      >
+                        📄 Export JSON
+                      </button>
+                      <button 
+                        onClick={() => setSelectedUser(null)}
+                        className="sa-btn sa-btn-secondary"
+                      >
+                        ← Change User
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="sa-user-filters">
+                    <select
+                      value={userFilters.action}
+                      onChange={(e) => setUserFilters(f => ({ ...f, action: e.target.value }))}
+                      className="sa-select"
+                    >
+                      <option value="">All actions</option>
+                      <option value="login">Login</option>
+                      <option value="video_view">Video view</option>
+                      <option value="assessment_submit">Assessment submit</option>
+                      <option value="page_view">Page view</option>
+                      <option value="logout">Logout</option>
+                    </select>
+                    <input
+                      type="date"
+                      value={userFilters.startDate}
+                      onChange={(e) => setUserFilters(f => ({ ...f, startDate: e.target.value }))}
+                      className="sa-date-input"
+                      placeholder="Start date"
+                    />
+                    <input
+                      type="date"
+                      value={userFilters.endDate}
+                      onChange={(e) => setUserFilters(f => ({ ...f, endDate: e.target.value }))}
+                      className="sa-date-input"
+                      placeholder="End date"
+                    />
+                    <select
+                      value={userFilters.limit}
+                      onChange={(e) => setUserFilters(f => ({ ...f, limit: Number(e.target.value), page: 1 }))}
+                      className="sa-select"
+                    >
+                      <option value={50}>50 rows</option>
+                      <option value={100}>100 rows</option>
+                      <option value={200}>200 rows</option>
+                      <option value={500}>500 rows</option>
+                    </select>
+                  </div>
+
+                  {userActivitiesLoading ? (
+                    <div className="sa-loading">Loading user activities...</div>
+                  ) : userActivities.length === 0 ? (
+                    <div className="sa-empty">No activities found for this user.</div>
+                  ) : (
+                    <div className="sa-user-table-wrapper">
+                      <table className="sa-table">
+                        <thead>
+                          <tr>
+                            <th>Time</th>
+                            <th>Action</th>
+                            <th>Details</th>
+                            <th>IP</th>
+                            <th>Location</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {userActivities.map((a, i) => {
+                            const actionStyle = getActionStyle(a.action);
+                            return (
+                              <tr key={`user-activity-${i}`}>
+                                <td className="sa-time">{new Date(a.timestamp).toLocaleString()}</td>
+                                <td>
+                                  <span className="sa-action" style={{ background: `${actionStyle.color}22`, color: actionStyle.color }}>
+                                    {actionStyle.icon} {actionStyle.label}
+                                  </span>
+                                </td>
+                                <td className="sa-details-cell">
+                                  {a.action === 'video_view' && a.videoTitle && (
+                                    <span className="sa-detail">📹 {a.videoTitle}</span>
+                                  )}
+                                  {a.action === 'assessment_submit' && (
+                                    <span className="sa-detail">
+                                      ✏️ {a.assessmentTitle || 'Assessment'} {a.score != null && `(${a.score})`}
+                                    </span>
+                                  )}
+                                  {a.action === 'login' && <span className="sa-detail">—</span>}
+                                  {!['login', 'video_view', 'assessment_submit'].includes(a.action) && <span className="sa-detail">—</span>}
+                                </td>
+                                <td className="sa-ip-cell"><code className="sa-ip">{a.ipAddress || '—'}</code></td>
+                                <td className="sa-location-cell">{[a.city, a.country].filter(Boolean).join(', ') || '—'}</td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                      
+                      {userPagination.pages > 1 && (
+                        <div className="sa-pagination">
+                          <button 
+                            onClick={() => setUserFilters(f => ({ ...f, page: Math.max(1, f.page - 1) }))}
+                            disabled={userFilters.page <= 1}
+                            className="sa-btn sa-btn-secondary"
+                          >
+                            ← Previous
+                          </button>
+                          <span className="sa-page-info">
+                            Page {userFilters.page} of {userPagination.pages} ({userPagination.total} total)
+                          </span>
+                          <button 
+                            onClick={() => setUserFilters(f => ({ ...f, page: Math.min(userPagination.pages, f.page + 1) }))}
+                            disabled={userFilters.page >= userPagination.pages}
+                            className="sa-btn sa-btn-secondary"
+                          >
+                            Next →
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
         </div>
       )}
     </div>

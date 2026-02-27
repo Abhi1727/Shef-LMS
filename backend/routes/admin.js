@@ -13,6 +13,7 @@ const Course = require('../models/Course');
 const Module = require('../models/Module');
 const Classroom = require('../models/Classroom');
 const OneToOne = require('../models/OneToOne');
+const { sendEmail } = require('../services/emailService');
 
 // Apply auth and admin role check to all admin routes
 router.use(auth);
@@ -381,6 +382,134 @@ router.get('/activity', async (req, res) => {
     res.json({ activities: sliced, total: merged.length });
   } catch (err) {
     console.error('Error fetching activity:', err);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// @route   GET /api/admin/activity/:studentId
+// @desc    Get activity log for a specific student with filtering options
+// @access  Private (Admin only)
+router.get('/activity/:studentId', async (req, res) => {
+  try {
+    const { studentId } = req.params;
+    const { 
+      action, 
+      startDate, 
+      endDate, 
+      limit = 100, 
+      page = 1,
+      export: exportFormat 
+    } = req.query;
+
+    if (!studentId) {
+      return res.status(400).json({ message: 'Student ID is required' });
+    }
+
+    const maxLimit = Math.min(parseInt(limit, 10) || 100, 500);
+    const skip = (parseInt(page, 10) - 1) * maxLimit;
+
+    // Build filter
+    const filter = { userId: studentId };
+    
+    if (action) {
+      filter.action = action;
+    }
+
+    // Date range filtering
+    if (startDate || endDate) {
+      filter.timestamp = {};
+      if (startDate) {
+        filter.timestamp.$gte = new Date(startDate);
+      }
+      if (endDate) {
+        filter.timestamp.$lte = new Date(endDate);
+      }
+    }
+
+    // Get student info
+    const student = await User.findById(studentId).select('name email role').lean();
+    if (!student) {
+      return res.status(404).json({ message: 'Student not found' });
+    }
+
+    // Fetch activities
+    const activities = await ActivityLog.find(filter)
+      .sort({ timestamp: -1 })
+      .skip(skip)
+      .limit(maxLimit)
+      .lean()
+      .exec();
+
+    // Get total count for pagination
+    const total = await ActivityLog.countDocuments(filter);
+
+    // Format activities
+    const formattedActivities = activities.map(doc => ({
+      id: doc._id,
+      action: doc.action,
+      userId: doc.userId,
+      userName: doc.userName || student.name,
+      userEmail: doc.userEmail || student.email,
+      userRole: doc.userRole || student.role,
+      timestamp: doc.timestamp ? new Date(doc.timestamp).toISOString() : null,
+      ipAddress: doc.ipAddress || null,
+      city: doc.city || null,
+      country: doc.country || null,
+      isp: doc.isp || null,
+      videoId: doc.videoId || null,
+      videoTitle: doc.videoTitle || null,
+      assessmentId: doc.assessmentId || null,
+      assessmentTitle: doc.assessmentTitle || null,
+      score: doc.score,
+      path: doc.path || null,
+      userAgent: doc.userAgent || null
+    }));
+
+    // Handle CSV export
+    if (exportFormat === 'csv') {
+      const csv = [
+        'Timestamp,Action,User Name,User Email,IP Address,City,Country,ISP,Video Title,Assessment Title,Score,Path'
+      ];
+      
+      formattedActivities.forEach(activity => {
+        csv.push([
+          activity.timestamp ? new Date(activity.timestamp).toLocaleString() : '',
+          activity.action || '',
+          `"${activity.userName || ''}"`,
+          `"${activity.userEmail || ''}"`,
+          activity.ipAddress || '',
+          activity.city || '',
+          activity.country || '',
+          activity.isp || '',
+          `"${activity.videoTitle || ''}"`,
+          `"${activity.assessmentTitle || ''}"`,
+          activity.score || '',
+          activity.path || ''
+        ].join(','));
+      });
+
+      res.setHeader('Content-Type', 'text/csv');
+      res.setHeader('Content-Disposition', `attachment; filename="activity-${student.name.replace(/\s+/g, '-')}-${new Date().toISOString().split('T')[0]}.csv"`);
+      return res.send(csv.join('\n'));
+    }
+
+    res.json({
+      student: {
+        id: student._id,
+        name: student.name,
+        email: student.email,
+        role: student.role
+      },
+      activities: formattedActivities,
+      pagination: {
+        page: parseInt(page, 10),
+        limit: maxLimit,
+        total,
+        pages: Math.ceil(total / maxLimit)
+      }
+    });
+  } catch (err) {
+    console.error('Error fetching student activity:', err);
     res.status(500).json({ message: 'Server error' });
   }
 });
@@ -1458,6 +1587,69 @@ router.delete('/one-to-one/:id', async (req, res) => {
   } catch (error) {
     console.error('Error deleting one-to-one class:', error);
     res.status(500).json({ message: 'Error deleting one-to-one class' });
+  }
+});
+
+// Email Routes
+router.post('/send-batch-email', async (req, res) => {
+  try {
+    const { batchId, subject, message, studentEmails } = req.body;
+
+    // Validate required fields
+    if (!batchId || !subject || !message || !studentEmails || studentEmails.length === 0) {
+      return res.status(400).json({ 
+        message: 'Missing required fields: batchId, subject, message, or studentEmails' 
+      });
+    }
+
+    // Verify batch exists
+    const batch = await Batch.findById(batchId);
+    if (!batch) {
+      return res.status(404).json({ message: 'Batch not found' });
+    }
+
+    // Send email
+    const emailResult = await sendEmail({
+      subject,
+      message,
+      studentEmails,
+      batchId
+    });
+
+    // Log activity
+    try {
+      await ActivityLog.create({
+        action: 'EMAIL_SENT',
+        entityType: 'batch',
+        entityId: batchId,
+        entityName: batch.name,
+        details: {
+          recipientCount: studentEmails.length,
+          subject: subject,
+          messageId: emailResult.messageId
+        },
+        userId: req.user?.id,
+        userEmail: req.user?.email,
+        timestamp: new Date()
+      });
+    } catch (logError) {
+      console.error('Failed to log email activity:', logError);
+      // Continue with response even if logging fails
+    }
+
+    res.json({
+      success: true,
+      message: `Email sent successfully to ${studentEmails.length} student(s)`,
+      recipientCount: studentEmails.length,
+      messageId: emailResult.messageId,
+      batchName: batch.name
+    });
+
+  } catch (error) {
+    console.error('Error sending batch email:', error);
+    res.status(500).json({ 
+      message: error.message || 'Failed to send email' 
+    });
   }
 });
 

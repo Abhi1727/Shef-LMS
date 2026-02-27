@@ -68,6 +68,31 @@ const BatchDetailsPage = () => {
   const [showStudentModal, setShowStudentModal] = useState(false);
   const [showStudentDetailsModal, setShowStudentDetailsModal] = useState(false);
   const [selectedStudentDetails, setSelectedStudentDetails] = useState(null);
+  
+  // Enhanced student profile modal state
+  const [activeProfileTab, setActiveProfileTab] = useState('profile');
+  const [editMode, setEditMode] = useState(false);
+  const [editedProfile, setEditedProfile] = useState({});
+  const [studentActivities, setStudentActivities] = useState([]);
+  const [loadingActivity, setLoadingActivity] = useState(false);
+  const [activityFilter, setActivityFilter] = useState({
+    action: '',
+    startDate: '',
+    endDate: ''
+  });
+  const [activityPagination, setActivityPagination] = useState({
+    page: 1,
+    limit: 50,
+    total: 0,
+    pages: 0
+  });
+  const [activityTotal, setActivityTotal] = useState(0);
+  const [reportPeriod, setReportPeriod] = useState('30');
+  const [customDateRange, setCustomDateRange] = useState({
+    start: '',
+    end: ''
+  });
+  const [reportData, setReportData] = useState(null);
   const [showAddStudentsModal, setShowAddStudentsModal] = useState(false);
   const [showAddStudentModal, setShowAddStudentModal] = useState(false);
   const [selectedStudentIds, setSelectedStudentIds] = useState([]);
@@ -109,6 +134,14 @@ const BatchDetailsPage = () => {
     phone: '',
     address: ''
   }); // 'videos' or 'students'
+  
+  // Email-related state
+  const [emailForm, setEmailForm] = useState({
+    subject: '',
+    message: '',
+    selectedStudents: []
+  });
+  const [isSendingEmail, setIsSendingEmail] = useState(false);
 
   // Determine if current user is an admin (from JWT)
   useEffect(() => {
@@ -400,7 +433,246 @@ const BatchDetailsPage = () => {
 
   const handleViewStudentDetails = (student) => {
     setSelectedStudentDetails(student);
+    setEditedProfile({
+      name: student.name,
+      email: student.email,
+      phone: student.phone,
+      address: student.address,
+      status: student.status
+    });
+    setActiveProfileTab('profile');
+    setEditMode(false);
     setShowStudentDetailsModal(true);
+    
+    // Load initial activity data
+    loadStudentActivity(student.id);
+  };
+
+  // Load student activity data
+  const loadStudentActivity = async (studentId, page = 1, filters = {}) => {
+    setLoadingActivity(true);
+    try {
+      const token = localStorage.getItem('token');
+      const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
+      
+      const queryParams = new URLSearchParams({
+        page: page.toString(),
+        limit: activityPagination.limit.toString(),
+        ...filters
+      });
+      
+      const response = await fetch(`${apiUrl}/api/admin/activity/${studentId}?${queryParams}`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        setStudentActivities(data.activities || []);
+        setActivityPagination(data.pagination || {
+          page: 1,
+          limit: 50,
+          total: 0,
+          pages: 0
+        });
+        setActivityTotal(data.pagination?.total || 0);
+      } else {
+        console.error('Failed to load student activity');
+        setStudentActivities([]);
+      }
+    } catch (error) {
+      console.error('Error loading student activity:', error);
+      setStudentActivities([]);
+    } finally {
+      setLoadingActivity(false);
+    }
+  };
+
+  // Handle activity filtering
+  const handleFilterActivity = () => {
+    loadStudentActivity(selectedStudentDetails.id, 1, activityFilter);
+  };
+
+  // Clear activity filters
+  const handleClearActivityFilter = () => {
+    const clearedFilter = { action: '', startDate: '', endDate: '' };
+    setActivityFilter(clearedFilter);
+    loadStudentActivity(selectedStudentDetails.id, 1, clearedFilter);
+  };
+
+  // Handle activity pagination
+  const handleActivityPageChange = (newPage) => {
+    loadStudentActivity(selectedStudentDetails.id, newPage, activityFilter);
+  };
+
+  // Handle profile editing
+  const handleSaveProfile = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
+
+      const response = await fetch(`${apiUrl}/api/admin/users/${selectedStudentDetails.id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify(editedProfile)
+      });
+
+      if (response.ok) {
+        showToast('Student profile updated successfully!', 'success');
+        
+        // Update local state
+        setSelectedStudentDetails(prev => ({ ...prev, ...editedProfile }));
+        setStudents(prev => prev.map(student => 
+          student.id === selectedStudentDetails.id 
+            ? { ...student, ...editedProfile }
+            : student
+        ));
+        
+        setEditMode(false);
+      } else {
+        showToast('Failed to update student profile', 'error');
+      }
+    } catch (error) {
+      console.error('Error updating student profile:', error);
+      showToast('Error updating student profile', 'error');
+    }
+  };
+
+  const handleCancelEdit = () => {
+    setEditedProfile({
+      name: selectedStudentDetails.name,
+      email: selectedStudentDetails.email,
+      phone: selectedStudentDetails.phone,
+      address: selectedStudentDetails.address,
+      status: selectedStudentDetails.status
+    });
+    setEditMode(false);
+  };
+
+  // Download activity CSV
+  const handleDownloadActivityCSV = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
+      
+      const queryParams = new URLSearchParams({
+        export: 'csv',
+        ...activityFilter
+      });
+      
+      const response = await fetch(`${apiUrl}/api/admin/activity/${selectedStudentDetails.id}?${queryParams}`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      
+      if (response.ok) {
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `activity-${selectedStudentDetails.name.replace(/\s+/g, '-')}-${new Date().toISOString().split('T')[0]}.csv`;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+        showToast('Activity data downloaded successfully!', 'success');
+      } else {
+        showToast('Failed to download activity data', 'error');
+      }
+    } catch (error) {
+      console.error('Error downloading activity data:', error);
+      showToast('Error downloading activity data', 'error');
+    }
+  };
+
+  // Generate report
+  const handleGenerateReport = async () => {
+    try {
+      let startDate, endDate;
+      
+      if (reportPeriod === 'custom') {
+        startDate = customDateRange.start;
+        endDate = customDateRange.end;
+      } else {
+        const days = parseInt(reportPeriod);
+        endDate = new Date().toISOString().split('T')[0];
+        const start = new Date();
+        start.setDate(start.getDate() - days);
+        startDate = start.toISOString().split('T')[0];
+      }
+
+      const token = localStorage.getItem('token');
+      const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
+      
+      const response = await fetch(`${apiUrl}/api/admin/activity/${selectedStudentDetails.id}?startDate=${startDate}&endDate=${endDate}&limit=1000`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        const activities = data.activities || [];
+        
+        // Generate report summary
+        const summary = {
+          totalActivities: activities.length,
+          videoViews: activities.filter(a => a.action === 'video_view').length,
+          assessments: activities.filter(a => a.action === 'assessment_submit').length,
+          loginDays: new Set(activities.filter(a => a.action === 'login').map(a => a.timestamp?.split('T')[0])).size
+        };
+        
+        setReportData(summary);
+        showToast('Report generated successfully!', 'success');
+      } else {
+        showToast('Failed to generate report', 'error');
+      }
+    } catch (error) {
+      console.error('Error generating report:', error);
+      showToast('Error generating report', 'error');
+    }
+  };
+
+  // Download full report
+  const handleDownloadReport = async () => {
+    try {
+      let startDate, endDate;
+      
+      if (reportPeriod === 'custom') {
+        startDate = customDateRange.start;
+        endDate = customDateRange.end;
+      } else {
+        const days = parseInt(reportPeriod);
+        endDate = new Date().toISOString().split('T')[0];
+        const start = new Date();
+        start.setDate(start.getDate() - days);
+        startDate = start.toISOString().split('T')[0];
+      }
+
+      const token = localStorage.getItem('token');
+      const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
+      
+      const response = await fetch(`${apiUrl}/api/admin/activity/${selectedStudentDetails.id}?startDate=${startDate}&endDate=${endDate}&export=csv`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      
+      if (response.ok) {
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `report-${selectedStudentDetails.name.replace(/\s+/g, '-')}-${startDate}-to-${endDate}.csv`;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+        showToast('Report downloaded successfully!', 'success');
+      } else {
+        showToast('Failed to download report', 'error');
+      }
+    } catch (error) {
+      console.error('Error downloading report:', error);
+      showToast('Error downloading report', 'error');
+    }
   };
 
   const handleAddNewStudent = async () => {
@@ -901,6 +1173,52 @@ const BatchDetailsPage = () => {
     }
   };
 
+  const handleSendEmail = async () => {
+    if (!emailForm.subject.trim() || !emailForm.message.trim() || emailForm.selectedStudents.length === 0) {
+      showToast('Please fill in all required fields and select at least one student', 'warning');
+      return;
+    }
+
+    setIsSendingEmail(true);
+    
+    try {
+      const token = localStorage.getItem('token');
+      const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
+      const batchIdForApi = selectedBatch?.id || selectedBatch?._id;
+
+      const response = await fetch(`${apiUrl}/api/admin/send-batch-email`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          batchId: batchIdForApi,
+          subject: emailForm.subject,
+          message: emailForm.message,
+          studentEmails: emailForm.selectedStudents
+        })
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        showToast(`Email sent successfully to ${emailForm.selectedStudents.length} student(s)!`, 'success');
+        
+        // Reset form and go back to videos view
+        setEmailForm({ subject: '', message: '', selectedStudents: [] });
+        setActiveView('videos');
+      } else {
+        showToast(data.message || 'Failed to send email', 'error');
+      }
+    } catch (error) {
+      console.error('Error sending email:', error);
+      showToast('Error sending email. Please try again.', 'error');
+    } finally {
+      setIsSendingEmail(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="batch-details-page">
@@ -1040,7 +1358,7 @@ const BatchDetailsPage = () => {
 
       {/* Horizontal Menu - After Header */}
       <div className="horizontal-menu">
-        <h3>Batch Options</h3>
+        {/* <h3>Batch Options</h3> */}
         <div className="menu-items-horizontal">
           <button 
             className={`menu-item-horizontal ${activeView === 'videos' ? 'active' : ''}`}
@@ -1054,6 +1372,14 @@ const BatchDetailsPage = () => {
           >
             👥 Students ({batchStudents.length})
           </button>
+          {isAdmin && (
+            <button 
+              className={`menu-item-horizontal ${activeView === 'email' ? 'active' : ''}`}
+              onClick={() => handleViewChange('email')}
+            >
+              📧 Send Email
+            </button>
+          )}
         </div>
       </div>
 
@@ -1280,6 +1606,153 @@ const BatchDetailsPage = () => {
               )}
             </div>
           )}
+
+          {activeView === 'email' && (
+            <div className="email-view">
+              <div className="email-header">
+                <div className="email-header-icon">✉️</div>
+                <h2>Send Email to Batch</h2>
+                <p className="email-header-subtitle">{selectedBatch?.name}</p>
+              </div>
+              
+              <div className="email-modal">
+                <div className="email-content">
+                  {/* Sender Email Display */}
+                  <div className="email-sender-card">
+                    <div className="email-sender-label">
+                      <span className="email-sender-icon">📤</span>
+                      <span>From</span>
+                    </div>
+                    <div className="email-sender-value">support@skystates.us</div>
+                    <small className="email-sender-note">Batch notifications will be sent from this address</small>
+                  </div>
+
+                  {/* Student Selection */}
+                  <div className="email-students-section">
+                    <div className="email-students-header">
+                      <label className="email-section-label">
+                        <span className="email-section-icon">👥</span>
+                        Select Students
+                      </label>
+                      <label className="email-select-all" htmlFor="select-all-students">
+                        <input
+                          type="checkbox"
+                          id="select-all-students"
+                          checked={emailForm.selectedStudents.length === batchStudents.length && batchStudents.length > 0}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setEmailForm(prev => ({
+                                ...prev,
+                                selectedStudents: batchStudents.map(student => student.email)
+                              }));
+                            } else {
+                              setEmailForm(prev => ({
+                                ...prev,
+                                selectedStudents: []
+                              }));
+                            }
+                          }}
+                        />
+                        <span>Select All ({batchStudents.length})</span>
+                      </label>
+                    </div>
+                    
+                    <div className="email-students-list">
+                      {batchStudents.length > 0 ? (
+                        batchStudents.map(student => (
+                          <label key={student.id} htmlFor={`student-${student.id}`} className="email-student-item">
+                            <input
+                              type="checkbox"
+                              id={`student-${student.id}`}
+                              checked={emailForm.selectedStudents.includes(student.email)}
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  setEmailForm(prev => ({
+                                    ...prev,
+                                    selectedStudents: [...prev.selectedStudents, student.email]
+                                  }));
+                                } else {
+                                  setEmailForm(prev => ({
+                                    ...prev,
+                                    selectedStudents: prev.selectedStudents.filter(email => email !== student.email)
+                                  }));
+                                }
+                              }}
+                            />
+                            <div className="email-student-info">
+                              <span className="student-name">{student.name}</span>
+                              <span className="student-email">{student.email}</span>
+                            </div>
+                          </label>
+                        ))
+                      ) : (
+                        <div className="no-students-message">
+                          <p>No students in this batch to email.</p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Email Composition */}
+                  <div className="email-composition">
+                    <label className="email-section-label">
+                      <span className="email-section-icon">✏️</span>
+                      Compose Message
+                    </label>
+                    <div className="email-form">
+                      <div className="email-field-group">
+                        <label className="email-field-label">Subject <span className="required">*</span></label>
+                        <input
+                          type="text"
+                          placeholder="Enter email subject"
+                          value={emailForm.subject}
+                          onChange={(e) => setEmailForm(prev => ({ ...prev, subject: e.target.value }))}
+                          className="email-subject-input"
+                          required
+                        />
+                      </div>
+                      <div className="email-field-group">
+                        <label className="email-field-label">Message <span className="required">*</span></label>
+                        <textarea
+                          placeholder="Write your message to the selected students..."
+                          value={emailForm.message}
+                          onChange={(e) => setEmailForm(prev => ({ ...prev, message: e.target.value }))}
+                          className="email-message-input"
+                          rows="6"
+                          required
+                        />
+                      </div>
+                      
+                      <div className="email-actions">
+                        <button
+                          type="button"
+                          className="btn-email-cancel"
+                          onClick={() => {
+                            setEmailForm({ subject: '', message: '', selectedStudents: [] });
+                            setActiveView('videos');
+                          }}
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          type="button"
+                          className="btn-send-email"
+                          onClick={handleSendEmail}
+                          disabled={isSendingEmail || !emailForm.subject.trim() || !emailForm.message.trim() || emailForm.selectedStudents.length === 0}
+                        >
+                          {isSendingEmail ? (
+                            <span className="btn-send-loading">⏳ Sending...</span>
+                          ) : (
+                            <span>Send to {emailForm.selectedStudents.length} student{emailForm.selectedStudents.length !== 1 ? 's' : ''}</span>
+                          )}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
       
@@ -1462,9 +1935,10 @@ const BatchDetailsPage = () => {
           </div>
 
           <div className="modal-actions">
-            <button
-              className="btn-cancel"
-              onClick={() => {
+                        <button
+                          type="button"
+                          className="btn-email-cancel"
+                          onClick={() => {
                 setShowAddVideoModal(false);
                 setVideoFormData({ title: '', youtubeVideoUrl: '', description: '', date: '', time: '', notesAvailable: false, notesFile: null });
               }}
@@ -1672,100 +2146,417 @@ const BatchDetailsPage = () => {
     )}
 
     {showStudentDetailsModal && createPortal(
-      <div className="modal-overlay" onClick={() => setShowStudentDetailsModal(false)}>
-        <div className="modal student-details-modal" onClick={(e) => e.stopPropagation()}>
-          <div className="modal-header">
-            <h3>👤 Student Details</h3>
-            <button className="modal-close" onClick={() => setShowStudentDetailsModal(false)}>×</button>
-          </div>
-          
-          <div className="modal-content student-details-content">
-            <div className="student-details-grid">
-              <div className="detail-section">
-                <h4>📝 Personal Information</h4>
-                <div className="detail-item">
-                  <label>Full Name:</label>
-                  <span>{selectedStudentDetails?.name || 'N/A'}</span>
-                </div>
-                <div className="detail-item">
-                  <label>Email Address:</label>
-                  <span>{selectedStudentDetails?.email || 'N/A'}</span>
-                </div>
-                <div className="detail-item">
-                  <label>Phone Number:</label>
-                  <span>{selectedStudentDetails?.phone || 'N/A'}</span>
-                </div>
-                <div className="detail-item">
-                  <label>Address:</label>
-                  <span>{selectedStudentDetails?.address || 'N/A'}</span>
-                </div>
+      <div className="fullscreen-modal-overlay" onClick={() => setShowStudentDetailsModal(false)}>
+        <div className="fullscreen-modal student-profile-modal" onClick={(e) => e.stopPropagation()}>
+          {/* Modal Header */}
+          <div className="fullscreen-modal-header">
+            <div className="student-header-info">
+              <div className="student-avatar">
+                <span className="avatar-text">
+                  {selectedStudentDetails?.name?.charAt(0).toUpperCase() || 'S'}
+                </span>
               </div>
-
-              <div className="detail-section">
-                <h4>🎓 Academic Information</h4>
-                <div className="detail-item">
-                  <label>Batch Name:</label>
-                  <span>{selectedBatch?.name || 'N/A'}</span>
-                </div>
-                <div className="detail-item">
-                  <label>Course:</label>
-                  <span>{selectedStudentDetails?.course || 'N/A'}</span>
-                </div>
-                <div className="detail-item">
-                  <label>Status:</label>
+              <div className="student-basic-info">
+                <h2>{selectedStudentDetails?.name || 'Student Name'}</h2>
+                <p className="student-email">{selectedStudentDetails?.email || 'email@example.com'}</p>
+                <div className="student-badges">
+                  <span className="badge badge-primary">{selectedStudentDetails?.course || 'No Course'}</span>
                   <span className={`status-badge ${selectedStudentDetails?.status || 'inactive'}`}>
-                    {selectedStudentDetails?.status || 'N/A'}
+                    {selectedStudentDetails?.status || 'Unknown'}
                   </span>
                 </div>
               </div>
+            </div>
+            <div className="modal-header-actions">
+              <button 
+                className="btn-edit-profile"
+                onClick={() => setEditMode(!editMode)}
+              >
+                {editMode ? '👁️ View Mode' : '✏️ Edit Profile'}
+              </button>
+              <button className="modal-close-fullscreen" onClick={() => setShowStudentDetailsModal(false)}>×</button>
+            </div>
+          </div>
 
-              <div className="detail-section login-activity-section">
-                <h4>📍 Login Activity</h4>
-                {(selectedStudentDetails?.lastLogin || selectedStudentDetails?.lastLoginIP) ? (
-                  <>
-                    <div className="detail-item">
-                      <label>Last Login:</label>
-                      <span>{selectedStudentDetails?.lastLogin?.timestamp ? new Date(selectedStudentDetails.lastLogin.timestamp).toLocaleString() : selectedStudentDetails?.lastLoginTimestamp ? new Date(selectedStudentDetails.lastLoginTimestamp).toLocaleString() : 'Never'}</span>
-                    </div>
-                    <div className="detail-item">
-                      <label>Last IP:</label>
-                      <span className="ip-address">{selectedStudentDetails?.lastLoginIP || selectedStudentDetails?.lastLogin?.ipAddress || 'N/A'}</span>
-                    </div>
-                    <div className="detail-item">
-                      <label>Location:</label>
-                      <span>{[selectedStudentDetails?.lastLogin?.city, selectedStudentDetails?.lastLogin?.country].filter(Boolean).join(', ') || 'N/A'}</span>
-                    </div>
-                    <div className="detail-item">
-                      <label>ISP:</label>
-                      <span>{selectedStudentDetails?.lastLogin?.isp || 'N/A'}</span>
-                    </div>
-                    {(selectedStudentDetails?.loginHistory?.length > 0) && (
-                      <div className="login-history">
-                        <label>Recent logins:</label>
-                        <ul>
-                          {selectedStudentDetails.loginHistory.slice(0, 5).map((h, i) => (
-                            <li key={i}>
-                              {new Date(h.timestamp).toLocaleString()} — {h.ipAddress} ({h.city && h.country ? `${h.city}, ${h.country}` : 'N/A'})
-                            </li>
-                          ))}
-                        </ul>
+          {/* Tab Navigation */}
+          <div className="profile-tabs-nav">
+            <button 
+              className={`tab-btn ${activeProfileTab === 'profile' ? 'active' : ''}`}
+              onClick={() => setActiveProfileTab('profile')}
+            >
+              👤 Profile
+            </button>
+            <button 
+              className={`tab-btn ${activeProfileTab === 'activity' ? 'active' : ''}`}
+              onClick={() => setActiveProfileTab('activity')}
+            >
+              📊 Activity Log
+            </button>
+            <button 
+              className={`tab-btn ${activeProfileTab === 'reports' ? 'active' : ''}`}
+              onClick={() => setActiveProfileTab('reports')}
+            >
+              📈 Reports
+            </button>
+          </div>
+
+          {/* Tab Content */}
+          <div className="fullscreen-modal-content">
+            {/* Profile Tab */}
+            {activeProfileTab === 'profile' && (
+              <div className="profile-tab-content">
+                <div className="profile-grid">
+                  <div className="profile-section">
+                    <h3>📝 Personal Information</h3>
+                    {editMode ? (
+                      <div className="edit-profile-form">
+                        <div className="form-row">
+                          <div className="form-group">
+                            <label>Full Name</label>
+                            <input
+                              type="text"
+                              value={editedProfile.name || ''}
+                              onChange={(e) => setEditedProfile(prev => ({ ...prev, name: e.target.value }))}
+                              className="profile-input"
+                            />
+                          </div>
+                          <div className="form-group">
+                            <label>Email Address</label>
+                            <input
+                              type="email"
+                              value={editedProfile.email || ''}
+                              onChange={(e) => setEditedProfile(prev => ({ ...prev, email: e.target.value }))}
+                              className="profile-input"
+                            />
+                          </div>
+                        </div>
+                        <div className="form-row">
+                          <div className="form-group">
+                            <label>Phone Number</label>
+                            <input
+                              type="tel"
+                              value={editedProfile.phone || ''}
+                              onChange={(e) => setEditedProfile(prev => ({ ...prev, phone: e.target.value }))}
+                              className="profile-input"
+                            />
+                          </div>
+                          <div className="form-group">
+                            <label>Status</label>
+                            <select
+                              value={editedProfile.status || 'active'}
+                              onChange={(e) => setEditedProfile(prev => ({ ...prev, status: e.target.value }))}
+                              className="profile-input"
+                            >
+                              <option value="active">Active</option>
+                              <option value="inactive">Inactive</option>
+                              <option value="on-leave">On Leave</option>
+                            </select>
+                          </div>
+                        </div>
+                        <div className="form-group full-width">
+                          <label>Address</label>
+                          <textarea
+                            value={editedProfile.address || ''}
+                            onChange={(e) => setEditedProfile(prev => ({ ...prev, address: e.target.value }))}
+                            className="profile-input"
+                            rows="3"
+                          />
+                        </div>
+                        <div className="form-actions">
+                          <button className="btn-save" onClick={handleSaveProfile}>
+                            💾 Save Changes
+                          </button>
+                          <button className="btn-cancel" onClick={handleCancelEdit}>
+                            ❌ Cancel
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="profile-details">
+                        <div className="detail-item">
+                          <label>Full Name:</label>
+                          <span>{selectedStudentDetails?.name || 'N/A'}</span>
+                        </div>
+                        <div className="detail-item">
+                          <label>Email Address:</label>
+                          <span>{selectedStudentDetails?.email || 'N/A'}</span>
+                        </div>
+                        <div className="detail-item">
+                          <label>Phone Number:</label>
+                          <span>{selectedStudentDetails?.phone || 'N/A'}</span>
+                        </div>
+                        <div className="detail-item">
+                          <label>Address:</label>
+                          <span>{selectedStudentDetails?.address || 'N/A'}</span>
+                        </div>
                       </div>
                     )}
-                  </>
-                ) : (
-                  <p className="no-activity">No login activity recorded yet.</p>
-                )}
+                  </div>
+
+                  <div className="profile-section">
+                    <h3>🎓 Academic Information</h3>
+                    <div className="profile-details">
+                      <div className="detail-item">
+                        <label>Course:</label>
+                        <span>{selectedStudentDetails?.course || 'N/A'}</span>
+                      </div>
+                      <div className="detail-item">
+                        <label>Status:</label>
+                        <span>
+                          <span className={`status-badge ${(selectedStudentDetails?.status || 'active').toLowerCase()}`}>
+                            {selectedStudentDetails?.status || 'Active'}
+                          </span>
+                        </span>
+                      </div>
+                      <div className="detail-item">
+                        <label>Batch Name:</label>
+                        <span>{selectedBatch?.name || 'N/A'}</span>
+                      </div>
+                      <div className="detail-item">
+                        <label>Student ID:</label>
+                        <span>{selectedStudentDetails?.id || 'N/A'}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="profile-section">
+                    <h3>📍 Login Activity</h3>
+                    {(selectedStudentDetails?.lastLogin || selectedStudentDetails?.lastLoginIP) ? (
+                      <div className="profile-details">
+                        <div className="detail-item">
+                          <label>Last Login:</label>
+                          <span>{selectedStudentDetails?.lastLogin?.timestamp ? new Date(selectedStudentDetails.lastLogin.timestamp).toLocaleString() : selectedStudentDetails?.lastLoginTimestamp ? new Date(selectedStudentDetails.lastLoginTimestamp).toLocaleString() : 'Never'}</span>
+                        </div>
+                        <div className="detail-item">
+                          <label>Last IP:</label>
+                          <span className="ip-address">{selectedStudentDetails?.lastLoginIP || selectedStudentDetails?.lastLogin?.ipAddress || 'N/A'}</span>
+                        </div>
+                        <div className="detail-item">
+                          <label>Location:</label>
+                          <span>{[selectedStudentDetails?.lastLogin?.city, selectedStudentDetails?.lastLogin?.country].filter(Boolean).join(', ') || 'N/A'}</span>
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="no-activity">No login activity recorded yet.</p>
+                    )}
+                  </div>
+                </div>
               </div>
-            </div>
-            
-            <div className="modal-actions">
-              <button
-                className="btn-primary"
-                onClick={() => setShowStudentDetailsModal(false)}
-              >
-                Close
-              </button>
-            </div>
+            )}
+
+            {/* Activity Tab */}
+            {activeProfileTab === 'activity' && (
+              <div className="activity-tab-content">
+                <div className="activity-filters">
+                  <div className="filter-row">
+                    <div className="filter-group">
+                      <label>Action Type:</label>
+                      <select
+                        value={activityFilter.action || ''}
+                        onChange={(e) => setActivityFilter(prev => ({ ...prev, action: e.target.value }))}
+                        className="filter-input"
+                      >
+                        <option value="">All Actions</option>
+                        <option value="login">Login</option>
+                        <option value="video_view">Video View</option>
+                        <option value="assessment_submit">Assessment Submit</option>
+                        <option value="page_view">Page View</option>
+                      </select>
+                    </div>
+                    <div className="filter-group">
+                      <label>Start Date:</label>
+                      <input
+                        type="date"
+                        value={activityFilter.startDate || ''}
+                        onChange={(e) => setActivityFilter(prev => ({ ...prev, startDate: e.target.value }))}
+                        className="filter-input"
+                      />
+                    </div>
+                    <div className="filter-group">
+                      <label>End Date:</label>
+                      <input
+                        type="date"
+                        value={activityFilter.endDate || ''}
+                        onChange={(e) => setActivityFilter(prev => ({ ...prev, endDate: e.target.value }))}
+                        className="filter-input"
+                      />
+                    </div>
+                    <div className="filter-actions">
+                      <button className="btn-filter" onClick={handleFilterActivity}>
+                        🔍 Apply Filters
+                      </button>
+                      <button className="btn-clear" onClick={handleClearActivityFilter}>
+                        🔄 Clear
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="activity-list">
+                  {loadingActivity ? (
+                    <div className="loading-activity">Loading activity data...</div>
+                  ) : studentActivities.length > 0 ? (
+                    <>
+                      <div className="activity-summary">
+                        <span>Total Activities: {activityTotal}</span>
+                        <button 
+                          className="btn-download-csv"
+                          onClick={handleDownloadActivityCSV}
+                        >
+                          📥 Download CSV
+                        </button>
+                      </div>
+                      {studentActivities.map((activity, index) => (
+                        <div key={activity.id || index} className="activity-item">
+                          <div className="activity-header">
+                            <span className="activity-action">{activity.action}</span>
+                            <span className="activity-timestamp">
+                              {activity.timestamp ? new Date(activity.timestamp).toLocaleString() : 'N/A'}
+                            </span>
+                          </div>
+                          <div className="activity-details">
+                            {activity.videoTitle && (
+                              <div className="activity-detail">
+                                <label>Video:</label>
+                                <span>{activity.videoTitle}</span>
+                              </div>
+                            )}
+                            {activity.assessmentTitle && (
+                              <div className="activity-detail">
+                                <label>Assessment:</label>
+                                <span>{activity.assessmentTitle} (Score: {activity.score})</span>
+                              </div>
+                            )}
+                            {activity.ipAddress && (
+                              <div className="activity-detail">
+                                <label>IP:</label>
+                                <span>{activity.ipAddress}</span>
+                              </div>
+                            )}
+                            {activity.city && activity.country && (
+                              <div className="activity-detail">
+                                <label>Location:</label>
+                                <span>{activity.city}, {activity.country}</span>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                      {activityPagination.pages > 1 && (
+                        <div className="pagination">
+                          <button 
+                            disabled={activityPagination.page <= 1}
+                            onClick={() => handleActivityPageChange(activityPagination.page - 1)}
+                            className="btn-page"
+                          >
+                            Previous
+                          </button>
+                          <span className="page-info">
+                            Page {activityPagination.page} of {activityPagination.pages}
+                          </span>
+                          <button 
+                            disabled={activityPagination.page >= activityPagination.pages}
+                            onClick={() => handleActivityPageChange(activityPagination.page + 1)}
+                            className="btn-page"
+                          >
+                            Next
+                          </button>
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    <div className="no-activity-data">
+                      <p>📊 No activity data found for this student.</p>
+                      <small>Try adjusting the filters or date range.</small>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Reports Tab */}
+            {activeProfileTab === 'reports' && (
+              <div className="reports-tab-content">
+                <div className="reports-header">
+                  <h3>📈 Student Activity Reports</h3>
+                  <div className="report-actions">
+                    <div className="date-range-selector">
+                      <label>Report Period:</label>
+                      <select
+                        value={reportPeriod}
+                        onChange={(e) => setReportPeriod(e.target.value)}
+                        className="period-select"
+                      >
+                        <option value="7">Last 7 Days</option>
+                        <option value="30">Last 30 Days</option>
+                        <option value="90">Last 90 Days</option>
+                        <option value="custom">Custom Range</option>
+                      </select>
+                    </div>
+                    {reportPeriod === 'custom' && (
+                      <div className="custom-date-range">
+                        <input
+                          type="date"
+                          value={customDateRange.start || ''}
+                          onChange={(e) => setCustomDateRange(prev => ({ ...prev, start: e.target.value }))}
+                          className="date-input"
+                        />
+                        <span>to</span>
+                        <input
+                          type="date"
+                          value={customDateRange.end || ''}
+                          onChange={(e) => setCustomDateRange(prev => ({ ...prev, end: e.target.value }))}
+                          className="date-input"
+                        />
+                      </div>
+                    )}
+                    <button 
+                      className="btn-generate-report"
+                      onClick={handleGenerateReport}
+                    >
+                      📊 Generate Report
+                    </button>
+                  </div>
+                </div>
+
+                <div className="report-content">
+                  {reportData ? (
+                    <div className="report-summary">
+                      <div className="summary-cards">
+                        <div className="summary-card">
+                          <h4>Total Activities</h4>
+                          <span className="summary-value">{reportData.totalActivities || 0}</span>
+                        </div>
+                        <div className="summary-card">
+                          <h4>Video Views</h4>
+                          <span className="summary-value">{reportData.videoViews || 0}</span>
+                        </div>
+                        <div className="summary-card">
+                          <h4>Assessments</h4>
+                          <span className="summary-value">{reportData.assessments || 0}</span>
+                        </div>
+                        <div className="summary-card">
+                          <h4>Login Days</h4>
+                          <span className="summary-value">{reportData.loginDays || 0}</span>
+                        </div>
+                      </div>
+                      <div className="report-actions-bottom">
+                        <button 
+                          className="btn-download-report"
+                          onClick={handleDownloadReport}
+                        >
+                          📥 Download Full Report (CSV)
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="no-report">
+                      <p>📊 Select a time period and generate a report to see student activity summary.</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>,

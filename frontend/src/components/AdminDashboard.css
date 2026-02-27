@@ -16,6 +16,11 @@
   --shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.1);
   --transition-fast: 150ms ease;
   --transition-normal: 300ms ease;
+  
+  /* Mobile-specific variables */
+  --mobile-padding: 15px;
+  --mobile-gap: 12px;
+  --mobile-font-size: 14px;
 }
 
 /* Enable hardware acceleration */
@@ -37,6 +42,131 @@
   background: linear-gradient(135deg, #f5f7fa 0%, #f0f2f5 100%);
   font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
   will-change: contents;
+}
+
+/* Mobile-first responsive improvements */
+@media (max-width: 480px) {
+  .admin-dashboard {
+    flex-direction: column;
+    padding: var(--mobile-padding);
+  }
+  
+  .admin-sidebar {
+    width: 100%;
+    height: auto;
+    position: relative;
+    order: 2;
+  }
+  
+  .admin-main-content {
+    order: 1;
+    padding: var(--mobile-padding);
+    width: 100%;
+  }
+  
+  .admin-content {
+    padding: var(--mobile-padding);
+  }
+  
+  .admin-section {
+    margin-bottom: 20px;
+  }
+  
+  /* Make stats cards stack on mobile */
+  .stats-grid {
+    grid-template-columns: 1fr !important;
+    gap: var(--mobile-gap);
+  }
+  
+  .stat-card {
+    padding: 15px;
+    text-align: center;
+  }
+  
+  /* Improve data table for mobile */
+  .data-table {
+    font-size: 12px;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  
+  .data-table th,
+  .data-table td {
+    padding: 8px 4px !important;
+    white-space: nowrap;
+  }
+  
+  /* Hide desktop-specific elements */
+  .desktop-only {
+    display: none !important;
+  }
+  
+  /* Show mobile-specific elements */
+  .mobile-only {
+    display: block !important;
+  }
+  
+  /* Adjust buttons for mobile */
+  .btn, .btn-primary, .btn-secondary {
+    width: 100%;
+    margin-bottom: 8px;
+    min-height: 44px;
+  }
+  
+  .action-btns {
+    flex-direction: column;
+    gap: 4px;
+  }
+  
+  .action-btns .btn-edit,
+  .action-btns .btn-delete,
+  .action-btns .btn-view {
+    width: 100%;
+    justify-content: center;
+  }
+}
+
+@media (max-width: 768px) {
+  .admin-dashboard:not(.admin-dashboard-horizontal) {
+    flex-direction: column;
+  }
+  
+  .admin-sidebar {
+    width: 100%;
+    height: auto;
+    position: relative;
+    order: 2;
+  }
+  
+  .admin-main-content {
+    order: 1;
+    padding: 15px;
+    width: 100%;
+  }
+  
+  .admin-content {
+    padding: 15px;
+  }
+  
+  .stats-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 15px;
+  }
+  
+  .data-table-container {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  
+  .search-input-group {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  
+  .search-input {
+    width: 100%;
+    margin-bottom: 10px;
+  }
 }
 
 /* Horizontal layout - no sidebar, nav at top */
