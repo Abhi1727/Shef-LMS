@@ -5,6 +5,7 @@ const { roleAuth } = require('../middleware/roleAuth');
 const bcrypt = require('bcryptjs');
 const User = require('../models/User');
 const Batch = require('../models/Batch');
+const ActivityLog = require('../models/ActivityLog');
 
 // Apply auth and student role check to all student routes
 router.use(auth);
@@ -328,6 +329,226 @@ router.get('/course-progress', async (req, res) => {
     });
   } catch (err) {
     console.error('Error fetching course progress:', err);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// Helper function to calculate login streak
+const calculateLoginStreak = async (userId) => {
+  try {
+    const loginActivities = await ActivityLog.find({
+      userId: userId,
+      action: 'login'
+    }).sort({ timestamp: -1 }).limit(60); // Last 60 days max
+
+    if (loginActivities.length === 0) {
+      return { current: 0, longest: 0, lastLoginDate: null };
+    }
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    let currentStreak = 0;
+    let longestStreak = 0;
+    let tempStreak = 0;
+    let lastLoginDate = loginActivities[0].timestamp;
+    
+    // Check if user logged in today or yesterday to continue streak
+    const lastLogin = new Date(lastLoginDate);
+    lastLogin.setHours(0, 0, 0, 0);
+    const daysDiff = Math.floor((today - lastLogin) / (1000 * 60 * 60 * 24));
+    
+    // If last login was more than 2 days ago, streak is 0
+    if (daysDiff > 1) {
+      return { current: 0, longest: 0, lastLoginDate };
+    }
+
+    // Calculate current streak
+    let expectedDate = new Date(lastLogin);
+    currentStreak = 1;
+    
+    for (let i = 1; i < loginActivities.length; i++) {
+      expectedDate.setDate(expectedDate.getDate() - 1);
+      const currentActivityDate = new Date(loginActivities[i].timestamp);
+      currentActivityDate.setHours(0, 0, 0, 0);
+      
+      if (expectedDate.getTime() === currentActivityDate.getTime()) {
+        currentStreak++;
+      } else {
+        break;
+      }
+    }
+
+    // Calculate longest streak
+    tempStreak = 1;
+    for (let i = 1; i < loginActivities.length; i++) {
+      const prevDate = new Date(loginActivities[i - 1].timestamp);
+      const currDate = new Date(loginActivities[i].timestamp);
+      prevDate.setHours(0, 0, 0, 0);
+      currDate.setHours(0, 0, 0, 0);
+      
+      const daysDiff = Math.floor((prevDate - currDate) / (1000 * 60 * 60 * 24));
+      
+      if (daysDiff === 1) {
+        tempStreak++;
+      } else {
+        longestStreak = Math.max(longestStreak, tempStreak);
+        tempStreak = 1;
+      }
+    }
+    longestStreak = Math.max(longestStreak, tempStreak);
+
+    return { 
+      current: currentStreak, 
+      longest: longestStreak, 
+      lastLoginDate: lastLoginDate.toISOString().split('T')[0]
+    };
+  } catch (error) {
+    console.error('Error calculating login streak:', error);
+    return { current: 0, longest: 0, lastLoginDate: null };
+  }
+};
+
+// Helper function to calculate video progress
+const calculateVideoProgress = async (userId) => {
+  try {
+    // Get unique videos watched by this user
+    const videoViews = await ActivityLog.distinct('videoId', {
+      userId: userId,
+      action: 'video_view',
+      videoId: { $exists: true, $ne: null }
+    });
+
+    const watchedCount = videoViews.length;
+    
+    // Get total available videos for student's course
+    const userDoc = await User.findOne({
+      $or: [
+        { _id: userId },
+        { firestoreId: userId }
+      ]
+    }).exec();
+
+    if (!userDoc) {
+      return { total: 0, watched: 0, progressPercentage: 0 };
+    }
+
+    // For demo students, return hardcoded values
+    if (userId === 'leonardo_deleon_user_id' || userId === 'abhi_datascience_user_id') {
+      const totalVideos = userId === 'leonardo_deleon_user_id' ? 25 : 30;
+      const demoWatched = userId === 'leonardo_deleon_user_id' ? 13 : 18;
+      return {
+        total: totalVideos,
+        watched: demoWatched,
+        progressPercentage: Math.round((demoWatched / totalVideos) * 100)
+      };
+    }
+
+    // For regular students, estimate based on course
+    // This could be enhanced by storing actual video count per course
+    const course = userDoc.course || userDoc.currentCourse;
+    let totalVideos = 25; // Default estimate
+    
+    if (course && course.toLowerCase().includes('data science')) {
+      totalVideos = 30;
+    } else if (course && course.toLowerCase().includes('cyber')) {
+      totalVideos = 25;
+    }
+
+    const progressPercentage = totalVideos > 0 ? Math.round((watchedCount / totalVideos) * 100) : 0;
+
+    return {
+      total: totalVideos,
+      watched: watchedCount,
+      progressPercentage: Math.min(progressPercentage, 100)
+    };
+  } catch (error) {
+    console.error('Error calculating video progress:', error);
+    return { total: 0, watched: 0, progressPercentage: 0 };
+  }
+};
+
+// @route   GET /api/student/progress-summary
+// @desc    Get comprehensive progress summary for current student
+router.get('/progress-summary', async (req, res) => {
+  try {
+    const userId = req.user.id;
+    
+    // Get student data
+    const userDoc = await User.findOne({
+      $or: [
+        { _id: userId },
+        { firestoreId: userId }
+      ]
+    }).exec();
+
+    if (!userDoc) {
+      return res.status(404).json({ message: 'Student not found' });
+    }
+
+    // Handle demo students
+    if (userId === 'leonardo_deleon_user_id' || userId === 'abhi_datascience_user_id') {
+      const isDataScience = userId === 'abhi_datascience_user_id';
+      const demoProgress = {
+        modules: {
+          total: 10,
+          completed: isDataScience ? 3 : 4,
+          inProgress: isDataScience ? 2 : 1
+        },
+        videos: {
+          total: isDataScience ? 30 : 25,
+          watched: isDataScience ? 18 : 13,
+          progressPercentage: isDataScience ? 60 : 52
+        },
+        streak: {
+          current: isDataScience ? 7 : 5,
+          longest: isDataScience ? 15 : 12,
+          lastLoginDate: new Date().toISOString().split('T')[0]
+        },
+        overallProgress: isDataScience ? 60 : 52
+      };
+      return res.json(demoProgress);
+    }
+
+    // Calculate login streak
+    const streak = await calculateLoginStreak(userId);
+    
+    // Calculate video progress
+    const videos = await calculateVideoProgress(userId);
+    
+    // Get course information for module count
+    const course = userDoc.course || userDoc.currentCourse;
+    let totalModules = 10; // Default
+    let completedModules = 0;
+    let inProgressModules = 0;
+
+    // Estimate module completion based on video progress
+    if (course && course.toLowerCase().includes('data science')) {
+      totalModules = 10;
+      completedModules = Math.floor((videos.progressPercentage / 100) * totalModules);
+      inProgressModules = Math.min(totalModules - completedModules, 2);
+    } else if (course && course.toLowerCase().includes('cyber')) {
+      totalModules = 10;
+      completedModules = Math.floor((videos.progressPercentage / 100) * totalModules);
+      inProgressModules = Math.min(totalModules - completedModules, 2);
+    }
+
+    const overallProgress = videos.progressPercentage;
+
+    const progressSummary = {
+      modules: {
+        total: totalModules,
+        completed: completedModules,
+        inProgress: inProgressModules
+      },
+      videos: videos,
+      streak: streak,
+      overallProgress: overallProgress
+    };
+
+    res.json(progressSummary);
+  } catch (err) {
+    console.error('Error fetching progress summary:', err);
     res.status(500).json({ message: 'Server error' });
   }
 });

@@ -9,16 +9,52 @@ const {
   verifyProjectOwnership,
   verifyAssessmentOwnership
 } = require('../middleware/teacherOwnership');
+const {
+  validateVideoUpdate,
+  validateNotesUpload,
+  validateBatchData,
+  validateObjectId,
+  rateLimit
+} = require('../middleware/teacherValidation');
 
 // Apply auth to all teacher routes
 router.use(isTeacher);
 
-// Temporarily disable teacher APIs while Firebase-based integrations are being removed
-router.use((req, res) => {
-  return res.status(503).json({
-    success: false,
-    message: 'Teacher APIs are temporarily disabled while Firebase integration is removed. Core student/admin flows remain available.'
-  });
+// Teacher ownership verification middleware
+const verifyTeacherBatchOwnership = async (req, res, next) => {
+  try {
+    const Batch = require('../models/Batch');
+    const batchId = req.params.id || req.params.batchId;
+    
+    const batch = await Batch.findById(batchId);
+    if (!batch) {
+      return res.status(404).json({ success: false, message: 'Batch not found' });
+    }
+
+    if (String(batch.teacherId) !== String(req.user.id)) {
+      return res.status(403).json({ success: false, message: 'Access denied' });
+    }
+    next();
+  } catch (error) {
+    console.error('Error verifying batch ownership:', error);
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
+};
+
+// Configure multer for teacher notes uploads
+const teacherNotesUpload = multer({
+  storage: multer.diskStorage({
+    destination: './uploads/teacher-notes/',
+    filename: (req, file, cb) => {
+      const uniqueName = `${Date.now()}-${Math.round(Math.random() * 1E9)}`;
+      cb(null, `${uniqueName}-${file.originalname}`);
+    }
+  }),
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB limit
+  fileFilter: (req, file, cb) => {
+    const allowedTypes = ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
+    cb(null, allowedTypes.includes(file.mimetype));
+  }
 });
 
 // Configure multer for memory storage (for large video files)
@@ -777,6 +813,693 @@ router.get('/class/:id/start', async (req, res) => {
   } catch (error) {
     console.error('Error getting start URL:', error);
     res.status(500).json({ success: false, message: 'Failed to get start URL' });
+  }
+});
+
+// ==================== TEACHER BATCH CRUD OPERATIONS ====================
+
+// @route   GET /api/teacher/batches
+// @desc    Get teacher's batches only (both regular and one-to-one)
+// @access  Teacher only
+router.get('/batches', async (req, res) => {
+  try {
+    const teacherId = req.user.id;
+    const Batch = require('../models/Batch');
+    const OneToOneBatch = require('../models/OneToOneBatch');
+    const User = require('../models/User');
+
+    // Get regular batches
+    const regularBatches = await Batch.find({ teacherId })
+      .populate('students', 'name email')
+      .sort({ createdAt: -1 });
+
+    // Get one-to-one batches
+    const oneToOneBatches = await OneToOneBatch.find({ teacherId })
+      .populate('studentId', 'name email')
+      .sort({ createdAt: -1 });
+
+    // Format regular batches
+    const formattedRegularBatches = await Promise.all(regularBatches.map(async (batch) => {
+      // Check for orphaned students for this batch
+      const orphanedStudents = await User.find({
+        batchId: batch._id,
+        _id: { $nin: batch.students.map(s => s._id) },
+        role: 'student'
+      }).lean();
+
+      let allStudents = batch.students;
+      if (orphanedStudents.length > 0) {
+        console.log(`Found ${orphanedStudents.length} orphaned students for batch ${batch.name}`);
+        allStudents = [...batch.students, ...orphanedStudents];
+        
+        // Update the batch to include these students
+        await Batch.findByIdAndUpdate(batch._id, {
+          $addToSet: { students: { $each: orphanedStudents.map(s => s._id) } },
+          updatedAt: new Date()
+        });
+      }
+
+      return {
+        id: batch._id,
+        name: batch.name,
+        course: batch.course,
+        courseId: batch.courseId,
+        status: batch.status,
+        startDate: batch.startDate,
+        endDate: batch.endDate,
+        studentCount: allStudents.length,
+        videoCount: batch.recordings.length,
+        students: allStudents,
+        batchType: 'regular',
+        createdAt: batch.createdAt,
+        updatedAt: batch.updatedAt
+      };
+    }));
+
+    // Format one-to-one batches
+    const formattedOneToOneBatches = oneToOneBatches.map(batch => ({
+      id: batch._id,
+      name: batch.name,
+      course: batch.course,
+      courseId: batch.courseId,
+      status: batch.status,
+      startDate: batch.startDate,
+      endDate: batch.endDate,
+      studentCount: batch.studentId ? 1 : 0,
+      videoCount: batch.videos.length,
+      students: batch.studentId ? [batch.studentId] : [],
+      batchType: 'one-to-one',
+      studentId: batch.studentId,
+      studentName: batch.studentName,
+      studentEmail: batch.studentEmail,
+      createdAt: batch.createdAt,
+      updatedAt: batch.updatedAt
+    }));
+
+    // Combine all batches
+    const allBatches = [...formattedRegularBatches, ...formattedOneToOneBatches];
+
+    res.json({
+      success: true,
+      batches: allBatches,
+      total: allBatches.length
+    });
+  } catch (error) {
+    console.error('Error fetching teacher batches:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Failed to fetch batches' 
+    });
+  }
+});
+
+// @route   GET /api/teacher/batches/:id
+// @desc    Get batch details with ownership check (handles both regular and one-to-one)
+// @access  Teacher only
+router.get('/batches/:id', validateObjectId('id'), async (req, res) => {
+  try {
+    const Batch = require('../models/Batch');
+    const OneToOneBatch = require('../models/OneToOneBatch');
+    const User = require('../models/User');
+    const Classroom = require('../models/Classroom');
+
+    const batchId = req.params.id;
+    const teacherId = req.user.id;
+
+    // Try to find as regular batch first
+    let batch = await Batch.findById(batchId)
+      .populate('students', 'name email enrollmentNumber');
+
+    let batchType = 'regular';
+    
+    // If not found, try one-to-one batch
+    if (!batch) {
+      batch = await OneToOneBatch.findById(batchId)
+        .populate('studentId', 'name email enrollmentNumber');
+      batchType = 'one-to-one';
+    }
+
+    if (!batch) {
+      return res.status(404).json({ 
+        success: false, 
+        message: 'Batch not found' 
+      });
+    }
+
+    // Verify ownership
+    const batchTeacherId = batch.teacherId;
+    if (String(batchTeacherId) !== String(teacherId)) {
+      return res.status(403).json({ 
+        success: false, 
+        message: 'Access denied' 
+      });
+    }
+
+    // Get videos for this batch (from Classroom collection)
+    const videos = await Classroom.find({ batchId })
+      .sort({ createdAt: -1 });
+
+    // Format batch details based on type
+    let batchDetails;
+    if (batchType === 'regular') {
+      // Get all students including orphaned ones
+      let allStudents = batch.students || [];
+      
+      // Check for orphaned students
+      const orphanedStudents = await User.find({
+        batchId,
+        _id: { $nin: batch.students.map(s => s._id) },
+        role: 'student'
+      }).lean();
+
+      if (orphanedStudents.length > 0) {
+        console.log(`Found ${orphanedStudents.length} orphaned students for batch details`);
+        allStudents = [...allStudents, ...orphanedStudents];
+        
+        // Update the batch to include these students
+        await Batch.findByIdAndUpdate(batchId, {
+          $addToSet: { students: { $each: orphanedStudents.map(s => s._id) } },
+          updatedAt: new Date()
+        });
+      }
+
+      batchDetails = {
+        id: batch._id,
+        name: batch.name,
+        course: batch.course,
+        courseId: batch.courseId,
+        status: batch.status,
+        startDate: batch.startDate,
+        endDate: batch.endDate,
+        teacherId: batch.teacherId,
+        teacherName: batch.teacherName,
+        schedule: batch.schedule,
+        students: allStudents,
+        recordings: batch.recordings || [],
+        notesFile: batch.notesFile,
+        batchType: 'regular',
+        videos: videos.map(video => ({
+          id: video._id,
+          title: video.title,
+          description: video.description,
+          videoSource: video.videoSource,
+          url: video.zoomUrl || video.youtubeVideoUrl || video.driveId,
+          date: video.date,
+          notesAvailable: video.notesAvailable,
+          notesFileName: video.notesFileName,
+          createdAt: video.createdAt
+        })),
+        createdAt: batch.createdAt,
+        updatedAt: batch.updatedAt
+      };
+    } else {
+      // One-to-one batch
+      batchDetails = {
+        id: batch._id,
+        name: batch.name,
+        course: batch.course,
+        courseId: batch.courseId,
+        status: batch.status,
+        startDate: batch.startDate,
+        endDate: batch.endDate,
+        teacherId: batch.teacherId,
+        teacherName: batch.teacherName,
+        schedule: batch.schedule,
+        students: batch.studentId ? [batch.studentId] : [],
+        recordings: [], // One-to-one batches use videos array instead
+        notesFile: null, // One-to-one batches use notes field instead
+        batchType: 'one-to-one',
+        studentId: batch.studentId,
+        studentName: batch.studentName,
+        studentEmail: batch.studentEmail,
+        videos: batch.videos ? batch.videos.map(video => ({
+          id: video._id,
+          title: video.title,
+          description: video.description,
+          videoSource: 'direct',
+          url: video.url,
+          date: video.classDate,
+          duration: video.duration,
+          createdAt: video.addedAt
+        })) : [],
+        createdAt: batch.createdAt,
+        updatedAt: batch.updatedAt
+      };
+    }
+
+    res.json({
+      success: true,
+      batch: batchDetails
+    });
+  } catch (error) {
+    console.error('Error fetching batch details:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Failed to fetch batch details' 
+    });
+  }
+});
+
+// @route   GET /api/teacher/batches/:id/students
+// @desc    Get student names only (handles both regular and one-to-one batches)
+// @access  Teacher only
+router.get('/batches/:id/students', validateObjectId('id'), async (req, res) => {
+  try {
+    const Batch = require('../models/Batch');
+    const OneToOneBatch = require('../models/OneToOneBatch');
+    const User = require('../models/User');
+
+    const batchId = req.params.id;
+    const teacherId = req.user.id;
+
+    // Try to find as regular batch first
+    let batch = await Batch.findById(batchId).populate('students', 'name email enrollmentNumber');
+    let batchType = 'regular';
+    
+    // If not found, try one-to-one batch
+    if (!batch) {
+      batch = await OneToOneBatch.findById(batchId)
+        .populate('studentId', 'name email enrollmentNumber');
+      batchType = 'one-to-one';
+    }
+
+    if (!batch) {
+      return res.status(404).json({ 
+        success: false, 
+        message: 'Batch not found' 
+      });
+    }
+
+    // Verify ownership
+    const batchTeacherId = batch.teacherId;
+    if (String(batchTeacherId) !== String(teacherId)) {
+      return res.status(403).json({ 
+        success: false, 
+        message: 'Access denied' 
+      });
+    }
+
+    let students = [];
+    
+    if (batchType === 'regular') {
+      // Regular batch - use students array
+      students = batch.students.map(student => ({
+        id: student._id,
+        name: student.name,
+        email: student.email,
+        enrollmentNumber: student.enrollmentNumber
+      }));
+
+      // Also check for any students who have this batchId but are not in the students array
+      const orphanedStudents = await User.find({
+        batchId: batchId,
+        _id: { $nin: batch.students.map(s => s._id) },
+        role: 'student'
+      }).lean();
+
+      if (orphanedStudents.length > 0) {
+        console.log(`Found ${orphanedStudents.length} orphaned students for batch ${batch.name}`);
+        
+        // Add orphaned students to the response
+        orphanedStudents.forEach(student => {
+          students.push({
+            id: student._id,
+            name: student.name,
+            email: student.email,
+            enrollmentNumber: student.enrollmentNumber
+          });
+        });
+
+        // Update the batch to include these students
+        await Batch.findByIdAndUpdate(batchId, {
+          $addToSet: { students: { $each: orphanedStudents.map(s => s._id) } },
+          updatedAt: new Date()
+        });
+        console.log(`Updated batch ${batch.name} to include orphaned students`);
+      }
+    } else {
+      // One-to-one batch - use studentId field
+      if (batch.studentId) {
+        students = [{
+          id: batch.studentId._id,
+          name: batch.studentId.name,
+          email: batch.studentId.email,
+          enrollmentNumber: batch.studentId.enrollmentNumber
+        }];
+      }
+    }
+
+    res.json({
+      success: true,
+      students,
+      total: students.length
+    });
+  } catch (error) {
+    console.error('Error fetching students:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Failed to fetch students' 
+    });
+  }
+});
+
+// @route   POST /api/teacher/batches/:id/notes
+// @desc    Upload notes to batch
+// @access  Teacher only
+router.post('/batches/:id/notes', validateObjectId('id'), verifyTeacherBatchOwnership, teacherNotesUpload.single('notesFile'), validateNotesUpload, async (req, res) => {
+  try {
+    const Batch = require('../models/Batch');
+
+    if (!req.file) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Notes file is required' 
+      });
+    }
+
+    const batch = await Batch.findById(req.params.id);
+    
+    // Update batch with notes info
+    batch.notesFile = {
+      fileName: req.file.originalname,
+      filePath: req.file.path,
+      uploadedBy: req.user.id,
+      uploadedAt: new Date()
+    };
+
+    await batch.save();
+
+    res.json({
+      success: true,
+      message: 'Notes uploaded successfully',
+      notesFile: batch.notesFile
+    });
+  } catch (error) {
+    console.error('Error uploading batch notes:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Failed to upload notes' 
+    });
+  }
+});
+
+// ==================== TEACHER VIDEO CRUD OPERATIONS ====================
+
+// @route   GET /api/teacher/batches/:id/videos
+// @desc    Get videos for teacher's batch (handles both regular and one-to-one)
+// @access  Teacher only
+router.get('/batches/:id/videos', validateObjectId('id'), async (req, res) => {
+  try {
+    const Batch = require('../models/Batch');
+    const OneToOneBatch = require('../models/OneToOneBatch');
+    const Classroom = require('../models/Classroom');
+
+    const batchId = req.params.id;
+    const teacherId = req.user.id;
+
+    // Try to find as regular batch first
+    let batch = await Batch.findById(batchId);
+    let batchType = 'regular';
+    
+    // If not found, try one-to-one batch
+    if (!batch) {
+      batch = await OneToOneBatch.findById(batchId);
+      batchType = 'one-to-one';
+    }
+
+    if (!batch) {
+      return res.status(404).json({ 
+        success: false, 
+        message: 'Batch not found' 
+      });
+    }
+
+    // Verify ownership
+    const batchTeacherId = batch.teacherId;
+    if (String(batchTeacherId) !== String(teacherId)) {
+      return res.status(403).json({ 
+        success: false, 
+        message: 'Access denied' 
+      });
+    }
+
+    let videoDetails = [];
+
+    if (batchType === 'regular') {
+      // Regular batch - get videos from Classroom collection
+      const videos = await Classroom.find({ batchId })
+        .sort({ createdAt: -1 });
+
+      videoDetails = videos.map(video => ({
+        id: video._id,
+        title: video.title,
+        description: video.description,
+        instructor: video.instructor,
+        courseId: video.courseId,
+        course: video.course,
+        batchId: video.batchId,
+        batchName: video.batchName,
+        domain: video.domain,
+        duration: video.duration,
+        videoSource: video.videoSource,
+        url: video.zoomUrl || video.youtubeVideoUrl || video.driveId || video.storagePath,
+        date: video.date,
+        notesAvailable: video.notesAvailable,
+        notesFileName: video.notesFileName,
+        notesFilePath: video.notesFilePath,
+        createdAt: video.createdAt,
+        updatedAt: video.updatedAt
+      }));
+    } else {
+      // One-to-one batch - get videos from batch's videos array
+      if (batch.videos && batch.videos.length > 0) {
+        videoDetails = batch.videos.map(video => ({
+          id: video._id,
+          title: video.title,
+          description: video.description,
+          instructor: batch.teacherName || 'Instructor',
+          courseId: batch.courseId,
+          course: batch.course,
+          batchId: batch._id,
+          batchName: batch.name,
+          domain: 'Data Science & AI', // Default for one-to-one
+          duration: video.duration,
+          videoSource: 'direct',
+          url: video.url,
+          date: video.classDate,
+          classTime: video.classTime,
+          notesAvailable: false, // One-to-one videos don't have notes by default
+          createdAt: video.addedAt,
+          updatedAt: video.addedAt
+        }));
+      }
+    }
+
+    res.json({
+      success: true,
+      videos: videoDetails,
+      total: videoDetails.length
+    });
+  } catch (error) {
+    console.error('Error fetching videos:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Failed to fetch videos' 
+    });
+  }
+});
+
+// @route   GET /api/teacher/videos/:id
+// @desc    Get video details for editing
+// @access  Teacher only
+router.get('/videos/:id', validateObjectId('id'), async (req, res) => {
+  try {
+    const Classroom = require('../models/Classroom');
+    const Batch = require('../models/Batch');
+
+    const video = await Classroom.findById(req.params.id);
+    
+    if (!video) {
+      return res.status(404).json({ 
+        success: false, 
+        message: 'Video not found' 
+      });
+    }
+
+    // Verify video belongs to teacher's batch
+    const batch = await Batch.findById(video.batchId);
+    if (!batch || String(batch.teacherId) !== String(req.user.id)) {
+      return res.status(403).json({ 
+        success: false, 
+        message: 'Access denied' 
+      });
+    }
+
+    const videoDetails = {
+      id: video._id,
+      title: video.title,
+      description: video.description,
+      instructor: video.instructor,
+      courseId: video.courseId,
+      course: video.course,
+      batchId: video.batchId,
+      batchName: video.batchName,
+      domain: video.domain,
+      duration: video.duration,
+      videoSource: video.videoSource,
+      url: video.zoomUrl || video.youtubeVideoUrl || video.driveId || video.storagePath,
+      date: video.date,
+      notesAvailable: video.notesAvailable,
+      notesFileName: video.notesFileName,
+      notesFilePath: video.notesFilePath,
+      createdAt: video.createdAt,
+      updatedAt: video.updatedAt
+    };
+
+    res.json({
+      success: true,
+      video: videoDetails
+    });
+  } catch (error) {
+    console.error('Error fetching video details:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Failed to fetch video details' 
+    });
+  }
+});
+
+// @route   PUT /api/teacher/videos/:id
+// @desc    Edit video title/description only
+// @access  Teacher only
+router.put('/videos/:id', validateObjectId('id'), validateVideoUpdate, rateLimit(5, 60000), async (req, res) => {
+  try {
+    const Classroom = require('../models/Classroom');
+    const Batch = require('../models/Batch');
+
+    const video = await Classroom.findById(req.params.id);
+    
+    if (!video) {
+      return res.status(404).json({ 
+        success: false, 
+        message: 'Video not found' 
+      });
+    }
+
+    // Verify video belongs to teacher's batch
+    const batch = await Batch.findById(video.batchId);
+    if (!batch || String(batch.teacherId) !== String(req.user.id)) {
+      return res.status(403).json({ 
+        success: false, 
+        message: 'Access denied' 
+      });
+    }
+
+    const { title, description } = req.body;
+    const updateData = { updatedAt: new Date() };
+
+    if (title) updateData.title = title.trim();
+    if (description !== undefined) updateData.description = description.trim();
+
+    // Restrict updates to only allowed fields
+    const allowedUpdates = ['title', 'description', 'updatedAt'];
+    const finalUpdate = {};
+    allowedUpdates.forEach(field => {
+      if (updateData[field] !== undefined) {
+        finalUpdate[field] = updateData[field];
+      }
+    });
+
+    await Classroom.findByIdAndUpdate(req.params.id, finalUpdate);
+
+    res.json({
+      success: true,
+      message: 'Video updated successfully',
+      video: { ...video.toObject(), ...finalUpdate }
+    });
+  } catch (error) {
+    console.error('Error updating video:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Failed to update video' 
+    });
+  }
+});
+
+// @route   POST /api/teacher/videos/:id/notes
+// @desc    Upload notes to specific video
+// @access  Teacher only
+router.post('/videos/:id/notes', validateObjectId('id'), rateLimit(3, 60000), async (req, res) => {
+  try {
+    const Classroom = require('../models/Classroom');
+    const Batch = require('../models/Batch');
+
+    const video = await Classroom.findById(req.params.id);
+    
+    if (!video) {
+      return res.status(404).json({ 
+        success: false, 
+        message: 'Video not found' 
+      });
+    }
+
+    // Verify video belongs to teacher's batch
+    const batch = await Batch.findById(video.batchId);
+    if (!batch || String(batch.teacherId) !== String(req.user.id)) {
+      return res.status(403).json({ 
+        success: false, 
+        message: 'Access denied' 
+      });
+    }
+
+    // Use the teacherNotesUpload middleware
+    teacherNotesUpload.single('notesFile')(req, res, async (err) => {
+      if (err) {
+        console.error('File upload error:', err);
+        return res.status(400).json({ 
+          success: false, 
+          message: 'File upload failed: ' + err.message 
+        });
+      }
+
+      if (!req.file) {
+        return res.status(400).json({ 
+          success: false, 
+          message: 'Notes file is required' 
+        });
+      }
+
+      try {
+        video.notesAvailable = true;
+        video.notesFileName = req.file.originalname;
+        video.notesFilePath = req.file.path;
+        video.updatedAt = new Date();
+
+        await video.save();
+
+        res.json({
+          success: true,
+          message: 'Notes uploaded successfully',
+          notes: {
+            fileName: video.notesFileName,
+            filePath: video.notesFilePath,
+            uploadedAt: video.updatedAt
+          }
+        });
+      } catch (error) {
+        console.error('Error saving video notes:', error);
+        res.status(500).json({ 
+          success: false, 
+          message: 'Failed to save notes' 
+        });
+      }
+    });
+  } catch (error) {
+    console.error('Error uploading video notes:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Failed to upload notes' 
+    });
   }
 });
 

@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Teacher Course Test</title>
+</head>
+<body>
+    <h1>Teacher Course Assignment Test</h1>
+    <button onclick="testTeacherCreation()">Test Teacher Creation</button>
+    <button onclick="testTeacherUpdate()">Test Teacher Update</button>
+    <button onclick="checkExistingTeachers()">Check Existing Teachers</button>
+    <div id="results"></div>
+
+    <script>
+        const API_URL = 'http://localhost:5000';
+        let authToken = '';
+
+        // You'll need to get a valid token from your app first
+        async function login() {
+            try {
+                const response = await fetch(`${API_URL}/api/auth/login`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        email: 'admin@shef.com', // Replace with actual admin email
+                        password: 'admin123' // Replace with actual admin password
+                    })
+                });
+                const data = await response.json();
+                if (data.token) {
+                    authToken = data.token;
+                    console.log('Logged in successfully');
+                    return true;
+                }
+            } catch (error) {
+                console.error('Login failed:', error);
+                document.getElementById('results').innerHTML += '<p>Login failed. Please check credentials.</p>';
+            }
+            return false;
+        }
+
+        async function testTeacherCreation() {
+            if (!authToken) {
+                const loggedIn = await login();
+                if (!loggedIn) return;
+            }
+
+            const teacherData = {
+                name: 'Test Teacher',
+                email: `test${Date.now()}@example.com`,
+                password: 'password123',
+                age: 30,
+                assignedCourses: ['Data Science & AI', 'One-to-One'],
+                experience: '5 years',
+                status: 'active',
+                role: 'teacher',
+                phone: '1234567890',
+                address: 'Test Address'
+            };
+
+            try {
+                const response = await fetch(`${API_URL}/api/admin/teachers`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${authToken}`
+                    },
+                    body: JSON.stringify(teacherData)
+                });
+
+                const result = await response.json();
+                console.log('Teacher creation result:', result);
+                document.getElementById('results').innerHTML += `
+                    <h3>Teacher Creation Test</h3>
+                    <p><strong>Status:</strong> ${response.status}</p>
+                    <p><strong>Response:</strong> ${JSON.stringify(result, null, 2)}</p>
+                    <hr>
+                `;
+            } catch (error) {
+                console.error('Error creating teacher:', error);
+                document.getElementById('results').innerHTML += `<p>Error: ${error.message}</p>`;
+            }
+        }
+
+        async function checkExistingTeachers() {
+            if (!authToken) {
+                const loggedIn = await login();
+                if (!loggedIn) return;
+            }
+
+            try {
+                const response = await fetch(`${API_URL}/api/admin/teachers`, {
+                    headers: {
+                        'Authorization': `Bearer ${authToken}`
+                    }
+                });
+
+                const teachers = await response.json();
+                console.log('Existing teachers:', teachers);
+                document.getElementById('results').innerHTML += `
+                    <h3>Existing Teachers</h3>
+                    <pre>${JSON.stringify(teachers, null, 2)}</pre>
+                    <hr>
+                `;
+            } catch (error) {
+                console.error('Error fetching teachers:', error);
+                document.getElementById('results').innerHTML += `<p>Error: ${error.message}</p>`;
+            }
+        }
+
+        async function testTeacherUpdate() {
+            if (!authToken) {
+                const loggedIn = await login();
+                if (!loggedIn) return;
+            }
+
+            // First get a teacher to update
+            try {
+                const response = await fetch(`${API_URL}/api/admin/teachers`, {
+                    headers: {
+                        'Authorization': `Bearer ${authToken}`
+                    }
+                });
+
+                const teachers = await response.json();
+                if (teachers.length > 0) {
+                    const teacher = teachers[0];
+                    const updateData = {
+                        name: teacher.name,
+                        email: teacher.email,
+                        age: teacher.age,
+                        assignedCourses: ['Cyber Security & Ethical Hacking', 'Data Science & AI'], // Different courses
+                        experience: teacher.experience,
+                        status: teacher.status,
+                        phone: teacher.phone,
+                        address: teacher.address
+                    };
+
+                    const updateResponse = await fetch(`${API_URL}/api/admin/teachers/${teacher.id}`, {
+                        method: 'PUT',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${authToken}`
+                        },
+                        body: JSON.stringify(updateData)
+                    });
+
+                    const result = await updateResponse.json();
+                    console.log('Teacher update result:', result);
+                    document.getElementById('results').innerHTML += `
+                        <h3>Teacher Update Test</h3>
+                        <p><strong>Updated Teacher ID:</strong> ${teacher.id}</p>
+                        <p><strong>Status:</strong> ${updateResponse.status}</p>
+                        <p><strong>Response:</strong> ${JSON.stringify(result, null, 2)}</p>
+                        <hr>
+                    `;
+                } else {
+                    document.getElementById('results').innerHTML += '<p>No teachers found to update.</p>';
+                }
+            } catch (error) {
+                console.error('Error updating teacher:', error);
+                document.getElementById('results').innerHTML += `<p>Error: ${error.message}</p>`;
+            }
+        }
+    </script>
+</body>
+</html>

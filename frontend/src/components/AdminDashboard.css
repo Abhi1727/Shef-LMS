@@ -3451,3 +3451,266 @@ body.modal-open {
     font-size: 12px;
   }
 }
+
+/* Batch Filter Styles - Inspired by StudentsActivity */
+.batch-filter-section {
+  background: white;
+  border-radius: 12px;
+  padding: 20px;
+  margin-bottom: 20px;
+  box-shadow: var(--shadow-sm);
+  border: 1px solid var(--border-color);
+}
+
+.batch-filter-header {
+  margin-bottom: 16px;
+}
+
+.batch-filter-header h3 {
+  margin: 0 0 8px 0;
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.batch-filter-subtitle {
+  margin: 0;
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+}
+
+.batch-filter-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.batch-search-area {
+  display: flex;
+  align-items: center;
+}
+
+.batch-search-input {
+  flex: 1;
+  min-width: 220px;
+  padding: 10px 14px;
+  border: 2px solid var(--border-color);
+  border-radius: 8px;
+  font-size: 14px;
+  transition: border-color var(--transition-fast);
+}
+
+.batch-search-input:focus {
+  outline: none;
+  border-color: var(--primary-color);
+  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+
+.batch-course-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+}
+
+.batch-course-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  border: 2px solid var(--border-color);
+  border-radius: 8px;
+  background: white;
+  color: var(--text-secondary);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.batch-course-btn:hover {
+  border-color: var(--primary-color);
+  color: var(--primary-color);
+  background: rgba(102, 126, 234, 0.05);
+}
+
+.batch-course-btn.active {
+  border-color: var(--primary-color);
+  background: var(--primary-color);
+  color: white;
+  box-shadow: var(--shadow-md);
+}
+
+.batch-course-btn .btn-icon {
+  font-size: 16px;
+  line-height: 1;
+}
+
+.batch-course-btn .btn-label {
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.batch-clear-filters {
+  align-self: flex-start;
+  padding: 8px 12px;
+  border: 1px solid #ef4444;
+  border-radius: 6px;
+  background: white;
+  color: #ef4444;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.batch-clear-filters:hover {
+  background: #ef4444;
+  color: white;
+}
+
+.batch-filter-results {
+  font-size: 13px;
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.result-count {
+  font-weight: 600;
+  color: var(--primary-color);
+}
+
+.total-count {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.filter-indicator {
+  color: var(--warning-color);
+  font-weight: 500;
+}
+
+/* Responsive styles for batch filter */
+@media (max-width: 768px) {
+  .batch-filter-controls {
+    gap: 12px;
+  }
+  
+  .batch-course-filters {
+    justify-content: center;
+  }
+  
+  .batch-course-btn {
+    flex: 1;
+    min-width: 0;
+    justify-content: center;
+    padding: 8px 12px;
+  }
+  
+  .batch-course-btn .btn-label {
+    font-size: 12px;
+  }
+  
+  .batch-clear-filters {
+    align-self: center;
+  }
+}
+
+@media (max-width: 480px) {
+  .batch-filter-section {
+    padding: 16px;
+    margin-bottom: 16px;
+  }
+  
+  .batch-course-filters {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  
+  .batch-course-btn {
+    justify-content: flex-start;
+  }
+}
+
+/* Course Assignment Styles */
+.course-checkboxes {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.course-checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  padding: 8px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  transition: all var(--transition-fast);
+  background: white;
+}
+
+.course-checkbox-label:hover {
+  border-color: var(--primary-color);
+  background: var(--background-light);
+}
+
+.course-checkbox-label input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--primary-color);
+}
+
+.checkbox-text {
+  font-size: 14px;
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.course-checkbox-label input[type="checkbox"]:checked + .checkbox-text {
+  color: var(--primary-color);
+  font-weight: 600;
+}
+
+.course-checkbox-label:has(input:checked) {
+  border-color: var(--primary-color);
+  background: rgba(102, 126, 234, 0.05);
+}
+
+/* Course Badges */
+.course-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.course-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  background: var(--primary-color);
+  color: white;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.course-badge:nth-child(2) {
+  background: var(--secondary-color);
+}
+
+.course-badge:nth-child(3) {
+  background: var(--success-color);
+}
+
+.error-text {
+  color: var(--error-color);
+  font-size: 12px;
+  margin-top: 4px;
+  display: block;
+}

@@ -32,15 +32,38 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 1rem 2rem;
-  background: linear-gradient(to bottom, rgba(0,0,0,0.8), transparent);
+  padding: 1rem 0.24rem;
+  height: 80px;
   color: white;
   position: absolute;
   top: 0;
   left: 0;
   right: 0;
   z-index: 10;
-  backdrop-filter: blur(10px);
+}
+
+.video-header::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 13%;
+  height: 100%;
+  background: linear-gradient(to bottom, rgba(0,0,0,0.8) 0%, rgba(0,0,0,0.4) 20%, rgba(0,0,0,0.2) 40%, rgba(0,0,0,0.1) 70%, transparent 100%);
+  backdrop-filter: blur(8px);
+  z-index: -1;
+}
+
+.video-header::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 7%;
+  height: 100%;
+  background: rgba(0,0,0,1);
+  backdrop-filter: blur(8px);
+  z-index: -1;
 }
 
 .close-btn {
@@ -48,8 +71,8 @@
   border: none;
   color: white;
   font-size: 1.5rem;
-  width: 40px;
-  height: 40px;
+  width: 42px;
+  height: 42px;
   border-radius: 50%;
   cursor: pointer;
   display: flex;
@@ -63,19 +86,6 @@
   transform: scale(1.1);
 }
 
-.video-title h3 {
-  margin: 0;
-  font-size: 1.2rem;
-  font-weight: 600;
-}
-
-.video-meta {
-  display: flex;
-  gap: 1rem;
-  margin-top: 0.25rem;
-  font-size: 0.9rem;
-  opacity: 0.9;
-}
 
 /* Video Container */
 .video-container {
@@ -264,23 +274,24 @@
     flex-direction: column;
     align-items: flex-start;
     gap: 0.5rem;
-    padding: 0.75rem 1rem;
+    padding: 0.8rem 0.18rem;
+    height: 60px;
   }
 
-  .video-title h3 {
-    font-size: 1rem;
+  .video-header::before {
+    width: 19.5%;
   }
 
-  .video-meta {
-    flex-wrap: wrap;
-    font-size: 0.8rem;
+  .video-header::after {
+    width: 10.5%;
   }
+
 
   .close-btn {
     align-self: flex-end;
     width: 36px;
     height: 36px;
-    font-size: 1.3rem;
+    font-size: 1.2rem;
   }
 
   .video-controls {
@@ -298,13 +309,6 @@
 }
 
 @media (max-width: 480px) {
-  .video-title h3 {
-    font-size: 0.95rem;
-  }
-
-  .video-meta {
-    font-size: 0.75rem;
-  }
 
   .control-btn {
     font-size: 1.3rem;
@@ -450,18 +454,18 @@
 /* Responsive Design */
 @media (max-width: 768px) {
   .video-header {
-    padding: 0.75rem 1rem;
+    padding: 0.8rem 0.18rem;
+    height: 60px;
+  }
+
+  .video-header::before {
+    width: 19.5%;
+  }
+
+  .video-header::after {
+    width: 10.5%;
   }
   
-  .video-title h3 {
-    font-size: 1rem;
-  }
-  
-  .video-meta {
-    flex-wrap: wrap;
-    gap: 0.5rem;
-    font-size: 0.8rem;
-  }
   
   .video-controls {
     padding: 1rem;
@@ -478,10 +482,6 @@
 }
 
 @media (max-width: 480px) {
-  .video-meta span:not(:last-child)::after {
-    content: "•";
-    margin-left: 0.5rem;
-  }
   
   .right-controls {
     gap: 0.5rem;

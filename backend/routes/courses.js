@@ -31,6 +31,17 @@ router.get('/', async (req, res) => {
           progress: 60,
           enrolled: 856,
           thumbnail: '🛡️'
+        },
+        {
+          _id: '3',
+          title: 'One-to-One',
+          description: 'Personalized one-to-one learning with dedicated instructor guidance',
+          instructor: 'Various Instructors',
+          duration: 'Flexible',
+          modules: 0,
+          progress: 0,
+          enrolled: 0,
+          thumbnail: '👥'
         }
       ];
       return res.json(demoCourses);

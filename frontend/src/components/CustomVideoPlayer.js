@@ -399,18 +399,6 @@ const CustomVideoPlayer = ({ video, onClose, resumePosition = 0, onProgressUpdat
         <button className="close-btn" onClick={onClose}>
           ✕
         </button>
-        <div className="video-title">
-          <h3>{video.title}</h3>
-          <div className="video-meta">
-            <span>📅 Class Date: {new Date(video.date || video.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</span>
-            <span>⏱️ {video.duration}</span>
-            <span>👨‍🏫 {video.instructor}</span>
-            {video.videoSource === 'firebase' && <span>🔥 Firebase Storage</span>}
-            {video.videoSource === 'youtube' && <span>📺 YouTube Private</span>}
-            {video.videoSource === 'youtube-url' && <span>📺 YouTube Manual</span>}
-            {!video.videoSource && video.videoUrl?.includes('youtube.com') && <span>📺 YouTube</span>}
-          </div>
-        </div>
       </div>
 
       {/* Video Container */}

@@ -83,6 +83,19 @@ const fallbackData = {
       enrollmentCount: 1,
       createdAt: '2025-10-20T00:00:00Z',
       updatedAt: '2025-11-02T00:00:00Z'
+    },
+    {
+      id: 'course3',
+      title: 'One-to-One',
+      description: 'Personalized one-to-one learning with dedicated instructor guidance',
+      duration: 'Flexible',
+      instructor: 'Various Instructors',
+      modules: 0,
+      price: 'Custom',
+      status: 'active',
+      enrollmentCount: 0,
+      createdAt: '2025-10-25T00:00:00Z',
+      updatedAt: '2025-11-01T00:00:00Z'
     }
   ],
   classroom: [

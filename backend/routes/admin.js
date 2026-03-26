@@ -626,7 +626,9 @@ router.get('/teachers', async (req, res) => {
 // @desc    Create a new teacher
 router.post('/teachers', async (req, res) => {
   try {
-    const { name, email, password, age, domain, experience, status, role, phone, address } = req.body;
+    const { name, email, password, age, domain, assignedCourses, experience, status, role, phone, address } = req.body;
+
+    console.log('🔍 Backend received teacher data:', { name, email, age, domain, assignedCourses, experience, status, role, phone, address });
 
     if (!password || !String(password).trim()) {
       return res.status(400).json({ message: 'Password is required for new teachers' });
@@ -652,6 +654,20 @@ router.post('/teachers', async (req, res) => {
       role: role || 'teacher'
     };
 
+    // Handle assignedCourses array
+    if (assignedCourses && Array.isArray(assignedCourses) && assignedCourses.length > 0) {
+      teacherData.assignedCourses = assignedCourses;
+      // Always set domain to first course for consistency
+      teacherData.domain = assignedCourses[0];
+      console.log('✅ Backend: Creating teacher with assignedCourses:', assignedCourses);
+    } else if (domain) {
+      // For backward compatibility, if only domain is provided, populate assignedCourses
+      teacherData.assignedCourses = [domain];
+      console.log('✅ Backend: Creating teacher with domain only:', domain);
+    } else {
+      console.log('⚠️ Backend: Creating teacher with no course assignment');
+    }
+
     if (phone) teacherData.phone = phone;
     if (address) teacherData.address = address;
 
@@ -676,13 +692,55 @@ router.post('/teachers', async (req, res) => {
 router.put('/teachers/:id', async (req, res) => {
   try {
     const { id } = req.params;
+    const { assignedCourses, domain, ...otherData } = req.body;
+    
+    console.log('🔍 Backend received teacher update data:', { id, assignedCourses, domain, otherData });
+    
     const updateData = {
-      ...req.body,
+      ...otherData,
       updatedAt: new Date()
     };
 
-    await User.findByIdAndUpdate(id, updateData, { new: true }).exec();
-    res.json({ message: 'Teacher updated successfully' });
+    // Handle assignedCourses array - always prioritize assignedCourses over domain
+    if (assignedCourses && Array.isArray(assignedCourses) && assignedCourses.length > 0) {
+      updateData.assignedCourses = assignedCourses;
+      // Always update domain to first course for consistency
+      updateData.domain = assignedCourses[0];
+      console.log('✅ Backend: Updated with assignedCourses:', assignedCourses);
+    } else if (domain !== undefined && domain !== null && domain !== '') {
+      // If only domain is provided, update assignedCourses for consistency
+      updateData.domain = domain;
+      updateData.assignedCourses = [domain];
+      console.log('✅ Backend: Updated with domain only:', domain);
+    } else if (domain === null) {
+      // Allow clearing domain
+      updateData.domain = null;
+      console.log('✅ Backend: Cleared domain');
+    } else {
+      console.log('⚠️ Backend: No course assignment data provided');
+    }
+
+    const updatedTeacher = await User.findByIdAndUpdate(id, updateData, { new: true }).exec();
+    console.log('✅ Backend: Teacher updated successfully:', {
+      id: updatedTeacher._id,
+      name: updatedTeacher.name,
+      assignedCourses: updatedTeacher.assignedCourses,
+      domain: updatedTeacher.domain
+    });
+    
+    const responseObj = { 
+      message: 'Teacher updated successfully',
+      teacher: updatedTeacher.toObject()
+    };
+    
+    console.log('🔍 Backend: Sending response object:', {
+      hasMessage: !!responseObj.message,
+      hasTeacher: !!responseObj.teacher,
+      teacherId: responseObj.teacher?._id,
+      teacherAssignedCourses: responseObj.teacher?.assignedCourses
+    });
+    
+    res.json(responseObj);
   } catch (err) {
     console.error('Error updating teacher:', err);
     res.status(500).json({ message: 'Server error' });
@@ -794,6 +852,32 @@ router.post('/classroom/youtube-upload', upload.single('video'), async (req, res
     }
     
     res.status(500).json({ message: 'Failed to upload lecture to YouTube: ' + error.message });
+  }
+});
+
+// @route   GET /api/admin/classroom
+// @desc    Get all classroom videos (optionally filtered by batchId)
+// @access  Private (Admin only)
+router.get('/classroom', async (req, res) => {
+  try {
+    const { batchId } = req.query;
+    
+    let query = {};
+    if (batchId) {
+      query.batchId = batchId.trim();
+    }
+    
+    const videos = await Classroom.find(query).lean().exec();
+    const mappedVideos = videos.map(v => ({ 
+      id: String(v._id), 
+      ...v,
+      batchId: normalizeBatchId(v.batchId)
+    }));
+    
+    res.json(mappedVideos);
+  } catch (error) {
+    console.error('Error fetching classroom videos:', error);
+    res.status(500).json({ message: 'Error fetching classroom videos' });
   }
 });
 

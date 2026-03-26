@@ -13,6 +13,7 @@ const OneToOneCourseSelection = () => {
   const [showAddModal, setShowAddModal] = useState(false);
   const [useFallback, setUseFallback] = useState(false);
   const [apiError, setApiError] = useState(null);
+  const [forceUpdate, setForceUpdate] = useState(Date.now()); // Force update
   
   // State for student assignment modal
   const [showStudentModal, setShowStudentModal] = useState(false);
@@ -38,8 +39,17 @@ const OneToOneCourseSelection = () => {
       description: 'Learn cybersecurity fundamentals, ethical hacking, and security best practices with dedicated mentorship.',
       icon: '🔒',
       color: '#10b981'
+    },
+    {
+      id: 'One-to-One',
+      title: 'One-to-One',
+      description: 'Personalized learning experience with dedicated instructor guidance tailored to your specific needs.',
+      icon: '👥',
+      color: '#f59e0b'
     }
   ];
+
+  console.log('Available courses:', courses.map(c => c.id));
 
   useEffect(() => {
     if (selectedCourse) {
@@ -205,8 +215,12 @@ const OneToOneCourseSelection = () => {
             const isDataScienceCourse = courseLower.includes('data') || courseLower.includes('science') || courseLower.includes('ai');
             const studentIsDataScienceCourse = studentCourseLower.includes('data') || studentCourseLower.includes('science') || studentCourseLower.includes('ai');
             
+            const isOneToOneCourse = courseLower.includes('one-to-one') || courseLower.includes('one to one') || courseLower.includes('1-to-1');
+            const studentIsOneToOneCourse = studentCourseLower.includes('one-to-one') || studentCourseLower.includes('one to one') || studentCourseLower.includes('1-to-1');
+            
             const courseMatches = ((isCyberSecurityCourse && studentIsCyberSecurityCourse) || 
                   (isDataScienceCourse && studentIsDataScienceCourse) ||
+                  (isOneToOneCourse && studentIsOneToOneCourse) ||
                   courseLower === studentCourseLower);
             
             if (!courseMatches) {
@@ -693,10 +707,21 @@ const AddOneToOneBatchModal = ({
           console.log('Filtering teachers for course:', courseLower);
           
           filteredTeachers = allTeachers.filter(teacher => {
+            // Check if teacher is assigned to the selected course via assignedCourses
+            if (teacher.assignedCourses && teacher.assignedCourses.length > 0) {
+              return teacher.assignedCourses.includes(course.id);
+            }
+            
+            // Fallback to domain matching for backward compatibility
             const domain = (teacher.domain || '').toLowerCase();
             const name = (teacher.name || '').toLowerCase();
             
-            // Simple keyword matching
+            // Exact course matching first
+            if (teacher.domain === course.id) {
+              return true;
+            }
+            
+            // Simple keyword matching as fallback
             if (courseLower.includes('data') && (domain.includes('data') || name.includes('data'))) {
               return true;
             }
@@ -707,6 +732,10 @@ const AddOneToOneBatchModal = ({
               return true;
             }
             if (courseLower.includes('ai') && (domain.includes('ai') || name.includes('ai'))) {
+              return true;
+            }
+            if (courseLower.includes('one-to-one') || courseLower.includes('one to one') || courseLower.includes('1-to-1')) {
+              // For one-to-one course, show all teachers as they can teach any subject
               return true;
             }
             
