@@ -4,100 +4,102 @@ import StudentProfile from './StudentProfile';
 import { YouTubeUtils } from '../utils/youtubeUtils';
 import './Dashboard.css';
 
-// Background Image Slider Component
-const BackgroundImageSlider = () => {
+// Image Slider Component
+const ImageSlider = () => {
   const [currentSlide, setCurrentSlide] = useState(0);
+  const [isAutoPlaying, setIsAutoPlaying] = useState(true);
   
   const slides = [
     {
-      url: 'https://images.unsplash.com/photo-1552664730-d307ca884978?w=1920&h=1080&fit=crop',
-      title: 'Data Science & AI',
-      subtitle: 'Master the future of technology',
-      cta: 'Start Learning'
+      id: 1,
+      image: 'https://picsum.photos/seed/tech-ai-ml/1200/400.jpg',
+      title: 'AI & Machine Learning',
+      description: 'Transforming data into intelligent insights'
     },
     {
-      url: 'https://images.unsplash.com/photo-1563013544-824ae1b704d3?w=1920&h=1080&fit=crop',
+      id: 2,
+      image: 'https://picsum.photos/seed/tech-datascience/1200/400.jpg',
+      title: 'Data Science',
+      description: 'Unlocking patterns in complex datasets'
+    },
+    {
+      id: 3,
+      image: 'https://picsum.photos/seed/tech-coding/1200/400.jpg',
+      title: 'Software Development',
+      description: 'Building the future with code'
+    },
+    {
+      id: 4,
+      image: 'https://picsum.photos/seed/tech-cloud/1200/400.jpg',
+      title: 'Cloud Computing',
+      description: 'Scalable infrastructure for modern applications'
+    },
+    {
+      id: 5,
+      image: 'https://picsum.photos/seed/tech-cybersecurity/1200/400.jpg',
       title: 'Cyber Security',
-      subtitle: 'Protect digital worlds',
-      cta: 'Explore Courses'
-    },
-    {
-      url: 'https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=1920&h=1080&fit=crop',
-      title: 'Web Development',
-      subtitle: 'Build amazing applications',
-      cta: 'Create Projects'
-    },
-    {
-      url: 'https://images.unsplash.com/photo-1551434678-e076c223a692?w=1920&h=1080&fit=crop',
-      title: 'Mobile Development',
-      subtitle: 'Apps for billions',
-      cta: 'Develop Apps'
+      description: 'Protecting digital assets and privacy'
     }
   ];
-  
+
   useEffect(() => {
-    const timer = setInterval(() => {
-      setCurrentSlide((prev) => (prev + 1) % slides.length);
-    }, 5000);
+    if (!isAutoPlaying) return;
     
-    return () => clearInterval(timer);
-  }, [slides.length]);
-  
+    const interval = setInterval(() => {
+      setCurrentSlide((prev) => (prev + 1) % slides.length);
+    }, 4000);
+
+    return () => clearInterval(interval);
+  }, [isAutoPlaying, slides.length]);
+
   const goToSlide = (index) => {
     setCurrentSlide(index);
+    setIsAutoPlaying(false);
+    setTimeout(() => setIsAutoPlaying(true), 10000); // Resume auto-play after 10 seconds
   };
-  
+
   const goToPrevious = () => {
     setCurrentSlide((prev) => (prev - 1 + slides.length) % slides.length);
+    setIsAutoPlaying(false);
+    setTimeout(() => setIsAutoPlaying(true), 10000);
   };
-  
+
   const goToNext = () => {
     setCurrentSlide((prev) => (prev + 1) % slides.length);
+    setIsAutoPlaying(false);
+    setTimeout(() => setIsAutoPlaying(true), 10000);
   };
-  
+
   return (
-    <div className="background-slider">
-      <div className="slider-container">
+    <div className="image-slider-container">
+      <div className="slider-wrapper">
         {slides.map((slide, index) => (
           <div
-            key={index}
+            key={slide.id}
             className={`slide ${index === currentSlide ? 'active' : ''}`}
-            style={{ backgroundImage: `url(${slide.url})` }}
-          />
-        ))}
-        
-        {/* Overlay Content */}
-        <div className="slider-overlay">
-          <div className="slider-content">
-            <div className="slider-text">
-              <h1 className="slider-title">{slides[currentSlide].title}</h1>
-              <p className="slider-subtitle">{slides[currentSlide].subtitle}</p>
+          >
+            <img src={slide.image} alt={slide.title} />
+            <div className="slide-overlay">
+              <h3>{slide.title}</h3>
+              <p>{slide.description}</p>
             </div>
           </div>
-        </div>
-        
-        {/* Navigation Arrows */}
-        <button className="slider-arrow prev" onClick={goToPrevious}>
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M15 18l-6-6 6-6"/>
-          </svg>
-        </button>
-        <button className="slider-arrow next" onClick={goToNext}>
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M9 18l6-6-6-6"/>
-          </svg>
-        </button>
-        
-        {/* Dots Indicator */}
-        <div className="slider-dots">
-          {slides.map((_, index) => (
-            <button
-              key={index}
-              className={`dot ${index === currentSlide ? 'active' : ''}`}
-              onClick={() => goToSlide(index)}
-            />
-          ))}
-        </div>
+        ))}
+      </div>
+      
+      {/* Navigation Controls */}
+      <button className="slider-btn prev-btn" onClick={goToPrevious}>‹</button>
+      <button className="slider-btn next-btn" onClick={goToNext}>›</button>
+      
+      {/* Dot Indicators */}
+      <div className="slider-dots">
+        {slides.map((_, index) => (
+          <span
+            key={index}
+            className={`dot ${index === currentSlide ? 'active' : ''}`}
+            onClick={() => goToSlide(index)}
+          />
+        ))}
       </div>
     </div>
   );
@@ -174,6 +176,202 @@ const Dashboard = ({ user, onLogout }) => {
   const [videoThumbnails, setVideoThumbnails] = useState({});
   const [videoDurations, setVideoDurations] = useState({});
 
+  // Real-time stats state
+  const [realTimeStats, setRealTimeStats] = useState(null);
+  const [loadingStats, setLoadingStats] = useState(true);
+  const [statsError, setStatsError] = useState(null);
+
+  // Helper functions inside component
+  const getPersonalizedGreeting = useCallback(() => {
+    return 'Welcome back';
+  }, []);
+
+  const getGreetingEmoji = useCallback(() => {
+    return '👋';
+  }, []);
+
+  const getDynamicMessages = useCallback((isDataScienceCourse) => {
+    if (isDataScienceCourse) {
+      return [
+        "Ready to master Data Science & AI? 🚀",
+        "Let's explore machine learning today 🤖",
+        "Your data science journey continues! 📊",
+        "Time to build amazing AI models ⚡",
+        "Unlock the power of data analytics 🔓"
+      ];
+    } else {
+      return [
+        "Ready to enhance your cybersecurity skills? 🛡️",
+        "Let's explore ethical hacking today 🔍",
+        "Your cybersecurity journey continues! 🔐",
+        "Time to master penetration testing ⚔️",
+        "Become a security expert! 🎯"
+      ];
+    }
+  }, []);
+
+  const calculateStreak = useCallback(() => {
+    // This would normally come from user data/progress tracking
+    // For now, return a random streak between 1-30
+    return Math.floor(Math.random() * 30) + 1;
+  }, []);
+
+  // API integration function to load real-time stats
+  const loadRealTimeStats = useCallback(async () => {
+    try {
+      setLoadingStats(true);
+      setStatsError(null);
+      
+      const token = localStorage.getItem('token');
+      if (!token) {
+        throw new Error('No authentication token found');
+      }
+
+      // Use the same API base URL pattern as other functions in the component
+      const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000/api' : '/api';
+      const response = await fetch(`${apiUrl}/student/progress-summary`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (!response.ok) {
+        if (response.status === 401) {
+          // Token expired, logout user
+          onLogout();
+          return;
+        }
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const data = await response.json();
+      setRealTimeStats(data);
+      console.log('✅ Real-time stats loaded:', data);
+    } catch (error) {
+      console.error('❌ Error loading real-time stats:', error);
+      setStatsError(error.message);
+      
+      // Use actual real-time data from the component instead of hardcoded values
+      // Use base course data since courseData isn't available yet
+      const isDataScienceCourse = user?.currentCourse?.toLowerCase().includes('data science');
+      const baseModules = isDataScienceCourse ? 10 : 10; // Both courses have 10 modules
+      
+      const actualData = {
+        modules: { 
+          total: baseModules, 
+          completed: Math.floor((progressPercent / 100) * baseModules), 
+          inProgress: Math.min(baseModules - Math.floor((progressPercent / 100) * baseModules), 2)
+        },
+        videos: { 
+          total: classroomVideos.length, 
+          watched: viewedFiles.length, 
+          progressPercentage: progressPercent 
+        },
+        streak: { 
+          current: calculateStreak(), 
+          longest: calculateStreak(), // Use same for now 
+          lastLoginDate: new Date().toISOString().split('T')[0] 
+        },
+        overallProgress: progressPercent
+      };
+      
+      setRealTimeStats(actualData);
+      console.log('🔄 Using actual component data:', actualData);
+    } finally {
+      setLoadingStats(false);
+    }
+  }, [onLogout]);
+
+  // Card click handler
+  const handleCardClick = useCallback((cardType) => {
+    switch(cardType) {
+      case 'modules':
+        setActiveSection('courses');
+        // Could add scroll to modules section or focus
+        break;
+      case 'progress':
+        setActiveSection('progress');
+        break;
+      case 'videos':
+        setActiveSection('classroom');
+        // Could add filter for unwatched videos
+        break;
+      case 'streak':
+        // Could show streak details modal or navigate to profile
+        setActiveSection('profile');
+        break;
+      default:
+        break;
+    }
+  }, []);
+
+  // Navigation helper functions
+  const getNavIndicatorPosition = useCallback(() => {
+    const activeIndex = { overview: 0, classroom: 1, profile: 2 };
+    return `${activeIndex[activeSection] * 33.33}%`;
+  }, [activeSection]);
+
+  const getNavIndicatorWidth = useCallback(() => {
+    return '33.33%';
+  }, []);
+
+  // Modern Animated Gradient Background Component
+  const AnimatedGradientBackground = useCallback(() => {
+    const particles = Array.from({ length: 20 }, (_, i) => {
+      return {
+        id: i,
+        left: `${Math.random() * 100}%`,
+        animationDelay: `${Math.random() * 5}s`,
+        animationDuration: `${15 + Math.random() * 10}s`
+      };
+    });
+
+    const shapes = Array.from({ length: 6 }, (_, i) => {
+      return {
+        id: i,
+        left: `${Math.random() * 100}%`,
+        top: `${Math.random() * 100}%`,
+        animationDelay: `${Math.random() * 3}s`,
+        animationDuration: `${20 + Math.random() * 15}s`
+      };
+    });
+
+    return (
+      <div className="animated-gradient-background">
+        <div className="gradient-overlay">
+          {/* <div className="floating-particles">
+            {particles.map(particle => (
+              <div
+                key={particle.id}
+                className="particle"
+                style={{
+                  left: particle.left,
+                  animationDelay: particle.animationDelay,
+                  animationDuration: particle.animationDuration
+                }}
+              />
+            ))}
+          </div> */}
+          {/* <div className="geometric-patterns">
+            {shapes.map(shape => (
+              <div
+                key={shape.id}
+                className="geometric-shape"
+                style={{
+                  left: shape.left,
+                  top: shape.top,
+                  animationDelay: shape.animationDelay,
+                  animationDuration: shape.animationDuration
+                }}
+              />
+            ))}
+          </div> */}
+        </div>
+      </div>
+    );
+  }, []);
+
   // Dark mode toggle
   const toggleDarkMode = () => {
     const newDarkMode = !darkMode;
@@ -185,8 +383,9 @@ const Dashboard = ({ user, onLogout }) => {
   useEffect(() => {
     const stored = localStorage.getItem('darkMode');
     if (stored === null) {
-      setDarkMode(true);
-      localStorage.setItem('darkMode', 'true');
+      // Always set light mode for students
+      setDarkMode(false);
+      localStorage.setItem('darkMode', 'false');
     } else {
       setDarkMode(stored === 'true');
     }
@@ -477,6 +676,24 @@ const Dashboard = ({ user, onLogout }) => {
       setVideoWatchHistory([]);
     }
   }, [user?.id, loadUserProgress]);
+
+  // Load real-time stats on mount and when user changes
+  useEffect(() => {
+    if (user?.id) {
+      loadRealTimeStats();
+    }
+  }, [user?.id, loadRealTimeStats]);
+
+  // Auto-refresh real-time stats every 5 minutes
+  useEffect(() => {
+    if (!user?.id) return;
+    
+    const interval = setInterval(() => {
+      loadRealTimeStats();
+    }, 5 * 60 * 1000); // 5 minutes
+
+    return () => clearInterval(interval);
+  }, [user?.id, loadRealTimeStats]);
 
   // Load course content from API
   const loadCourseContent = useCallback(async () => {
@@ -1251,47 +1468,65 @@ const Dashboard = ({ user, onLogout }) => {
           <div className="subtitle">Student Portal</div>
         </div>
         
-        <nav className="top-nav-menu">
-          <button 
-            className={`nav-item ${activeSection === 'overview' ? 'active' : ''}`}
-            onClick={() => setActiveSection('overview')}
-            title="Home"
-          >
-            <span className="nav-icon">🏠</span>
-            <span>Home</span>
-          </button>
+        <nav className="top-nav-menu-modern">
+          <div className="nav-slider-container">
+            <div 
+              className="nav-slider-indicator"
+              style={{
+                left: getNavIndicatorPosition(),
+                width: getNavIndicatorWidth()
+              }}
+            />
+            <button 
+              className={`nav-item-modern ${activeSection === 'overview' ? 'active' : ''}`}
+              onClick={() => setActiveSection('overview')}
+              title="Home"
+            >
+              <span className="nav-icon-modern">🏠</span>
+              <span className="nav-text">Home</span>
+              <span className="nav-badge">0</span>
+            </button>
+            
+            <button 
+              className={`nav-item-modern ${activeSection === 'classroom' ? 'active' : ''}`}
+              onClick={() => setActiveSection('classroom')}
+              title="Classroom"
+            >
+              <span className="nav-icon-modern">🎥</span>
+              <span className="nav-text">Classroom</span>
+              <span className="nav-badge notification">{classroomVideos.length}</span>
+            </button>
+            
+            <button 
+              className={`nav-item-modern ${activeSection === 'profile' ? 'active' : ''}`}
+              onClick={() => setActiveSection('profile')}
+              title="My Profile"
+            >
+              <span className="nav-icon-modern">👤</span>
+              <span className="nav-text">Profile</span>
+              <span className="nav-badge">0</span>
+            </button>
+          </div>
           
-          <button 
-            className={`nav-item ${activeSection === 'classroom' ? 'active' : ''}`}
-            onClick={() => setActiveSection('classroom')}
-            title="Classroom"
-          >
-            <span className="nav-icon">🎥</span>
-            <span>Classroom</span>
-          </button>
-          
-          <button 
-            className={`nav-item ${activeSection === 'profile' ? 'active' : ''}`}
-            onClick={() => setActiveSection('profile')}
-            title="My Profile"
-          >
-            <span className="nav-icon">👤</span>
-            <span>My Profile</span>
-          </button>
-          
-          <button 
-            className="nav-item dark-mode-toggle" 
-            onClick={toggleDarkMode}
-            title={darkMode ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
-          >
-            <span className="nav-icon">{darkMode ? '☀️' : '🌙'}</span>
-            <span>{darkMode ? 'Light' : 'Dark'}</span>
-          </button>
-          
-          <button className="nav-item logout-btn" onClick={onLogout}>
-            <span className="nav-icon">🚪</span>
-            <span>Logout</span>
-          </button>
+          <div className="nav-actions">
+            <button 
+              className="nav-item-modern theme-toggle" 
+              onClick={toggleDarkMode}
+              title={darkMode ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
+            >
+              <span className="nav-icon-modern theme-icon">{darkMode ? '☀️' : '🌙'}</span>
+              <span className="nav-text theme-text">{darkMode ? 'Light' : 'Dark'}</span>
+            </button>
+            
+            <button 
+              className="nav-item-modern logout-btn-modern" 
+              onClick={onLogout}
+              title="Logout"
+            >
+              <span className="nav-icon-modern">🚪</span>
+              <span className="nav-text">Logout</span>
+            </button>
+          </div>
         </nav>
         
         <div className="top-nav-spacer"></div>
@@ -1305,44 +1540,254 @@ const Dashboard = ({ user, onLogout }) => {
           {activeSection === 'overview' && (
             <div className="animate-in">
               
-              {/* Welcome Header - Only on home page */}
-              <div className="welcome-header">
-                <h1 className="welcome-title">
-                  Welcome back, <span>{user?.name}</span>!
-                </h1>
-                <div className="subtitle">
-                  {isDataScience() 
-                    ? <TypingAnimation texts={["Continue your Data Science & AI journey"]} speed={80} />
-                    : <TypingAnimation texts={["Advance your cybersecurity skills"]} speed={80} />}
+              {/* Enhanced Welcome Header with Glassmorphism */}
+              <div className="welcome-header-modern">
+                <div className="welcome-glass-card">
+                  <div className="welcome-content">
+                    <div className="greeting-section">
+                      <h1 className="welcome-title-modern">
+                        {getPersonalizedGreeting()}, <span className="user-name">{user?.name}</span>! 
+                        <span className="greeting-emoji">{getGreetingEmoji()}</span>
+                      </h1>
+                      <div className="typing-container">
+                        <TypingAnimation 
+                          texts={getDynamicMessages(isDataScience())} 
+                          speed={80} 
+                          pauseDuration={3000} 
+                        />
+                      </div>
+                    </div>
+                    
+                    <div className="quick-stats-row">
+                      <div 
+                        className={`stat-pill ${loadingStats ? 'loading' : ''}`}
+                        onClick={() => handleCardClick('progress')}
+                        title="Click to view detailed progress"
+                      >
+                        <div className="stat-icon-modern">📈</div>
+                        <div className="stat-info">
+                          <div className="stat-value-modern">
+                            {loadingStats ? '...' : progressPercent + '%'}
+                          </div>
+                          <div className="stat-label-modern">Progress</div>
+                        </div>
+                      </div>
+                      <div 
+                        className={`stat-pill ${loadingStats ? 'loading' : ''}`}
+                        onClick={() => handleCardClick('videos')}
+                        title="Click to view classroom videos"
+                      >
+                        <div className="stat-icon-modern">🎥</div>
+                        <div className="stat-info">
+                          <div className="stat-value-modern">
+                            {loadingStats ? '...' : classroomVideos.length}
+                          </div>
+                          <div className="stat-label-modern">Videos</div>
+                        </div>
+                      </div>
+                    </div>
+                    
+                    <div className="action-buttons-row">
+                      <button 
+                        className="action-button primary"
+                        onClick={() => setActiveSection('classroom')}
+                      >
+                        <span className="button-icon">🎥</span>
+                        Continue Learning
+                      </button>
+                      {/* <button 
+                        className="action-button secondary"
+                        onClick={() => setActiveSection('progress')}
+                      >
+                        <span className="button-icon">📊</span>
+                        View Progress
+                      </button> */}
+                    </div>
+                  </div>
                 </div>
               </div>
               
-              {/* Background Image Slider - Only on home page */}
-              <BackgroundImageSlider />
+              {/* Modern Animated Gradient Background */}
+              {/* <AnimatedGradientBackground /> */}
 
-              {/* Stats Grid */}
-              {/* <div className="stats-grid">
-                <div className="stat-card animate-in">
-                  <div className="stat-icon">📚</div>
-                  <div className="stat-value">{contentLoading ? '...' : courseData.modules}</div>
-                  <div className="stat-label">Total Modules</div>
+              {/* Technology Image Slider */}
+              <ImageSlider />
+
+              {/* Modern Stats Dashboard - Commented Out */}
+              {/* 
+              <div className="stats-dashboard-modern">
+                <div className="stats-header">
+                  <h2 className="stats-title">Your Learning Overview</h2>
+                  <p className="stats-subtitle">Track your progress and achievements</p>
                 </div>
-                <div className="stat-card animate-in">
-                  <div className="stat-icon">⏱️</div>
-                  <div className="stat-value">{courseData.duration}</div>
-                  <div className="stat-label">Course Duration</div>
+                
+                <div className="stats-grid-modern">
+                  {/* <div className="stat-card-modern">
+                    <div className="stat-ring-container">
+                      <svg className="progress-ring" width="80" height="80">
+                        <circle
+                          className="progress-ring-bg"
+                          cx="40"
+                          cy="40"
+                          r="35"
+                          fill="transparent"
+                          stroke="rgba(255, 255, 255, 0.1)"
+                          strokeWidth="6"
+                        />
+                        <circle
+                          className="progress-ring-fill"
+                          cx="40"
+                          cy="40"
+                          r="35"
+                          fill="transparent"
+                          stroke="url(#gradient1)"
+                          strokeWidth="6"
+                          strokeLinecap="round"
+                          strokeDasharray={`${2 * Math.PI * 35}`}
+                          strokeDashoffset={`${2 * Math.PI * 35 * (1 - Math.min(courseData.modules / 10, 1))}`}
+                          transform="rotate(-90 40 40)"
+                        />
+                        <defs>
+                          <linearGradient id="gradient1" x1="0%" y1="0%" x2="100%" y2="100%">
+                            <stop offset="0%" stopColor="#667eea" />
+                            <stop offset="100%" stopColor="#764ba2" />
+                          </linearGradient>
+                        </defs>
+                      </svg>
+                      <div className="stat-icon-center">📚</div>
+                    </div>
+                    <div className="stat-content">
+                      <div className="stat-value-modern">{courseData.modules}</div>
+                      <div className="stat-label-modern">Total Modules</div>
+                      <div className="stat-progress">70% Complete</div>
+                    </div>
+                  </div> */}
+
+                  {/* <div className="stat-card-modern">
+                    <div className="stat-ring-container">
+                      <svg className="progress-ring" width="80" height="80">
+                        <circle
+                          className="progress-ring-bg"
+                          cx="40"
+                          cy="40"
+                          r="35"
+                          fill="transparent"
+                          stroke="rgba(255, 255, 255, 0.1)"
+                          strokeWidth="6"
+                        />
+                        <circle
+                          className="progress-ring-fill"
+                          cx="40"
+                          cy="40"
+                          r="35"
+                          fill="transparent"
+                          stroke="url(#gradient2)"
+                          strokeWidth="6"
+                          strokeLinecap="round"
+                          strokeDasharray={`${2 * Math.PI * 35}`}
+                          strokeDashoffset={`${2 * Math.PI * 35 * (1 - progressPercent / 100)}`}
+                          transform="rotate(-90 40 40)"
+                        />
+                        <defs>
+                          <linearGradient id="gradient2" x1="0%" y1="0%" x2="100%" y2="100%">
+                            <stop offset="0%" stopColor="#f093fb" />
+                            <stop offset="100%" stopColor="#f5576c" />
+                          </linearGradient>
+                        </defs>
+                      </svg>
+                      <div className="stat-icon-center">📈</div>
+                    </div>
+                    <div className="stat-content">
+                      <div className="stat-value-modern">{progressPercent}%</div>
+                      <div className="stat-label-modern">Course Progress</div>
+                      <div className="stat-progress">{viewedFiles.length} files viewed</div>
+                    </div>
+                  </div> */}
+
+                  {/* <div className="stat-card-modern">
+                    <div className="stat-ring-container">
+                      <svg className="progress-ring" width="80" height="80">
+                        <circle
+                          className="progress-ring-bg"
+                          cx="40"
+                          cy="40"
+                          r="35"
+                          fill="transparent"
+                          stroke="rgba(255, 255, 255, 0.1)"
+                          strokeWidth="6"
+                        />
+                        <circle
+                          className="progress-ring-fill"
+                          cx="40"
+                          cy="40"
+                          r="35"
+                          fill="transparent"
+                          stroke="url(#gradient3)"
+                          strokeWidth="6"
+                          strokeLinecap="round"
+                          strokeDasharray={`${2 * Math.PI * 35}`}
+                          strokeDashoffset={`${2 * Math.PI * 35 * (1 - Math.min(classroomVideos.length / 20, 1))}`}
+                          transform="rotate(-90 40 40)"
+                        />
+                        <defs>
+                          <linearGradient id="gradient3" x1="0%" y1="0%" x2="100%" y2="100%">
+                            <stop offset="0%" stopColor="#4facfe" />
+                            <stop offset="100%" stopColor="#00f2fe" />
+                          </linearGradient>
+                        </defs>
+                      </svg>
+                      <div className="stat-icon-center">🎥</div>
+                    </div>
+                    <div className="stat-content">
+                      <div className="stat-value-modern">{classroomVideos.length}</div>
+                      <div className="stat-label-modern">Class Videos</div>
+                      <div className="stat-progress">{Math.min(classroomVideos.length, 20)} available</div>
+                    </div>
+                  </div> */}
+
+                  {/* <div className="stat-card-modern">
+                    <div className="stat-ring-container">
+                      <svg className="progress-ring" width="80" height="80">
+                        <circle
+                          className="progress-ring-bg"
+                          cx="40"
+                          cy="40"
+                          r="35"
+                          fill="transparent"
+                          stroke="rgba(255, 255, 255, 0.1)"
+                          strokeWidth="6"
+                        />
+                        <circle
+                          className="progress-ring-fill"
+                          cx="40"
+                          cy="40"
+                          r="35"
+                          fill="transparent"
+                          stroke="url(#gradient4)"
+                          strokeWidth="6"
+                          strokeLinecap="round"
+                          strokeDasharray={`${2 * Math.PI * 35}`}
+                          strokeDashoffset={`${2 * Math.PI * 35 * (1 - (realTimeStats?.streak?.current || calculateStreak()) / 30)}`}
+                          transform="rotate(-90 40 40)"
+                        />
+                        <defs>
+                          <linearGradient id="gradient4" x1="0%" y1="0%" x2="100%" y2="100%">
+                            <stop offset="0%" stopColor="#fa709a" />
+                            <stop offset="100%" stopColor="#fee140" />
+                          </linearGradient>
+                        </defs>
+                      </svg>
+                      <div className="stat-icon-center">🔥</div>
+                    </div>
+                    <div className="stat-content">
+                      <div className="stat-value-modern">{loadingStats ? '...' : (realTimeStats?.streak?.current || calculateStreak())}</div>
+                      <div className="stat-label-modern">Day Streak</div>
+                      <div className="stat-progress">Keep it going!</div>
+                    </div>
+                  </div>
                 </div>
-                <div className="stat-card animate-in">
-                  <div className="stat-icon">📈</div>
-                  <div className="stat-value">{progressPercent}%</div>
-                  <div className="stat-label">Progress</div>
-                </div>
-                <div className="stat-card animate-in">
-                  <div className="stat-icon">🎯</div>
-                  <div className="stat-value">{classroomVideos.length}</div>
-                  <div className="stat-label">Class Videos</div>
-                </div>
-              </div> */}
+              </div>
+              */}
 
               {/* Current Course Section */}
               {/* Commented out - Your Learning Journey section disabled */}

@@ -9,6 +9,8 @@ const MentorDashboard = lazy(() => import('./components/MentorDashboard'));
 const TeacherDashboard = lazy(() => import('./components/TeacherDashboard'));
 const AdminDashboard = lazy(() => import('./components/AdminDashboard'));
 const BatchDetailsPage = lazy(() => import('./components/BatchDetailsPage'));
+const TeacherBatchDetailsPage = lazy(() => import('./components/TeacherBatchDetailsPage'));
+const BatchDetail = lazy(() => import('./components/BatchDetail'));
 const OneToOneBatchManagement = lazy(() => import('./components/OneToOneBatchManagement'));
 
 // Loading component for lazy loaded components
@@ -46,8 +48,13 @@ function App() {
     const token = localStorage.getItem('token');
     const userData = localStorage.getItem('user');
     if (token && userData) {
+      const parsedUser = JSON.parse(userData);
+      // Fix role mapping: treat 'mentor' as 'teacher' for proper routing
+      if (parsedUser.role === 'mentor') {
+        parsedUser.role = 'teacher';
+      }
       setIsAuthenticated(true);
-      setUser(JSON.parse(userData));
+      setUser(parsedUser);
     }
     
     // Register service worker for performance caching
@@ -55,10 +62,22 @@ function App() {
   }, []);
 
   const handleLogin = (token, userData) => {
+    // Debug: Log the actual user data received
+    console.log('🔍 Login user data:', userData);
+    console.log('🔍 User role:', userData.role);
+    
+    // Fix role mapping: treat 'mentor' as 'teacher' for proper routing
+    if (userData.role === 'mentor') {
+      userData.role = 'teacher';
+    }
+    
     localStorage.setItem('token', token);
     localStorage.setItem('user', JSON.stringify(userData));
     setIsAuthenticated(true);
     setUser(userData);
+    
+    // Debug: Log final user state
+    console.log('🔍 Final user role after mapping:', userData.role);
   };
 
   const handleLogout = () => {
@@ -131,6 +150,22 @@ function App() {
             } 
           />
           <Route 
+            path="/teacher/batch/:batchId" 
+            element={
+              <Suspense fallback={<LoadingSpinner />}>
+                {isAuthenticated && user?.role === 'teacher' ? 
+                <TeacherBatchDetailsPage /> : 
+                !isAuthenticated ?
+                <Navigate to="/login" replace /> :
+                user?.role === 'admin' ?
+                <Navigate to="/admin" replace /> :
+                user?.role === 'mentor' ?
+                <Navigate to="/mentor" replace /> :
+                <Navigate to="/dashboard" replace />}
+              </Suspense>
+            } 
+          />
+          <Route 
             path="/admin" 
             element={
               <Suspense fallback={<LoadingSpinner />}>
@@ -181,7 +216,12 @@ function App() {
               <Navigate to="/admin" replace /> : 
               user?.role === 'mentor' ?
               <Navigate to="/mentor" replace /> :
-              <Navigate to="/dashboard" replace />
+              user?.role === 'teacher' ?
+              <Navigate to="/teacher" replace /> :
+              (() => {
+                console.log('🔍 Root route - Unknown role, redirecting to dashboard:', user?.role);
+                return <Navigate to="/dashboard" replace />;
+              })()
             } 
           />
         </Routes>

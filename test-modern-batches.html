@@ -1,0 +1,725 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Modern Teacher Batches - Test</title>
+    <style>
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: #f8f9fa;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        .demo-section {
+            background: white;
+            border-radius: 16px;
+            padding: 30px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+            margin-bottom: 30px;
+        }
+        .demo-title {
+            font-size: 24px;
+            font-weight: 700;
+            color: #2c3e50;
+            margin-bottom: 20px;
+        }
+        .demo-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+            gap: 24px;
+        }
+        .demo-card {
+            background: white;
+            border-radius: 16px;
+            border: 1px solid #e0e0e0;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+            transition: all 0.3s ease;
+            overflow: hidden;
+        }
+        .demo-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 8px 30px rgba(0, 0, 0, 0.12);
+            border-color: #667eea;
+        }
+        .demo-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            padding: 20px 20px 16px;
+            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+            border-bottom: 1px solid #e0e0e0;
+        }
+        .demo-title-section {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            flex: 1;
+        }
+        .demo-course-icon {
+            font-size: 20px;
+            width: 40px;
+            height: 40px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+        }
+        .demo-title-section h3 {
+            font-size: 16px;
+            font-weight: 700;
+            color: #2c3e50;
+            margin: 0;
+            line-height: 1.3;
+        }
+        .demo-status {
+            flex-shrink: 0;
+        }
+        .demo-status-badge {
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: white;
+            background: #10b981;
+        }
+        .demo-content {
+            padding: 20px;
+        }
+        .demo-info-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px 0;
+            border-bottom: 1px solid #f8f9fa;
+        }
+        .demo-info-row:last-child {
+            border-bottom: none;
+        }
+        .demo-info-label {
+            font-size: 12px;
+            color: #666;
+            font-weight: 500;
+        }
+        .demo-info-value {
+            font-size: 13px;
+            color: #2c3e50;
+            font-weight: 600;
+        }
+        .demo-student-count {
+            display: flex;
+            align-items: baseline;
+            gap: 6px;
+        }
+        .demo-count-number {
+            font-size: 18px;
+            font-weight: 700;
+            color: #667eea;
+        }
+        .demo-count-label {
+            font-size: 11px;
+            color: #999;
+        }
+        .demo-actions {
+            display: flex;
+            gap: 12px;
+            padding: 20px;
+            background: #f8f9fa;
+            border-top: 1px solid #e0e0e0;
+        }
+        .demo-action-btn {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            padding: 12px 16px;
+            border: none;
+            border-radius: 10px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        .demo-primary-btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+        .demo-primary-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.3);
+        }
+        .demo-secondary-btn {
+            background: white;
+            color: #dc3545;
+            border: 2px solid #dc3545;
+        }
+        .demo-secondary-btn:hover {
+            background: #dc3545;
+            color: white;
+            transform: translateY(-2px);
+        }
+        .demo-btn-icon {
+            font-size: 14px;
+        }
+
+        /* Geometric Patterns Styles */
+        .geometric-patterns {
+            position: relative;
+            width: 100%;
+            height: 400px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 16px;
+            overflow: hidden;
+            margin-top: 30px;
+            box-shadow: 0 8px 32px rgba(102, 126, 234, 0.3);
+        }
+
+        .geometric-shape {
+            position: absolute;
+            width: 60px;
+            height: 60px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 2px solid rgba(255, 255, 255, 0.2);
+            border-radius: 50%;
+            animation: float 20s infinite ease-in-out;
+        }
+
+        @keyframes float {
+            0%, 100% {
+                transform: translateY(0) rotate(0deg);
+                opacity: 0.3;
+            }
+            25% {
+                transform: translateY(-20px) rotate(90deg);
+                opacity: 0.6;
+            }
+            50% {
+                transform: translateY(10px) rotate(180deg);
+                opacity: 0.4;
+            }
+            75% {
+                transform: translateY(-15px) rotate(270deg);
+                opacity: 0.7;
+            }
+        }
+
+        /* Image Slider Styles */
+        .image-slider-container {
+            position: relative;
+            width: 100%;
+            height: 400px;
+            margin-top: 30px;
+            border-radius: 16px;
+            overflow: hidden;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
+            background: #000;
+        }
+
+        .slider-wrapper {
+            position: relative;
+            width: 100%;
+            height: 100%;
+        }
+
+        .slide {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            opacity: 0;
+            transition: opacity 1s ease-in-out, transform 1s ease-in-out;
+            transform: scale(1.05);
+        }
+
+        .slide.active {
+            opacity: 1;
+            transform: scale(1);
+        }
+
+        .slide img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .slide-overlay {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: linear-gradient(to top, rgba(0, 0, 0, 0.8) 0%, transparent 100%);
+            color: white;
+            padding: 30px;
+            transform: translateY(20px);
+            opacity: 0;
+            transition: all 0.5s ease;
+        }
+
+        .slide.active .slide-overlay {
+            transform: translateY(0);
+            opacity: 1;
+        }
+
+        .slide-overlay h3 {
+            font-size: 24px;
+            font-weight: 700;
+            margin: 0 0 8px 0;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+        }
+
+        .slide-overlay p {
+            font-size: 16px;
+            margin: 0;
+            opacity: 0.9;
+            text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.5);
+        }
+
+        /* Slider Navigation Buttons */
+        .slider-btn {
+            position: absolute;
+            top: 50%;
+            transform: translateY(-50%);
+            background: rgba(255, 255, 255, 0.2);
+            backdrop-filter: blur(10px);
+            color: white;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            font-size: 24px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            z-index: 10;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .slider-btn:hover {
+            background: rgba(255, 255, 255, 0.3);
+            transform: translateY(-50%) scale(1.1);
+            border-color: rgba(255, 255, 255, 0.5);
+        }
+
+        .prev-btn {
+            left: 20px;
+        }
+
+        .next-btn {
+            right: 20px;
+        }
+
+        /* Slider Dots */
+        .slider-dots {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 12px;
+            z-index: 10;
+        }
+
+        .dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.4);
+            border: 2px solid rgba(255, 255, 255, 0.6);
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .dot:hover {
+            background: rgba(255, 255, 255, 0.6);
+            transform: scale(1.2);
+        }
+
+        .dot.active {
+            background: white;
+            border-color: white;
+            transform: scale(1.3);
+        }
+
+        /* Responsive Design */
+        @media (max-width: 768px) {
+            .geometric-patterns,
+            .image-slider-container {
+                height: 300px;
+            }
+            
+            .slide-overlay {
+                padding: 20px;
+            }
+            
+            .slide-overlay h3 {
+                font-size: 20px;
+            }
+            
+            .slide-overlay p {
+                font-size: 14px;
+            }
+            
+            .slider-btn {
+                width: 40px;
+                height: 40px;
+                font-size: 18px;
+            }
+            
+            .prev-btn {
+                left: 10px;
+            }
+            
+            .next-btn {
+                right: 10px;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .geometric-patterns,
+            .image-slider-container {
+                height: 250px;
+            }
+            
+            .slide-overlay {
+                padding: 15px;
+            }
+            
+            .slide-overlay h3 {
+                font-size: 18px;
+            }
+            
+            .slide-overlay p {
+                font-size: 12px;
+            }
+            
+            .slider-btn {
+                width: 35px;
+                height: 35px;
+                font-size: 16px;
+            }
+            
+            .dot {
+                width: 10px;
+                height: 10px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="demo-section">
+            <h1 class="demo-title">🎉 Modern Teacher Batches Display</h1>
+            <p style="font-size: 16px; color: #666; margin-bottom: 30px;">
+                The teacher batches interface has been successfully modernized with:
+            </p>
+            <ul style="font-size: 14px; color: #555; line-height: 1.8;">
+                <li><strong>✨ Modern Card Design:</strong> Professional gradient backgrounds, hover effects, and shadows</li>
+                <li><strong>🔍 Smart Search & Filters:</strong> Real-time search with course type and status filtering</li>
+                <li><strong>📊 Enhanced Information Display:</strong> Better visual hierarchy with icons and status badges</li>
+                <li><strong>📱 Responsive Grid Layout:</strong> Adapts from 1-4 columns based on screen size</li>
+                <li><strong>🎯 Professional Actions:</strong> Modern button styling with hover states and micro-interactions</li>
+            </ul>
+        </div>
+
+        <div class="demo-grid">
+            <div class="demo-card">
+                <div class="demo-header">
+                    <div class="demo-title-section">
+                        <div class="demo-course-icon">📊</div>
+                        <h3>BATCH-25019090DS&AI</h3>
+                    </div>
+                    <div class="demo-status">
+                        <span class="demo-status-badge">ACTIVE</span>
+                    </div>
+                </div>
+                <div class="demo-content">
+                    <div class="demo-info-row">
+                        <span class="demo-info-label">Course:</span>
+                        <span class="demo-info-value">Data Science & AI</span>
+                    </div>
+                    <div class="demo-info-row">
+                        <span class="demo-info-label">Students:</span>
+                        <div class="demo-student-count">
+                            <span class="demo-count-number">25</span>
+                            <span class="demo-count-label">enrolled</span>
+                        </div>
+                    </div>
+                    <div class="demo-info-row">
+                        <span class="demo-info-label">Type:</span>
+                        <span class="demo-info-value">📚 Regular Batch</span>
+                    </div>
+                </div>
+                <div class="demo-actions">
+                    <button class="demo-action-btn demo-primary-btn">
+                        <span class="demo-btn-icon">👁</span>
+                        View Details
+                    </button>
+                    <button class="demo-action-btn demo-secondary-btn">
+                        <span class="demo-btn-icon">🗑️</span>
+                        Delete
+                    </button>
+                </div>
+            </div>
+
+            <div class="demo-card">
+                <div class="demo-header">
+                    <div class="demo-title-section">
+                        <div class="demo-course-icon">📊</div>
+                        <h3>Understand Python basics through one interactive demo session.</h3>
+                    </div>
+                    <div class="demo-status">
+                        <span class="demo-status-badge">ACTIVE</span>
+                    </div>
+                </div>
+                <div class="demo-content">
+                    <div class="demo-info-row">
+                        <span class="demo-info-label">Course:</span>
+                        <span class="demo-info-value">Data Science & AI</span>
+                    </div>
+                    <div class="demo-info-row">
+                        <span class="demo-info-label">Students:</span>
+                        <div class="demo-student-count">
+                            <span class="demo-count-number">7</span>
+                            <span class="demo-count-label">enrolled</span>
+                        </div>
+                    </div>
+                    <div class="demo-info-row">
+                        <span class="demo-info-label">Type:</span>
+                        <span class="demo-info-value">📚 Regular Batch</span>
+                    </div>
+                </div>
+                <div class="demo-actions">
+                    <button class="demo-action-btn demo-primary-btn">
+                        <span class="demo-btn-icon">👁</span>
+                        View Details
+                    </button>
+                    <button class="demo-action-btn demo-secondary-btn">
+                        <span class="demo-btn-icon">🗑️</span>
+                        Delete
+                    </button>
+                </div>
+            </div>
+
+            <div class="demo-card">
+                <div class="demo-header">
+                    <div class="demo-title-section">
+                        <div class="demo-course-icon">👥</div>
+                        <h3>BATCH-10020TO1DS&AI {Priya & Nageshwari}</h3>
+                    </div>
+                    <div class="demo-status">
+                        <span class="demo-status-badge">ACTIVE</span>
+                    </div>
+                </div>
+                <div class="demo-content">
+                    <div class="demo-info-row">
+                        <span class="demo-info-label">Course:</span>
+                        <span class="demo-info-value">One-to-One</span>
+                    </div>
+                    <div class="demo-info-row">
+                        <span class="demo-info-label">Students:</span>
+                        <div class="demo-student-count">
+                            <span class="demo-count-number">2</span>
+                            <span class="demo-count-label">enrolled</span>
+                        </div>
+                    </div>
+                    <div class="demo-info-row">
+                        <span class="demo-info-label">Type:</span>
+                        <span class="demo-info-value">👥 One-to-One</span>
+                    </div>
+                </div>
+                <div class="demo-actions">
+                    <button class="demo-action-btn demo-primary-btn">
+                        <span class="demo-btn-icon">👁</span>
+                        View Details
+                    </button>
+                    <button class="demo-action-btn demo-secondary-btn">
+                        <span class="demo-btn-icon">🗑️</span>
+                        Delete
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Geometric Patterns Section -->
+        <div class="geometric-patterns">
+            <div class="geometric-shape" style="left: 14.6387%; top: 32.7169%; animation-delay: 1.86812s; animation-duration: 30.3825s;"></div>
+            <div class="geometric-shape" style="left: 61.73%; top: 81.0471%; animation-delay: 2.89778s; animation-duration: 24.4928s;"></div>
+            <div class="geometric-shape" style="left: 28.298%; top: 92.9006%; animation-delay: 1.02599s; animation-duration: 28.948s;"></div>
+            <div class="geometric-shape" style="left: 2.67021%; top: 72.9873%; animation-delay: 0.435954s; animation-duration: 30.0025s;"></div>
+            <div class="geometric-shape" style="left: 24.8392%; top: 96.458%; animation-delay: 2.99826s; animation-duration: 32.2463s;"></div>
+            <div class="geometric-shape" style="left: 6.81951%; top: 25.2167%; animation-delay: 0.715734s; animation-duration: 21.3312s;"></div>
+        </div>
+
+        <!-- Image Slider Section -->
+        <div class="image-slider-container">
+            <div class="slider-wrapper">
+                <div class="slide active">
+                    <img src="https://picsum.photos/seed/tech-ai-ml/1200/400.jpg" alt="AI and Machine Learning">
+                    <div class="slide-overlay">
+                        <h3>AI & Machine Learning</h3>
+                        <p>Transforming data into intelligent insights</p>
+                    </div>
+                </div>
+                <div class="slide">
+                    <img src="https://picsum.photos/seed/tech-datascience/1200/400.jpg" alt="Data Science">
+                    <div class="slide-overlay">
+                        <h3>Data Science</h3>
+                        <p>Unlocking patterns in complex datasets</p>
+                    </div>
+                </div>
+                <div class="slide">
+                    <img src="https://picsum.photos/seed/tech-coding/1200/400.jpg" alt="Software Development">
+                    <div class="slide-overlay">
+                        <h3>Software Development</h3>
+                        <p>Building the future with code</p>
+                    </div>
+                </div>
+                <div class="slide">
+                    <img src="https://picsum.photos/seed/tech-cloud/1200/400.jpg" alt="Cloud Computing">
+                    <div class="slide-overlay">
+                        <h3>Cloud Computing</h3>
+                        <p>Scalable infrastructure for modern applications</p>
+                    </div>
+                </div>
+                <div class="slide">
+                    <img src="https://picsum.photos/seed/tech-cybersecurity/1200/400.jpg" alt="Cyber Security">
+                    <div class="slide-overlay">
+                        <h3>Cyber Security</h3>
+                        <p>Protecting digital assets and privacy</p>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Navigation Controls -->
+            <button class="slider-btn prev-btn" onclick="changeSlide(-1)">‹</button>
+            <button class="slider-btn next-btn" onclick="changeSlide(1)">›</button>
+            
+            <!-- Dot Indicators -->
+            <div class="slider-dots">
+                <span class="dot active" onclick="currentSlide(1)"></span>
+                <span class="dot" onclick="currentSlide(2)"></span>
+                <span class="dot" onclick="currentSlide(3)"></span>
+                <span class="dot" onclick="currentSlide(4)"></span>
+                <span class="dot" onclick="currentSlide(5)"></span>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Image Slider JavaScript
+        let currentSlideIndex = 0;
+        let slideInterval;
+        const slides = document.querySelectorAll('.slide');
+        const dots = document.querySelectorAll('.dot');
+        const sliderContainer = document.querySelector('.image-slider-container');
+
+        function showSlide(index) {
+            // Hide all slides
+            slides.forEach(slide => slide.classList.remove('active'));
+            dots.forEach(dot => dot.classList.remove('active'));
+            
+            // Show current slide
+            slides[index].classList.add('active');
+            dots[index].classList.add('active');
+        }
+
+        function nextSlide() {
+            currentSlideIndex = (currentSlideIndex + 1) % slides.length;
+            showSlide(currentSlideIndex);
+        }
+
+        function prevSlide() {
+            currentSlideIndex = (currentSlideIndex - 1 + slides.length) % slides.length;
+            showSlide(currentSlideIndex);
+        }
+
+        function changeSlide(direction) {
+            if (direction === 1) {
+                nextSlide();
+            } else {
+                prevSlide();
+            }
+            resetAutoSlide();
+        }
+
+        function currentSlideFunc(index) {
+            currentSlideIndex = index - 1;
+            showSlide(currentSlideIndex);
+            resetAutoSlide();
+        }
+
+        function startAutoSlide() {
+            slideInterval = setInterval(nextSlide, 4000); // Change slide every 4 seconds
+        }
+
+        function stopAutoSlide() {
+            clearInterval(slideInterval);
+        }
+
+        function resetAutoSlide() {
+            stopAutoSlide();
+            startAutoSlide();
+        }
+
+        // Initialize slider
+        document.addEventListener('DOMContentLoaded', function() {
+            showSlide(0);
+            startAutoSlide();
+
+            // Pause on hover
+            sliderContainer.addEventListener('mouseenter', stopAutoSlide);
+            sliderContainer.addEventListener('mouseleave', startAutoSlide);
+
+            // Keyboard navigation
+            document.addEventListener('keydown', function(e) {
+                if (e.key === 'ArrowLeft') {
+                    changeSlide(-1);
+                } else if (e.key === 'ArrowRight') {
+                    changeSlide(1);
+                }
+            });
+
+            // Touch/swipe support for mobile
+            let touchStartX = 0;
+            let touchEndX = 0;
+
+            sliderContainer.addEventListener('touchstart', function(e) {
+                touchStartX = e.changedTouches[0].screenX;
+            });
+
+            sliderContainer.addEventListener('touchend', function(e) {
+                touchEndX = e.changedTouches[0].screenX;
+                handleSwipe();
+            });
+
+            function handleSwipe() {
+                const swipeThreshold = 50;
+                const diff = touchStartX - touchEndX;
+                
+                if (Math.abs(diff) > swipeThreshold) {
+                    if (diff > 0) {
+                        changeSlide(1); // Swipe left, go to next slide
+                    } else {
+                        changeSlide(-1); // Swipe right, go to previous slide
+                    }
+                }
+            }
+        });
+
+        // Fix function name conflicts
+        window.currentSlide = currentSlideFunc;
+        window.changeSlide = changeSlide;
+    </script>
+</body>
+</html>

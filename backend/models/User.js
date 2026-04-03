@@ -43,6 +43,9 @@ const UserSchema = new mongoose.Schema({
   domain: {
     type: String,
   },
+  assignedCourses: [{
+    type: String
+  }],
   title: {
     type: String,
   },
