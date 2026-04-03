@@ -11,6 +11,7 @@ const batchSchema = new mongoose.Schema({
     status: { type: String, default: 'active', enum: ['active', 'inactive', 'completed'] },
     students: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
     schedule: { type: mongoose.Schema.Types.Mixed }, // e.g. { days: 'Mon,Wed,Fri' or [], time: '10:00 AM - 11:00 AM IST' }
+    teacherNotes: { type: String }, // Teacher's notes/details about this batch/class
     createdAt: { type: Date, default: Date.now },
     updatedAt: { type: Date, default: Date.now }
 });

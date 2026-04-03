@@ -24,6 +24,10 @@ const TeacherDashboard = ({ user, onLogout }) => {
   const [batches, setBatches] = useState([]);
   const [studentName, setStudentName] = useState('');
   const [batchName, setBatchName] = useState('');
+  const [selectedBatch, setSelectedBatch] = useState(null);
+  const [batchDetails, setBatchDetails] = useState(null);
+  const [teacherNotes, setTeacherNotes] = useState('');
+  const [savingNotes, setSavingNotes] = useState(false);
 
   useEffect(() => {
     loadTeacherData();
@@ -35,7 +39,7 @@ const TeacherDashboard = ({ user, onLogout }) => {
     try {
       const token = localStorage.getItem('token');
       const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
-      const response = await fetch(`${apiUrl}/api/batches/${batchId}`, {
+      const response = await fetch(`${apiUrl}/api/teacher/batches/${batchId}`, {
         method: 'DELETE',
         headers: { 'Authorization': `Bearer ${token}` }
       });
@@ -56,20 +60,89 @@ const TeacherDashboard = ({ user, onLogout }) => {
       const token = localStorage.getItem('token');
       const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
 
-      // Load teacher dashboard data
       const coursesRes = await fetch(`${apiUrl}/api/teacher/courses`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
 
-      const coursesData = coursesRes.ok ? await coursesRes.json() : [];
+      const coursesData = coursesRes.ok ? await coursesRes.json() : {};
+      const coursesList = coursesData.courses || [];
+      setCourses(coursesList);
 
-      setCourses(coursesData.courses || []);
-      setStudents([]); // Students will be loaded from dashboard data
+      // Load all batches with students for students list
+      const batchesRes = await fetch(`${apiUrl}/api/teacher/batches`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      const batchesData = batchesRes.ok ? await batchesRes.json() : {};
+      const allBatches = batchesData.batches || [];
+      const seen = new Set();
+      const uniqueStudents = allBatches.flatMap(b => (b.studentsList || [])).filter(s => {
+        const id = s.id || s.email;
+        if (seen.has(id)) return false;
+        seen.add(id);
+        return true;
+      });
+      setStudents(uniqueStudents);
     } catch (error) {
       console.error('Error loading teacher data:', error);
       showToast('Error loading dashboard data', 'error');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadBatchDetails = async (batchId) => {
+    if (!batchId) {
+      setSelectedBatch(null);
+      setBatchDetails(null);
+      return;
+    }
+    try {
+      const token = localStorage.getItem('token');
+      const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
+      const response = await fetch(`${apiUrl}/api/teacher/batches/${batchId}`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (response.ok) {
+        const data = await response.json();
+        const batch = data.batch;
+        setSelectedBatch(batch);
+        setBatchDetails(batch);
+        setTeacherNotes(batch.teacherNotes || '');
+      } else {
+        setSelectedBatch(null);
+        setBatchDetails(null);
+      }
+    } catch (e) {
+      console.error('Error loading batch details:', e);
+      setSelectedBatch(null);
+      setBatchDetails(null);
+    }
+  };
+
+  const handleSaveNotes = async () => {
+    if (!selectedBatch?.id) return;
+    setSavingNotes(true);
+    try {
+      const token = localStorage.getItem('token');
+      const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
+      const response = await fetch(`${apiUrl}/api/teacher/batches/${selectedBatch.id}/notes`, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ teacherNotes })
+      });
+      if (response.ok) {
+        showToast('Class details saved!', 'success');
+        setBatchDetails(prev => prev ? { ...prev, teacherNotes } : null);
+      } else {
+        showToast('Failed to save notes', 'error');
+      }
+    } catch (e) {
+      showToast('Failed to save notes', 'error');
+    } finally {
+      setSavingNotes(false);
     }
   };
 
@@ -140,19 +213,19 @@ const TeacherDashboard = ({ user, onLogout }) => {
         return;
       }
 
-      // Send lecture data with YouTube URL
+      // Send lecture data with YouTube URL (courseId/batchId = selected batch)
       const lectureData = {
         title: uploadForm.title,
         description: uploadForm.description,
         courseId: uploadForm.courseId,
-        batchId: uploadForm.batchId,
+        batchId: uploadForm.batchId || uploadForm.courseId,
         domain: uploadForm.domain,
         duration: uploadForm.duration,
         youtubeUrl: uploadForm.youtubeUrl,
         videoSource: 'youtube'
       };
 
-      const response = await fetch(`${apiUrl}/api/teacher/classroom/upload`, {
+      const response = await fetch(`${apiUrl}/api/teacher/classroom/youtube-url`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -292,12 +365,24 @@ const TeacherDashboard = ({ user, onLogout }) => {
   };
 
   useEffect(() => {
-    // Fetch batches when a course is selected
     const fetchBatches = async () => {
-      if (selectedCourse) {
-        const response = await axios.get(`/api/batches/${selectedCourse}`);
-        setBatches(response.data);
-      } else {
+      if (!selectedCourse) {
+        setBatches([]);
+        return;
+      }
+      try {
+        const token = localStorage.getItem('token');
+        const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
+        const response = await fetch(`${apiUrl}/api/teacher/batches?courseId=${selectedCourse}`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (response.ok) {
+          const data = await response.json();
+          setBatches(data.batches || []);
+        } else {
+          setBatches([]);
+        }
+      } catch (e) {
         setBatches([]);
       }
     };
@@ -432,23 +517,88 @@ const TeacherDashboard = ({ user, onLogout }) => {
                 <div key={course.id} className="course-card">
                   <div className="course-header">
                     <h3>{course.title}</h3>
-                    <span className="course-duration">{course.duration}</span>
                   </div>
                   <p>{course.description}</p>
                   <div className="course-stats">
-                    <span>📖 {course.modules} modules</span>
                     <span>👥 {course.enrollmentCount || 0} students</span>
                   </div>
                   <div className="course-actions">
-                    <button className="view-btn">View Details</button>
-                    <button className="manage-btn">Manage Students</button>
+                    <button
+                      className="view-btn"
+                      onClick={() => loadBatchDetails(course.id)}
+                    >
+                      View Details
+                    </button>
+                    <button
+                      className="manage-btn"
+                      onClick={() => loadBatchDetails(course.id)}
+                    >
+                      Manage Students
+                    </button>
                   </div>
                 </div>
               ))}
               {courses.length === 0 && (
-                <p className="no-data">No courses assigned yet.</p>
+                <p className="no-data">No batches assigned yet.</p>
               )}
             </div>
+
+            {/* Batch details panel: students + class notes */}
+            {selectedBatch && batchDetails && (
+              <div className="batch-details-panel" style={{ marginTop: '24px', padding: '20px', border: '1px solid #ddd', borderRadius: '8px', background: '#f9f9f9' }}>
+                <h3>{batchDetails.name} – Class Details</h3>
+                <button
+                  type="button"
+                  onClick={() => { setSelectedBatch(null); setBatchDetails(null); }}
+                  style={{ float: 'right', marginBottom: '12px' }}
+                >
+                  Close
+                </button>
+                <div className="class-notes-section" style={{ marginBottom: '20px', clear: 'both' }}>
+                  <label><strong>Class details / notes</strong></label>
+                  <textarea
+                    value={teacherNotes}
+                    onChange={(e) => setTeacherNotes(e.target.value)}
+                    placeholder="Add notes about this batch (schedule, topics, reminders...)"
+                    rows={4}
+                    style={{ width: '100%', padding: '8px', marginTop: '4px' }}
+                  />
+                  <button
+                    type="button"
+                    onClick={handleSaveNotes}
+                    disabled={savingNotes}
+                    style={{ marginTop: '8px' }}
+                  >
+                    {savingNotes ? 'Saving...' : 'Save notes'}
+                  </button>
+                </div>
+                <div className="students-list-section">
+                  <h4>Students ({batchDetails.studentCount || (batchDetails.studentsList || []).length})</h4>
+                  {(batchDetails.studentsList || []).length > 0 ? (
+                    <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                      <thead>
+                        <tr style={{ borderBottom: '2px solid #ddd' }}>
+                          <th style={{ textAlign: 'left', padding: '8px' }}>Name</th>
+                          <th style={{ textAlign: 'left', padding: '8px' }}>Email</th>
+                          <th style={{ textAlign: 'left', padding: '8px' }}>Enrollment</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {(batchDetails.studentsList || []).map(s => (
+                          <tr key={s.id} style={{ borderBottom: '1px solid #eee' }}>
+                            <td style={{ padding: '8px' }}>{s.name}</td>
+                            <td style={{ padding: '8px' }}>{s.email}</td>
+                            <td style={{ padding: '8px' }}>{s.enrollmentNumber || '—'}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  ) : (
+                    <p className="no-data">No students in this batch yet.</p>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -587,13 +737,17 @@ const TeacherDashboard = ({ user, onLogout }) => {
                   </div>
                   
                   <div className="form-group">
-                    <label htmlFor="batchId">Batch ID (Optional)</label>
-                    <input
-                      type="text"
+                    <label htmlFor="batchId">Batch (Optional)</label>
+                    <select
                       id="batchId"
-                      value={uploadForm.batchId}
+                      value={uploadForm.batchId || uploadForm.courseId}
                       onChange={(e) => setUploadForm({...uploadForm, batchId: e.target.value})}
-                    />
+                    >
+                      <option value="">Same as course</option>
+                      {batches.map(b => (
+                        <option key={b.id} value={b.id}>{b.name}</option>
+                      ))}
+                    </select>
                   </div>
                   
                   <div className="form-group">
@@ -657,12 +811,12 @@ const TeacherDashboard = ({ user, onLogout }) => {
                           <span>🌐 Domain: {lecture.domain}</span>
                           <span>📅 Uploaded: {formatDate(lecture.createdAt)}</span>
                         </div>
-                        {lecture.youtubeUrl && (
+                        {(lecture.youtubeVideoUrl || lecture.youtubeUrl) && (
                           <div className="youtube-info">
-                            <span>🎬 YouTube: {lecture.youtubeUrl}</span>
+                            <span>🎬 YouTube</span>
                             <button 
                               className="watch-btn" 
-                              onClick={() => window.open(lecture.youtubeUrl, '_blank')}
+                              onClick={() => window.open(lecture.youtubeVideoUrl || lecture.youtubeUrl, '_blank')}
                               style={{ marginLeft: '10px', padding: '5px 10px', background: '#ff0000', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
                             >
                               ▶️ Watch

@@ -27,20 +27,73 @@
   background: #000;
 }
 
-/* Header */
+/* Block clicks on YouTube logo/"Watch on YouTube" link - prevents students from redirecting to YouTube */
+.youtube-logo-blocker {
+  position: absolute;
+  bottom: 0;
+  right: 0;
+  width: 120px;
+  height: 45px;
+  z-index: 5;
+  cursor: default;
+  pointer-events: auto;
+}
+
+/* Header - auto-hides like controls for full video view */
 .video-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 1rem 2rem;
-  background: linear-gradient(to bottom, rgba(0,0,0,0.8), transparent);
+  padding: 0.75rem 1.5rem;
+  background: linear-gradient(to bottom, rgba(0,0,0,0.75), transparent);
   color: white;
   position: absolute;
   top: 0;
   left: 0;
   right: 0;
   z-index: 10;
-  backdrop-filter: blur(10px);
+  backdrop-filter: blur(8px);
+  transition: opacity 0.3s ease;
+}
+
+.video-header.hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.video-header.visible {
+  opacity: 1;
+}
+
+.video-header-spacer {
+  flex: 1;
+}
+
+/* Floating close button - always visible, minimal footprint for full video view */
+.close-btn-floating {
+  position: absolute;
+  top: 0.75rem;
+  right: 0.75rem;
+  z-index: 20;
+  background: rgba(0, 0, 0, 0.5);
+  border: none;
+  color: white;
+  font-size: 1.25rem;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+  opacity: 0.85;
+}
+
+.close-btn-floating:hover {
+  background: rgba(0, 0, 0, 0.8);
+  opacity: 1;
+  transform: scale(1.05);
 }
 
 .close-btn {

@@ -3544,6 +3544,9 @@ const AdminDashboard = ({ user, onLogout }) => {
                     <option value="">Select Course *</option>
                     <option value="Data Science & AI">Data Science & AI</option>
                     <option value="Cyber Security & Ethical Hacking">Cyber Security & Ethical Hacking</option>
+                    <option value="DevOps & AI">DevOps & AI</option>
+                    <option value="DevOps & Cloud">DevOps & Cloud</option>
+                    <option value="One to One">One to One</option>
                   </select>
                   <select
                     value={formData.batchId || ''}
@@ -3649,6 +3652,9 @@ const AdminDashboard = ({ user, onLogout }) => {
                     <option value="">Select Domain *</option>
                     <option value="Data Science & AI">Data Science & AI</option>
                     <option value="Cyber Security & Ethical Hacking">Cyber Security & Ethical Hacking</option>
+                    <option value="DevOps & AI">DevOps & AI</option>
+                    <option value="DevOps & Cloud">DevOps & Cloud</option>
+                    <option value="One to One">One to One</option>
                   </select>
                   <input
                     type="text"
@@ -3756,6 +3762,9 @@ const AdminDashboard = ({ user, onLogout }) => {
                     <option value="">Select Course *</option>
                     <option value="Data Science & AI">Data Science & AI</option>
                     <option value="Cyber Security & Ethical Hacking">Cyber Security & Ethical Hacking</option>
+                    <option value="DevOps & AI">DevOps & AI</option>
+                    <option value="DevOps & Cloud">DevOps & Cloud</option>
+                    <option value="One to One">One to One</option>
                   </select>
                   <input
                     type="date"
@@ -3814,6 +3823,9 @@ const AdminDashboard = ({ user, onLogout }) => {
                     <option value="">Select Course *</option>
                     <option value="Data Science & AI">Data Science & AI</option>
                     <option value="Cyber Security & Ethical Hacking">Cyber Security & Ethical Hacking</option>
+                    <option value="DevOps & AI">DevOps & AI</option>
+                    <option value="DevOps & Cloud">DevOps & Cloud</option>
+                    <option value="One to One">One to One</option>
                   </select>
                   
                   <select
@@ -4217,6 +4229,9 @@ const AdminDashboard = ({ user, onLogout }) => {
                     <option value="">Select Domain *</option>
                     <option value="Data Science & AI">Data Science & AI</option>
                     <option value="Cyber Security & Ethical Hacking">Cyber Security & Ethical Hacking</option>
+                    <option value="DevOps & AI">DevOps & AI</option>
+                    <option value="DevOps & Cloud">DevOps & Cloud</option>
+                    <option value="One to One">One to One</option>
                   </select>
                   <input
                     type="url"
@@ -4281,6 +4296,9 @@ const AdminDashboard = ({ user, onLogout }) => {
                     <option value="">Select Course *</option>
                     <option value="Data Science & AI">Data Science & AI</option>
                     <option value="Cyber Security & Ethical Hacking">Cyber Security & Ethical Hacking</option>
+                    <option value="DevOps & AI">DevOps & AI</option>
+                    <option value="DevOps & Cloud">DevOps & Cloud</option>
+                    <option value="One to One">One to One</option>
                   </select>
                   <small style={{color: '#888', marginTop: '-10px', display: 'block'}}>
                     Select the course this video is assigned to
@@ -4361,6 +4379,9 @@ const AdminDashboard = ({ user, onLogout }) => {
                     <option value="">Select Course *</option>
                     <option value="Data Science & AI">Data Science & AI</option>
                     <option value="Cyber Security & Ethical Hacking">Cyber Security & Ethical Hacking</option>
+                    <option value="DevOps & AI">DevOps & AI</option>
+                    <option value="DevOps & Cloud">DevOps & Cloud</option>
+                    <option value="One to One">One to One</option>
                   </select>
                   <input
                     type="date"
@@ -4878,6 +4899,9 @@ const AdminDashboard = ({ user, onLogout }) => {
                                 <option value="">Select Course</option>
                                 <option value="Data Science & AI">Data Science & AI</option>
                                 <option value="Cyber Security & Ethical Hacking">Cyber Security & Ethical Hacking</option>
+                                <option value="DevOps & AI">DevOps & AI</option>
+                                <option value="DevOps & Cloud">DevOps & Cloud</option>
+                                <option value="One to One">One to One</option>
                               </select>
                             </div>
                           </div>

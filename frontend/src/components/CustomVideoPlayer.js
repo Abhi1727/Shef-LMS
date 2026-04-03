@@ -394,11 +394,14 @@ const CustomVideoPlayer = ({ video, onClose, resumePosition = 0, onProgressUpdat
       onMouseMove={handleMouseMove}
       onMouseLeave={() => isPlaying && setShowControls(false)}
     >
-      {/* Header */}
-      <div className="video-header">
-        <button className="close-btn" onClick={onClose}>
-          ✕
-        </button>
+      {/* Always-visible close button - minimal footprint */}
+      <button className="close-btn-floating" onClick={onClose} title="Close" aria-label="Close video">
+        ✕
+      </button>
+
+      {/* Header - auto-hides with controls for full video view */}
+      <div className={`video-header ${showControls ? 'visible' : 'hidden'}`}>
+        <div className="video-header-spacer" />
         <div className="video-title">
           <h3>{video.title}</h3>
           <div className="video-meta">
@@ -411,6 +414,7 @@ const CustomVideoPlayer = ({ video, onClose, resumePosition = 0, onProgressUpdat
             {!video.videoSource && video.videoUrl?.includes('youtube.com') && <span>📺 YouTube</span>}
           </div>
         </div>
+        <div className="video-header-spacer" />
       </div>
 
       {/* Video Container */}
@@ -452,15 +456,24 @@ const CustomVideoPlayer = ({ video, onClose, resumePosition = 0, onProgressUpdat
 
         {/* YouTube Video Player */}
         {youtubeVideoUrl && (
-          <div 
-            ref={youtubeContainerRef}
-            className="youtube-video-player"
-            style={{
-              width: '100%',
-              height: '100%',
-              backgroundColor: '#000'
-            }}
-          />
+          <>
+            <div 
+              ref={youtubeContainerRef}
+              className="youtube-video-player"
+              style={{
+                width: '100%',
+                height: '100%',
+                backgroundColor: '#000'
+              }}
+            />
+            {/* Block clicks on YouTube logo/link in bottom-right - prevents redirect to YouTube */}
+            <div 
+              className="youtube-logo-blocker" 
+              onClick={(e) => e.stopPropagation()} 
+              onMouseDown={(e) => e.stopPropagation()}
+              aria-hidden="true"
+            />
+          </>
         )}
 
         {/* Custom Controls */}

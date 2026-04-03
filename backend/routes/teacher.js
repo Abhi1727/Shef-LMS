@@ -1,27 +1,324 @@
 const express = require('express');
 const router = express.Router();
+const mongoose = require('mongoose');
 const { isTeacher } = require('../middleware/roleAuth');
 const multer = require('multer');
-const {
-  verifyCourseOwnership,
-  verifyModuleOwnership,
-  verifyLessonOwnership,
-  verifyProjectOwnership,
-  verifyAssessmentOwnership
-} = require('../middleware/teacherOwnership');
+const Batch = require('../models/Batch');
+const User = require('../models/User');
+const Classroom = require('../models/Classroom');
+const classroomService = require('../services/classroomService');
 
 // Apply auth to all teacher routes
 router.use(isTeacher);
 
-// Temporarily disable teacher APIs while Firebase-based integrations are being removed
-router.use((req, res) => {
-  return res.status(503).json({
-    success: false,
-    message: 'Teacher APIs are temporarily disabled while Firebase integration is removed. Core student/admin flows remain available.'
-  });
+// ----- MongoDB-backed teacher routes -----
+
+// @route   GET /api/teacher/courses
+// @desc    Get teacher's batches as course-like cards
+// @access  Teacher only
+router.get('/courses', async (req, res) => {
+  try {
+    const teacherId = String(req.user.id);
+    const batches = await Batch.find({ teacherId }).lean().exec();
+    const courses = batches.map(b => ({
+      id: String(b._id),
+      title: `${b.course || 'Course'} - ${b.name || 'Batch'}`,
+      description: b.name,
+      modules: 0,
+      enrollmentCount: (b.students || []).length,
+      course: b.course,
+      batchId: String(b._id)
+    }));
+    res.json({ success: true, courses });
+  } catch (error) {
+    console.error('Error fetching teacher courses:', error);
+    res.status(500).json({ success: false, message: 'Failed to fetch courses' });
+  }
 });
 
-// Configure multer for memory storage (for large video files)
+// @route   GET /api/teacher/batches
+// @desc    Get teacher's batches with students populated
+// @access  Teacher only
+router.get('/batches', async (req, res) => {
+  try {
+    const teacherId = String(req.user.id);
+    const { courseId } = req.query;
+    let query = { teacherId };
+    if (courseId) {
+      const batch = await Batch.findById(courseId).lean().exec();
+      if (batch && String(batch.teacherId) === teacherId && batch.course) {
+        query.course = batch.course;
+      }
+    }
+    const batches = await Batch.find(query)
+      .populate('students', 'name email enrollmentNumber course status')
+      .lean()
+      .exec();
+    const result = batches.map(b => ({
+      id: String(b._id),
+      ...b,
+      studentsList: (b.students || []).map(s => ({
+        id: String(s._id),
+        name: s.name,
+        email: s.email,
+        enrollmentNumber: s.enrollmentNumber,
+        course: s.course,
+        status: s.status
+      })),
+      studentCount: (b.students || []).length
+    }));
+    res.json({ success: true, batches: result });
+  } catch (error) {
+    console.error('Error fetching teacher batches:', error);
+    res.status(500).json({ success: false, message: 'Failed to fetch batches' });
+  }
+});
+
+// @route   GET /api/teacher/classroom/:batchId
+// @desc    Get lectures for a batch (teacher's batches only)
+// @access  Teacher only
+router.get('/classroom/:batchId', async (req, res) => {
+  try {
+    const { batchId } = req.params;
+    const teacherId = String(req.user.id);
+    const batch = await Batch.findById(batchId).lean().exec();
+    if (!batch || String(batch.teacherId) !== teacherId) {
+      return res.status(404).json({ message: 'Batch not found' });
+    }
+    const lectures = await Classroom.find({
+      $or: [
+        { batchId: String(batchId) },
+        { course: batch.course }
+      ]
+    })
+      .sort({ createdAt: -1 })
+      .lean()
+      .exec();
+    const list = lectures.map(l => ({
+      id: String(l._id),
+      title: l.title,
+      description: l.description,
+      courseId: l.courseId || batchId,
+      batchId: l.batchId,
+      domain: l.domain,
+      duration: l.duration,
+      course: l.course,
+      youtubeVideoId: l.youtubeVideoId,
+      youtubeVideoUrl: l.youtubeVideoUrl,
+      youtubeEmbedUrl: l.youtubeEmbedUrl,
+      videoSource: l.videoSource,
+      createdAt: l.createdAt,
+      fileInfo: l.fileInfo
+    }));
+    res.json({ courseId: batchId, lectures: list, total: list.length });
+  } catch (error) {
+    console.error('Error fetching teacher classroom:', error);
+    res.status(500).json({ message: 'Failed to fetch lectures' });
+  }
+});
+
+// @route   GET /api/teacher/batches/:id
+// @desc    Get single batch with students and notes
+// @access  Teacher only
+router.get('/batches/:id', async (req, res) => {
+  try {
+    const batchId = req.params.id;
+    const teacherId = String(req.user.id);
+    const batch = await Batch.findById(batchId)
+      .populate('students', 'name email enrollmentNumber course status')
+      .lean()
+      .exec();
+    if (!batch || String(batch.teacherId) !== teacherId) {
+      return res.status(404).json({ message: 'Batch not found' });
+    }
+    const result = {
+      id: String(batch._id),
+      ...batch,
+      studentsList: (batch.students || []).map(s => ({
+        id: String(s._id),
+        name: s.name,
+        email: s.email,
+        enrollmentNumber: s.enrollmentNumber,
+        course: s.course,
+        status: s.status
+      })),
+      studentCount: (batch.students || []).length
+    };
+    res.json({ success: true, batch: result });
+  } catch (error) {
+    console.error('Error fetching batch:', error);
+    res.status(500).json({ success: false, message: 'Failed to fetch batch' });
+  }
+});
+
+// @route   PUT /api/teacher/batches/:id/notes
+// @desc    Update teacher notes for a batch
+// @access  Teacher only
+router.put('/batches/:id/notes', async (req, res) => {
+  try {
+    const batchId = req.params.id;
+    const { teacherNotes } = req.body;
+    const teacherId = String(req.user.id);
+    const batch = await Batch.findById(batchId).exec();
+    if (!batch || String(batch.teacherId) !== teacherId) {
+      return res.status(404).json({ message: 'Batch not found' });
+    }
+    batch.teacherNotes = teacherNotes != null ? String(teacherNotes) : batch.teacherNotes;
+    batch.updatedAt = new Date();
+    await batch.save();
+    res.json({ success: true, teacherNotes: batch.teacherNotes });
+  } catch (error) {
+    console.error('Error updating batch notes:', error);
+    res.status(500).json({ success: false, message: 'Failed to update notes' });
+  }
+});
+
+// Extract YouTube video ID from URL
+function extractYouTubeVideoId(url) {
+  if (!url || typeof url !== 'string') return null;
+  const m = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/|youtube\.com\/v\/)([a-zA-Z0-9_-]{11})/);
+  return m ? m[1] : null;
+}
+
+// @route   POST /api/teacher/classroom/youtube-url
+// @desc    Add lecture via YouTube URL (JSON body)
+// @access  Teacher only
+router.post('/classroom/youtube-url', async (req, res) => {
+  try {
+    const { title, description, courseId, batchId, domain, duration, youtubeUrl } = req.body;
+    const teacherId = String(req.user.id);
+
+    if (!title || !youtubeUrl) {
+      return res.status(400).json({ message: 'Title and YouTube URL are required' });
+    }
+
+    const videoId = extractYouTubeVideoId(youtubeUrl);
+    if (!videoId) {
+      return res.status(400).json({ message: 'Invalid YouTube URL. Use format: https://www.youtube.com/watch?v=... or https://youtu.be/...' });
+    }
+
+    const youtubeVideoUrl = youtubeUrl.trim();
+    const youtubeEmbedUrl = `https://www.youtube.com/embed/${videoId}`;
+
+    let batch = null;
+    let resolvedCourse = '';
+    const batchIdNorm = (batchId || courseId || '').trim();
+    if (batchIdNorm) {
+      batch = await Batch.findById(batchIdNorm).lean().exec();
+      if (!batch || String(batch.teacherId) !== teacherId) {
+        return res.status(403).json({ message: 'Batch not found or access denied' });
+      }
+      resolvedCourse = batch.course || batchIdNorm;
+    }
+
+    if (batchIdNorm) {
+      const existing = await Classroom.findOne({
+        youtubeVideoId: videoId,
+        batchId: batchIdNorm
+      }).lean().exec();
+      if (existing) {
+        return res.status(400).json({ message: 'This video is already assigned to this batch.' });
+      }
+    }
+
+    const lectureData = {
+      title: title.trim(),
+      description: (description || '').trim(),
+      courseId: batchIdNorm || null,
+      course: resolvedCourse,
+      batchId: batchIdNorm || null,
+      domain: (domain || '').trim() || null,
+      duration: (duration || '').trim() || null,
+      videoSource: 'youtube-url',
+      youtubeVideoId: videoId,
+      youtubeVideoUrl,
+      youtubeEmbedUrl,
+      uploadedBy: teacherId
+    };
+
+    const doc = new Classroom(lectureData);
+    await doc.save();
+
+    res.status(201).json({
+      message: 'Lecture added successfully',
+      lecture: {
+        id: String(doc._id),
+        title: lectureData.title,
+        description: lectureData.description,
+        courseId: lectureData.courseId,
+        batchId: lectureData.batchId,
+        domain: lectureData.domain,
+        duration: lectureData.duration,
+        youtubeVideoUrl: lectureData.youtubeVideoUrl,
+        youtubeEmbedUrl: lectureData.youtubeEmbedUrl,
+        createdAt: doc.createdAt
+      }
+    });
+  } catch (error) {
+    console.error('Error adding YouTube lecture:', error);
+    res.status(500).json({ message: 'Failed to add lecture: ' + (error.message || 'Unknown error') });
+  }
+});
+
+// @route   DELETE /api/teacher/classroom/:lectureId
+// @desc    Delete a lecture (teacher must own the batch)
+// @access  Teacher only
+router.delete('/classroom/:lectureId', async (req, res) => {
+  try {
+    const { lectureId } = req.params;
+    const teacherId = String(req.user.id);
+
+    const lecture = await classroomService.getLectureById(lectureId);
+    if (!lecture) {
+      return res.status(404).json({ message: 'Lecture not found' });
+    }
+
+    if (lecture.batchId) {
+      const batch = await Batch.findById(lecture.batchId).lean().exec();
+      if (!batch || String(batch.teacherId) !== teacherId) {
+        return res.status(403).json({ message: 'You can only delete lectures for your own batches' });
+      }
+    } else if (lecture.course) {
+      const batch = await Batch.findOne({ teacherId, course: lecture.course }).lean().exec();
+      if (!batch) {
+        return res.status(403).json({ message: 'You can only delete lectures for your own batches' });
+      }
+    } else {
+      return res.status(403).json({ message: 'Lecture not associated with your batch' });
+    }
+
+    await classroomService.deleteLectureMetadata(lectureId);
+    res.json({ message: 'Lecture deleted successfully' });
+  } catch (error) {
+    console.error('Error deleting lecture:', error);
+    if (error.message === 'Lecture not found') {
+      return res.status(404).json({ message: 'Lecture not found' });
+    }
+    res.status(500).json({ message: 'Failed to delete lecture' });
+  }
+});
+
+// @route   DELETE /api/teacher/batches/:id
+// @desc    Delete batch (teacher can only delete own batches - admin functionality)
+// @access  Teacher only - ownership verified
+router.delete('/batches/:id', async (req, res) => {
+  try {
+    const batchId = req.params.id;
+    const teacherId = String(req.user.id);
+    const batch = await Batch.findById(batchId).exec();
+    if (!batch) return res.status(404).json({ message: 'Batch not found' });
+    if (String(batch.teacherId) !== teacherId) {
+      return res.status(403).json({ message: 'You can only delete your own batches' });
+    }
+    await Batch.findByIdAndDelete(batchId).exec();
+    res.json({ success: true, message: 'Batch deleted successfully' });
+  } catch (error) {
+    console.error('Error deleting batch:', error);
+    res.status(500).json({ success: false, message: 'Failed to delete batch' });
+  }
+});
+
+// Multer (kept for potential future use)
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: {
@@ -37,317 +334,18 @@ const upload = multer({
   }
 });
 
-// @route   POST /api/teacher/classroom/upload
-// @desc    Upload video + metadata to Firebase Storage
-// @access  Teacher only
-router.post('/classroom/upload', upload.single('video'), async (req, res) => {
-  try {
-    if (!req.file) {
-      return res.status(400).json({ message: 'Video file is required' });
-    }
-
-    const { title, description, courseId, batchId, domain, duration } = req.body;
-
-    // Validate required fields
-    if (!title || !courseId) {
-      return res.status(400).json({ 
-        message: 'Title and courseId are required' 
-      });
-    }
-
-    // Verify teacher owns the course
-    const courseDoc = await db.collection('courses').doc(courseId).get();
-    if (!courseDoc.exists) {
-      return res.status(404).json({ message: 'Course not found' });
-    }
-
-    const courseData = courseDoc.data();
-    if (courseData.teacherId !== req.user.id) {
-      return res.status(403).json({ 
-        message: 'You can only upload lectures to your own courses' 
-      });
-    }
-
-    // Prepare metadata
-    const metadata = {
-      title: title.trim(),
-      description: description?.trim() || '',
-      courseId: courseId.trim(),
-      batchId: batchId?.trim() || null,
-      domain: domain?.trim() || courseData.domain || req.user.domain,
-      duration: duration || null,
-      uploadedBy: req.user.id
-    };
-
-    // Upload video to Firebase Storage
-    const uploadResult = await classroomService.uploadVideo(req.file, metadata);
-
-    // Save lecture metadata to Firestore
-    const lectureData = {
-      ...metadata,
-      firebaseStoragePath: uploadResult.storagePath
-    };
-    
-    const lectureId = await classroomService.saveLectureMetadata(lectureData);
-
-    res.status(201).json({
-      message: 'Lecture uploaded successfully',
-      lecture: {
-        id: lectureId,
-        title: metadata.title,
-        description: metadata.description,
-        courseId: metadata.courseId,
-        batchId: metadata.batchId,
-        domain: metadata.domain,
-        duration: metadata.duration,
-        uploadedBy: metadata.uploadedBy,
-        createdAt: new Date().toISOString(),
-        videoSource: 'firebase',
-        fileInfo: {
-          filename: uploadResult.filename,
-          size: uploadResult.size,
-          originalName: uploadResult.originalName
-        }
-      }
-    });
-
-  } catch (error) {
-    console.error('Error uploading lecture:', error);
-    
-    if (error.message === 'Only video files are allowed') {
-      return res.status(400).json({ message: error.message });
-    }
-    
-    if (error.message.includes('File too large')) {
-      return res.status(400).json({ message: 'Video file size exceeds 2GB limit' });
-    }
-    
-    res.status(500).json({ message: 'Failed to upload lecture' });
-  }
+// Legacy: use POST /classroom/youtube-url for adding lectures
+router.post('/classroom/upload', (req, res) => {
+  res.status(410).json({ message: 'Use POST /api/teacher/classroom/youtube-url with a YouTube URL instead.' });
 });
 
-// @route   POST /api/teacher/classroom/youtube-upload
-// @desc    Upload video to YouTube and save metadata
-// @access  Teacher only
-router.post('/classroom/youtube-upload', upload.single('video'), async (req, res) => {
-  try {
-    const youtubeService = require('../services/youtubeService');
-    
-    // Check if YouTube API is configured
-    if (!youtubeService.isConfigured()) {
-      return res.status(500).json({ 
-        message: 'YouTube API not configured. Please set YOUTUBE_CLIENT_ID and YOUTUBE_CLIENT_SECRET in environment variables.' 
-      });
-    }
-
-    if (!req.file) {
-      return res.status(400).json({ message: 'Video file is required' });
-    }
-
-    const { title, description, courseId, batchId, domain, duration, courseType } = req.body;
-
-    // Validate required fields
-    if (!title || !courseId) {
-      return res.status(400).json({ 
-        message: 'Title and courseId are required' 
-      });
-    }
-
-    // Verify teacher owns the course
-    const courseDoc = await db.collection('courses').doc(courseId).get();
-    if (!courseDoc.exists) {
-      return res.status(404).json({ message: 'Course not found' });
-    }
-
-    const courseData = courseDoc.data();
-    if (courseData.teacherId !== req.user.id) {
-      return res.status(403).json({ 
-        message: 'You can only upload videos for your own courses' 
-      });
-    }
-
-    // Prepare metadata for YouTube
-    const metadata = {
-      title: title.trim(),
-      description: description?.trim() || `Educational video - ${courseType || courseData.title || 'Course'}`,
-      courseId: courseId.trim(),
-      batchId: batchId?.trim() || null,
-      domain: domain?.trim() || courseData.domain || req.user.domain,
-      duration: duration || null,
-      courseType: courseType?.trim() || courseData.title,
-      instructor: req.user.name,
-      tags: ['education', 'shef-lms', courseType || courseData.title, req.user.name]
-    };
-
-    // Upload video to YouTube
-    const youtubeResult = await youtubeService.uploadVideo(req.file.path, metadata);
-
-    // Save lecture metadata to Firestore with YouTube info
-    const lectureData = {
-      ...metadata,
-      videoSource: 'youtube',
-      youtubeVideoId: youtubeResult.videoId,
-      youtubeVideoUrl: youtubeResult.videoUrl,
-      youtubeEmbedUrl: youtubeResult.embedUrl,
-      uploadedBy: req.user.id,
-      fileInfo: {
-        originalName: req.file.originalname,
-        size: req.file.size,
-        mimetype: req.file.mimetype
-      }
-    };
-    
-    const lectureId = await classroomService.saveLectureMetadata(lectureData);
-
-    res.status(201).json({
-      message: 'Lecture uploaded successfully to YouTube',
-      lecture: {
-        id: lectureId,
-        title: metadata.title,
-        description: metadata.description,
-        courseId: metadata.courseId,
-        batchId: metadata.batchId,
-        domain: metadata.domain,
-        duration: metadata.duration,
-        courseType: metadata.courseType,
-        instructor: metadata.instructor,
-        uploadedBy: metadata.uploadedBy,
-        createdAt: new Date().toISOString(),
-        videoSource: 'youtube',
-        youtubeVideoId: youtubeResult.videoId,
-        youtubeVideoUrl: youtubeResult.videoUrl,
-        youtubeEmbedUrl: youtubeResult.embedUrl,
-        fileInfo: lectureData.fileInfo
-      }
-    });
-
-  } catch (error) {
-    console.error('Error uploading lecture to YouTube:', error);
-    
-    if (error.message === 'Only video files are allowed') {
-      return res.status(400).json({ message: error.message });
-    }
-    
-    if (error.message.includes('File too large')) {
-      return res.status(400).json({ message: 'Video file size exceeds 2GB limit' });
-    }
-    
-    if (error.message.includes('YouTube authentication failed')) {
-      return res.status(401).json({ message: error.message });
-    }
-    
-    if (error.message.includes('YouTube API quota exceeded')) {
-      return res.status(429).json({ message: error.message });
-    }
-    
-    res.status(500).json({ message: 'Failed to upload lecture to YouTube: ' + error.message });
-  }
+// Legacy: use POST /classroom/youtube-url instead
+router.post('/classroom/youtube-upload', (req, res) => {
+  res.status(410).json({ message: 'Use POST /api/teacher/classroom/youtube-url with a YouTube URL.' });
 });
+// GET /classroom/:batchId is defined above - handles teacher lectures
 
-// @route   GET /api/teacher/classroom/:courseId
-// @desc    Get lectures uploaded by teacher for their course
-// @access  Teacher only
-router.get('/classroom/:courseId', async (req, res) => {
-  try {
-    const { courseId } = req.params;
-    const teacherId = req.user.id;
-
-    if (!courseId) {
-      return res.status(400).json({ message: 'Course ID is required' });
-    }
-
-    // Verify teacher owns the course
-    const courseDoc = await db.collection('courses').doc(courseId).get();
-    if (!courseDoc.exists) {
-      return res.status(404).json({ message: 'Course not found' });
-    }
-
-    const courseData = courseDoc.data();
-    if (courseData.teacherId !== teacherId) {
-      return res.status(403).json({ 
-        message: 'You can only view lectures for your own courses' 
-      });
-    }
-
-    // Get lectures for this course uploaded by this teacher
-    const lecturesSnapshot = await db.collection('lectures')
-      .where('courseId', '==', courseId)
-      .where('uploadedBy', '==', teacherId)
-      .orderBy('createdAt', 'desc')
-      .get();
-
-    const lectures = [];
-    lecturesSnapshot.forEach(doc => {
-      const lectureData = doc.data();
-      lectures.push({
-        id: doc.id,
-        title: lectureData.title,
-        description: lectureData.description,
-        courseId: lectureData.courseId,
-        batchId: lectureData.batchId,
-        domain: lectureData.domain,
-        duration: lectureData.duration,
-        uploadedBy: lectureData.uploadedBy,
-        createdAt: lectureData.createdAt,
-        videoSource: lectureData.videoSource,
-        fileInfo: lectureData.fileInfo
-      });
-    });
-
-    res.json({
-      courseId,
-      lectures,
-      total: lectures.length
-    });
-
-  } catch (error) {
-    console.error('Error fetching teacher lectures:', error);
-    res.status(500).json({ message: 'Failed to fetch lectures' });
-  }
-});
-
-// @route   DELETE /api/teacher/classroom/:lectureId
-// @desc    Delete lecture uploaded by teacher
-// @access  Teacher only
-router.delete('/classroom/:lectureId', async (req, res) => {
-  try {
-    const { lectureId } = req.params;
-    const teacherId = req.user.id;
-
-    if (!lectureId) {
-      return res.status(400).json({ message: 'Lecture ID is required' });
-    }
-
-    // Get lecture metadata
-    const lecture = await classroomService.getLectureById(lectureId);
-
-    // Verify teacher uploaded this lecture
-    if (lecture.uploadedBy !== teacherId) {
-      return res.status(403).json({ 
-        message: 'You can only delete lectures you uploaded' 
-      });
-    }
-
-    // Delete video from Firebase Storage
-    if (lecture.firebaseStoragePath) {
-      await classroomService.deleteVideo(lecture.firebaseStoragePath);
-    }
-
-    // Delete lecture metadata from Firestore
-    await classroomService.deleteLectureMetadata(lectureId);
-
-    res.json({ message: 'Lecture deleted successfully' });
-
-  } catch (error) {
-    console.error('Error deleting lecture:', error);
-    
-    if (error.message === 'Lecture not found') {
-      return res.status(404).json({ message: 'Lecture not found' });
-    }
-    
-    res.status(500).json({ message: 'Failed to delete lecture' });
-  }
-});
+// (GET /classroom/:batchId and DELETE /classroom/:lectureId defined above)
 
 // Error handling middleware for multer
 router.use((error, req, res, next) => {
