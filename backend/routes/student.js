@@ -26,7 +26,7 @@ router.get('/profile', async (req, res) => {
         id: userId,
         name: userId === 'leonardo_deleon_user_id' ? 'Leonardo De Leon' : 'Abhi',
         email: userId === 'leonardo_deleon_user_id' ? 'lqdeleon@gmail.com' : 'abhi@gmail.com',
-        currentCourse: userId === 'leonardo_deleon_user_id' ? 'Cyber Security & Ethical Hacking' : 'Data Science & AI',
+        currentCourse: userId === 'leonardo_deleon_user_id' ? 'Cyber Security & Ethical Hacking' : (Math.random() > 0.5 ? 'DevOps & AI' : 'DevOps & Cloud'),
         status: 'active',
         role: 'student'
       };
@@ -101,7 +101,7 @@ router.put('/profile', async (req, res) => {
           id: userId,
           name: name.trim(),
           email: normalizedEmail,
-          currentCourse: userId === 'leonardo_deleon_user_id' ? 'Cyber Security & Ethical Hacking' : 'Data Science & AI',
+          currentCourse: userId === 'leonardo_deleon_user_id' ? 'Cyber Security & Ethical Hacking' : (Math.random() > 0.5 ? 'DevOps & AI' : 'DevOps & Cloud'),
           enrollmentNumber: userId === 'leonardo_deleon_user_id' ? 'SU-2025-001' : 'SU-2025-002',
           batchId: null,
           phone: phone?.trim() || '',
@@ -549,6 +549,178 @@ router.get('/progress-summary', async (req, res) => {
     res.json(progressSummary);
   } catch (err) {
     console.error('Error fetching progress summary:', err);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// @route   GET /api/student/analytics
+// @desc    Get comprehensive analytics data for current student
+router.get('/analytics', async (req, res) => {
+  try {
+    const userId = req.user.id;
+    
+    // Get student data
+    const userDoc = await User.findOne({
+      $or: [
+        { _id: userId },
+        { firestoreId: userId }
+      ]
+    }).exec();
+
+    if (!userDoc) {
+      return res.status(404).json({ message: 'Student not found' });
+    }
+
+    // Handle demo students with realistic data
+    if (userId === 'leonardo_deleon_user_id' || userId === 'abhi_datascience_user_id') {
+      const isDataScience = userId === 'abhi_datascience_user_id';
+      const courseName = isDataScience ? 'Data Science & AI' : 'Cyber Security & Ethical Hacking';
+      
+      const demoAnalytics = {
+        summary: {
+          totalCourses: 1,
+          totalVideosWatched: isDataScience ? 18 : 13,
+          totalWatchTime: isDataScience ? 12.5 : 8.3,
+          averageProgress: isDataScience ? 60 : 52,
+          completionRate: isDataScience ? 60 : 52,
+          currentStreak: isDataScience ? 7 : 5,
+          weeklyProgress: isDataScience ? 85 : 72,
+          achievements: isDataScience ? 6 : 4
+        },
+        courseProgress: [
+          {
+            courseName: courseName,
+            totalVideos: isDataScience ? 30 : 25,
+            videosWatched: isDataScience ? 18 : 13,
+            completedVideos: isDataScience ? 15 : 10,
+            totalWatchTime: isDataScience ? 12.5 : 8.3,
+            overallProgress: isDataScience ? 60 : 52,
+            lastActivityDate: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString() // 2 days ago
+          }
+        ],
+        recentActivity: [
+          {
+            videoTitle: isDataScience ? 'Introduction to Machine Learning' : 'Network Security Fundamentals',
+            courseName: courseName,
+            activityType: 'video_watched',
+            date: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
+            watchDuration: isDataScience ? 1800 : 1500 // 30 or 25 minutes in seconds
+          },
+          {
+            videoTitle: isDataScience ? 'Python for Data Science' : 'Ethical Hacking Basics',
+            courseName: courseName,
+            activityType: 'video_completed',
+            date: new Date(Date.now() - 4 * 24 * 60 * 60 * 1000).toISOString(),
+            watchDuration: isDataScience ? 2400 : 2100
+          },
+          {
+            videoTitle: isDataScience ? 'Data Visualization Techniques' : 'Penetration Testing Tools',
+            courseName: courseName,
+            activityType: 'video_watched',
+            date: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(),
+            watchDuration: isDataScience ? 1600 : 1800
+          }
+        ],
+        weeklyProgress: [
+          { week: 'Week 1', progress: 15 },
+          { week: 'Week 2', progress: 28 },
+          { week: 'Week 3', progress: 35 },
+          { week: 'Week 4', progress: isDataScience ? 60 : 52 }
+        ]
+      };
+      return res.json(demoAnalytics);
+    }
+
+    // Calculate login streak
+    const streak = await calculateLoginStreak(userId);
+    
+    // Calculate video progress
+    const videos = await calculateVideoProgress(userId);
+    
+    // Get recent activity
+    const recentActivity = await ActivityLog.find({
+      userId: userId,
+      action: { $in: ['video_view', 'video_completed'] },
+      videoId: { $exists: true, $ne: null }
+    })
+    .sort({ timestamp: -1 })
+    .limit(10)
+    .lean();
+
+    // Format recent activity
+    const formattedActivity = recentActivity.map(activity => ({
+      videoTitle: activity.metadata?.videoTitle || 'Unknown Video',
+      courseName: activity.metadata?.courseName || userDoc.course || userDoc.currentCourse || 'Unknown Course',
+      activityType: activity.action === 'video_completed' ? 'video_completed' : 'video_watched',
+      date: activity.timestamp,
+      watchDuration: activity.metadata?.watchDuration || 0
+    }));
+
+    // Calculate weekly progress (last 4 weeks)
+    const weeklyProgress = [];
+    for (let i = 3; i >= 0; i--) {
+      const weekStart = new Date();
+      weekStart.setDate(weekStart.getDate() - (i * 7));
+      weekStart.setHours(0, 0, 0, 0);
+      
+      const weekEnd = new Date(weekStart);
+      weekEnd.setDate(weekEnd.getDate() + 6);
+      weekEnd.setHours(23, 59, 59, 999);
+      
+      const weekVideos = await ActivityLog.countDocuments({
+        userId: userId,
+        action: 'video_view',
+        timestamp: { $gte: weekStart, $lte: weekEnd }
+      });
+      
+      const weekProgress = videos.total > 0 ? Math.min((weekVideos / videos.total) * 100, 100) : 0;
+      
+      weeklyProgress.push({
+        week: `Week ${4 - i}`,
+        progress: Math.round(weekProgress)
+      });
+    }
+
+    // Calculate weekly progress percentage
+    const weeklyProgressPercentage = weeklyProgress.length > 0 
+      ? Math.round(weeklyProgress.reduce((sum, week) => sum + week.progress, 0) / weeklyProgress.length)
+      : 0;
+
+    // Get course information
+    const course = userDoc.course || userDoc.currentCourse || 'Unknown Course';
+    
+    // Calculate achievements based on milestones
+    const achievements = Math.floor(videos.progressPercentage / 10) + Math.floor(streak.current / 7);
+
+    const analyticsData = {
+      summary: {
+        totalCourses: 1,
+        totalVideosWatched: videos.watched,
+        totalWatchTime: videos.watched * 0.7, // Estimate 0.7 hours per video
+        averageProgress: videos.progressPercentage,
+        completionRate: videos.progressPercentage,
+        currentStreak: streak.current,
+        weeklyProgress: weeklyProgressPercentage,
+        achievements: achievements
+      },
+      courseProgress: [
+        {
+          courseName: course,
+          totalVideos: videos.total,
+          videosWatched: videos.watched,
+          completedVideos: Math.floor(videos.watched * 0.8), // Estimate 80% of watched are completed
+          totalWatchTime: videos.watched * 0.7,
+          overallProgress: videos.progressPercentage,
+          lastActivityDate: recentActivity.length > 0 ? recentActivity[0].timestamp : null
+        }
+      ],
+      recentActivity: formattedActivity,
+      weeklyProgress: weeklyProgress
+    };
+
+    res.json(analyticsData);
+  } catch (err) {
+    console.error('Error fetching analytics data:', err);
     res.status(500).json({ message: 'Server error' });
   }
 });

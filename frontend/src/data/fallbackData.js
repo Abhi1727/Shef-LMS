@@ -86,6 +86,32 @@ const fallbackData = {
     },
     {
       id: 'course3',
+      title: 'DevOps & AI',
+      description: 'Combine DevOps practices with AI technologies to build intelligent, automated deployment pipelines.',
+      duration: '4 months',
+      instructor: 'Michael Chen',
+      modules: 4,
+      price: '$1299',
+      status: 'active',
+      enrollmentCount: 1,
+      createdAt: '2025-10-25T00:00:00Z',
+      updatedAt: '2025-11-01T00:00:00Z'
+    },
+    {
+      id: 'course4',
+      title: 'DevOps & Cloud',
+      description: 'Master cloud infrastructure and DevOps practices for scalable, modern application deployment.',
+      duration: '5 months',
+      instructor: 'Sarah Johnson',
+      modules: 5,
+      price: '$1199',
+      status: 'active',
+      enrollmentCount: 1,
+      createdAt: '2025-10-26T00:00:00Z',
+      updatedAt: '2025-11-02T00:00:00Z'
+    },
+    {
+      id: 'course5',
       title: 'One-to-One',
       description: 'Personalized one-to-one learning with dedicated instructor guidance',
       duration: 'Flexible',
@@ -94,7 +120,7 @@ const fallbackData = {
       price: 'Custom',
       status: 'active',
       enrollmentCount: 0,
-      createdAt: '2025-10-25T00:00:00Z',
+      createdAt: '2025-10-30T00:00:00Z',
       updatedAt: '2025-11-01T00:00:00Z'
     }
   ],

@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>YouTube URL Detection Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .test-case {
+            margin: 10px 0;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        .pass {
+            background-color: #d4edda;
+            border-color: #c3e6cb;
+        }
+        .fail {
+            background-color: #f8d7da;
+            border-color: #f5c6cb;
+        }
+        .url {
+            font-family: monospace;
+            background: #f0f0f0;
+            padding: 2px 4px;
+            border-radius: 3px;
+        }
+    </style>
+</head>
+<body>
+    <h1>YouTube URL Detection Test</h1>
+    <p>Testing the video source detection and URL transformation logic:</p>
+
+    <div id="test-results"></div>
+
+    <script>
+        // YouTube Utils implementation (simplified version)
+        class YouTubeUtils {
+            static extractVideoId(url) {
+                if (!url) return null;
+                
+                const regex = /(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([^&\n?#]+)/;
+                const match = url.match(regex);
+                return match ? match[1] : null;
+            }
+
+            static getEmbedUrl(videoId) {
+                return `https://www.youtube.com/embed/${videoId}`;
+            }
+
+            static getThumbnailUrl(videoId, quality = 'mqdefault') {
+                return `https://img.youtube.com/vi/${videoId}/${quality}.jpg`;
+            }
+        }
+
+        // Video source detection logic
+        function detectVideoSource(video) {
+            if (video.videoSource) {
+                return video.videoSource;
+            }
+            
+            // Auto-detect based on URL patterns
+            if (video.youtubeVideoUrl) {
+                if (video.youtubeVideoUrl.includes('youtu.be/')) {
+                    return 'youtube-url';
+                } else if (video.youtubeVideoUrl.includes('youtube.com/watch')) {
+                    return 'youtube';
+                }
+            }
+            
+            if (video.videoUrl) {
+                if (video.videoUrl.includes('youtu.be/')) {
+                    return 'youtube-url';
+                } else if (video.videoUrl.includes('youtube.com/watch')) {
+                    return 'youtube';
+                } else if (video.videoUrl.includes('youtube.com/embed')) {
+                    return 'youtube';
+                }
+            }
+            
+            // Default to firebase for non-YouTube videos
+            return 'firebase';
+        }
+
+        // Transform video data
+        function transformVideoData(video) {
+            const videoSource = detectVideoSource(video);
+            
+            // For youtu.be URLs, transform to match CustomVideoPlayer expectations
+            if (videoSource === 'youtube-url' && video.youtubeVideoUrl) {
+                const videoId = YouTubeUtils.extractVideoId(video.youtubeVideoUrl);
+                const embedUrl = YouTubeUtils.getEmbedUrl(videoId);
+                
+                return {
+                    ...video,
+                    videoSource: 'youtube-url',
+                    youtubeEmbedUrl: embedUrl,
+                    videoUrl: video.youtubeVideoUrl // Keep original URL as fallback
+                };
+            }
+            
+            // For other video types, return as-is
+            return video;
+        }
+
+        // Test cases
+        const testCases = [
+            {
+                name: "youtu.be URL",
+                video: { 
+                    id: 1, 
+                    title: "Test Video 1", 
+                    youtubeVideoUrl: "https://youtu.be/jwQzb4UXqqM" 
+                },
+                expectedSource: "youtube-url",
+                expectedEmbedUrl: "https://www.youtube.com/embed/jwQzb4UXqqM"
+            },
+            {
+                name: "youtube.com/watch URL",
+                video: { 
+                    id: 2, 
+                    title: "Test Video 2", 
+                    youtubeVideoUrl: "https://www.youtube.com/watch?v=jwQzb4UXqqM" 
+                },
+                expectedSource: "youtube",
+                expectedEmbedUrl: null
+            },
+            {
+                name: "Firebase video",
+                video: { 
+                    id: 3, 
+                    title: "Test Video 3", 
+                    videoSource: "firebase" 
+                },
+                expectedSource: "firebase",
+                expectedEmbedUrl: null
+            },
+            {
+                name: "Legacy videoUrl with youtu.be",
+                video: { 
+                    id: 4, 
+                    title: "Test Video 4", 
+                    videoUrl: "https://youtu.be/jwQzb4UXqqM" 
+                },
+                expectedSource: "youtube-url",
+                expectedEmbedUrl: null
+            }
+        ];
+
+        // Run tests
+        const resultsDiv = document.getElementById('test-results');
+        let passCount = 0;
+
+        testCases.forEach(testCase => {
+            const detectedSource = detectVideoSource(testCase.video);
+            const transformedVideo = transformVideoData(testCase.video);
+            
+            const sourcePass = detectedSource === testCase.expectedSource;
+            const embedPass = testCase.expectedEmbedUrl === null || 
+                            transformedVideo.youtubeEmbedUrl === testCase.expectedEmbedUrl;
+            
+            const passed = sourcePass && embedPass;
+            if (passed) passCount++;
+            
+            const testDiv = document.createElement('div');
+            testDiv.className = `test-case ${passed ? 'pass' : 'fail'}`;
+            testDiv.innerHTML = `
+                <h3>${passed ? '✅ PASS' : '❌ FAIL'}: ${testCase.name}</h3>
+                <p><strong>Input:</strong> <span class="url">${JSON.stringify(testCase.video)}</span></p>
+                <p><strong>Expected Source:</strong> ${testCase.expectedSource}</p>
+                <p><strong>Detected Source:</strong> ${detectedSource} ${sourcePass ? '✅' : '❌'}</p>
+                <p><strong>Expected Embed URL:</strong> ${testCase.expectedEmbedUrl || 'N/A'}</p>
+                <p><strong>Transformed Embed URL:</strong> ${transformedVideo.youtubeEmbedUrl || 'N/A'} ${embedPass ? '✅' : '❌'}</p>
+                <p><strong>Transformed Video:</strong> <span class="url">${JSON.stringify(transformedVideo)}</span></p>
+            `;
+            resultsDiv.appendChild(testDiv);
+        });
+
+        // Summary
+        const summaryDiv = document.createElement('div');
+        summaryDiv.innerHTML = `<h2>Summary: ${passCount}/${testCases.length} tests passed</h2>`;
+        resultsDiv.appendChild(summaryDiv);
+    </script>
+</body>
+</html>

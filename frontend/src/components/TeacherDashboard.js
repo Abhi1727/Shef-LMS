@@ -126,6 +126,10 @@ const TeacherDashboard = ({ user, onLogout }) => {
           return course.includes('data science') || course.includes('ds&ai');
         } else if (courseFilter === 'cyber-security') {
           return course.includes('cyber') || course.includes('security') || course.includes('cs&eh');
+        } else if (courseFilter === 'devops-ai') {
+          return course.includes('devops') && course.includes('ai');
+        } else if (courseFilter === 'devops-cloud') {
+          return course.includes('devops') && course.includes('cloud');
         } else if (courseFilter === 'one-to-one') {
           return course.includes('one-to-one');
         }
@@ -153,6 +157,8 @@ const TeacherDashboard = ({ user, onLogout }) => {
     const courseLower = (course || '').toLowerCase();
     if (courseLower.includes('data science') || courseLower.includes('ds&ai')) return '📊';
     if (courseLower.includes('cyber') || courseLower.includes('security') || courseLower.includes('cs&eh')) return '🔒';
+    if (courseLower.includes('devops') && courseLower.includes('ai')) return '🚀';
+    if (courseLower.includes('devops') && courseLower.includes('cloud')) return '☁️';
     if (courseLower.includes('one-to-one')) return '👥';
     return '📚';
   };
@@ -175,7 +181,7 @@ const TeacherDashboard = ({ user, onLogout }) => {
     try {
       const token = localStorage.getItem('token');
       const apiUrl = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' ? 'http://localhost:5000' : '';
-
+      
       // Load teacher dashboard data
       const coursesRes = await fetch(`${apiUrl}/api/teacher/courses`, {
         headers: { 'Authorization': `Bearer ${token}` }
@@ -505,7 +511,7 @@ const TeacherDashboard = ({ user, onLogout }) => {
           className={`nav-item ${activeSection === 'courses' ? 'active' : ''}`}
           onClick={() => setActiveSection('courses')}
         >
-          � My Batches
+          📚 My Batches
         </button>
         {/* Commented out - My Students option disabled */}
         {/* <button
@@ -548,7 +554,7 @@ const TeacherDashboard = ({ user, onLogout }) => {
                   <div className="welcome-content">
                     <div className="greeting-section">
                       <h1 className="welcome-title-modern">
-                        Welcome back, <span className="user-name">{user?.name}</span>! �
+                        Welcome back, <span className="user-name">{user?.name}</span>! 🤗
                       </h1>
                       <div className="typing-container">
                         <span className="typing-text">Ready to inspire and educate today?</span>
@@ -559,7 +565,7 @@ const TeacherDashboard = ({ user, onLogout }) => {
                     {/* Quick Stats Row */}
                     <div className="quick-stats-row">
                       <div className="stat-pill">
-                        <div className="stat-icon-modern">�</div>
+                        <div className="stat-icon-modern">📊</div>
                         <div className="stat-info">
                           <div className="stat-value-modern">{user?.assignedCourses?.length || 1}</div>
                           <div className="stat-label-modern">Courses</div>
@@ -658,6 +664,18 @@ const TeacherDashboard = ({ user, onLogout }) => {
                       onClick={() => setCourseFilter('cyber-security')}
                     >
                       🔒 Cyber Security
+                    </button>
+                    <button 
+                      className={`filter-btn ${courseFilter === 'devops-ai' ? 'active' : ''}`}
+                      onClick={() => setCourseFilter('devops-ai')}
+                    >
+                      🚀 DevOps & AI
+                    </button>
+                    <button 
+                      className={`filter-btn ${courseFilter === 'devops-cloud' ? 'active' : ''}`}
+                      onClick={() => setCourseFilter('devops-cloud')}
+                    >
+                      ☁️ DevOps & Cloud
                     </button>
                     <button 
                       className={`filter-btn ${courseFilter === 'one-to-one' ? 'active' : ''}`}

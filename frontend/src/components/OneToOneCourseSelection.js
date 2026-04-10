@@ -41,6 +41,20 @@ const OneToOneCourseSelection = () => {
       color: '#10b981'
     },
     {
+      id: 'DevOps & AI',
+      title: 'DevOps & AI',
+      description: 'Combine DevOps practices with AI technologies to build intelligent, automated deployment pipelines.',
+      icon: '🚀',
+      color: '#8b5cf6'
+    },
+    {
+      id: 'DevOps & Cloud',
+      title: 'DevOps & Cloud',
+      description: 'Master cloud infrastructure and DevOps practices for scalable, modern application deployment.',
+      icon: '☁️',
+      color: '#06b6d4'
+    },
+    {
       id: 'One-to-One',
       title: 'One-to-One',
       description: 'Personalized learning experience with dedicated instructor guidance tailored to your specific needs.',
@@ -215,11 +229,19 @@ const OneToOneCourseSelection = () => {
             const isDataScienceCourse = courseLower.includes('data') || courseLower.includes('science') || courseLower.includes('ai');
             const studentIsDataScienceCourse = studentCourseLower.includes('data') || studentCourseLower.includes('science') || studentCourseLower.includes('ai');
             
+            const isDevOpsAICourse = (courseLower.includes('devops') || courseLower.includes('dev ops')) && courseLower.includes('ai');
+            const studentIsDevOpsAICourse = (studentCourseLower.includes('devops') || studentCourseLower.includes('dev ops')) && studentCourseLower.includes('ai');
+            
+            const isDevOpsCloudCourse = (courseLower.includes('devops') || courseLower.includes('dev ops')) && courseLower.includes('cloud');
+            const studentIsDevOpsCloudCourse = (studentCourseLower.includes('devops') || studentCourseLower.includes('dev ops')) && studentCourseLower.includes('cloud');
+            
             const isOneToOneCourse = courseLower.includes('one-to-one') || courseLower.includes('one to one') || courseLower.includes('1-to-1');
             const studentIsOneToOneCourse = studentCourseLower.includes('one-to-one') || studentCourseLower.includes('one to one') || studentCourseLower.includes('1-to-1');
             
             const courseMatches = ((isCyberSecurityCourse && studentIsCyberSecurityCourse) || 
                   (isDataScienceCourse && studentIsDataScienceCourse) ||
+                  (isDevOpsAICourse && studentIsDevOpsAICourse) ||
+                  (isDevOpsCloudCourse && studentIsDevOpsCloudCourse) ||
                   (isOneToOneCourse && studentIsOneToOneCourse) ||
                   courseLower === studentCourseLower);
             

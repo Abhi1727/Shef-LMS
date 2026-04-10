@@ -1,6 +1,7 @@
 import React, { useState, useEffect, lazy, Suspense } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import Login from './components/Login';
+import tokenService from './services/tokenService';
 import './App.css';
 
 // Lazy load heavy dashboard components for better performance
@@ -12,6 +13,7 @@ const BatchDetailsPage = lazy(() => import('./components/BatchDetailsPage'));
 const TeacherBatchDetailsPage = lazy(() => import('./components/TeacherBatchDetailsPage'));
 const BatchDetail = lazy(() => import('./components/BatchDetail'));
 const OneToOneBatchManagement = lazy(() => import('./components/OneToOneBatchManagement'));
+const StudentAnalyticsDashboard = lazy(() => import('./components/StudentAnalyticsDashboard'));
 
 // Loading component for lazy loaded components
 const LoadingSpinner = () => (
@@ -43,6 +45,7 @@ const registerServiceWorker = async () => {
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [user, setUser] = useState(null);
+  const [sessionWarning, setSessionWarning] = useState(null);
 
   useEffect(() => {
     const token = localStorage.getItem('token');
@@ -55,11 +58,66 @@ function App() {
       }
       setIsAuthenticated(true);
       setUser(parsedUser);
+      
+      // Setup token monitoring for authenticated users
+      setupTokenMonitoring();
     }
     
     // Register service worker for performance caching
     registerServiceWorker();
+    
+    // Cleanup token monitoring on unmount
+    return () => {
+      tokenService.stopTokenValidation();
+    };
   }, []);
+
+  const setupTokenMonitoring = () => {
+    try {
+      // Setup axios interceptor for 401 handling
+      tokenService.setupAxiosInterceptor((message) => {
+        console.log('Auto-logout triggered:', message);
+        handleAutoLogout(message);
+      });
+
+      // Start periodic token validation
+      tokenService.startTokenValidation(
+        // onTokenExpired callback
+        (message) => {
+          console.log('Token expired:', message);
+          handleAutoLogout(message);
+        },
+        // onTokenWarning callback
+        (timeUntilExpiry, expiresAt) => {
+          const formattedTime = tokenService.formatTimeUntilExpiry(timeUntilExpiry);
+          setSessionWarning({
+            message: `Session expires in ${formattedTime}`,
+            expiresAt: expiresAt,
+            timeUntilExpiry: timeUntilExpiry
+          });
+          
+          // Clear warning after 10 seconds
+          setTimeout(() => setSessionWarning(null), 10000);
+        }
+      );
+    } catch (error) {
+      console.error('Error setting up token monitoring:', error);
+      // Don't let token monitoring errors crash the app
+    }
+  };
+
+  const handleAutoLogout = (reason) => {
+    console.log('Performing auto-logout:', reason);
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
+    setIsAuthenticated(false);
+    setUser(null);
+    setSessionWarning(null);
+    tokenService.stopTokenValidation();
+    
+    // Show alert to user (in production, you might want a nicer notification)
+    alert(`Session expired: ${reason}. Please login again.`);
+  };
 
   const handleLogin = (token, userData) => {
     // Debug: Log the actual user data received
@@ -76,6 +134,9 @@ function App() {
     setIsAuthenticated(true);
     setUser(userData);
     
+    // Setup token monitoring after successful login
+    setupTokenMonitoring();
+    
     // Debug: Log final user state
     console.log('🔍 Final user role after mapping:', userData.role);
   };
@@ -85,11 +146,47 @@ function App() {
     localStorage.removeItem('user');
     setIsAuthenticated(false);
     setUser(null);
+    setSessionWarning(null);
+    tokenService.stopTokenValidation();
   };
 
   return (
     <Router>
       <div className="App">
+        {/* Session Warning Banner */}
+        {sessionWarning && isAuthenticated && (
+          <div style={{
+            position: 'fixed',
+            top: '0',
+            left: '0',
+            right: '0',
+            backgroundColor: '#ff9800',
+            color: 'white',
+            padding: '12px',
+            textAlign: 'center',
+            zIndex: 9999,
+            fontSize: '14px',
+            boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
+          }}>
+            ⚠️ {sessionWarning.message}
+            <button 
+              onClick={() => setSessionWarning(null)}
+              style={{
+                marginLeft: '20px',
+                background: 'none',
+                border: '1px solid white',
+                color: 'white',
+                padding: '4px 8px',
+                borderRadius: '4px',
+                cursor: 'pointer',
+                fontSize: '12px'
+              }}
+            >
+              Dismiss
+            </button>
+          </div>
+        )}
+        
         <Routes>
           <Route 
             path="/login" 
@@ -204,6 +301,22 @@ function App() {
                 user?.role === 'mentor' ?
                 <Navigate to="/mentor" replace /> :
                 <Navigate to="/dashboard" replace />}
+              </Suspense>
+            } 
+          />
+          <Route 
+            path="/analytics" 
+            element={
+              <Suspense fallback={<LoadingSpinner />}>
+                {isAuthenticated && user?.role === 'student' ? 
+                <StudentAnalyticsDashboard /> : 
+                !isAuthenticated ?
+                <Navigate to="/login" replace /> :
+                user?.role === 'admin' ?
+                <Navigate to="/admin" replace /> :
+                user?.role === 'mentor' ?
+                <Navigate to="/mentor" replace /> :
+                <Navigate to="/teacher" replace />}
               </Suspense>
             } 
           />

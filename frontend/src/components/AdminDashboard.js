@@ -1,13 +1,16 @@
-import React, { useState, useEffect, useCallback, useMemo, memo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef, memo } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
+import { adminAnalyticsService, adminAnalyticsUtils } from '../services/adminAnalyticsService';
 import { COLLECTIONS } from '../services/firebaseService';
 import { ToastContainer, showToast } from './Toast';
 import fallbackData from '../data/fallbackData';
 import { YouTubeUtils } from '../utils/youtubeUtils';
 import StudentsActivity from './StudentsActivity';
 import OneToOneCourseSelection from './OneToOneCourseSelection';
+import './Dashboard.css';
 import './AdminDashboard.css';
+import './AdminAnalytics.css';
 
 const CACHE_DURATION = 15 * 60 * 1000; // 15 minutes
 
@@ -71,6 +74,8 @@ const BatchFilter = memo(({ batchSearch, setBatchSearch, batchCourseFilter, setB
     { value: 'all', label: 'All Courses', icon: '📚' },
     { value: 'cyber security', label: 'Cyber Security', icon: '🔒' },
     { value: 'data science', label: 'Data Science', icon: '📊' },
+    { value: 'devops & ai', label: 'DevOps & AI', icon: '🚀' },
+    { value: 'devops & cloud', label: 'DevOps & Cloud', icon: '☁️' },
     { value: 'one-to-one', label: 'One-to-One', icon: '👤' }
   ];
 
@@ -159,6 +164,12 @@ const AdminDashboard = ({ user, onLogout }) => {
   const [reportPeriod, setReportPeriod] = useState('7days');
   const [customDateRange, setCustomDateRange] = useState({ start: '', end: '' });
   const [reportData, setReportData] = useState(null);
+  
+  // Analytics states
+  const [analyticsData, setAnalyticsData] = useState(null);
+  const [analyticsLoading, setAnalyticsLoading] = useState(false);
+  const [analyticsError, setAnalyticsError] = useState(null);
+  const [analyticsPeriod, setAnalyticsPeriod] = useState('30days');
   
   // Loading states for individual data types
   const [dataLoading, setDataLoading] = useState({
@@ -443,6 +454,10 @@ const AdminDashboard = ({ user, onLogout }) => {
           return course.includes('cyber') || course.includes('security');
         } else if (filterValue === 'data science') {
           return course.includes('data') || course.includes('science');
+        } else if (filterValue === 'devops & ai') {
+          return course.includes('devops') && (course.includes('ai') || course.toLowerCase().includes('ai'));
+        } else if (filterValue === 'devops & cloud') {
+          return course.includes('devops') && (course.includes('cloud') || course.includes('cloud'));
         } else if (filterValue === 'one-to-one') {
           return course.includes('one') || course.includes('1') || course.includes('single');
         }
@@ -2307,6 +2322,33 @@ const AdminDashboard = ({ user, onLogout }) => {
     }
   }, [selectedStudentDetails, reportPeriod, customDateRange]);
 
+  // Fetch comprehensive analytics data
+  const fetchAnalyticsData = useCallback(async () => {
+    try {
+      setAnalyticsLoading(true);
+      setAnalyticsError(null);
+      
+      const params = { period: analyticsPeriod };
+      if (analyticsPeriod === 'custom' && customDateRange.start && customDateRange.end) {
+        params.startDate = customDateRange.start;
+        params.endDate = customDateRange.end;
+      }
+      
+      const data = await adminAnalyticsService.getAnalytics(params);
+      setAnalyticsData(data);
+    } catch (error) {
+      console.error('Error fetching analytics:', error);
+      setAnalyticsError(error.message || 'Failed to fetch analytics');
+    } finally {
+      setAnalyticsLoading(false);
+    }
+  }, [analyticsPeriod, customDateRange]);
+
+  // Fetch analytics when period changes
+  useEffect(() => {
+    fetchAnalyticsData();
+  }, [fetchAnalyticsData]);
+
   const handleDownloadReport = useCallback(() => {
     if (!reportData) return;
 
@@ -3792,6 +3834,8 @@ const AdminDashboard = ({ user, onLogout }) => {
                     <option value="">Select Course *</option>
                     <option value="Data Science & AI">Data Science & AI</option>
                     <option value="Cyber Security & Ethical Hacking">Cyber Security & Ethical Hacking</option>
+                    <option value="DevOps & AI">DevOps & AI</option>
+                    <option value="DevOps & Cloud">DevOps & Cloud</option>
                     <option value="One-to-One">One-to-One</option>
                   </select>
                   <select
@@ -3896,6 +3940,8 @@ const AdminDashboard = ({ user, onLogout }) => {
                       {[
                         { value: 'Data Science & AI', label: 'Data Science & AI' },
                         { value: 'Cyber Security & Ethical Hacking', label: 'Cyber Security & Ethical Hacking' },
+                        { value: 'DevOps & AI', label: 'DevOps & AI' },
+                        { value: 'DevOps & Cloud', label: 'DevOps & Cloud' },
                         { value: 'One-to-One', label: 'One-to-One' }
                       ].map(course => (
                         <label key={course.value} className="course-checkbox-label">
@@ -4027,6 +4073,8 @@ const AdminDashboard = ({ user, onLogout }) => {
                     <option value="">Select Course *</option>
                     <option value="Data Science & AI">Data Science & AI</option>
                     <option value="Cyber Security & Ethical Hacking">Cyber Security & Ethical Hacking</option>
+                    <option value="DevOps & AI">DevOps & AI</option>
+                    <option value="DevOps & Cloud">DevOps & Cloud</option>
                     <option value="One-to-One">One-to-One</option>
                   </select>
                   <input
@@ -4086,6 +4134,8 @@ const AdminDashboard = ({ user, onLogout }) => {
                     <option value="">Select Course *</option>
                     <option value="Data Science & AI">Data Science & AI</option>
                     <option value="Cyber Security & Ethical Hacking">Cyber Security & Ethical Hacking</option>
+                    <option value="DevOps & AI">DevOps & AI</option>
+                    <option value="DevOps & Cloud">DevOps & Cloud</option>
                     <option value="One-to-One">One-to-One</option>
                   </select>
                   
@@ -4490,6 +4540,8 @@ const AdminDashboard = ({ user, onLogout }) => {
                     <option value="">Select Domain *</option>
                     <option value="Data Science & AI">Data Science & AI</option>
                     <option value="Cyber Security & Ethical Hacking">Cyber Security & Ethical Hacking</option>
+                    <option value="DevOps & AI">DevOps & AI</option>
+                    <option value="DevOps & Cloud">DevOps & Cloud</option>
                     <option value="One-to-One">One-to-One</option>
                   </select>
                   <input
@@ -4555,6 +4607,8 @@ const AdminDashboard = ({ user, onLogout }) => {
                     <option value="">Select Course *</option>
                     <option value="Data Science & AI">Data Science & AI</option>
                     <option value="Cyber Security & Ethical Hacking">Cyber Security & Ethical Hacking</option>
+                    <option value="DevOps & AI">DevOps & AI</option>
+                    <option value="DevOps & Cloud">DevOps & Cloud</option>
                     <option value="One-to-One">One-to-One</option>
                   </select>
                   <small style={{color: '#888', marginTop: '-10px', display: 'block'}}>
@@ -4636,6 +4690,8 @@ const AdminDashboard = ({ user, onLogout }) => {
                     <option value="">Select Course *</option>
                     <option value="Data Science & AI">Data Science & AI</option>
                     <option value="Cyber Security & Ethical Hacking">Cyber Security & Ethical Hacking</option>
+                    <option value="DevOps & AI">DevOps & AI</option>
+                    <option value="DevOps & Cloud">DevOps & Cloud</option>
                     <option value="One-to-One">One-to-One</option>
                   </select>
                   <input
@@ -5316,18 +5372,18 @@ const AdminDashboard = ({ user, onLogout }) => {
                 </div>
               )}
 
-              {/* Reports Tab */}
+              {/* Reports Tab - Enhanced Analytics */}
               {activeProfileTab === 'reports' && (
-                <div className="reports-tab-content">
+                <div className="reports-tab-content enhanced-analytics">
                   <div className="reports-header">
-                    <h3>📈 Student Reports</h3>
-                    <div className="report-actions">
-                      <div className="date-range-selector">
-                        <label>Report Period</label>
+                    <h3>📊 Platform Analytics</h3>
+                    <div className="analytics-controls">
+                      <div className="analytics-period-selector">
+                        <label>Analytics Period</label>
                         <select
                           className="period-select"
-                          value={reportPeriod}
-                          onChange={(e) => setReportPeriod(e.target.value)}
+                          value={analyticsPeriod}
+                          onChange={(e) => setAnalyticsPeriod(e.target.value)}
                         >
                           <option value="7days">Last 7 Days</option>
                           <option value="30days">Last 30 Days</option>
@@ -5335,7 +5391,7 @@ const AdminDashboard = ({ user, onLogout }) => {
                           <option value="custom">Custom Range</option>
                         </select>
                       </div>
-                      {reportPeriod === 'custom' && (
+                      {analyticsPeriod === 'custom' && (
                         <div className="custom-date-range">
                           <input
                             type="date"
@@ -5352,44 +5408,257 @@ const AdminDashboard = ({ user, onLogout }) => {
                           />
                         </div>
                       )}
-                      <button className="btn-generate-report" onClick={handleGenerateReport}>
-                        📊 Generate Report
+                      <button className="btn-refresh-analytics" onClick={fetchAnalyticsData} disabled={analyticsLoading}>
+                        {analyticsLoading ? '🔄 Loading...' : '🔄 Refresh'}
                       </button>
                     </div>
                   </div>
 
-                  {reportData ? (
-                    <div className="report-content">
-                      <div className="report-summary">
-                        <div className="summary-cards">
-                          <div className="summary-card">
-                            <h4>Total Activities</h4>
-                            <p className="summary-value">{reportData.totalActivities}</p>
+                  {analyticsLoading ? (
+                    <div className="analytics-loading">
+                      <div className="spinner"></div>
+                      <p>Loading comprehensive analytics...</p>
+                    </div>
+                  ) : analyticsError ? (
+                    <div className="analytics-error">
+                      <h4>❌ Error Loading Analytics</h4>
+                      <p>{analyticsError}</p>
+                      <button onClick={fetchAnalyticsData} className="btn-retry">Try Again</button>
+                    </div>
+                  ) : analyticsData ? (
+                    <div className="analytics-content">
+                      {/* Overview Cards */}
+                      <div className="analytics-overview">
+                        <div className="overview-cards">
+                          <div className="overview-card students">
+                            <div className="card-icon">👥</div>
+                            <div className="card-content">
+                              <h4>Total Students</h4>
+                              <div className="card-value">{adminAnalyticsUtils.formatLargeNumber(analyticsData.overview.totalStudents)}</div>
+                              <div className="card-subtitle">
+                                {analyticsData.overview.activeStudents} active ({analyticsData.overview.studentEngagementRate}%)
+                              </div>
+                              <div className="progress-bar">
+                                <div 
+                                  className="progress-fill" 
+                                  style={{ width: `${analyticsData.overview.studentEngagementRate}%` }}
+                                />
+                              </div>
+                            </div>
                           </div>
-                          <div className="summary-card">
-                            <h4>Video Views</h4>
-                            <p className="summary-value">{reportData.summary.videoViews}</p>
+                          
+                          <div className="overview-card teachers">
+                            <div className="card-icon">👨‍🏫</div>
+                            <div className="card-content">
+                              <h4>Total Teachers</h4>
+                              <div className="card-value">{adminAnalyticsUtils.formatLargeNumber(analyticsData.overview.totalTeachers)}</div>
+                              <div className="card-subtitle">
+                                {analyticsData.overview.activeTeachers} active ({analyticsData.overview.teacherEngagementRate}%)
+                              </div>
+                              <div className="progress-bar">
+                                <div 
+                                  className="progress-fill" 
+                                  style={{ width: `${analyticsData.overview.teacherEngagementRate}%` }}
+                                />
+                              </div>
+                            </div>
                           </div>
-                          <div className="summary-card">
-                            <h4>Logins</h4>
-                            <p className="summary-value">{reportData.summary.logins}</p>
+                          
+                          <div className="overview-card batches">
+                            <div className="card-icon">📚</div>
+                            <div className="card-content">
+                              <h4>Total Batches</h4>
+                              <div className="card-value">{adminAnalyticsUtils.formatLargeNumber(analyticsData.overview.totalBatches)}</div>
+                              <div className="card-subtitle">Active learning groups</div>
+                            </div>
                           </div>
-                          <div className="summary-card">
-                            <h4>Assessments</h4>
-                            <p className="summary-value">{reportData.summary.assessments}</p>
+                          
+                          <div className="overview-card activities">
+                            <div className="card-icon">📈</div>
+                            <div className="card-content">
+                              <h4>Total Activities</h4>
+                              <div className="card-value">{adminAnalyticsUtils.formatLargeNumber(analyticsData.overview.totalActivities)}</div>
+                              <div className="card-subtitle">In selected period</div>
+                            </div>
                           </div>
                         </div>
                       </div>
-                      <div className="report-actions-bottom">
-                        <button className="btn-download-report" onClick={handleDownloadReport}>
-                          📥 Download Full Report
+
+                      {/* Activity Breakdown */}
+                      <div className="analytics-section">
+                        <h4>📊 Activity Breakdown</h4>
+                        <div className="activity-breakdown-grid">
+                          {analyticsData.activityBreakdown.map((activity, index) => {
+                            const displayInfo = adminAnalyticsUtils.getActivityDisplayInfo(activity.action);
+                            return (
+                              <div key={index} className="activity-breakdown-card">
+                                <div className="activity-icon" style={{ color: displayInfo.color }}>
+                                  {displayInfo.icon}
+                                </div>
+                                <div className="activity-content">
+                                  <h5>{displayInfo.label}</h5>
+                                  <div className="activity-count">{adminAnalyticsUtils.formatLargeNumber(activity.count)}</div>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      {/* Course Analytics */}
+                      <div className="analytics-section">
+                        <h4>📚 Course Performance</h4>
+                        <div className="course-analytics-table">
+                          <table>
+                            <thead>
+                              <tr>
+                                <th>Course Name</th>
+                                <th>Total Views</th>
+                                <th>Unique Students</th>
+                                <th>Avg per Student</th>
+                                <th>Performance</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {analyticsData.courseAnalytics.map((course, index) => {
+                                const avgPerStudent = course.uniqueStudents > 0 ? Math.round(course.totalViews / course.uniqueStudents) : 0;
+                                const engagement = adminAnalyticsUtils.getEngagementLevel(avgPerStudent);
+                                return (
+                                  <tr key={index}>
+                                    <td>{course.courseName}</td>
+                                    <td>{adminAnalyticsUtils.formatLargeNumber(course.totalViews)}</td>
+                                    <td>{course.uniqueStudents}</td>
+                                    <td>{avgPerStudent}</td>
+                                    <td>
+                                      <span className="engagement-badge" style={{ backgroundColor: engagement.color }}>
+                                        {engagement.icon} {engagement.level}
+                                      </span>
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+
+                      {/* Top Students */}
+                      <div className="analytics-section">
+                        <h4>🏆 Top Performing Students</h4>
+                        <div className="top-students-grid">
+                          {analyticsData.studentEngagement.slice(0, 8).map((student, index) => (
+                            <div key={student.studentId} className="student-performance-card">
+                              <div className="student-rank">#{index + 1}</div>
+                              <div className="student-info">
+                                <h5>{student.name}</h5>
+                                <p>{student.email}</p>
+                              </div>
+                              <div className="student-metrics">
+                                <div className="metric">
+                                  <span className="metric-label">Activities</span>
+                                  <span className="metric-value">{student.totalActivities}</span>
+                                </div>
+                                <div className="metric">
+                                  <span className="metric-label">Videos</span>
+                                  <span className="metric-value">{student.videoViews}</span>
+                                </div>
+                                <div className="metric">
+                                  <span className="metric-label">Daily Avg</span>
+                                  <span className="metric-value">{student.avgDailyActivities}</span>
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Batch Performance */}
+                      <div className="analytics-section">
+                        <h4>📈 Batch Performance</h4>
+                        <div className="batch-performance-grid">
+                          {analyticsData.batchPerformance.map((batch, index) => {
+                            const engagement = adminAnalyticsUtils.getEngagementLevel(batch.completionRate);
+                            return (
+                              <div key={index} className="batch-performance-card">
+                                <div className="batch-header">
+                                  <h5>{batch.batchName}</h5>
+                                  <span className="course-tag">{batch.course}</span>
+                                </div>
+                                <div className="batch-stats">
+                                  <div className="stat">
+                                    <span className="stat-label">Students</span>
+                                    <span className="stat-value">{batch.studentCount}</span>
+                                  </div>
+                                  <div className="stat">
+                                    <span className="stat-label">Completion</span>
+                                    <span className="stat-value">{batch.completionRate}%</span>
+                                  </div>
+                                </div>
+                                <div className="progress-bar">
+                                  <div 
+                                    className="progress-fill" 
+                                    style={{ 
+                                      width: `${batch.completionRate}%`,
+                                      backgroundColor: engagement.color 
+                                    }}
+                                  />
+                                </div>
+                                <div className="engagement-indicator">
+                                  {engagement.icon} {engagement.level} Engagement
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      {/* Analytics Actions */}
+                      <div className="analytics-actions">
+                        <button className="btn-download-analytics" onClick={() => {
+                          const csvContent = [
+                            ['Platform Analytics Report'],
+                            ['Period:', analyticsPeriod],
+                            ['Generated:', new Date().toLocaleString()],
+                            [],
+                            ['Overview'],
+                            ['Total Students:', analyticsData.overview.totalStudents],
+                            ['Active Students:', analyticsData.overview.activeStudents],
+                            ['Student Engagement Rate:', `${analyticsData.overview.studentEngagementRate}%`],
+                            ['Total Teachers:', analyticsData.overview.totalTeachers],
+                            ['Active Teachers:', analyticsData.overview.activeTeachers],
+                            ['Teacher Engagement Rate:', `${analyticsData.overview.teacherEngagementRate}%`],
+                            ['Total Batches:', analyticsData.overview.totalBatches],
+                            ['Total Activities:', analyticsData.overview.totalActivities],
+                            [],
+                            ['Activity Breakdown'],
+                            ...analyticsData.activityBreakdown.map(item => [item.action, item.count]),
+                            [],
+                            ['Course Performance'],
+                            ...analyticsData.courseAnalytics.map(course => [
+                              course.courseName, course.totalViews, course.uniqueStudents
+                            ])
+                          ].map(row => row.join(',')).join('\n');
+
+                          const blob = new Blob([csvContent], { type: 'text/csv' });
+                          const url = window.URL.createObjectURL(blob);
+                          const a = document.createElement('a');
+                          a.href = url;
+                          a.download = `platform-analytics-${new Date().toISOString().split('T')[0]}.csv`;
+                          a.click();
+                          window.URL.revokeObjectURL(url);
+                          showToast('Analytics report downloaded successfully!', 'success');
+                        }}>
+                          📥 Download Full Analytics
+                        </button>
+                        <button className="btn-refresh-analytics" onClick={fetchAnalyticsData}>
+                          🔄 Refresh Data
                         </button>
                       </div>
                     </div>
                   ) : (
-                    <div className="no-report">
-                      <p>📊 No report data available</p>
-                      <small>Generate a report to see student activity summary</small>
+                    <div className="no-analytics">
+                      <p>📊 No analytics data available</p>
+                      <small>Generate analytics to see platform insights</small>
                     </div>
                   )}
                 </div>

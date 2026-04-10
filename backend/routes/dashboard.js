@@ -186,6 +186,38 @@ router.get('/activity', async (req, res) => {
         course: 'Data Science & AI',
         time: '3 days ago',
         icon: '📚'
+      },
+      {
+        id: 6,
+        type: 'course_completed',
+        title: 'Completed Module: CI/CD Pipeline Setup',
+        course: 'DevOps & AI',
+        time: '4 hours ago',
+        icon: '✅'
+      },
+      {
+        id: 7,
+        type: 'assignment_submitted',
+        title: 'Submitted Assignment: AI-Powered Deployment Script',
+        course: 'DevOps & AI',
+        time: '6 hours ago',
+        icon: '📝'
+      },
+      {
+        id: 8,
+        type: 'class_attended',
+        title: 'Attended Live Class: Cloud Infrastructure Design',
+        course: 'DevOps & Cloud',
+        time: '1 day ago',
+        icon: '🎓'
+      },
+      {
+        id: 9,
+        type: 'certificate_earned',
+        title: 'Earned Certificate: Kubernetes Mastery',
+        course: 'DevOps & Cloud',
+        time: '2 days ago',
+        icon: '🏆'
       }
     ];
     res.json(activities);

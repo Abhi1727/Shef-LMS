@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Teacher Batch Video Filtering Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .test-section {
+            margin: 20px 0;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        .test-case {
+            margin: 10px 0;
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 3px;
+        }
+        .pass {
+            background-color: #d4edda;
+            border-color: #c3e6cb;
+        }
+        .fail {
+            background-color: #f8d7da;
+            border-color: #f5c6cb;
+        }
+        .url {
+            font-family: monospace;
+            background: #f0f0f0;
+            padding: 2px 4px;
+            border-radius: 3px;
+            word-break: break-all;
+        }
+        .code {
+            font-family: monospace;
+            background: #f8f8f8;
+            padding: 10px;
+            border-radius: 3px;
+            white-space: pre-wrap;
+            overflow-x: auto;
+        }
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        .results {
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Teacher Batch Video Filtering Test</h1>
+    <p>Testing the fix for youtu.be video playback issue in TeacherBatchDetailsPage</p>
+
+    <div class="test-section">
+        <h2>Unit Tests: Video Source Detection & Transformation</h2>
+        <button onclick="runUnitTests()">Run Unit Tests</button>
+        <div id="unit-test-results"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>Integration Tests: Mock Video Data</h2>
+        <button onclick="runIntegrationTests()">Run Integration Tests</button>
+        <div id="integration-test-results"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>Live API Tests (Requires Backend)</h2>
+        <button onclick="runLiveTests()">Run Live Tests</button>
+        <div id="live-test-results"></div>
+    </div>
+
+    <div class="results" id="summary"></div>
+
+    <script>
+        // YouTube Utils implementation (matching the actual implementation)
+        class YouTubeUtils {
+            static extractVideoId(url) {
+                if (!url) return null;
+                
+                const regex = /(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([^&\n?#]+)/;
+                const match = url.match(regex);
+                return match ? match[1] : null;
+            }
+
+            static getEmbedUrl(videoId) {
+                return `https://www.youtube.com/embed/${videoId}`;
+            }
+
+            static getThumbnailUrl(videoId, quality = 'mqdefault') {
+                return `https://img.youtube.com/vi/${videoId}/${quality}.jpg`;
+            }
+        }
+
+        // Video source detection logic (matching TeacherBatchDetailsPage)
+        function detectVideoSource(video) {
+            if (video.videoSource) {
+                return video.videoSource;
+            }
+            
+            // Auto-detect based on URL patterns
+            if (video.youtubeVideoUrl) {
+                if (video.youtubeVideoUrl.includes('youtu.be/')) {
+                    return 'youtube-url';
+                } else if (video.youtubeVideoUrl.includes('youtube.com/watch')) {
+                    return 'youtube';
+                }
+            }
+            
+            if (video.videoUrl) {
+                if (video.videoUrl.includes('youtu.be/')) {
+                    return 'youtube-url';
+                } else if (video.videoUrl.includes('youtube.com/watch')) {
+                    return 'youtube';
+                } else if (video.videoUrl.includes('youtube.com/embed')) {
+                    return 'youtube';
+                }
+            }
+            
+            // Default to firebase for non-YouTube videos
+            return 'firebase';
+        }
+
+        // Transform video data (matching TeacherBatchDetailsPage)
+        function transformVideoData(video) {
+            const videoSource = detectVideoSource(video);
+            
+            // For youtu.be URLs, transform to match CustomVideoPlayer expectations
+            if (videoSource === 'youtube-url' && video.youtubeVideoUrl) {
+                const videoId = YouTubeUtils.extractVideoId(video.youtubeVideoUrl);
+                const embedUrl = YouTubeUtils.getEmbedUrl(videoId);
+                
+                return {
+                    ...video,
+                    videoSource: 'youtube-url',
+                    youtubeEmbedUrl: embedUrl,
+                    videoUrl: video.youtubeVideoUrl // Keep original URL as fallback
+                };
+            }
+            
+            // For other video types, return as-is
+            return video;
+        }
+
+        // CustomVideoPlayer detection logic (matching CustomVideoPlayer)
+        function detectVideoSourceCustomPlayer(video) {
+            if (video.videoSource) {
+                return video.videoSource;
+            }
+            
+            // Auto-detect based on URL patterns
+            if (video.youtubeVideoUrl) {
+                if (video.youtubeVideoUrl.includes('youtu.be/')) {
+                    return 'youtube-url';
+                } else if (video.youtubeVideoUrl.includes('youtube.com/watch')) {
+                    return 'youtube';
+                }
+            }
+            
+            if (video.videoUrl) {
+                if (video.videoUrl.includes('youtu.be/')) {
+                    return 'youtube-url';
+                } else if (video.videoUrl.includes('youtube.com/watch')) {
+                    return 'youtube';
+                } else if (video.videoUrl.includes('youtube.com/embed')) {
+                    return 'youtube';
+                }
+            }
+            
+            // Default to firebase for non-YouTube videos
+            return 'firebase';
+        }
+
+        // Unit Tests
+        function runUnitTests() {
+            const resultsDiv = document.getElementById('unit-test-results');
+            resultsDiv.innerHTML = '<h3>Unit Test Results:</h3>';
+            
+            const testCases = [
+                {
+                    name: "youtu.be URL detection",
+                    video: { youtubeVideoUrl: "https://youtu.be/jwQzb4UXqqM" },
+                    expectedSource: "youtube-url"
+                },
+                {
+                    name: "youtube.com/watch URL detection",
+                    video: { youtubeVideoUrl: "https://www.youtube.com/watch?v=jwQzb4UXqqM" },
+                    expectedSource: "youtube"
+                },
+                {
+                    name: "Legacy videoUrl with youtu.be",
+                    video: { videoUrl: "https://youtu.be/jwQzb4UXqqM" },
+                    expectedSource: "youtube-url"
+                },
+                {
+                    name: "Firebase video detection",
+                    video: { videoSource: "firebase" },
+                    expectedSource: "firebase"
+                },
+                {
+                    name: "No URL (default to firebase)",
+                    video: { title: "Test Video" },
+                    expectedSource: "firebase"
+                }
+            ];
+
+            let passCount = 0;
+            testCases.forEach(testCase => {
+                const detectedSource = detectVideoSource(testCase.video);
+                const passed = detectedSource === testCase.expectedSource;
+                if (passed) passCount++;
+                
+                const testDiv = document.createElement('div');
+                testDiv.className = `test-case ${passed ? 'pass' : 'fail'}`;
+                testDiv.innerHTML = `
+                    <h4>${passed ? '✅ PASS' : '❌ FAIL'}: ${testCase.name}</h4>
+                    <p><strong>Input:</strong> <span class="url">${JSON.stringify(testCase.video)}</span></p>
+                    <p><strong>Expected:</strong> ${testCase.expectedSource}</p>
+                    <p><strong>Detected:</strong> ${detectedSource}</p>
+                `;
+                resultsDiv.appendChild(testDiv);
+            });
+
+            const summaryDiv = document.createElement('div');
+            summaryDiv.innerHTML = `<p><strong>Unit Tests: ${passCount}/${testCases.length} passed</strong></p>`;
+            resultsDiv.appendChild(summaryDiv);
+        }
+
+        // Integration Tests
+        function runIntegrationTests() {
+            const resultsDiv = document.getElementById('integration-test-results');
+            resultsDiv.innerHTML = '<h3>Integration Test Results:</h3>';
+            
+            const testCases = [
+                {
+                    name: "youtu.be URL transformation",
+                    video: { 
+                        id: 1, 
+                        title: "Test youtu.be Video", 
+                        youtubeVideoUrl: "https://youtu.be/jwQzb4UXqqM" 
+                    },
+                    expectedTransformed: {
+                        videoSource: "youtube-url",
+                        youtubeEmbedUrl: "https://www.youtube.com/embed/jwQzb4UXqqM"
+                    }
+                },
+                {
+                    name: "youtube.com/watch URL (no transformation)",
+                    video: { 
+                        id: 2, 
+                        title: "Test youtube.com Video", 
+                        youtubeVideoUrl: "https://www.youtube.com/watch?v=jwQzb4UXqqM" 
+                    },
+                    expectedTransformed: null // Should remain unchanged
+                },
+                {
+                    name: "Firebase video (no transformation)",
+                    video: { 
+                        id: 3, 
+                        title: "Test Firebase Video", 
+                        videoSource: "firebase" 
+                    },
+                    expectedTransformed: null // Should remain unchanged
+                }
+            ];
+
+            let passCount = 0;
+            testCases.forEach(testCase => {
+                const transformedVideo = transformVideoData(testCase.video);
+                let passed = true;
+                let details = [];
+                
+                if (testCase.expectedTransformed) {
+                    // Check if transformation happened correctly
+                    if (transformedVideo.videoSource !== testCase.expectedTransformed.videoSource) {
+                        passed = false;
+                        details.push(`videoSource mismatch: expected ${testCase.expectedTransformed.videoSource}, got ${transformedVideo.videoSource}`);
+                    }
+                    if (transformedVideo.youtubeEmbedUrl !== testCase.expectedTransformed.youtubeEmbedUrl) {
+                        passed = false;
+                        details.push(`youtubeEmbedUrl mismatch: expected ${testCase.expectedTransformed.youtubeEmbedUrl}, got ${transformedVideo.youtubeEmbedUrl}`);
+                    }
+                } else {
+                    // Check that video remained unchanged (except for spread operator)
+                    const originalKeys = Object.keys(testCase.video).sort();
+                    const transformedKeys = Object.keys(transformedVideo).sort();
+                    if (JSON.stringify(originalKeys) !== JSON.stringify(transformedKeys)) {
+                        passed = false;
+                        details.push(`Video should remain unchanged but keys differ`);
+                    }
+                }
+                
+                if (passed) passCount++;
+                
+                const testDiv = document.createElement('div');
+                testDiv.className = `test-case ${passed ? 'pass' : 'fail'}`;
+                testDiv.innerHTML = `
+                    <h4>${passed ? '✅ PASS' : '❌ FAIL'}: ${testCase.name}</h4>
+                    <p><strong>Original:</strong></p>
+                    <div class="code">${JSON.stringify(testCase.video, null, 2)}</div>
+                    <p><strong>Transformed:</strong></p>
+                    <div class="code">${JSON.stringify(transformedVideo, null, 2)}</div>
+                    ${details.length > 0 ? `<p><strong>Issues:</strong> ${details.join(', ')}</p>` : ''}
+                `;
+                resultsDiv.appendChild(testDiv);
+            });
+
+            const summaryDiv = document.createElement('div');
+            summaryDiv.innerHTML = `<p><strong>Integration Tests: ${passCount}/${testCases.length} passed</strong></p>`;
+            resultsDiv.appendChild(summaryDiv);
+        }
+
+        // Live Tests (requires backend)
+        async function runLiveTests() {
+            const resultsDiv = document.getElementById('live-test-results');
+            resultsDiv.innerHTML = '<h3>Live Test Results:</h3>';
+            
+            // Test if we can access the teacher endpoints
+            const API_URL = 'http://localhost:5000';
+            let authToken = '';
+            
+            try {
+                // Try to get token from localStorage (if running from the app)
+                if (typeof localStorage !== 'undefined') {
+                    authToken = localStorage.getItem('token');
+                }
+                
+                if (!authToken) {
+                    resultsDiv.innerHTML += '<p>❌ No auth token found. Please log into the app first.</p>';
+                    return;
+                }
+                
+                // Test teacher batch endpoint
+                const batchResponse = await fetch(`${API_URL}/api/teacher/batches`, {
+                    headers: { 'Authorization': `Bearer ${authToken}` }
+                });
+                
+                if (batchResponse.ok) {
+                    const batches = await batchResponse.json();
+                    if (batches.length > 0) {
+                        const testBatch = batches[0];
+                        
+                        // Test classroom videos endpoint
+                        const videosResponse = await fetch(`${API_URL}/api/teacher/classroom/${testBatch.id}`, {
+                            headers: { 'Authorization': `Bearer ${authToken}` }
+                        });
+                        
+                        if (videosResponse.ok) {
+                            const videos = await videosResponse.json();
+                            const youtuBeVideos = videos.filter(v => v.youtubeVideoUrl && v.youtubeVideoUrl.includes('youtu.be/'));
+                            
+                            const testDiv = document.createElement('div');
+                            testDiv.className = 'test-case pass';
+                            testDiv.innerHTML = `
+                                <h4>✅ PASS: Live API Test</h4>
+                                <p><strong>Batches Found:</strong> ${batches.length}</p>
+                                <p><strong>Videos in Batch "${testBatch.name}":</strong> ${videos.length}</p>
+                                <p><strong>youtu.be Videos:</strong> ${youtuBeVideos.length}</p>
+                                ${youtuBeVideos.length > 0 ? 
+                                    `<p><strong>Sample youtu.be video:</strong> <span class="url">${youtuBeVideos[0].youtubeVideoUrl}</span></p>` 
+                                    : ''}
+                            `;
+                            resultsDiv.appendChild(testDiv);
+                        } else {
+                            throw new Error(`Videos endpoint failed: ${videosResponse.status}`);
+                        }
+                    } else {
+                        const testDiv = document.createElement('div');
+                        testDiv.className = 'test-case pass';
+                        testDiv.innerHTML = `
+                            <h4>⚠️ PARTIAL: Live API Test</h4>
+                            <p><strong>Teacher auth works but no batches found</strong></p>
+                            <p>This is expected if no batches are assigned to the teacher.</p>
+                        `;
+                        resultsDiv.appendChild(testDiv);
+                    }
+                } else {
+                    throw new Error(`Batches endpoint failed: ${batchResponse.status}`);
+                }
+                
+            } catch (error) {
+                const testDiv = document.createElement('div');
+                testDiv.className = 'test-case fail';
+                testDiv.innerHTML = `
+                    <h4>❌ FAIL: Live API Test</h4>
+                    <p><strong>Error:</strong> ${error.message}</p>
+                    <p><strong>Note:</strong> This test requires the backend to be running on localhost:5000 and a valid teacher login.</p>
+                `;
+                resultsDiv.appendChild(testDiv);
+            }
+        }
+
+        // Run all tests and show summary
+        function runAllTests() {
+            runUnitTests();
+            runIntegrationTests();
+            runLiveTests();
+        }
+
+        // Auto-run unit tests on page load
+        window.onload = function() {
+            runUnitTests();
+        };
+    </script>
+</body>
+</html>

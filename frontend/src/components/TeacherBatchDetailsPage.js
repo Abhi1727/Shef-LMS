@@ -82,14 +82,14 @@ const TeacherBatchDetailsPage = () => {
         studentsData = [];
       }
 
-      // Get videos using teacher endpoint first
-      const videosResponse = await fetch(`${apiUrl}/api/teacher/batches/${batchId}/videos`, {
+      // Get videos using teacher classroom endpoint
+      const videosResponse = await fetch(`${apiUrl}/api/teacher/classroom/${batchId}`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       
       if (videosResponse.ok) {
         const data = await videosResponse.json();
-        videosData = data.videos || [];
+        videosData = data.lectures || [];
         console.log('Teacher batch videos:', videosData.length);
       } else {
         // Fallback to admin endpoint for videos
@@ -165,9 +165,55 @@ const TeacherBatchDetailsPage = () => {
     }
   };
 
+  // Video source detection utility
+  const detectVideoSource = (video) => {
+    if (video.videoSource) {
+      return video.videoSource;
+    }
+    
+    // Auto-detect based on URL patterns
+    if (video.youtubeVideoUrl) {
+      if (video.youtubeVideoUrl.includes('youtu.be/')) {
+        return 'youtube-url';
+      } else if (video.youtubeVideoUrl.includes('youtube.com/watch')) {
+        return 'youtube';
+      }
+    }
+    
+    // Default to firebase for non-YouTube videos
+    return 'firebase';
+  };
+
+  // Transform video data for CustomVideoPlayer compatibility
+  const transformVideoData = (video) => {
+    const videoSource = detectVideoSource(video);
+    
+    // For youtu.be URLs, transform to match CustomVideoPlayer expectations
+    if (videoSource === 'youtube-url' && video.youtubeVideoUrl) {
+      const videoId = YouTubeUtils.extractVideoId(video.youtubeVideoUrl);
+      const embedUrl = YouTubeUtils.getEmbedUrl(videoId);
+      
+      return {
+        ...video,
+        videoSource: 'youtube-url',
+        youtubeEmbedUrl: embedUrl,
+        videoUrl: video.youtubeVideoUrl // Keep original URL as fallback
+      };
+    }
+    
+    // For other video types, return as-is
+    return video;
+  };
+
   // Video handlers
   const handleVideoClick = (video) => {
-    setSelectedVideo(video);
+    const transformedVideo = transformVideoData(video);
+    console.log('🎬 Video clicked:', {
+      original: video,
+      transformed: transformedVideo,
+      detectedSource: detectVideoSource(video)
+    });
+    setSelectedVideo(transformedVideo);
     setShowVideoModal(true);
   };
 
@@ -466,75 +512,82 @@ const TeacherBatchDetailsPage = () => {
               </div>
 
               <div className="video-grid">
-                {filteredVideos.map(video => (
-                  <div key={video.id} className="video-card">
-                    <div className="video-thumbnail" onClick={() => handleVideoClick(video)}>
-                      {video.youtubeVideoUrl ? (
-                        <img 
-                          src={`https://img.youtube.com/vi/${video.youtubeVideoId || video.youtubeVideoUrl.split('v=')[1]?.split('&')[0]}/mqdefault.jpg`}
-                          alt={video.title}
-                          onError={(e) => e.target.src = '/placeholder-video.png'}
-                        />
-                      ) : (
-                        <div className="video-placeholder">📺</div>
-                      )}
-                    </div>
-                    <div className="video-right">
-                      <div className="video-info">
-                        <div className="video-title">{video.title}</div>
-                        <div className="video-meta">
-                          <span className="instructor">{video.instructor || 'Instructor'}</span>
-                          <span className="date">
-                            {video.date ? new Date(video.date).toLocaleDateString() : 'No date'}
-                          </span>
-                        </div>
-                        {video.description && (
-                          <div className="video-description">
-                            {video.description.length > 100 
-                              ? video.description.substring(0, 100) + '...' 
-                              : video.description}
-                          </div>
-                        )}
-                        {video.notesAvailable && (
-                          <div className="notes-indicator">📋 Notes Available</div>
+                {filteredVideos.map(video => {
+                  const videoSource = detectVideoSource(video);
+                  const thumbnailUrl = videoSource === 'youtube-url' || videoSource === 'youtube'
+                    ? YouTubeUtils.getThumbnailUrl(YouTubeUtils.extractVideoId(video.youtubeVideoUrl || video.videoUrl))
+                    : null;
+                  
+                  return (
+                    <div key={video.id} className="video-card">
+                      <div className="video-thumbnail" onClick={() => handleVideoClick(video)}>
+                        {thumbnailUrl ? (
+                          <img 
+                            src={thumbnailUrl}
+                            alt={video.title}
+                            onError={(e) => e.target.src = '/placeholder-video.png'}
+                          />
+                        ) : (
+                          <div className="video-placeholder">📺</div>
                         )}
                       </div>
-                      <div className="video-actions">
-                        <button onClick={() => handleVideoClick(video)} className="view-btn">
-                          ▶️ View
-                        </button>
-                        <button onClick={() => handleEditVideo(video)} className="edit-btn">
-                          ✏️ Edit
-                        </button>
-                        <div className="notes-upload-section">
-                          <input
-                            type="file"
-                            id={`notes-file-${video.id}`}
-                            accept=".pdf,.doc,.docx"
-                            onChange={(e) => setNotesFile(e.target.files[0])}
-                            style={{ display: 'none' }}
-                          />
-                          <button 
-                            onClick={() => document.getElementById(`notes-file-${video.id}`).click()}
-                            className="notes-btn"
-                            disabled={uploadingNotes}
-                          >
-                            📋 Upload Notes
-                          </button>
-                          {notesFile && (
-                            <button 
-                              onClick={() => handleUploadNotes(video.id)} 
-                              disabled={uploadingNotes}
-                              className="confirm-upload-btn"
-                            >
-                              {uploadingNotes ? 'Uploading...' : 'Confirm'}
-                            </button>
+                      <div className="video-right">
+                        <div className="video-info">
+                          <div className="video-title">{video.title}</div>
+                          <div className="video-meta">
+                            <span className="instructor">{video.instructor || 'Instructor'}</span>
+                            <span className="date">
+                              {video.date ? new Date(video.date).toLocaleDateString() : 'No date'}
+                            </span>
+                          </div>
+                          {video.description && (
+                            <div className="video-description">
+                              {video.description.length > 100 
+                                ? video.description.substring(0, 100) + '...' 
+                                : video.description}
+                            </div>
+                          )}
+                          {video.notesAvailable && (
+                            <div className="notes-indicator">📋 Notes Available</div>
                           )}
                         </div>
+                        <div className="video-actions">
+                          <button onClick={() => handleVideoClick(video)} className="view-btn">
+                            ▶️ View
+                          </button>
+                          <button onClick={() => handleEditVideo(video)} className="edit-btn">
+                            ✏️ Edit
+                          </button>
+                          <div className="notes-upload-section">
+                            <input
+                              type="file"
+                              id={`notes-file-${video.id}`}
+                              accept=".pdf,.doc,.docx"
+                              onChange={(e) => setNotesFile(e.target.files[0])}
+                              style={{ display: 'none' }}
+                            />
+                            <button 
+                              onClick={() => document.getElementById(`notes-file-${video.id}`).click()}
+                              className="notes-btn"
+                              disabled={uploadingNotes}
+                            >
+                              📋 Upload Notes
+                            </button>
+                            {notesFile && (
+                              <button 
+                                onClick={() => handleUploadNotes(video.id)} 
+                                disabled={uploadingNotes}
+                                className="confirm-upload-btn"
+                              >
+                                {uploadingNotes ? 'Uploading...' : 'Confirm'}
+                              </button>
+                            )}
+                          </div>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
 
               {filteredVideos.length === 0 && (

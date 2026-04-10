@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import CustomVideoPlayer from './CustomVideoPlayer';
 import StudentProfile from './StudentProfile';
+import StudentAnalyticsDashboard from './StudentAnalyticsDashboard';
 import { YouTubeUtils } from '../utils/youtubeUtils';
 import './Dashboard.css';
 
@@ -190,8 +191,8 @@ const Dashboard = ({ user, onLogout }) => {
     return '👋';
   }, []);
 
-  const getDynamicMessages = useCallback((isDataScienceCourse) => {
-    if (isDataScienceCourse) {
+  const getDynamicMessages = useCallback((courseType) => {
+    if (courseType === 'data-science') {
       return [
         "Ready to master Data Science & AI? 🚀",
         "Let's explore machine learning today 🤖",
@@ -199,13 +200,37 @@ const Dashboard = ({ user, onLogout }) => {
         "Time to build amazing AI models ⚡",
         "Unlock the power of data analytics 🔓"
       ];
-    } else {
+    } else if (courseType === 'cyber-security') {
       return [
         "Ready to enhance your cybersecurity skills? 🛡️",
         "Let's explore ethical hacking today 🔍",
         "Your cybersecurity journey continues! 🔐",
         "Time to master penetration testing ⚔️",
         "Become a security expert! 🎯"
+      ];
+    } else if (courseType === 'devops-ai') {
+      return [
+        "Ready to master DevOps & AI? 🚀",
+        "Let's build intelligent deployment pipelines today 🤖",
+        "Your DevOps & AI journey continues! ⚙️",
+        "Time to automate with AI and DevOps! ⚡",
+        "Become a DevOps & AI expert! 🎯"
+      ];
+    } else if (courseType === 'devops-cloud') {
+      return [
+        "Ready to master DevOps & Cloud? ☁️",
+        "Let's build scalable cloud infrastructure today 🌩️",
+        "Your DevOps & Cloud journey continues! ⚙️",
+        "Time to deploy to the cloud! ⚡",
+        "Become a cloud DevOps expert! 🎯"
+      ];
+    } else {
+      return [
+        "Ready to start your learning journey? 🚀",
+        "Let's explore new topics today 📚",
+        "Your learning journey continues! 🎯",
+        "Time to master new skills! ⚡",
+        "Become an expert in your field! 🔥"
       ];
     }
   }, []);
@@ -308,12 +333,12 @@ const Dashboard = ({ user, onLogout }) => {
 
   // Navigation helper functions
   const getNavIndicatorPosition = useCallback(() => {
-    const activeIndex = { overview: 0, classroom: 1, profile: 2 };
-    return `${activeIndex[activeSection] * 33.33}%`;
+    const activeIndex = { overview: 0, classroom: 1, analytics: 2, profile: 3 };
+    return `${activeIndex[activeSection] * 25}%`;
   }, [activeSection]);
 
   const getNavIndicatorWidth = useCallback(() => {
-    return '33.33%';
+    return '25%';
   }, []);
 
   // Modern Animated Gradient Background Component
@@ -410,6 +435,12 @@ const Dashboard = ({ user, onLogout }) => {
     }
     if (lowerCourse.includes('cyber') || lowerCourse.includes('security') || lowerCourse.includes('ethical') || lowerCourse.includes('hacking')) {
       return 'cyber-security';
+    }
+    if (lowerCourse.includes('devops') && lowerCourse.includes('ai')) {
+      return 'devops-ai';
+    }
+    if (lowerCourse.includes('devops') && lowerCourse.includes('cloud')) {
+      return 'devops-cloud';
     }
     if (lowerCourse.includes('web') || lowerCourse.includes('development')) {
       return 'web-development';
@@ -1498,6 +1529,16 @@ const Dashboard = ({ user, onLogout }) => {
             </button>
             
             <button 
+              className={`nav-item-modern ${activeSection === 'analytics' ? 'active' : ''}`}
+              onClick={() => setActiveSection('analytics')}
+              title="Analytics"
+            >
+              <span className="nav-icon-modern">📊</span>
+              <span className="nav-text">Analytics</span>
+              <span className="nav-badge">0</span>
+            </button>
+            
+            <button 
               className={`nav-item-modern ${activeSection === 'profile' ? 'active' : ''}`}
               onClick={() => setActiveSection('profile')}
               title="My Profile"
@@ -2307,6 +2348,12 @@ const Dashboard = ({ user, onLogout }) => {
                   </div>
                 </div>
               </div>
+            </div>
+          )}
+          
+          {activeSection === 'analytics' && (
+            <div className="animate-in">
+              <StudentAnalyticsDashboard />
             </div>
           )}
           

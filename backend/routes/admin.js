@@ -1737,4 +1737,167 @@ router.post('/send-batch-email', async (req, res) => {
   }
 });
 
+// @route   GET /api/admin/analytics
+// @desc    Get comprehensive platform analytics for admin dashboard
+// @access  Private (Admin only)
+router.get('/analytics', async (req, res) => {
+  try {
+    const { period = '30days', startDate, endDate } = req.query;
+    
+    // Calculate date range
+    let start = new Date();
+    let end = new Date();
+    
+    switch (period) {
+      case '7days':
+        start.setDate(end.getDate() - 7);
+        break;
+      case '30days':
+        start.setDate(end.getDate() - 30);
+        break;
+      case '90days':
+        start.setDate(end.getDate() - 90);
+        break;
+      case 'custom':
+        if (startDate && endDate) {
+          start = new Date(startDate);
+          end = new Date(endDate);
+        } else {
+          return res.status(400).json({ message: 'Custom range requires start and end dates' });
+        }
+        break;
+    }
+    
+    // Get overall statistics
+    const [
+      totalStudents,
+      totalTeachers,
+      totalBatches,
+      totalActivities,
+      activeStudents,
+      activeTeachers
+    ] = await Promise.all([
+      User.countDocuments({ role: 'student' }),
+      User.countDocuments({ role: 'teacher' }),
+      Batch.countDocuments(),
+      ActivityLog.countDocuments({ timestamp: { $gte: start, $lte: end } }),
+      User.countDocuments({ role: 'student', lastLogin: { $gte: start } }),
+      User.countDocuments({ role: 'teacher', lastLogin: { $gte: start } })
+    ]);
+    
+    // Get activity breakdown
+    const activityBreakdown = await ActivityLog.aggregate([
+      { $match: { timestamp: { $gte: start, $lte: end } } },
+      { $group: { _id: '$action', count: { $sum: 1 } } },
+      { $sort: { count: -1 } }
+    ]);
+    
+    // Get course analytics
+    const courseAnalytics = await ActivityLog.aggregate([
+      { $match: { timestamp: { $gte: start, $lte: end }, action: 'video_view' } },
+      { $group: { _id: '$courseName', count: { $sum: 1 }, uniqueUsers: { $addToSet: '$userId' } } },
+      { $addFields: { uniqueStudentCount: { $size: '$uniqueUsers' } } },
+      { $sort: { count: -1 } },
+      { $limit: 10 }
+    ]);
+    
+    // Get student engagement metrics
+    const studentEngagement = await ActivityLog.aggregate([
+      { $match: { timestamp: { $gte: start, $lte: end } } },
+      { $group: { _id: '$userId', totalActivities: { $sum: 1 }, videoViews: { $sum: { $cond: [{ $eq: ['$action', 'video_view'] }, 1, 0] } } } },
+      { $sort: { totalActivities: -1 } },
+      { $limit: 20 }
+    ]);
+    
+    // Get daily activity trends
+    const dailyTrends = await ActivityLog.aggregate([
+      { $match: { timestamp: { $gte: start, $lte: end } } },
+      { $group: { _id: { $dateToString: { format: '%Y-%m-%d', date: '$timestamp' } }, count: { $sum: 1 } } },
+      { $sort: { _id: 1 } }
+    ]);
+    
+    // Get batch performance
+    const batchPerformance = await Batch.aggregate([
+      { $lookup: { from: 'users', localField: 'students', foreignField: '_id', as: 'studentDetails' } },
+      { $addFields: { studentCount: { $size: '$studentDetails' } } },
+      { $project: { name: 1, course: 1, studentCount: 1, status: 1, teacherName: 1 } },
+      { $sort: { studentCount: -1 } }
+    ]);
+    
+    // Calculate completion rates
+    const completionRates = await Promise.all(
+      batchPerformance.map(async (batch) => {
+        const batchActivities = await ActivityLog.find({
+          'userId': { $in: batch.students },
+          'action': 'video_view',
+          'timestamp': { $gte: start, $lte: end }
+        }).countDocuments();
+        
+        const totalPossibleVideos = batch.studentCount * 25; // Estimate 25 videos per student
+        const completionRate = totalPossibleVideos > 0 ? Math.min((batchActivities / totalPossibleVideos) * 100, 100) : 0;
+        
+        return {
+          batchName: batch.name,
+          course: batch.course,
+          studentCount: batch.studentCount,
+          completionRate: Math.round(completionRate)
+        };
+      })
+    );
+    
+    // Get login trends
+    const loginTrends = await ActivityLog.aggregate([
+      { $match: { timestamp: { $gte: start, $lte: end }, action: 'login' } },
+      { $group: { _id: { $dateToString: { format: '%Y-%m-%d', date: '$timestamp' } }, count: { $sum: 1 } } },
+      { $sort: { _id: 1 } }
+    ]);
+    
+    // Get top performing students
+    const topStudents = await Promise.all(
+      studentEngagement.slice(0, 10).map(async (student) => {
+        const user = await User.findById(student._id).select('name email').lean();
+        return {
+          studentId: student._id,
+          name: user?.name || 'Unknown',
+          email: user?.email || 'Unknown',
+          totalActivities: student.totalActivities,
+          videoViews: student.videoViews,
+          avgDailyActivities: Math.round(student.totalActivities / Math.max(1, (end - start) / (1000 * 60 * 60 * 24)))
+        };
+      })
+    );
+    
+    const analyticsData = {
+      period: { start, end, type: period },
+      overview: {
+        totalStudents,
+        totalTeachers,
+        totalBatches,
+        totalActivities,
+        activeStudents,
+        activeTeachers,
+        studentEngagementRate: totalStudents > 0 ? Math.round((activeStudents / totalStudents) * 100) : 0,
+        teacherEngagementRate: totalTeachers > 0 ? Math.round((activeTeachers / totalTeachers) * 100) : 0
+      },
+      activityBreakdown: activityBreakdown.map(item => ({ action: item._id, count: item.count })),
+      courseAnalytics: courseAnalytics.map(item => ({
+        courseName: item._id || 'Unknown',
+        totalViews: item.count,
+        uniqueStudents: item.uniqueStudentCount
+      })),
+      studentEngagement: topStudents,
+      batchPerformance: completionRates,
+      trends: {
+        daily: dailyTrends.map(item => ({ date: item._id, activities: item.count })),
+        logins: loginTrends.map(item => ({ date: item._id, logins: item.count }))
+      }
+    };
+    
+    res.json(analyticsData);
+  } catch (error) {
+    console.error('Error fetching analytics:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
 module.exports = router;
