@@ -59,15 +59,66 @@ const CustomVideoPlayer = ({ video, onClose, resumePosition = 0, onProgressUpdat
   const controlsTimeoutRef = useRef(null);
   const videoViewLoggedRef = useRef(false);
 
+  // Enhanced video source detection
+  const detectVideoSource = (video) => {
+    if (video.videoSource) {
+      return video.videoSource;
+    }
+    
+    // Auto-detect based on URL patterns
+    if (video.youtubeVideoUrl) {
+      if (video.youtubeVideoUrl.includes('youtu.be/')) {
+        return 'youtube-url';
+      } else if (video.youtubeVideoUrl.includes('youtube.com/watch')) {
+        return 'youtube';
+      }
+    }
+    
+    if (video.videoUrl) {
+      if (video.videoUrl.includes('youtu.be/')) {
+        return 'youtube-url';
+      } else if (video.videoUrl.includes('youtube.com/watch')) {
+        return 'youtube';
+      } else if (video.videoUrl.includes('youtube.com/embed')) {
+        return 'youtube';
+      }
+    }
+    
+    // Default to firebase for non-YouTube videos
+    return 'firebase';
+  };
+
+  // Convert YouTube URL to embed URL
+  const convertToEmbedUrl = (url) => {
+    if (!url) return null;
+    
+    // Extract video ID from various YouTube URL formats
+    const regex = /(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([^&\n?#]+)/;
+    const match = url.match(regex);
+    const videoId = match ? match[1] : null;
+    
+    return videoId ? `https://www.youtube.com/embed/${videoId}` : null;
+  };
+
   // Determine video source and initialize player
   useEffect(() => {
-    if (video.videoSource === 'youtube-url' && video.youtubeEmbedUrl) {
+    const videoSource = detectVideoSource(video);
+    console.log('🎯 CustomVideoPlayer detected video source:', videoSource, video);
+    
+    if (videoSource === 'youtube-url') {
+      // Handle youtu.be URLs
+      const embedUrl = video.youtubeEmbedUrl || convertToEmbedUrl(video.youtubeVideoUrl || video.videoUrl);
+      if (embedUrl) {
+        setYoutubeVideoUrl(embedUrl);
+        initializeYouTubePlayer(embedUrl);
+      } else {
+        setError('Invalid YouTube URL format');
+        setIsLoading(false);
+      }
+    } else if (videoSource === 'youtube' && video.youtubeEmbedUrl) {
       setYoutubeVideoUrl(video.youtubeEmbedUrl);
       initializeYouTubePlayer(video.youtubeEmbedUrl);
-    } else if (video.videoSource === 'youtube' && video.youtubeEmbedUrl) {
-      setYoutubeVideoUrl(video.youtubeEmbedUrl);
-      initializeYouTubePlayer(video.youtubeEmbedUrl);
-    } else if (video.videoSource === 'firebase' && video.id) {
+    } else if (videoSource === 'firebase' && video.id) {
       const fetchFirebaseUrl = async () => {
         try {
           const token = localStorage.getItem('token');
@@ -399,18 +450,6 @@ const CustomVideoPlayer = ({ video, onClose, resumePosition = 0, onProgressUpdat
         <button className="close-btn" onClick={onClose}>
           ✕
         </button>
-        <div className="video-title">
-          <h3>{video.title}</h3>
-          <div className="video-meta">
-            <span>📅 Class Date: {new Date(video.date || video.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</span>
-            <span>⏱️ {video.duration}</span>
-            <span>👨‍🏫 {video.instructor}</span>
-            {video.videoSource === 'firebase' && <span>🔥 Firebase Storage</span>}
-            {video.videoSource === 'youtube' && <span>📺 YouTube Private</span>}
-            {video.videoSource === 'youtube-url' && <span>📺 YouTube Manual</span>}
-            {!video.videoSource && video.videoUrl?.includes('youtube.com') && <span>📺 YouTube</span>}
-          </div>
-        </div>
       </div>
 
       {/* Video Container */}

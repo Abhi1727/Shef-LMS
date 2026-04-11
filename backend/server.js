@@ -11,6 +11,21 @@ const videoProcessor = require('./middleware/videoProcessor');
 
 dotenv.config();
 
+// Handle unhandled promise rejections
+process.on('unhandledRejection', (reason, promise) => {
+  logger.error('Unhandled Rejection at:', { promise, reason: reason.message || reason });
+  // Don't exit the process, just log the error
+});
+
+// Handle uncaught exceptions
+process.on('uncaughtException', (error) => {
+  logger.error('Uncaught Exception:', { error: error.message, stack: error.stack });
+  // Exit gracefully in production, continue in development
+  if (process.env.NODE_ENV === 'production') {
+    process.exit(1);
+  }
+});
+
 const app = express();
 const isProduction = process.env.NODE_ENV === 'production';
 

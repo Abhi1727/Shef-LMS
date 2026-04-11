@@ -31,6 +31,39 @@ router.get('/', async (req, res) => {
           progress: 60,
           enrolled: 856,
           thumbnail: '🛡️'
+        },
+        {
+          _id: '3',
+          title: 'DevOps & AI',
+          description: 'Combine DevOps practices with AI technologies to build intelligent, automated deployment pipelines',
+          instructor: 'Michael Chen',
+          duration: '4 months',
+          modules: 4,
+          progress: 30,
+          enrolled: 445,
+          thumbnail: '🚀'
+        },
+        {
+          _id: '4',
+          title: 'DevOps & Cloud',
+          description: 'Master cloud infrastructure and DevOps practices for scalable, modern application deployment',
+          instructor: 'Sarah Johnson',
+          duration: '5 months',
+          modules: 5,
+          progress: 25,
+          enrolled: 623,
+          thumbnail: '☁️'
+        },
+        {
+          _id: '5',
+          title: 'One-to-One',
+          description: 'Personalized one-to-one learning with dedicated instructor guidance',
+          instructor: 'Various Instructors',
+          duration: 'Flexible',
+          modules: 0,
+          progress: 0,
+          enrolled: 0,
+          thumbnail: '👥'
         }
       ];
       return res.json(demoCourses);

@@ -315,23 +315,18 @@ const BatchDetailsPage = () => {
       }
 
       // Load classroom videos
-      const videosResponse = await fetch(`${apiUrl}/api/admin/classroom`, {
+      const batchIdForApi = foundBatch?.id || foundBatch?._id || batchId;
+      const videosResponse = await fetch(`${apiUrl}/api/admin/classroom?batchId=${batchIdForApi}`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       
       if (videosResponse.ok) {
-        const allVideos = await videosResponse.json();
-        
-        // Filter videos to show only those explicitly assigned to this batch (batchId match only).
-        // No course-based fallback - ensures admin view matches what students see.
-        const norm = (v) => (v != null && v !== '' ? String(v).trim() : '');
-        const batchIdNorm = norm(batchId) || norm(foundBatch?.id || foundBatch?._id);
-        const batchVideos = allVideos.filter(video => norm(video.batchId) === batchIdNorm);
+        const batchVideos = await videosResponse.json();
         
         console.log('🔍 BatchDetails Debug - Videos for batch:', {
           batchId,
           batchName: foundBatch?.name,
-          totalVideos: allVideos.length,
+          batchIdForApi,
           filteredVideos: batchVideos.length,
           sampleVideos: batchVideos.slice(0, 3).map(v => ({
             title: v.title,

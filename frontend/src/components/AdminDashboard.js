@@ -1,13 +1,16 @@
-import React, { useState, useEffect, useCallback, useMemo, memo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef, memo } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
+import { adminAnalyticsService, adminAnalyticsUtils } from '../services/adminAnalyticsService';
 import { COLLECTIONS } from '../services/firebaseService';
 import { ToastContainer, showToast } from './Toast';
 import fallbackData from '../data/fallbackData';
 import { YouTubeUtils } from '../utils/youtubeUtils';
 import StudentsActivity from './StudentsActivity';
 import OneToOneCourseSelection from './OneToOneCourseSelection';
+import './Dashboard.css';
 import './AdminDashboard.css';
+import './AdminAnalytics.css';
 
 const CACHE_DURATION = 15 * 60 * 1000; // 15 minutes
 
@@ -52,6 +55,80 @@ const StudentSearch = memo(({ searchEmail, setSearchEmail, clearSearch }) => {
   );
 });
 
+// Batch filter component with search and course filter buttons
+const BatchFilter = memo(({ batchSearch, setBatchSearch, batchCourseFilter, setBatchCourseFilter, filteredCount, totalCount }) => {
+  const handleSearchChange = useCallback((e) => {
+    setBatchSearch(e.target.value);
+  }, [setBatchSearch]);
+
+  const handleCourseFilterChange = useCallback((course) => {
+    setBatchCourseFilter(course);
+  }, [setBatchCourseFilter]);
+
+  const clearFilters = useCallback(() => {
+    setBatchSearch('');
+    setBatchCourseFilter('all');
+  }, [setBatchSearch, setBatchCourseFilter]);
+
+  const courseOptions = [
+    { value: 'all', label: 'All Courses', icon: '📚' },
+    { value: 'cyber security', label: 'Cyber Security', icon: '🔒' },
+    { value: 'data science', label: 'Data Science', icon: '📊' },
+    { value: 'devops & ai', label: 'DevOps & AI', icon: '🚀' },
+    { value: 'devops & cloud', label: 'DevOps & Cloud', icon: '☁️' },
+    { value: 'one-to-one', label: 'One-to-One', icon: '👤' }
+  ];
+
+  const hasActiveFilters = batchSearch.trim() || batchCourseFilter !== 'all';
+
+  return (
+    <div className="batch-filter-section">
+      <div className="batch-filter-header">
+        <h3>🔍 Filter Batches</h3>
+        <p className="batch-filter-subtitle">Search by batch name, student name, email, or filter by course type.</p>
+      </div>
+      
+      <div className="batch-filter-controls">
+        <div className="batch-search-area">
+          <input
+            type="search"
+            placeholder="Search batches, students, teachers..."
+            value={batchSearch}
+            onChange={handleSearchChange}
+            className="batch-search-input"
+          />
+        </div>
+        
+        <div className="batch-course-filters">
+          {courseOptions.map(option => (
+            <button
+              key={option.value}
+              onClick={() => handleCourseFilterChange(option.value)}
+              className={`batch-course-btn ${batchCourseFilter === option.value ? 'active' : ''}`}
+            >
+              <span className="btn-icon">{option.icon}</span>
+              <span className="btn-label">{option.label}</span>
+            </button>
+          ))}
+        </div>
+        
+        {hasActiveFilters && (
+          <button onClick={clearFilters} className="batch-clear-filters">
+            ✖️ Clear Filters
+          </button>
+        )}
+      </div>
+      
+      <div className="batch-filter-results">
+        Showing <span className="result-count">{filteredCount}</span> of <span className="total-count">{totalCount}</span> batches
+        {hasActiveFilters && (
+          <span className="filter-indicator"> (filters applied)</span>
+        )}
+      </div>
+    </div>
+  );
+});
+
 const AdminDashboard = ({ user, onLogout }) => {
   const navigate = useNavigate();
   const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
@@ -87,6 +164,12 @@ const AdminDashboard = ({ user, onLogout }) => {
   const [reportPeriod, setReportPeriod] = useState('7days');
   const [customDateRange, setCustomDateRange] = useState({ start: '', end: '' });
   const [reportData, setReportData] = useState(null);
+  
+  // Analytics states
+  const [analyticsData, setAnalyticsData] = useState(null);
+  const [analyticsLoading, setAnalyticsLoading] = useState(false);
+  const [analyticsError, setAnalyticsError] = useState(null);
+  const [analyticsPeriod, setAnalyticsPeriod] = useState('30days');
   
   // Loading states for individual data types
   const [dataLoading, setDataLoading] = useState({
@@ -147,6 +230,10 @@ const AdminDashboard = ({ user, onLogout }) => {
 
   // Search functionality (filters the students table)
   const [searchEmail, setSearchEmail] = useState('');
+  
+  // Batch filtering functionality
+  const [batchSearch, setBatchSearch] = useState('');
+  const [batchCourseFilter, setBatchCourseFilter] = useState('all');
 
   const clearSearch = useCallback(() => {
     setSearchEmail('');
@@ -299,7 +386,14 @@ const AdminDashboard = ({ user, onLogout }) => {
     if (modalType !== 'batch' || !formData.course) {
       return teachers;
     }
-    return (teachers || []).filter(teacher => teacher.domain === formData.course);
+    return (teachers || []).filter(teacher => {
+      // Check if teacher is assigned to the selected course
+      if (teacher.assignedCourses && teacher.assignedCourses.length > 0) {
+        return teacher.assignedCourses.includes(formData.course);
+      }
+      // Fallback to domain for backward compatibility
+      return teacher.domain === formData.course;
+    });
   }, [modalType, formData.course, teachers]);
 
   useEffect(() => {
@@ -336,6 +430,89 @@ const AdminDashboard = ({ user, onLogout }) => {
   const studentStartIndex = (currentStudentPage - 1) * studentsPerPage;
   const studentEndIndex = studentStartIndex + studentsPerPage;
   const paginatedStudents = filteredStudents.slice(studentStartIndex, studentEndIndex);
+
+  // Derived filtered data for batches section
+  const filteredBatches = useMemo(() => {
+    let filtered = batches || [];
+    
+    // Debug logging
+    console.log('Batch Filter Debug:', {
+      totalBatches: batches.length,
+      courseFilter: batchCourseFilter,
+      searchTerm: batchSearch,
+      sampleBatches: batches.slice(0, 3).map(b => ({ name: b.name, course: b.course }))
+    });
+    
+    // Apply course filter
+    if (batchCourseFilter !== 'all') {
+      filtered = filtered.filter(batch => {
+        const course = (batch.course || '').toLowerCase().trim();
+        const filterValue = batchCourseFilter.toLowerCase().trim();
+        
+        // Handle different course name variations
+        if (filterValue === 'cyber security') {
+          return course.includes('cyber') || course.includes('security');
+        } else if (filterValue === 'data science') {
+          return course.includes('data') || course.includes('science');
+        } else if (filterValue === 'devops & ai') {
+          return course.includes('devops') && (course.includes('ai') || course.toLowerCase().includes('ai'));
+        } else if (filterValue === 'devops & cloud') {
+          return course.includes('devops') && (course.includes('cloud') || course.includes('cloud'));
+        } else if (filterValue === 'one-to-one') {
+          return course.includes('one') || course.includes('1') || course.includes('single');
+        }
+        
+        return course === filterValue;
+      });
+      
+      console.log('After course filter:', filtered.length, 'batches remaining');
+    }
+    
+    // Apply search filter
+    if (batchSearch.trim()) {
+      const searchTerm = batchSearch.trim().toLowerCase();
+      filtered = filtered.filter(batch => {
+        const batchName = (batch.name || '').toLowerCase();
+        const course = (batch.course || '').toLowerCase();
+        const teacherName = (batch.teacherName || '').toLowerCase();
+        const status = (batch.status || '').toLowerCase();
+        
+        // Get student names and emails for this batch
+        const batchStudents = students.filter(student => 
+          student.role === 'student' && student.batchId === (batch.id || batch._id)
+        );
+        const studentNames = batchStudents.map(s => (s.name || '').toLowerCase()).join(' ');
+        const studentEmails = batchStudents.map(s => (s.email || '').toLowerCase()).join(' ');
+        
+        const matches = (
+          batchName.includes(searchTerm) ||
+          course.includes(searchTerm) ||
+          teacherName.includes(searchTerm) ||
+          status.includes(searchTerm) ||
+          studentNames.includes(searchTerm) ||
+          studentEmails.includes(searchTerm)
+        );
+        
+        if (!matches && batchName.includes(searchTerm.substring(0, 3))) {
+          console.log('Batch failed search:', {
+            batch: batch.name,
+            course: batch.course,
+            searchTerm,
+            batchName,
+            teacherName,
+            studentNames: studentNames.substring(0, 100)
+          });
+        }
+        
+        return matches;
+      });
+      
+      console.log('After search filter:', filtered.length, 'batches remaining');
+    }
+    
+    console.log('Final filtered count:', filtered.length);
+    return filtered;
+  }, [batches, batchCourseFilter, batchSearch, students]);
 
   // Optimized individual data loading functions
   const loadStudents = useCallback(async (forceRefresh = false) => {
@@ -1119,6 +1296,17 @@ const AdminDashboard = ({ user, onLogout }) => {
           // Load all batches for module editing
           loadBatches();
         }
+      } else if (type === 'teacher') {
+        // Ensure assignedCourses is properly set when editing a teacher
+        const teacherFormData = {
+          ...item,
+          // Ensure assignedCourses is an array, fallback to domain if needed
+          assignedCourses: item.assignedCourses && Array.isArray(item.assignedCourses) 
+            ? item.assignedCourses 
+            : (item.domain ? [item.domain] : [])
+        };
+        console.log('🔍 Editing teacher formData:', teacherFormData);
+        setFormData(teacherFormData);
       } else {
         setFormData(item);
         // Load batches if editing student with course
@@ -1160,7 +1348,7 @@ const AdminDashboard = ({ user, onLogout }) => {
   const getDefaultFormData = (type) => {
     const defaults = {
       student: { name: '', email: '', password: '', course: '', batchId: '', status: 'active', role: 'student', phone: '', address: '' },
-      teacher: { name: '', email: '', password: '', age: '', domain: '', experience: '', status: 'active', role: 'teacher', phone: '', address: '' },
+      teacher: { name: '', email: '', password: '', age: '', domain: '', assignedCourses: [], experience: '', status: 'active', role: 'teacher', phone: '', address: '' },
       course: { title: '', description: '', duration: '', modules: 0, status: 'active', instructor: '', price: '' },
       batch: { name: '', course: '', startDate: '', teacherId: '', status: 'active' },
       module: { name: '', courseId: '', batchId: '', duration: '', contentType: 'link', content: '', externalLink: '', fileUrl: '', fileName: '', fileSize: 0 },
@@ -1278,8 +1466,8 @@ const AdminDashboard = ({ user, onLogout }) => {
           return;
         }
       } else if (modalType === 'teacher') {
-        if (!formData.name || !formData.email || (!editingItem && !formData.password) || !formData.domain) {
-          showToast('Please fill in all required fields (Name, Email, Password, Domain)', 'warning');
+        if (!formData.name || !formData.email || (!editingItem && !formData.password) || !formData.assignedCourses || formData.assignedCourses.length === 0) {
+          showToast('Please fill in all required fields (Name, Email, Password, At least one course)', 'warning');
           return;
         }
 
@@ -1308,13 +1496,16 @@ const AdminDashboard = ({ user, onLogout }) => {
               email: formData.email,
               password: formData.password, // Send plain text, backend will hash
               age: formData.age || null,
-              domain: formData.domain,
+              assignedCourses: formData.assignedCourses,
               experience: formData.experience || '',
               phone: formData.phone || '',
               address: formData.address || '',
               status: formData.status || 'active',
               role: 'teacher'
             };
+
+            console.log('🔍 Teacher data being sent:', teacherData);
+            console.log('🔍 formData.assignedCourses:', formData.assignedCourses);
 
             const createResponse = await fetch(`${apiUrl}/api/admin/teachers`, {
               method: 'POST',
@@ -1326,9 +1517,19 @@ const AdminDashboard = ({ user, onLogout }) => {
             });
 
             if (createResponse.ok) {
+              const responseData = await createResponse.json();
+              console.log('✅ Frontend: Teacher creation response:', responseData);
+              
+              // Add new teacher to local state immediately
+              if (responseData.teacher) {
+                setTeachers(prevTeachers => [...prevTeachers, responseData.teacher]);
+                console.log('✅ Frontend: Added new teacher to local state immediately');
+              }
+              
               showToast('Teacher created successfully!', 'success');
               closeModal();
-              await loadTeachers(true); // Force refresh to bypass cache
+              // Still refresh to ensure consistency with backend
+              await loadTeachers(true);
             } else {
               const errorData = await createResponse.json();
               showToast('Error: ' + (errorData.message || 'Failed to create teacher'), 'error');
@@ -1345,12 +1546,15 @@ const AdminDashboard = ({ user, onLogout }) => {
             name: formData.name,
             email: formData.email,
             age: formData.age || null,
-            domain: formData.domain,
+            assignedCourses: formData.assignedCourses,
             experience: formData.experience || '',
             phone: formData.phone || '',
             address: formData.address || '',
             status: formData.status || 'active'
           };
+
+          console.log('🔍 Teacher update data being sent:', updateData);
+          console.log('🔍 formData.assignedCourses (update):', formData.assignedCourses);
 
           // Password cannot be updated during edit for security
           // User should use password reset feature
@@ -1367,9 +1571,40 @@ const AdminDashboard = ({ user, onLogout }) => {
           });
 
           if (updateResponse.ok) {
+            const responseData = await updateResponse.json();
+            console.log('✅ Frontend: Teacher update response:', responseData);
+            console.log('🔍 Frontend: Response structure analysis:', {
+              hasMessage: !!responseData.message,
+              hasTeacher: !!responseData.teacher,
+              teacherId: responseData.teacher?._id,
+              teacherAssignedCourses: responseData.teacher?.assignedCourses,
+              teacherKeys: responseData.teacher ? Object.keys(responseData.teacher) : 'no teacher object'
+            });
+            
+            // Update local state immediately with the returned teacher data
+            if (responseData.teacher) {
+              setTeachers(prevTeachers => 
+                prevTeachers.map(teacher => 
+                  teacher._id === editingItem.id 
+                    ? { ...teacher, ...responseData.teacher }
+                    : teacher
+                )
+              );
+              console.log('✅ Frontend: Updated local teacher state immediately');
+              console.log('🔍 Frontend: Updated teacher data:', {
+                id: responseData.teacher._id,
+                name: responseData.teacher.name,
+                assignedCourses: responseData.teacher.assignedCourses,
+                domain: responseData.teacher.domain
+              });
+            } else {
+              console.warn('⚠️ Frontend: No teacher object in response, falling back to cache refresh');
+            }
+            
             showToast('Teacher updated successfully!', 'success');
             closeModal();
-            await loadTeachers(true); // Force refresh to bypass cache
+            // Still refresh to ensure consistency with backend
+            await loadTeachers(true); 
           } else {
             const errorData = await updateResponse.json();
             showToast('Error: ' + (errorData.message || 'Failed to update teacher'), 'error');
@@ -2087,6 +2322,33 @@ const AdminDashboard = ({ user, onLogout }) => {
     }
   }, [selectedStudentDetails, reportPeriod, customDateRange]);
 
+  // Fetch comprehensive analytics data
+  const fetchAnalyticsData = useCallback(async () => {
+    try {
+      setAnalyticsLoading(true);
+      setAnalyticsError(null);
+      
+      const params = { period: analyticsPeriod };
+      if (analyticsPeriod === 'custom' && customDateRange.start && customDateRange.end) {
+        params.startDate = customDateRange.start;
+        params.endDate = customDateRange.end;
+      }
+      
+      const data = await adminAnalyticsService.getAnalytics(params);
+      setAnalyticsData(data);
+    } catch (error) {
+      console.error('Error fetching analytics:', error);
+      setAnalyticsError(error.message || 'Failed to fetch analytics');
+    } finally {
+      setAnalyticsLoading(false);
+    }
+  }, [analyticsPeriod, customDateRange]);
+
+  // Fetch analytics when period changes
+  useEffect(() => {
+    fetchAnalyticsData();
+  }, [fetchAnalyticsData]);
+
   const handleDownloadReport = useCallback(() => {
     if (!reportData) return;
 
@@ -2509,7 +2771,19 @@ const AdminDashboard = ({ user, onLogout }) => {
                         <td>{teacher.name}</td>
                         <td>{teacher.email}</td>
                         <td>{teacher.age || 'N/A'}</td>
-                        <td>{teacher.domain || 'N/A'}</td>
+                        <td>
+                        {teacher.assignedCourses && teacher.assignedCourses.length > 0 ? (
+                          <div className="course-badges">
+                            {teacher.assignedCourses.map((course, index) => (
+                              <span key={index} className="course-badge">
+                                {course}
+                              </span>
+                            ))}
+                          </div>
+                        ) : (
+                          <span>{teacher.domain || 'N/A'}</span>
+                        )}
+                      </td>
                         <td>{teacher.experience || 'N/A'}</td>
                         <td>{teacher.phone || 'N/A'}</td>
                         <td>
@@ -2540,6 +2814,16 @@ const AdminDashboard = ({ user, onLogout }) => {
                 </button>
               </div>
 
+              {/* Batch Filter Component */}
+              <BatchFilter
+                batchSearch={batchSearch}
+                setBatchSearch={setBatchSearch}
+                batchCourseFilter={batchCourseFilter}
+                setBatchCourseFilter={setBatchCourseFilter}
+                filteredCount={filteredBatches.length}
+                totalCount={batches.length}
+              />
+
               <div className="data-table-container">
                 <table className="data-table">
                   <thead>
@@ -2554,7 +2838,7 @@ const AdminDashboard = ({ user, onLogout }) => {
                     </tr>
                   </thead>
                   <tbody>
-                    {(batches || []).map(batch => {
+                    {filteredBatches.map(batch => {
                       // Calculate actual student count based on batchId
                       const actualStudentCount = (students || []).filter(student => 
                         student.role === 'student' && student.batchId === (batch.id || batch._id)
@@ -2589,7 +2873,13 @@ const AdminDashboard = ({ user, onLogout }) => {
                     })}
                   </tbody>
                 </table>
-                {batches.length === 0 && <p className="no-data">No batches found. Create your first batch!</p>}
+                {filteredBatches.length === 0 && (
+                  <p className="no-data">
+                    {batchSearch.trim() || batchCourseFilter !== 'all' 
+                      ? 'No batches found matching your filters. Try adjusting your search or filters.' 
+                      : 'No batches found. Create your first batch!'}
+                  </p>
+                )}
               </div>
             </div>
           )}
@@ -3544,6 +3834,9 @@ const AdminDashboard = ({ user, onLogout }) => {
                     <option value="">Select Course *</option>
                     <option value="Data Science & AI">Data Science & AI</option>
                     <option value="Cyber Security & Ethical Hacking">Cyber Security & Ethical Hacking</option>
+                    <option value="DevOps & AI">DevOps & AI</option>
+                    <option value="DevOps & Cloud">DevOps & Cloud</option>
+                    <option value="One-to-One">One-to-One</option>
                   </select>
                   <select
                     value={formData.batchId || ''}
@@ -3641,15 +3934,39 @@ const AdminDashboard = ({ user, onLogout }) => {
                     min="18"
                     max="80"
                   />
-                  <select
-                    value={formData.domain || ''}
-                    onChange={(e) => handleInputChange('domain', e.target.value)}
-                    required
-                  >
-                    <option value="">Select Domain *</option>
-                    <option value="Data Science & AI">Data Science & AI</option>
-                    <option value="Cyber Security & Ethical Hacking">Cyber Security & Ethical Hacking</option>
-                  </select>
+                  <div className="form-group">
+                    <label>Course Assignments *</label>
+                    <div className="course-checkboxes">
+                      {[
+                        { value: 'Data Science & AI', label: 'Data Science & AI' },
+                        { value: 'Cyber Security & Ethical Hacking', label: 'Cyber Security & Ethical Hacking' },
+                        { value: 'DevOps & AI', label: 'DevOps & AI' },
+                        { value: 'DevOps & Cloud', label: 'DevOps & Cloud' },
+                        { value: 'One-to-One', label: 'One-to-One' }
+                      ].map(course => (
+                        <label key={course.value} className="course-checkbox-label">
+                          <input
+                            type="checkbox"
+                            name="assignedCourses"
+                            value={course.value}
+                            checked={formData.assignedCourses?.includes(course.value) || false}
+                            onChange={(e) => {
+                              const courses = formData.assignedCourses || [];
+                              if (e.target.checked) {
+                                handleInputChange('assignedCourses', [...courses, course.value]);
+                              } else {
+                                handleInputChange('assignedCourses', courses.filter(c => c !== course.value));
+                              }
+                            }}
+                          />
+                          <span className="checkbox-text">{course.label}</span>
+                        </label>
+                      ))}
+                    </div>
+                    {formData.assignedCourses?.length === 0 && (
+                      <small className="error-text">At least one course must be selected</small>
+                    )}
+                  </div>
                   <input
                     type="text"
                     placeholder="Experience (e.g., 5 years, 3+ years in teaching)"
@@ -3756,6 +4073,9 @@ const AdminDashboard = ({ user, onLogout }) => {
                     <option value="">Select Course *</option>
                     <option value="Data Science & AI">Data Science & AI</option>
                     <option value="Cyber Security & Ethical Hacking">Cyber Security & Ethical Hacking</option>
+                    <option value="DevOps & AI">DevOps & AI</option>
+                    <option value="DevOps & Cloud">DevOps & Cloud</option>
+                    <option value="One-to-One">One-to-One</option>
                   </select>
                   <input
                     type="date"
@@ -3814,6 +4134,9 @@ const AdminDashboard = ({ user, onLogout }) => {
                     <option value="">Select Course *</option>
                     <option value="Data Science & AI">Data Science & AI</option>
                     <option value="Cyber Security & Ethical Hacking">Cyber Security & Ethical Hacking</option>
+                    <option value="DevOps & AI">DevOps & AI</option>
+                    <option value="DevOps & Cloud">DevOps & Cloud</option>
+                    <option value="One-to-One">One-to-One</option>
                   </select>
                   
                   <select
@@ -4217,6 +4540,9 @@ const AdminDashboard = ({ user, onLogout }) => {
                     <option value="">Select Domain *</option>
                     <option value="Data Science & AI">Data Science & AI</option>
                     <option value="Cyber Security & Ethical Hacking">Cyber Security & Ethical Hacking</option>
+                    <option value="DevOps & AI">DevOps & AI</option>
+                    <option value="DevOps & Cloud">DevOps & Cloud</option>
+                    <option value="One-to-One">One-to-One</option>
                   </select>
                   <input
                     type="url"
@@ -4281,6 +4607,9 @@ const AdminDashboard = ({ user, onLogout }) => {
                     <option value="">Select Course *</option>
                     <option value="Data Science & AI">Data Science & AI</option>
                     <option value="Cyber Security & Ethical Hacking">Cyber Security & Ethical Hacking</option>
+                    <option value="DevOps & AI">DevOps & AI</option>
+                    <option value="DevOps & Cloud">DevOps & Cloud</option>
+                    <option value="One-to-One">One-to-One</option>
                   </select>
                   <small style={{color: '#888', marginTop: '-10px', display: 'block'}}>
                     Select the course this video is assigned to
@@ -4361,6 +4690,9 @@ const AdminDashboard = ({ user, onLogout }) => {
                     <option value="">Select Course *</option>
                     <option value="Data Science & AI">Data Science & AI</option>
                     <option value="Cyber Security & Ethical Hacking">Cyber Security & Ethical Hacking</option>
+                    <option value="DevOps & AI">DevOps & AI</option>
+                    <option value="DevOps & Cloud">DevOps & Cloud</option>
+                    <option value="One-to-One">One-to-One</option>
                   </select>
                   <input
                     type="date"
@@ -4878,6 +5210,7 @@ const AdminDashboard = ({ user, onLogout }) => {
                                 <option value="">Select Course</option>
                                 <option value="Data Science & AI">Data Science & AI</option>
                                 <option value="Cyber Security & Ethical Hacking">Cyber Security & Ethical Hacking</option>
+                                <option value="One-to-One">One-to-One</option>
                               </select>
                             </div>
                           </div>
@@ -5039,18 +5372,18 @@ const AdminDashboard = ({ user, onLogout }) => {
                 </div>
               )}
 
-              {/* Reports Tab */}
+              {/* Reports Tab - Enhanced Analytics */}
               {activeProfileTab === 'reports' && (
-                <div className="reports-tab-content">
+                <div className="reports-tab-content enhanced-analytics">
                   <div className="reports-header">
-                    <h3>📈 Student Reports</h3>
-                    <div className="report-actions">
-                      <div className="date-range-selector">
-                        <label>Report Period</label>
+                    <h3>📊 Platform Analytics</h3>
+                    <div className="analytics-controls">
+                      <div className="analytics-period-selector">
+                        <label>Analytics Period</label>
                         <select
                           className="period-select"
-                          value={reportPeriod}
-                          onChange={(e) => setReportPeriod(e.target.value)}
+                          value={analyticsPeriod}
+                          onChange={(e) => setAnalyticsPeriod(e.target.value)}
                         >
                           <option value="7days">Last 7 Days</option>
                           <option value="30days">Last 30 Days</option>
@@ -5058,7 +5391,7 @@ const AdminDashboard = ({ user, onLogout }) => {
                           <option value="custom">Custom Range</option>
                         </select>
                       </div>
-                      {reportPeriod === 'custom' && (
+                      {analyticsPeriod === 'custom' && (
                         <div className="custom-date-range">
                           <input
                             type="date"
@@ -5075,44 +5408,257 @@ const AdminDashboard = ({ user, onLogout }) => {
                           />
                         </div>
                       )}
-                      <button className="btn-generate-report" onClick={handleGenerateReport}>
-                        📊 Generate Report
+                      <button className="btn-refresh-analytics" onClick={fetchAnalyticsData} disabled={analyticsLoading}>
+                        {analyticsLoading ? '🔄 Loading...' : '🔄 Refresh'}
                       </button>
                     </div>
                   </div>
 
-                  {reportData ? (
-                    <div className="report-content">
-                      <div className="report-summary">
-                        <div className="summary-cards">
-                          <div className="summary-card">
-                            <h4>Total Activities</h4>
-                            <p className="summary-value">{reportData.totalActivities}</p>
+                  {analyticsLoading ? (
+                    <div className="analytics-loading">
+                      <div className="spinner"></div>
+                      <p>Loading comprehensive analytics...</p>
+                    </div>
+                  ) : analyticsError ? (
+                    <div className="analytics-error">
+                      <h4>❌ Error Loading Analytics</h4>
+                      <p>{analyticsError}</p>
+                      <button onClick={fetchAnalyticsData} className="btn-retry">Try Again</button>
+                    </div>
+                  ) : analyticsData ? (
+                    <div className="analytics-content">
+                      {/* Overview Cards */}
+                      <div className="analytics-overview">
+                        <div className="overview-cards">
+                          <div className="overview-card students">
+                            <div className="card-icon">👥</div>
+                            <div className="card-content">
+                              <h4>Total Students</h4>
+                              <div className="card-value">{adminAnalyticsUtils.formatLargeNumber(analyticsData.overview.totalStudents)}</div>
+                              <div className="card-subtitle">
+                                {analyticsData.overview.activeStudents} active ({analyticsData.overview.studentEngagementRate}%)
+                              </div>
+                              <div className="progress-bar">
+                                <div 
+                                  className="progress-fill" 
+                                  style={{ width: `${analyticsData.overview.studentEngagementRate}%` }}
+                                />
+                              </div>
+                            </div>
                           </div>
-                          <div className="summary-card">
-                            <h4>Video Views</h4>
-                            <p className="summary-value">{reportData.summary.videoViews}</p>
+                          
+                          <div className="overview-card teachers">
+                            <div className="card-icon">👨‍🏫</div>
+                            <div className="card-content">
+                              <h4>Total Teachers</h4>
+                              <div className="card-value">{adminAnalyticsUtils.formatLargeNumber(analyticsData.overview.totalTeachers)}</div>
+                              <div className="card-subtitle">
+                                {analyticsData.overview.activeTeachers} active ({analyticsData.overview.teacherEngagementRate}%)
+                              </div>
+                              <div className="progress-bar">
+                                <div 
+                                  className="progress-fill" 
+                                  style={{ width: `${analyticsData.overview.teacherEngagementRate}%` }}
+                                />
+                              </div>
+                            </div>
                           </div>
-                          <div className="summary-card">
-                            <h4>Logins</h4>
-                            <p className="summary-value">{reportData.summary.logins}</p>
+                          
+                          <div className="overview-card batches">
+                            <div className="card-icon">📚</div>
+                            <div className="card-content">
+                              <h4>Total Batches</h4>
+                              <div className="card-value">{adminAnalyticsUtils.formatLargeNumber(analyticsData.overview.totalBatches)}</div>
+                              <div className="card-subtitle">Active learning groups</div>
+                            </div>
                           </div>
-                          <div className="summary-card">
-                            <h4>Assessments</h4>
-                            <p className="summary-value">{reportData.summary.assessments}</p>
+                          
+                          <div className="overview-card activities">
+                            <div className="card-icon">📈</div>
+                            <div className="card-content">
+                              <h4>Total Activities</h4>
+                              <div className="card-value">{adminAnalyticsUtils.formatLargeNumber(analyticsData.overview.totalActivities)}</div>
+                              <div className="card-subtitle">In selected period</div>
+                            </div>
                           </div>
                         </div>
                       </div>
-                      <div className="report-actions-bottom">
-                        <button className="btn-download-report" onClick={handleDownloadReport}>
-                          📥 Download Full Report
+
+                      {/* Activity Breakdown */}
+                      <div className="analytics-section">
+                        <h4>📊 Activity Breakdown</h4>
+                        <div className="activity-breakdown-grid">
+                          {analyticsData.activityBreakdown.map((activity, index) => {
+                            const displayInfo = adminAnalyticsUtils.getActivityDisplayInfo(activity.action);
+                            return (
+                              <div key={index} className="activity-breakdown-card">
+                                <div className="activity-icon" style={{ color: displayInfo.color }}>
+                                  {displayInfo.icon}
+                                </div>
+                                <div className="activity-content">
+                                  <h5>{displayInfo.label}</h5>
+                                  <div className="activity-count">{adminAnalyticsUtils.formatLargeNumber(activity.count)}</div>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      {/* Course Analytics */}
+                      <div className="analytics-section">
+                        <h4>📚 Course Performance</h4>
+                        <div className="course-analytics-table">
+                          <table>
+                            <thead>
+                              <tr>
+                                <th>Course Name</th>
+                                <th>Total Views</th>
+                                <th>Unique Students</th>
+                                <th>Avg per Student</th>
+                                <th>Performance</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {analyticsData.courseAnalytics.map((course, index) => {
+                                const avgPerStudent = course.uniqueStudents > 0 ? Math.round(course.totalViews / course.uniqueStudents) : 0;
+                                const engagement = adminAnalyticsUtils.getEngagementLevel(avgPerStudent);
+                                return (
+                                  <tr key={index}>
+                                    <td>{course.courseName}</td>
+                                    <td>{adminAnalyticsUtils.formatLargeNumber(course.totalViews)}</td>
+                                    <td>{course.uniqueStudents}</td>
+                                    <td>{avgPerStudent}</td>
+                                    <td>
+                                      <span className="engagement-badge" style={{ backgroundColor: engagement.color }}>
+                                        {engagement.icon} {engagement.level}
+                                      </span>
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+
+                      {/* Top Students */}
+                      <div className="analytics-section">
+                        <h4>🏆 Top Performing Students</h4>
+                        <div className="top-students-grid">
+                          {analyticsData.studentEngagement.slice(0, 8).map((student, index) => (
+                            <div key={student.studentId} className="student-performance-card">
+                              <div className="student-rank">#{index + 1}</div>
+                              <div className="student-info">
+                                <h5>{student.name}</h5>
+                                <p>{student.email}</p>
+                              </div>
+                              <div className="student-metrics">
+                                <div className="metric">
+                                  <span className="metric-label">Activities</span>
+                                  <span className="metric-value">{student.totalActivities}</span>
+                                </div>
+                                <div className="metric">
+                                  <span className="metric-label">Videos</span>
+                                  <span className="metric-value">{student.videoViews}</span>
+                                </div>
+                                <div className="metric">
+                                  <span className="metric-label">Daily Avg</span>
+                                  <span className="metric-value">{student.avgDailyActivities}</span>
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Batch Performance */}
+                      <div className="analytics-section">
+                        <h4>📈 Batch Performance</h4>
+                        <div className="batch-performance-grid">
+                          {analyticsData.batchPerformance.map((batch, index) => {
+                            const engagement = adminAnalyticsUtils.getEngagementLevel(batch.completionRate);
+                            return (
+                              <div key={index} className="batch-performance-card">
+                                <div className="batch-header">
+                                  <h5>{batch.batchName}</h5>
+                                  <span className="course-tag">{batch.course}</span>
+                                </div>
+                                <div className="batch-stats">
+                                  <div className="stat">
+                                    <span className="stat-label">Students</span>
+                                    <span className="stat-value">{batch.studentCount}</span>
+                                  </div>
+                                  <div className="stat">
+                                    <span className="stat-label">Completion</span>
+                                    <span className="stat-value">{batch.completionRate}%</span>
+                                  </div>
+                                </div>
+                                <div className="progress-bar">
+                                  <div 
+                                    className="progress-fill" 
+                                    style={{ 
+                                      width: `${batch.completionRate}%`,
+                                      backgroundColor: engagement.color 
+                                    }}
+                                  />
+                                </div>
+                                <div className="engagement-indicator">
+                                  {engagement.icon} {engagement.level} Engagement
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      {/* Analytics Actions */}
+                      <div className="analytics-actions">
+                        <button className="btn-download-analytics" onClick={() => {
+                          const csvContent = [
+                            ['Platform Analytics Report'],
+                            ['Period:', analyticsPeriod],
+                            ['Generated:', new Date().toLocaleString()],
+                            [],
+                            ['Overview'],
+                            ['Total Students:', analyticsData.overview.totalStudents],
+                            ['Active Students:', analyticsData.overview.activeStudents],
+                            ['Student Engagement Rate:', `${analyticsData.overview.studentEngagementRate}%`],
+                            ['Total Teachers:', analyticsData.overview.totalTeachers],
+                            ['Active Teachers:', analyticsData.overview.activeTeachers],
+                            ['Teacher Engagement Rate:', `${analyticsData.overview.teacherEngagementRate}%`],
+                            ['Total Batches:', analyticsData.overview.totalBatches],
+                            ['Total Activities:', analyticsData.overview.totalActivities],
+                            [],
+                            ['Activity Breakdown'],
+                            ...analyticsData.activityBreakdown.map(item => [item.action, item.count]),
+                            [],
+                            ['Course Performance'],
+                            ...analyticsData.courseAnalytics.map(course => [
+                              course.courseName, course.totalViews, course.uniqueStudents
+                            ])
+                          ].map(row => row.join(',')).join('\n');
+
+                          const blob = new Blob([csvContent], { type: 'text/csv' });
+                          const url = window.URL.createObjectURL(blob);
+                          const a = document.createElement('a');
+                          a.href = url;
+                          a.download = `platform-analytics-${new Date().toISOString().split('T')[0]}.csv`;
+                          a.click();
+                          window.URL.revokeObjectURL(url);
+                          showToast('Analytics report downloaded successfully!', 'success');
+                        }}>
+                          📥 Download Full Analytics
+                        </button>
+                        <button className="btn-refresh-analytics" onClick={fetchAnalyticsData}>
+                          🔄 Refresh Data
                         </button>
                       </div>
                     </div>
                   ) : (
-                    <div className="no-report">
-                      <p>📊 No report data available</p>
-                      <small>Generate a report to see student activity summary</small>
+                    <div className="no-analytics">
+                      <p>📊 No analytics data available</p>
+                      <small>Generate analytics to see platform insights</small>
                     </div>
                   )}
                 </div>

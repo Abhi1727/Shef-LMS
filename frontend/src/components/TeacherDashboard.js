@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
+import { useNavigate } from 'react-router-dom';
 import { ToastContainer, showToast } from './Toast';
 import axios from 'axios';
 import './Dashboard.css';
 
 const TeacherDashboard = ({ user, onLogout }) => {
+  const navigate = useNavigate();
   const [activeSection, setActiveSection] = useState('overview');
   const [courses, setCourses] = useState([]);
   const [students, setStudents] = useState([]);
@@ -24,17 +26,71 @@ const TeacherDashboard = ({ user, onLogout }) => {
   const [batches, setBatches] = useState([]);
   const [studentName, setStudentName] = useState('');
   const [batchName, setBatchName] = useState('');
+  const [batchSearch, setBatchSearch] = useState('');
+  const [courseFilter, setCourseFilter] = useState('all');
+  const [statusFilter, setStatusFilter] = useState('all');
 
   useEffect(() => {
     loadTeacherData();
-  }, []);
+  }, [user]);
+
+  // Create floating particles and geometric shapes
+  useEffect(() => {
+    const createParticles = () => {
+      const container = document.getElementById('particles-container');
+      if (!container) return;
+      
+      // Clear existing particles
+      container.innerHTML = '';
+      
+      // Create particles
+      for (let i = 0; i < 50; i++) {
+        const particle = document.createElement('div');
+        particle.className = 'particle';
+        particle.style.left = Math.random() * 100 + '%';
+        particle.style.animationDelay = Math.random() * 20 + 's';
+        particle.style.animationDuration = (15 + Math.random() * 10) + 's';
+        container.appendChild(particle);
+      }
+    };
+
+    const createGeometricShapes = () => {
+      const container = document.getElementById('geometric-container');
+      if (!container) return;
+      
+      // Clear existing shapes
+      container.innerHTML = '';
+      
+      // Create geometric shapes
+      for (let i = 0; i < 8; i++) {
+        const shape = document.createElement('div');
+        shape.className = 'geometric-shape';
+        shape.style.left = Math.random() * 100 + '%';
+        shape.style.animationDelay = Math.random() * 15 + 's';
+        shape.style.animationDuration = (20 + Math.random() * 15) + 's';
+        container.appendChild(shape);
+      }
+    };
+
+    // Create animations when component mounts
+    createParticles();
+    createGeometricShapes();
+
+    // Cleanup
+    return () => {
+      const particlesContainer = document.getElementById('particles-container');
+      const geometricContainer = document.getElementById('geometric-container');
+      if (particlesContainer) particlesContainer.innerHTML = '';
+      if (geometricContainer) geometricContainer.innerHTML = '';
+    };
+  }, [activeSection]); // Recreate when section changes
 
   // Handle batch deletion
   const handleDeleteBatch = async (batchId) => {
     if (!window.confirm('Are you sure you want to delete this batch?')) return;
     try {
       const token = localStorage.getItem('token');
-      const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
+      const apiUrl = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' ? 'http://localhost:5000' : '';
       const response = await fetch(`${apiUrl}/api/batches/${batchId}`, {
         method: 'DELETE',
         headers: { 'Authorization': `Bearer ${token}` }
@@ -50,24 +106,142 @@ const TeacherDashboard = ({ user, onLogout }) => {
     }
   };
 
+  // Filter batches based on search and filters
+  const filteredBatches = React.useMemo(() => {
+    let filtered = batches;
+    
+    // Apply search filter
+    if (batchSearch.trim()) {
+      filtered = filtered.filter(batch => 
+        batch.name?.toLowerCase().includes(batchSearch.toLowerCase()) ||
+        batch.course?.toLowerCase().includes(batchSearch.toLowerCase())
+      );
+    }
+    
+    // Apply course filter
+    if (courseFilter !== 'all') {
+      filtered = filtered.filter(batch => {
+        const course = batch.course?.toLowerCase() || '';
+        if (courseFilter === 'data-science') {
+          return course.includes('data science') || course.includes('ds&ai');
+        } else if (courseFilter === 'cyber-security') {
+          return course.includes('cyber') || course.includes('security') || course.includes('cs&eh');
+        } else if (courseFilter === 'devops-ai') {
+          return course.includes('devops') && course.includes('ai');
+        } else if (courseFilter === 'devops-cloud') {
+          return course.includes('devops') && course.includes('cloud');
+        } else if (courseFilter === 'one-to-one') {
+          return course.includes('one-to-one');
+        }
+        return true;
+      });
+    }
+    
+    // Apply status filter
+    if (statusFilter !== 'all') {
+      filtered = filtered.filter(batch => 
+        (batch.status || 'active').toLowerCase() === statusFilter.toLowerCase()
+      );
+    }
+    
+    return filtered;
+  }, [batches, batchSearch, courseFilter, statusFilter]);
+
+  const clearFilters = () => {
+    setBatchSearch('');
+    setCourseFilter('all');
+    setStatusFilter('all');
+  };
+
+  const getCourseIcon = (course) => {
+    const courseLower = (course || '').toLowerCase();
+    if (courseLower.includes('data science') || courseLower.includes('ds&ai')) return '📊';
+    if (courseLower.includes('cyber') || courseLower.includes('security') || courseLower.includes('cs&eh')) return '🔒';
+    if (courseLower.includes('devops') && courseLower.includes('ai')) return '🚀';
+    if (courseLower.includes('devops') && courseLower.includes('cloud')) return '☁️';
+    if (courseLower.includes('one-to-one')) return '👥';
+    return '📚';
+  };
+
+  const getStatusColor = (status) => {
+    switch ((status || 'active').toLowerCase()) {
+      case 'active': return '#10b981';
+      case 'completed': return '#6b7280';
+      case 'upcoming': return '#f59e0b';
+      default: return '#64748b';
+    }
+  };
+
+  const handleViewBatchDetail = (batchId) => {
+    navigate(`/teacher/batch/${batchId}`);
+  };
+
   const loadTeacherData = async () => {
     setLoading(true);
     try {
       const token = localStorage.getItem('token');
-      const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
-
+      const apiUrl = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' ? 'http://localhost:5000' : '';
+      
       // Load teacher dashboard data
       const coursesRes = await fetch(`${apiUrl}/api/teacher/courses`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
 
       const coursesData = coursesRes.ok ? await coursesRes.json() : [];
-
       setCourses(coursesData.courses || []);
-      setStudents([]); // Students will be loaded from dashboard data
+
+      // Load teacher's batches using new teacher-specific endpoint
+      const batchesRes = await fetch(`${apiUrl}/api/teacher/batches`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+
+      if (batchesRes.ok) {
+        const batchesData = await batchesRes.json();
+        setBatches(batchesData.batches || batchesData || []);
+
+        // Calculate total students from batches (now includes both regular and one-to-one)
+        const batchesArray = batchesData.batches || batchesData || [];
+        const totalStudents = batchesArray.reduce((total, batch) => {
+          const studentCount = batch.studentCount || batch.students?.length || 0;
+          console.log(`Batch ${batch.name}: ${studentCount} students (type: ${batch.batchType || 'unknown'})`);
+          return total + studentCount;
+        }, 0);
+        console.log(`Total students calculated: ${totalStudents}`);
+        setStudents([{ id: 'total', name: 'Total Students', count: totalStudents }]);
+      } else {
+        // Fallback to admin endpoint if teacher endpoint fails
+        console.log('Teacher endpoint failed, using admin endpoint fallback...');
+        const adminBatchesRes = await fetch(`${apiUrl}/api/batches`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+
+        if (adminBatchesRes.ok) {
+          const adminBatchesData = await adminBatchesRes.json();
+
+          // Filter batches that belong to this teacher
+          const teacherBatches = adminBatchesData.batches?.filter(batch =>
+            batch.teacherId === user?.id || batch.teacherName === user?.name
+          ) || [];
+
+          setBatches(teacherBatches);
+
+          const totalStudents = teacherBatches.reduce((total, batch) => {
+            const studentCount = batch.students?.length || batch.studentCount || 0;
+            console.log(`Fallback - Batch ${batch.name}: ${studentCount} students`);
+            return total + studentCount;
+          }, 0);
+          console.log(`Fallback - Total students calculated: ${totalStudents}`);
+          setStudents([{ id: 'total', name: 'Total Students', count: totalStudents }]);
+        } else {
+          setBatches([]);
+          setStudents([]);
+        }
+      }
     } catch (error) {
       console.error('Error loading teacher data:', error);
       showToast('Error loading dashboard data', 'error');
+      setBatches([]);
+      setStudents([]);
     } finally {
       setLoading(false);
     }
@@ -87,7 +261,7 @@ const TeacherDashboard = ({ user, onLogout }) => {
   const loadLectures = async (courseId) => {
     try {
       const token = localStorage.getItem('token');
-      const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
+      const apiUrl = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' ? 'http://localhost:5000' : '';
       
       const response = await fetch(`${apiUrl}/api/teacher/classroom/${courseId}`, {
         headers: { 'Authorization': `Bearer ${token}` }
@@ -125,7 +299,7 @@ const TeacherDashboard = ({ user, onLogout }) => {
 
     try {
       const token = localStorage.getItem('token');
-      const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
+      const apiUrl = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' ? 'http://localhost:5000' : '';
       
       // Validate YouTube URL
       if (!uploadForm.youtubeUrl) {
@@ -199,7 +373,7 @@ const TeacherDashboard = ({ user, onLogout }) => {
 
     try {
       const token = localStorage.getItem('token');
-      const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
+      const apiUrl = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' ? 'http://localhost:5000' : '';
       
       const response = await fetch(`${apiUrl}/api/teacher/classroom/${lectureId}`, {
         method: 'DELETE',
@@ -231,7 +405,7 @@ const TeacherDashboard = ({ user, onLogout }) => {
 
     try {
       const token = localStorage.getItem('token');
-      const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
+      const apiUrl = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' ? 'http://localhost:5000' : '';
 
       const response = await axios.post(`${apiUrl}/api/teacher/students`, {
         name: studentName,
@@ -265,23 +439,28 @@ const TeacherDashboard = ({ user, onLogout }) => {
 
     try {
       const token = localStorage.getItem('token');
-      const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
+      const apiUrl = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' ? 'http://localhost:5000' : '';
 
-      const response = await axios.post(`${apiUrl}/api/teacher/batches`, {
+      // Get course information for the batch
+      const selectedCourseObj = courses.find(c => c.id === selectedCourse);
+      
+      const response = await axios.post(`${apiUrl}/api/batches`, {
         name: batchName,
-        courseId: selectedCourse
+        course: selectedCourseObj?.title || 'General Course',
+        courseId: selectedCourse,
+        teacherId: user?.id,
+        teacherName: user?.name,
+        startDate: new Date(),
+        status: 'active'
       }, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
 
-      if (response.status === 201) {
+      if (response.status === 200 || response.status === 201) {
         showToast('Batch created successfully!', 'success');
         setBatchName('');
-        // Reload batches for the selected course
-        if (selectedCourse) {
-          const batchResponse = await axios.get(`/api/batches/${selectedCourse}`);
-          setBatches(batchResponse.data);
-        }
+        // Reload all batches
+        await loadTeacherData();
       } else {
         showToast('Failed to create batch. Please try again.', 'error');
       }
@@ -292,16 +471,8 @@ const TeacherDashboard = ({ user, onLogout }) => {
   };
 
   useEffect(() => {
-    // Fetch batches when a course is selected
-    const fetchBatches = async () => {
-      if (selectedCourse) {
-        const response = await axios.get(`/api/batches/${selectedCourse}`);
-        setBatches(response.data);
-      } else {
-        setBatches([]);
-      }
-    };
-    fetchBatches();
+    // This useEffect is not needed since we load batches in loadTeacherData
+    // Keeping it empty to avoid any side effects
   }, [selectedCourse]);
 
   if (loading) {
@@ -340,7 +511,7 @@ const TeacherDashboard = ({ user, onLogout }) => {
           className={`nav-item ${activeSection === 'courses' ? 'active' : ''}`}
           onClick={() => setActiveSection('courses')}
         >
-          � My Batches
+          📚 My Batches
         </button>
         {/* Commented out - My Students option disabled */}
         {/* <button
@@ -349,75 +520,91 @@ const TeacherDashboard = ({ user, onLogout }) => {
         >
           👥 My Students
         </button> */}
-        <button
+        {/* Commented out - My Lectures option disabled */}
+        {/* <button
           className={`nav-item ${activeSection === 'lectures' ? 'active' : ''}`}
           onClick={() => setActiveSection('lectures')}
         >
           🎥 My Lectures
-        </button>
-        <button
+        </button> */}
+        {/* Commented out - Schedule option disabled */}
+        {/* <button
           className={`nav-item ${activeSection === 'schedule' ? 'active' : ''}`}
           onClick={() => setActiveSection('schedule')}
         >
           📅 Schedule
-        </button>
+        </button> */}
       </nav>
 
       {/* Main Content */}
       <main className="dashboard-main">
         {activeSection === 'overview' && (
+// ... (rest of the code remains the same)
           <div className="dashboard-section">
-            <h2>Dashboard Overview</h2>
-            <div className="stats-grid">
-              <div className="stat-card">
-                <div className="stat-icon">📚</div>
-                <div className="stat-info">
-                  <h3>{courses.length}</h3>
-                  <p>Courses Assigned</p>
-                </div>
-              </div>
-              <div className="stat-card">
-                <div className="stat-icon">👥</div>
-                <div className="stat-info">
-                  <h3>{students.length}</h3>
-                  <p>Total Students</p>
-                </div>
-              </div>
-              <div className="stat-card">
-                <div className="stat-icon">📊</div>
-                <div className="stat-info">
-                  <h3>{user?.domain || 'N/A'}</h3>
-                  <p>Specialization</p>
-                </div>
-              </div>
-            </div>
+            {/* Hero Overview Section */}
+            <div className="hero-overview">
+              {/* Animated Gradient Background */}
+              <div className="animated-gradient-background">
+                <div className="gradient-overlay"></div>
+                <div className="floating-particles" id="particles-container"></div>
+                <div className="geometric-patterns" id="geometric-container"></div>
+                
+                {/* Glassmorphic Welcome Card */}
+                <div className="welcome-glass-card">
+                  <div className="welcome-content">
+                    <div className="greeting-section">
+                      <h1 className="welcome-title-modern">
+                        Welcome back, <span className="user-name">{user?.name}</span>! 🤗
+                      </h1>
+                      <div className="typing-container">
+                        <span className="typing-text">Ready to inspire and educate today?</span>
+                        <span className="typing-cursor"></span>
+                      </div>
+                    </div>
 
-            <div className="teacher-info">
-              <h3>Teacher Profile</h3>
-              <div className="info-grid">
-                <div className="info-item">
-                  <label>Name:</label>
-                  <span>{user?.name}</span>
-                </div>
-                <div className="info-item">
-                  <label>Email:</label>
-                  <span>{user?.email}</span>
-                </div>
-                <div className="info-item">
-                  <label>Domain:</label>
-                  <span>{user?.domain}</span>
-                </div>
-                <div className="info-item">
-                  <label>Experience:</label>
-                  <span>{user?.experience}</span>
-                </div>
-                <div className="info-item">
-                  <label>Age:</label>
-                  <span>{user?.age}</span> {/* Display teacher's age */}
-                </div>
-                <div className="info-item">
-                  <label>Phone:</label>
-                  <span>{user?.phone}</span>
+                    {/* Quick Stats Row */}
+                    <div className="quick-stats-row">
+                      <div className="stat-pill">
+                        <div className="stat-icon-modern">📊</div>
+                        <div className="stat-info">
+                          <div className="stat-value-modern">{user?.assignedCourses?.length || 1}</div>
+                          <div className="stat-label-modern">Courses</div>
+                        </div>
+                      </div>
+                      <div className="stat-pill">
+                        <div className="stat-icon-modern">👥</div>
+                        <div className="stat-info">
+                          <div className="stat-value-modern">{students[0]?.count || 0}</div>
+                          <div className="stat-label-modern">Students</div>
+                        </div>
+                      </div>
+                      <div className="stat-pill">
+                        <div className="stat-icon-modern">🎯</div>
+                        <div className="stat-info">
+                          <div className="stat-value-modern">{user?.domain || 'General'}</div>
+                          <div className="stat-label-modern">Domain</div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Action Buttons */}
+                    <div className="action-buttons-row">
+                      <button 
+                        className="action-button primary"
+                        onClick={() => setActiveSection('courses')}
+                      >
+                        <span className="button-icon">📚</span>
+                        Manage Batches
+                      </button>
+                      <button 
+                        className="action-button secondary"
+                        onClick={() => setActiveSection('lectures')}
+                      >
+                        <span className="button-icon">🎬</span>
+                        Upload Lecture
+                      </button>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
@@ -426,29 +613,211 @@ const TeacherDashboard = ({ user, onLogout }) => {
 
         {activeSection === 'courses' && (
           <div className="dashboard-section">
-            <h2>My Batches</h2>
-            <div className="courses-grid">
-              {courses.map(course => (
-                <div key={course.id} className="course-card">
-                  <div className="course-header">
-                    <h3>{course.title}</h3>
-                    <span className="course-duration">{course.duration}</span>
-                  </div>
-                  <p>{course.description}</p>
-                  <div className="course-stats">
-                    <span>📖 {course.modules} modules</span>
-                    <span>👥 {course.enrollmentCount || 0} students</span>
-                  </div>
-                  <div className="course-actions">
-                    <button className="view-btn">View Details</button>
-                    <button className="manage-btn">Manage Students</button>
+            <div className="section-header">
+              <h2>My Batches</h2>
+              <div className="batch-stats">
+                <span className="stat-item">
+                  <span className="stat-number">{filteredBatches.length}</span>
+                  <span className="stat-label">of {batches.length} batches</span>
+                </span>
+                {(batchSearch || courseFilter !== 'all' || statusFilter !== 'all') && (
+                  <button className="clear-filters-btn" onClick={clearFilters}>
+                    ✕ Clear Filters
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Search and Filter Controls */}
+            <div className="batch-controls">
+              <div className="search-container">
+                <div className="search-input-wrapper">
+                  <span className="search-icon">🔍</span>
+                  <input
+                    type="text"
+                    placeholder="Search batches by name or course..."
+                    value={batchSearch}
+                    onChange={(e) => setBatchSearch(e.target.value)}
+                    className="search-input-modern"
+                  />
+                </div>
+              </div>
+              
+              <div className="filter-container">
+                <div className="filter-group">
+                  <label>Course Type:</label>
+                  <div className="filter-buttons">
+                    <button 
+                      className={`filter-btn ${courseFilter === 'all' ? 'active' : ''}`}
+                      onClick={() => setCourseFilter('all')}
+                    >
+                      All Courses
+                    </button>
+                    <button 
+                      className={`filter-btn ${courseFilter === 'data-science' ? 'active' : ''}`}
+                      onClick={() => setCourseFilter('data-science')}
+                    >
+                      📊 Data Science
+                    </button>
+                    <button 
+                      className={`filter-btn ${courseFilter === 'cyber-security' ? 'active' : ''}`}
+                      onClick={() => setCourseFilter('cyber-security')}
+                    >
+                      🔒 Cyber Security
+                    </button>
+                    <button 
+                      className={`filter-btn ${courseFilter === 'devops-ai' ? 'active' : ''}`}
+                      onClick={() => setCourseFilter('devops-ai')}
+                    >
+                      🚀 DevOps & AI
+                    </button>
+                    <button 
+                      className={`filter-btn ${courseFilter === 'devops-cloud' ? 'active' : ''}`}
+                      onClick={() => setCourseFilter('devops-cloud')}
+                    >
+                      ☁️ DevOps & Cloud
+                    </button>
+                    <button 
+                      className={`filter-btn ${courseFilter === 'one-to-one' ? 'active' : ''}`}
+                      onClick={() => setCourseFilter('one-to-one')}
+                    >
+                      👥 One-to-One
+                    </button>
                   </div>
                 </div>
-              ))}
-              {courses.length === 0 && (
-                <p className="no-data">No courses assigned yet.</p>
+                
+                <div className="filter-group">
+                  <label>Status:</label>
+                  <div className="filter-buttons">
+                    <button 
+                      className={`filter-btn ${statusFilter === 'all' ? 'active' : ''}`}
+                      onClick={() => setStatusFilter('all')}
+                    >
+                      All Status
+                    </button>
+                    <button 
+                      className={`filter-btn ${statusFilter === 'active' ? 'active' : ''}`}
+                      onClick={() => setStatusFilter('active')}
+                    >
+                      ● Active
+                    </button>
+                    <button 
+                      className={`filter-btn ${statusFilter === 'completed' ? 'active' : ''}`}
+                      onClick={() => setStatusFilter('completed')}
+                    >
+                      ✓ Completed
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Modern Batch Grid */}
+            <div className="batches-grid-modern">
+              {filteredBatches.length > 0 ? (
+                filteredBatches.map(batch => (
+                  <div key={batch.id} className="batch-card-modern">
+                    <div className="batch-header">
+                      <div className="batch-title-section">
+                        <span className="course-icon">{getCourseIcon(batch.course)}</span>
+                        <h3>{batch.name}</h3>
+                      </div>
+                      <div className="batch-status">
+                        <span 
+                          className="status-badge" 
+                          style={{ backgroundColor: getStatusColor(batch.status) }}
+                        >
+                          {(batch.status || 'active').charAt(0).toUpperCase() + (batch.status || 'active').slice(1)}
+                        </span>
+                      </div>
+                    </div>
+                    
+                    <div className="batch-content">
+                      <div className="batch-info-row">
+                        <span className="info-label">Course:</span>
+                        <span className="info-value">{batch.course || 'General Course'}</span>
+                      </div>
+                      <div className="batch-info-row">
+                        <span className="info-label">Students:</span>
+                        <div className="student-count">
+                          <span className="count-number">{batch.studentCount || batch.students?.length || 0}</span>
+                          <span className="count-label">enrolled</span>
+                        </div>
+                      </div>
+                      <div className="batch-info-row">
+                        <span className="info-label">Type:</span>
+                        <span className="batch-type">
+                          {batch.batchType === 'one-to-one' ? '👥 One-to-One' : '📚 Regular Batch'}
+                        </span>
+                      </div>
+                      {batch.startDate && (
+                        <div className="batch-info-row">
+                          <span className="info-label">Started:</span>
+                          <span className="info-value">{formatDate(batch.startDate)}</span>
+                        </div>
+                      )}
+                    </div>
+                    
+                    <div className="batch-actions-modern">
+                      <button 
+                        className="action-btn primary-btn" 
+                        onClick={() => handleViewBatchDetail(batch.id)}
+                      >
+                        <span className="btn-icon">👁</span>
+                        View Details
+                      </button>
+                      {/* Commented out - Delete batch functionality disabled for teachers */}
+                      {/* <button 
+                        className="action-btn secondary-btn" 
+                        onClick={() => handleDeleteBatch(batch.id)}
+                      >
+                        <span className="btn-icon">🗑️</span>
+                        Delete
+                      </button> */}
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="empty-state-modern">
+                  <div className="empty-icon">📚</div>
+                  <h3>No batches found</h3>
+                  <p>
+                    {batchSearch || courseFilter !== 'all' || statusFilter !== 'all' 
+                      ? 'Try adjusting your search or filters to find what you\'re looking for.'
+                      : 'No batches found. Create your first batch below!'}
+                  </p>
+                </div>
               )}
             </div>
+
+            {/* Commented out - Add batch functionality disabled for teachers */}
+            {/* <div className="add-batch-section-modern">
+              <div className="add-batch-header">
+                <h3>Create New Batch</h3>
+                <span className="add-icon">➕</span>
+              </div>
+              <form onSubmit={handleBatchSubmit} className="add-batch-form-modern">
+                <div className="form-row">
+                  <div className="form-group-modern">
+                    <label htmlFor="batchName">Batch Name *</label>
+                    <input
+                      type="text"
+                      id="batchName"
+                      value={batchName}
+                      onChange={(e) => setBatchName(e.target.value)}
+                      required
+                      className="form-input-modern"
+                      placeholder="Enter batch name..."
+                    />
+                  </div>
+                </div>
+                
+                <button type="submit" className="add-batch-btn-modern">
+                  <span className="btn-icon">✨</span>
+                  Create Batch
+                </button>
+              </form>
+            </div> */}
           </div>
         )}
 
@@ -723,7 +1092,9 @@ const TeacherDashboard = ({ user, onLogout }) => {
                     <p>Students: {batch.studentCount || 0}</p>
                   </div>
                   <div className="batch-actions">
-                    <button className="view-btn">View Students</button>
+                    <button className="view-btn" onClick={() => handleViewBatchDetail(batch.id)}>
+                      View Details
+                    </button>
                     <button className="delete-btn" onClick={() => handleDeleteBatch(batch.id)}>
                       🗑️ Delete Batch
                     </button>

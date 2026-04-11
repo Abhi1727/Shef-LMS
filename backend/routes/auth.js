@@ -118,7 +118,7 @@ router.post('/login', async (req, res) => {
         password: hash,
         role: 'student',
         status: 'active',
-        course: 'Cyber Security & Ethical Hacking',
+        course: Math.random() > 0.5 ? 'DevOps & AI' : 'DevOps & Cloud',
         batchId: batch ? String(batch._id) : undefined,
         createdAt: new Date()
       });
