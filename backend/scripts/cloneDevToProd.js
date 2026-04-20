@@ -141,7 +141,7 @@ async function main() {
       total += await copyCollection(devDb, prodDb, name);
     }
     console.log('');
-    console.log(`Done. Copied ${total} total documents to production (lms).`);
+    console.log(`Done. Copied ${total} total documents to production (${prodDbName}).`);
   } finally {
     await devConn.close();
     await prodConn.close();

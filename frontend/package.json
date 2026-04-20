@@ -33,6 +33,7 @@
   },
   "proxy": "http://localhost:5000",
   "devDependencies": {
+    "baseline-browser-mapping": "^2.10.17",
     "react-scripts": "^5.0.1"
   }
 }

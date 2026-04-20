@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * Clone production MongoDB database to development database.
- * Copies all collections from shef-lms (prod) to shef-lms-dev (dev).
+ * Copies all collections from lms (prod) to shef-lms-dev (dev).
  *
  * Run from backend/: node scripts/cloneProdToDev.js
  * Or: npm run clone:prod-to-dev
@@ -85,7 +85,7 @@ async function main() {
   const prodEnv = parseEnv(PROD_ENV);
   const devEnv = parseEnv(DEV_ENV);
 
-  const prodDbName = prodDbArg || prodEnv.MONGO_DB_NAME || prodEnv.MONGODB_DATABASE || 'shef-lms';
+  const prodDbName = prodDbArg || prodEnv.MONGO_DB_NAME || prodEnv.MONGODB_DATABASE || 'lms';
   const devDbName = devDbArg || devEnv.MONGO_DB_NAME || devEnv.MONGODB_DATABASE || 'shef-lms-dev';
 
   if (prodDbName === devDbName) {
