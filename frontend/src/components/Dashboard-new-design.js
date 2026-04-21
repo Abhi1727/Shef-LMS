@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { firebaseService, COLLECTIONS } from '../services/firebaseService';
 import CustomVideoPlayer from './CustomVideoPlayer';
+import { formatDateForComponent } from '../utils/dateUtils';
 import './Dashboard-lms.css';
 
 const Dashboard = ({ user, onLogout }) => {
@@ -363,7 +364,7 @@ const Dashboard = ({ user, onLogout }) => {
                             <span>⏱️ {video.duration}</span>
                           </div>
                           <div className="video-meta-row">
-                            <span>📅 Class Date: {new Date(video.date || video.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</span>
+                            <span>📅 Class Date: {formatDateForComponent(video.date || video.createdAt)}</span>
                             <span className="learning-badge">New</span>
                           </div>
                         </div>
@@ -563,7 +564,7 @@ const Dashboard = ({ user, onLogout }) => {
                             <span>⏱️ {video.duration}</span>
                           </div>
                           <div className="video-meta-row">
-                            <span>📅 Class Date: {new Date(video.date || video.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</span>
+                            <span>📅 Class Date: {formatDateForComponent(video.date || video.createdAt)}</span>
                             <span className="learning-badge">
                               {video.videoSource === 'youtube-url' ? 'YouTube' : 'Firebase'}
                             </span>

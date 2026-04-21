@@ -221,7 +221,7 @@
 
 .sa-table {
   width: 100%;
-  min-width: 900px;
+  min-width: 700px;
   border-collapse: collapse;
   table-layout: fixed;
 }
@@ -247,25 +247,19 @@
   text-overflow: ellipsis;
 }
 
-/* Percentage widths - table expands to fill screen, Location (8) always visible */
+/* Optimized widths for 6-column layout - maximize content space */
 .sa-table th:nth-child(1),
 .sa-table td:nth-child(1) { width: 3%; min-width: 36px; }
 .sa-table th:nth-child(2),
-.sa-table td:nth-child(2) { width: 14%; min-width: 130px; }
+.sa-table td:nth-child(2) { width: 16%; min-width: 140px; }
 .sa-table th:nth-child(3),
-.sa-table td:nth-child(3) { width: 18%; min-width: 150px; }
+.sa-table td:nth-child(3) { width: 25%; min-width: 200px; }
 .sa-table th:nth-child(4),
-.sa-table td:nth-child(4) { width: 8%; min-width: 70px; }
+.sa-table td:nth-child(4) { width: 12%; min-width: 100px; }
 .sa-table th:nth-child(5),
-.sa-table td:nth-child(5) { width: 12%; min-width: 100px; }
+.sa-table td:nth-child(5) { width: 30%; min-width: 220px; }
 .sa-table th:nth-child(6),
-.sa-table td:nth-child(6) { width: 16%; min-width: 140px; }
-.sa-table th:nth-child(7),
-.sa-table td:nth-child(7) { width: 10%; min-width: 90px; }
-.sa-table th:nth-child(8),
-.sa-table td:nth-child(8) { width: 14%; min-width: 140px; }
-.sa-table th:nth-child(9),
-.sa-table td:nth-child(9) { width: 5%; min-width: 80px; }
+.sa-table td:nth-child(6) { width: 14%; min-width: 120px; }
 
 .sa-table td {
   padding: 12px;
@@ -308,6 +302,13 @@
 .sa-user small {
   font-size: 12px;
   color: #64748b;
+  display: block;
+}
+
+.sa-user .sa-role {
+  margin-top: 4px;
+  font-size: 11px;
+  padding: 2px 6px;
 }
 
 .sa-role,
@@ -339,10 +340,25 @@
   border-radius: 4px;
 }
 
-/* IP, Location, ISP - prevent truncation of important data */
-.sa-ip-cell { white-space: nowrap; }
+/* Optimized location display */
 .sa-location-cell { white-space: nowrap; min-width: 0; }
-.sa-isp-cell { white-space: nowrap; }
+
+.sa-location {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.sa-location-ip {
+  font-size: 11px;
+  color: #94a3b8;
+  font-family: 'SF Mono', Monaco, monospace;
+  background: #f1f5f9;
+  padding: 2px 4px;
+  border-radius: 3px;
+  display: inline-block;
+  margin-top: 2px;
+}
 
 /* Expandable detail row */
 .sa-detail-row td {
@@ -408,7 +424,7 @@
 /* Responsive - ensure horizontal scroll on smaller screens (e.g. MacBook) */
 @media (max-width: 1200px) {
   .sa-table {
-    min-width: 1100px;
+    min-width: 750px;
   }
 }
 
@@ -432,7 +448,7 @@
   }
 
   .sa-table {
-    min-width: 1000px;
+    min-width: 700px;
   }
 }
 

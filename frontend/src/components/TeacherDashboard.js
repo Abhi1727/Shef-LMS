@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { ToastContainer, showToast } from './Toast';
 import axios from 'axios';
 import './Dashboard.css';
 
 const TeacherDashboard = ({ user, onLogout }) => {
   const navigate = useNavigate();
+  const location = useLocation();
   const [activeSection, setActiveSection] = useState('overview');
   const [courses, setCourses] = useState([]);
   const [students, setStudents] = useState([]);
@@ -33,6 +34,13 @@ const TeacherDashboard = ({ user, onLogout }) => {
   useEffect(() => {
     loadTeacherData();
   }, [user]);
+
+  // Handle navigation state when returning from TeacherBatchDetailsPage
+  useEffect(() => {
+    if (location.state?.activeSection) {
+      setActiveSection(location.state.activeSection);
+    }
+  }, [location.state]);
 
   // Create floating particles and geometric shapes
   useEffect(() => {
@@ -173,7 +181,7 @@ const TeacherDashboard = ({ user, onLogout }) => {
   };
 
   const handleViewBatchDetail = (batchId) => {
-    navigate(`/teacher/batch/${batchId}`);
+    navigate(`/teacher/batch/${batchId}`, { state: { from: 'teacher-batches' } });
   };
 
   const loadTeacherData = async () => {

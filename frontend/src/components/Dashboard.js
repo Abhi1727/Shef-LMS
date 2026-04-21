@@ -1,107 +1,495 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import CustomVideoPlayer from './CustomVideoPlayer';
 import StudentProfile from './StudentProfile';
 import StudentAnalyticsDashboard from './StudentAnalyticsDashboard';
 import { YouTubeUtils } from '../utils/youtubeUtils';
+import { convertIstRangeToZone } from '../utils/timezoneUtils';
+import { formatDateForComponent } from '../utils/dateUtils';
+import { ToastContainer, showToast } from './Toast';
 import './Dashboard.css';
 
-// Image Slider Component
-const ImageSlider = () => {
+// Premium Image Slider Component with Advanced Features
+const ImageSlider = ({ setActiveSection }) => {
   const [currentSlide, setCurrentSlide] = useState(0);
   const [isAutoPlaying, setIsAutoPlaying] = useState(true);
+  const [isTransitioning, setIsTransitioning] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [touchStart, setTouchStart] = useState(0);
+  const [touchEnd, setTouchEnd] = useState(0);
+  const [loadedImages, setLoadedImages] = useState(new Set());
+  const [isPaused, setIsPaused] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const [dynamicSlides, setDynamicSlides] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState(null);
   
-  const slides = [
+  // Enhanced slide data with course-specific educational content
+  const defaultSlides = [
     {
       id: 1,
-      image: 'https://picsum.photos/seed/tech-ai-ml/1200/400.jpg',
-      title: 'AI & Machine Learning',
-      description: 'Transforming data into intelligent insights'
+      image: '/images/courses/data-science/ds-ai-banner.webp',
+      title: 'Data Science & AI',
+      description: 'Master machine learning, data analytics, and artificial intelligence',
+      category: 'Data Science',
+      badge: 'Trending',
+      link: '#data-science',
+      stats: { students: '3.1k', rating: 4.9, duration: '12 weeks' }
     },
     {
       id: 2,
-      image: 'https://picsum.photos/seed/tech-datascience/1200/400.jpg',
-      title: 'Data Science',
-      description: 'Unlocking patterns in complex datasets'
+      image: '/images/courses/cyber-security/cyber-security-banner.webp',
+      title: 'Cyber Security & Ethical Hacking',
+      description: 'Learn penetration testing, security fundamentals, and defense strategies',
+      category: 'Security',
+      badge: 'Popular',
+      link: '#cyber-security',
+      stats: { students: '2.2k', rating: 4.8, duration: '14 weeks' }
     },
     {
       id: 3,
-      image: 'https://picsum.photos/seed/tech-coding/1200/400.jpg',
-      title: 'Software Development',
-      description: 'Building the future with code'
+      image: '/images/courses/devops/devops-banner.webp',
+      title: 'DevOps & Cloud Computing',
+      description: 'Master CI/CD pipelines, containerization, and cloud infrastructure',
+      category: 'DevOps',
+      badge: 'Featured',
+      link: '#devops',
+      stats: { students: '1.8k', rating: 4.7, duration: '10 weeks' }
     },
     {
       id: 4,
-      image: 'https://picsum.photos/seed/tech-cloud/1200/400.jpg',
-      title: 'Cloud Computing',
-      description: 'Scalable infrastructure for modern applications'
-    },
-    {
-      id: 5,
-      image: 'https://picsum.photos/seed/tech-cybersecurity/1200/400.jpg',
-      title: 'Cyber Security',
-      description: 'Protecting digital assets and privacy'
+      image: '/images/courses/one-to-one/one-to-one-banner.webp',
+      title: 'One-to-One Personal Learning',
+      description: 'Get personalized mentorship and customized learning paths',
+      category: 'Personal',
+      badge: 'Premium',
+      link: '#one-to-one',
+      stats: { students: '850', rating: 4.9, duration: 'Flexible' }
     }
   ];
 
+  const slides = dynamicSlides.length > 0 ? dynamicSlides : defaultSlides;
+
+  // Fetch real course data and integrate with slider
   useEffect(() => {
-    if (!isAutoPlaying) return;
+    const loadCourseData = async () => {
+      try {
+        setIsLoading(true);
+        
+        // Fetch course data from API
+        const token = localStorage.getItem('token');
+        const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
+        
+        let courseData = null;
+        try {
+          const response = await fetch(`${apiUrl}/api/courses`, {
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'Content-Type': 'application/json'
+            }
+          });
+          
+          if (response.ok) {
+            courseData = await response.json();
+            console.log('Course data loaded:', courseData);
+          }
+        } catch (err) {
+          console.log('Course API not available, using default slides');
+        }
+        
+        // Enhance slides with real course data if available
+        let enhancedSlides = defaultSlides;
+        
+        if (courseData && Array.isArray(courseData)) {
+          enhancedSlides = defaultSlides.map((slide, index) => {
+            const matchingCourse = courseData.find(course => 
+              course.name && (
+                course.name.toLowerCase().includes('data science') && slide.title.toLowerCase().includes('data') ||
+                course.name.toLowerCase().includes('cyber') && slide.title.toLowerCase().includes('cyber') ||
+                course.name.toLowerCase().includes('devops') && slide.title.toLowerCase().includes('devops') ||
+                course.name.toLowerCase().includes('one-to-one') && slide.title.toLowerCase().includes('one-to-one')
+              )
+            );
+            
+            if (matchingCourse) {
+              return {
+                ...slide,
+                stats: {
+                  students: matchingCourse.enrolledStudents || slide.stats.students,
+                  rating: matchingCourse.rating || slide.stats.rating,
+                  duration: matchingCourse.duration || slide.stats.duration
+                },
+                lastUpdated: new Date().toLocaleDateString(),
+                featured: index === 0,
+                priority: index < 3 ? 'high' : 'medium',
+                courseId: matchingCourse._id
+              };
+            }
+            
+            return {
+              ...slide,
+              lastUpdated: new Date().toLocaleDateString(),
+              featured: index === 0,
+              priority: index < 3 ? 'high' : 'medium'
+            };
+          });
+        } else {
+          // Add dynamic data to default slides
+          enhancedSlides = defaultSlides.map((slide, index) => ({
+            ...slide,
+            lastUpdated: new Date().toLocaleDateString(),
+            featured: index === 0,
+            priority: index < 3 ? 'high' : 'medium'
+          }));
+        }
+        
+        setDynamicSlides(enhancedSlides);
+        setError(null);
+      } catch (err) {
+        setError('Failed to load course content');
+        console.error('Course content loading error:', err);
+        // Still set default slides on error
+        setDynamicSlides(defaultSlides);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    loadCourseData();
+  }, []);
+
+  // Auto-play with progress tracking
+  useEffect(() => {
+    if (!isAutoPlaying || isPaused || isTransitioning) return;
     
     const interval = setInterval(() => {
-      setCurrentSlide((prev) => (prev + 1) % slides.length);
-    }, 4000);
+      setProgress((prev) => {
+        if (prev >= 100) {
+          handleNext();
+          return 0;
+        }
+        return prev + (100 / 40); // 40 seconds total
+      });
+    }, 400);
 
     return () => clearInterval(interval);
-  }, [isAutoPlaying, slides.length]);
+  }, [isAutoPlaying, isPaused, isTransitioning, slides.length]);
 
-  const goToSlide = (index) => {
+  // Reset progress when slide changes
+  useEffect(() => {
+    setProgress(0);
+  }, [currentSlide]);
+
+  // Keyboard navigation
+  useEffect(() => {
+    const handleKeyPress = (e) => {
+      if (e.key === 'ArrowLeft') handlePrevious();
+      if (e.key === 'ArrowRight') handleNext();
+      if (e.key === ' ') {
+        e.preventDefault();
+        setIsPaused(!isPaused);
+      }
+      if (e.key === 'Escape' && isFullscreen) {
+        toggleFullscreen();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyPress);
+    return () => window.removeEventListener('keydown', handleKeyPress);
+  }, [isPaused, isFullscreen]);
+
+  // Touch gesture handlers
+  const handleTouchStart = (e) => {
+    setTouchStart(e.targetTouches[0].clientX);
+  };
+
+  const handleTouchMove = (e) => {
+    setTouchEnd(e.targetTouches[0].clientX);
+  };
+
+  const handleTouchEnd = () => {
+    if (!touchStart || !touchEnd) return;
+    
+    const distance = touchStart - touchEnd;
+    const isLeftSwipe = distance > 50;
+    const isRightSwipe = distance < -50;
+
+    if (isLeftSwipe) handleNext();
+    if (isRightSwipe) handlePrevious();
+  };
+
+  // Enhanced lazy loading images with fallback support
+  const loadImage = (src) => {
+    if (loadedImages.has(src)) return Promise.resolve();
+    
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => {
+        setLoadedImages(prev => new Set([...prev, src]));
+        resolve();
+      };
+      img.onerror = (error) => {
+        console.warn(`Failed to load image: ${src}`, error);
+        // Try to load fallback image if it's a course image
+        if (src.includes('/images/courses/')) {
+          // Use a gradient placeholder as fallback
+          const fallbackUrl = `https://picsum.photos/seed/course-${src.split('/').pop().split('.')[0]}/1200/400.jpg`;
+          const fallbackImg = new Image();
+          fallbackImg.onload = () => {
+            setLoadedImages(prev => new Set([...prev, src])); // Mark original as loaded to prevent retry
+            resolve();
+          };
+          fallbackImg.onerror = () => {
+            setLoadedImages(prev => new Set([...prev, src])); // Mark as loaded to prevent infinite retry
+            resolve(); // Resolve anyway to allow slider to continue
+          };
+          fallbackImg.src = fallbackUrl;
+        } else {
+          reject(error);
+        }
+      };
+      img.src = src;
+    });
+  };
+
+  // Preload adjacent images
+  useEffect(() => {
+    const preloadImages = async () => {
+      const currentIndex = currentSlide;
+      const nextIndex = (currentIndex + 1) % slides.length;
+      const prevIndex = (currentIndex - 1 + slides.length) % slides.length;
+      
+      try {
+        await Promise.all([
+          loadImage(slides[currentIndex].image),
+          loadImage(slides[nextIndex].image),
+          loadImage(slides[prevIndex].image)
+        ]);
+      } catch (err) {
+        console.error('Image preloading error:', err);
+      }
+    };
+
+    if (slides.length > 0) {
+      preloadImages();
+    }
+  }, [currentSlide, slides]);
+
+  const handleSlideChange = (index) => {
+    if (isTransitioning) return;
+    
+    setIsTransitioning(true);
     setCurrentSlide(index);
     setIsAutoPlaying(false);
-    setTimeout(() => setIsAutoPlaying(true), 10000); // Resume auto-play after 10 seconds
+    setIsPaused(true);
+    
+    setTimeout(() => {
+      setIsTransitioning(false);
+      setIsAutoPlaying(true);
+      setIsPaused(false);
+    }, 1000);
   };
 
-  const goToPrevious = () => {
-    setCurrentSlide((prev) => (prev - 1 + slides.length) % slides.length);
-    setIsAutoPlaying(false);
-    setTimeout(() => setIsAutoPlaying(true), 10000);
+  const handleNext = () => {
+    if (isTransitioning) return;
+    handleSlideChange((currentSlide + 1) % slides.length);
   };
 
-  const goToNext = () => {
-    setCurrentSlide((prev) => (prev + 1) % slides.length);
-    setIsAutoPlaying(false);
-    setTimeout(() => setIsAutoPlaying(true), 10000);
+  const handlePrevious = () => {
+    if (isTransitioning) return;
+    handleSlideChange((currentSlide - 1 + slides.length) % slides.length);
+  };
+
+  const toggleFullscreen = () => {
+    setIsFullscreen(!isFullscreen);
+  };
+
+  const toggleAutoPlay = () => {
+    setIsAutoPlaying(!isAutoPlaying);
+    setIsPaused(!isPaused);
+  };
+
+  const handleSlideClick = (link, slide) => {
+    // Enhanced slide navigation to actual course content
+    console.log('Navigating to:', link, 'Slide:', slide);
+    
+    // Navigate based on course type
+    if (link.includes('data-science')) {
+      setActiveSection('courses');
+      // Could add course filtering or specific course navigation
+    } else if (link.includes('cyber-security')) {
+      setActiveSection('courses');
+      // Could add course filtering or specific course navigation
+    } else if (link.includes('devops')) {
+      setActiveSection('courses');
+      // Could add course filtering or specific course navigation
+    } else if (link.includes('one-to-one')) {
+      setActiveSection('classroom');
+      // Navigate to one-to-one sessions
+    } else {
+      // Default navigation
+      setActiveSection('courses');
+    }
+    
+    // If slide has courseId, could navigate to specific course details
+    if (slide.courseId) {
+      console.log('Course ID available:', slide.courseId);
+      // Future enhancement: navigate to specific course page
+    }
   };
 
   return (
-    <div className="image-slider-container">
-      <div className="slider-wrapper">
-        {slides.map((slide, index) => (
-          <div
-            key={slide.id}
-            className={`slide ${index === currentSlide ? 'active' : ''}`}
+    <div className={`premium-image-slider-container ${isFullscreen ? 'fullscreen' : ''}`}>
+      {/* Loading State */}
+      {isLoading && (
+        <div className="slider-loading">
+          <div className="loading-spinner"></div>
+          <p>Loading amazing content...</p>
+        </div>
+      )}
+
+      {/* Error State */}
+      {error && (
+        <div className="slider-error">
+          <p>{error}</p>
+          <button onClick={() => window.location.reload()}>Retry</button>
+        </div>
+      )}
+
+      {/* Main Slider */}
+      {!isLoading && !error && (
+        <>
+          {/* Progress Bar */}
+          <div className="slider-progress">
+            <div 
+              className="progress-fill" 
+              style={{ width: `${progress}%` }}
+            ></div>
+          </div>
+
+          {/* Slider Wrapper */}
+          <div 
+            className="premium-slider-wrapper"
+            onTouchStart={handleTouchStart}
+            onTouchMove={handleTouchMove}
+            onTouchEnd={handleTouchEnd}
           >
-            <img src={slide.image} alt={slide.title} />
-            <div className="slide-overlay">
-              <h3>{slide.title}</h3>
-              <p>{slide.description}</p>
+            {slides.map((slide, index) => (
+              <div
+                key={slide.id}
+                className={`premium-slide ${index === currentSlide ? 'active' : ''} ${isTransitioning ? 'transitioning' : ''}`}
+              >
+                {/* Parallax Background */}
+                <div className="slide-parallax">
+                  <img 
+                    src={slide.image} 
+                    alt={slide.title}
+                    className={loadedImages.has(slide.image) ? 'loaded' : 'loading'}
+                  />
+                </div>
+                
+                {/* Enhanced Overlay */}
+                <div className="premium-slide-overlay">
+                  <div className="slide-content">
+                    {/* Badge and Category */}
+                    <div className="slide-meta">
+                      <span className="slide-category">{slide.category}</span>
+                      <span className={`slide-badge ${slide.badge.toLowerCase()}`}>{slide.badge}</span>
+                      {slide.featured && <span className="featured-badge">Featured</span>}
+                    </div>
+                    
+                    {/* Title and Description */}
+                    <h3 className="slide-title">{slide.title}</h3>
+                    <p className="slide-description">{slide.description}</p>
+                    
+                    {/* Stats - Commented out */}
+                    {/* <div className="slide-stats">
+                      <div className="stat">
+                        <span className="stat-value">{slide.stats.students}</span>
+                        <span className="stat-label">Students</span>
+                      </div>
+                      <div className="stat">
+                        <span className="stat-value">{slide.stats.rating} &#9733;</span>
+                        <span className="stat-label">Rating</span>
+                      </div>
+                      <div className="stat">
+                        <span className="stat-value">{slide.stats.duration}</span>
+                        <span className="stat-label">Duration</span>
+                      </div>
+                    </div> */}
+                    
+                    {/* Action Button */}
+                    <button 
+                      className="slide-action-btn"
+                      onClick={() => handleSlideClick(slide.link, slide)}
+                    >
+                      Explore Course
+                      <span className="btn-arrow">→</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Enhanced Navigation Controls */}
+          <button className="premium-slider-btn prev-btn" onClick={handlePrevious}>
+            <span className="btn-icon">‹</span>
+            <span className="btn-label">Previous</span>
+          </button>
+          <button className="premium-slider-btn next-btn" onClick={handleNext}>
+            <span className="btn-label">Next</span>
+            <span className="btn-icon">›</span>
+          </button>
+
+          {/* Enhanced Controls */}
+          <div className="premium-slider-controls">
+            {/* Play/Pause Button */}
+            <button className="control-btn play-pause-btn" onClick={toggleAutoPlay}>
+              {isPaused ? '▶' : '⏸'}
+            </button>
+            
+            {/* Fullscreen Button */}
+            <button className="control-btn fullscreen-btn" onClick={toggleFullscreen}>
+              {isFullscreen ? '⛶' : '⛶'}
+            </button>
+            
+            {/* Slide Counter */}
+            <div className="slide-counter">
+              <span className="current-slide">{currentSlide + 1}</span>
+              <span className="divider">/</span>
+              <span className="total-slides">{slides.length}</span>
             </div>
           </div>
-        ))}
-      </div>
-      
-      {/* Navigation Controls */}
-      <button className="slider-btn prev-btn" onClick={goToPrevious}>‹</button>
-      <button className="slider-btn next-btn" onClick={goToNext}>›</button>
-      
-      {/* Dot Indicators */}
-      <div className="slider-dots">
-        {slides.map((_, index) => (
-          <span
-            key={index}
-            className={`dot ${index === currentSlide ? 'active' : ''}`}
-            onClick={() => goToSlide(index)}
-          />
-        ))}
-      </div>
+
+          {/* Enhanced Dot Indicators */}
+          <div className="premium-slider-dots">
+            {slides.map((slide, index) => (
+              <button
+                key={index}
+                className={`premium-dot ${index === currentSlide ? 'active' : ''}`}
+                onClick={() => handleSlideChange(index)}
+                aria-label={`Go to slide ${index + 1}`}
+              >
+                <span className="dot-progress"></span>
+              </button>
+            ))}
+          </div>
+
+          {/* Thumbnail Navigation */}
+          <div className="thumbnail-nav">
+            {slides.map((slide, index) => (
+              <button
+                key={index}
+                className={`thumbnail ${index === currentSlide ? 'active' : ''}`}
+                onClick={() => handleSlideChange(index)}
+              >
+                <img src={slide.image} alt={slide.title} />
+                <span className="thumbnail-title">{slide.title}</span>
+              </button>
+            ))}
+          </div>
+        </>
+      )}
     </div>
   );
 };
@@ -150,6 +538,30 @@ const TypingAnimation = ({ texts, speed = 100, pauseDuration = 2000 }) => {
   );
 };
 
+// Enhanced file utility functions for Dashboard
+const getFileTypeIcon = (fileName) => {
+  if (!fileName) return '📄';
+  const extension = fileName?.split('.').pop()?.toLowerCase();
+  const iconMap = {
+    'pdf': '📄',
+    'doc': '📝',
+    'docx': '📝',
+    'txt': '📃',
+    'ppt': '📊',
+    'pptx': '📊',
+    'xls': '📈',
+    'xlsx': '📈',
+    'csv': '📋',
+    'ipynb': '🧪',
+    'zip': '🗜️',
+    'jpg': '🖼️',
+    'jpeg': '🖼️',
+    'png': '🖼️',
+    'gif': '🖼️'
+  };
+  return iconMap[extension] || '📄';
+};
+
 const Dashboard = ({ user, onLogout }) => {
   const [lessons] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -181,6 +593,15 @@ const Dashboard = ({ user, onLogout }) => {
   const [realTimeStats, setRealTimeStats] = useState(null);
   const [loadingStats, setLoadingStats] = useState(true);
   const [statsError, setStatsError] = useState(null);
+
+  // Navigation button width tracking state
+  const [navButtonWidths, setNavButtonWidths] = useState({});
+  const navButtonRefs = useRef({
+    overview: useRef(null),
+    classroom: useRef(null),
+    analytics: useRef(null),
+    profile: useRef(null)
+  });
 
   // Helper functions inside component
   const getPersonalizedGreeting = useCallback(() => {
@@ -333,13 +754,23 @@ const Dashboard = ({ user, onLogout }) => {
 
   // Navigation helper functions
   const getNavIndicatorPosition = useCallback(() => {
-    const activeIndex = { overview: 0, classroom: 1, analytics: 2, profile: 3 };
-    return `${activeIndex[activeSection] * 25}%`;
-  }, [activeSection]);
+    const buttonOrder = ['overview', 'classroom', 'analytics', 'profile'];
+    let leftPosition = 0;
+    
+    for (let i = 0; i < buttonOrder.length; i++) {
+      const buttonKey = buttonOrder[i];
+      if (buttonKey === activeSection) {
+        break;
+      }
+      leftPosition += navButtonWidths[buttonKey] || 0;
+    }
+    
+    return `${leftPosition}px`;
+  }, [activeSection, navButtonWidths]);
 
   const getNavIndicatorWidth = useCallback(() => {
-    return '25%';
-  }, []);
+    return `${navButtonWidths[activeSection] || 0}px`;
+  }, [activeSection, navButtonWidths]);
 
   // Modern Animated Gradient Background Component
   const AnimatedGradientBackground = useCallback(() => {
@@ -425,6 +856,41 @@ const Dashboard = ({ user, onLogout }) => {
     }
   }, [darkMode]);
 
+  // Measure navigation button widths and set up ResizeObserver
+  useEffect(() => {
+    const measureButtonWidths = () => {
+      const widths = {};
+      Object.keys(navButtonRefs.current).forEach(key => {
+        const ref = navButtonRefs.current[key];
+        if (ref.current) {
+          const rect = ref.current.getBoundingClientRect();
+          widths[key] = rect.width;
+        }
+      });
+      setNavButtonWidths(widths);
+    };
+
+    // Initial measurement
+    measureButtonWidths();
+
+    // Set up ResizeObserver for responsive width tracking
+    const resizeObserver = new ResizeObserver(() => {
+      measureButtonWidths();
+    });
+
+    // Observe all navigation buttons
+    Object.values(navButtonRefs.current).forEach(ref => {
+      if (ref.current) {
+        resizeObserver.observe(ref.current);
+      }
+    });
+
+    // Cleanup
+    return () => {
+      resizeObserver.disconnect();
+    };
+  }, []);
+
   // Determine the course slug from user's enrolled course
   const getCourseSlug = useCallback(() => {
     const courseName = user?.currentCourse || '';
@@ -485,6 +951,109 @@ const Dashboard = ({ user, onLogout }) => {
   const getVideoResumePosition = (videoId) => {
     const videoRecord = videoWatchHistory.find(record => record.videoId === videoId);
     return videoRecord ? videoRecord.lastWatchedPosition : 0;
+  };
+
+  // Enhanced notes download function
+  const handleDownloadNotes = async (video) => {
+    try {
+      const token = localStorage.getItem('token');
+      const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
+      
+      // Create download progress indicator
+      const downloadButton = document.querySelector(`[title*="Download ${video.notesFileName || 'notes'} for ${video.title}"]`);
+      if (downloadButton) {
+        downloadButton.classList.add('downloading');
+        downloadButton.disabled = true;
+      }
+      
+      // Try different possible endpoints for notes download
+      let response;
+      const endpoints = [
+        `${apiUrl}/api/classroom/${video.id}/notes`,
+        `${apiUrl}/api/admin/classroom/${video.id}/notes`,
+        `${apiUrl}/api/classroom/notes/${video.id}`,
+        `${apiUrl}/api/admin/classroom/notes/${video.id}`
+      ];
+      
+      for (const endpoint of endpoints) {
+        try {
+          response = await fetch(endpoint, {
+            headers: {
+              'Authorization': `Bearer ${token}`
+            }
+          });
+          
+          if (response.ok) {
+            break;
+          }
+        } catch (error) {
+          console.log(`Failed to fetch from ${endpoint}:`, error);
+        }
+      }
+      
+      if (response && response.ok) {
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        
+        // Try to get filename from response headers or use default
+        const contentDisposition = response.headers.get('content-disposition');
+        let filename = video.notesFileName || `notes-${video.title.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.pdf`;
+        
+        if (contentDisposition) {
+          const filenameMatch = contentDisposition.match(/filename="(.+)"/);
+          if (filenameMatch) {
+            filename = filenameMatch[1];
+          }
+        }
+        
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+        
+        // Show success message
+        showToast('Notes downloaded successfully!', 'success');
+      } else {
+        // If no endpoint works, try to get notes from video object directly
+        if (video.notesFileUrl || video.notesUrl || video.notesFilePath) {
+          const notesUrl = video.notesFileUrl || video.notesUrl || video.notesFilePath;
+          const notesResponse = await fetch(`${apiUrl}${notesUrl}`, {
+            headers: {
+              'Authorization': `Bearer ${token}`
+            }
+          });
+          
+          if (notesResponse.ok) {
+            const blob = await notesResponse.blob();
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = video.notesFileName || `notes-${video.title.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.pdf`;
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(url);
+            document.body.removeChild(a);
+            showToast('Notes downloaded successfully!', 'success');
+            return;
+          }
+        }
+        
+        showToast('Failed to download notes. The notes file may not be available yet.', 'error');
+      }
+    } catch (error) {
+      console.error('Error downloading notes:', error);
+      showToast('Error downloading notes. Please try again later.', 'error');
+    } finally {
+      // Remove download progress indicator
+      const downloadButton = document.querySelector(`[title*="Download ${video.notesFileName || 'notes'} for ${video.title}"]`);
+      if (downloadButton) {
+        downloadButton.classList.remove('downloading');
+        downloadButton.disabled = false;
+      }
+    }
   };
 
   // Calculate progress percentage
@@ -756,43 +1325,7 @@ const Dashboard = ({ user, onLogout }) => {
     return courseName.toLowerCase().includes('data science') || courseName.toLowerCase().includes('ai');
   };
 
-  const convertIstRangeToZone = (range, offsetHours, offsetMinutes) => {
-    if (!range || typeof range !== 'string') return null;
-    const parts = range.split('-');
-    if (parts.length !== 2) return null;
-
-    const parseTimeToMinutes = (timeStr) => {
-      const match = timeStr.trim().match(/(\d{1,2}):(\d{2})\s*(AM|PM)/i);
-      if (!match) return null;
-      let hour = parseInt(match[1], 10);
-      const minute = parseInt(match[2], 10);
-      const period = match[3].toUpperCase();
-      if (period === 'PM' && hour !== 12) hour += 12;
-      if (period === 'AM' && hour === 12) hour = 0;
-      return hour * 60 + minute;
-    };
-
-    const formatMinutesToTime = (totalMinutes) => {
-      let mins = ((totalMinutes % (24 * 60)) + (24 * 60)) % (24 * 60);
-      let hour24 = Math.floor(mins / 60);
-      const minute = mins % 60;
-      const period = hour24 >= 12 ? 'PM' : 'AM';
-      let hour12 = hour24 % 12;
-      if (hour12 === 0) hour12 = 12;
-      return `${hour12}:${String(minute).padStart(2, '0')} ${period}`;
-    };
-
-    const startIst = parseTimeToMinutes(parts[0]);
-    const endIst = parseTimeToMinutes(parts[1]);
-    if (startIst == null || endIst == null) return null;
-
-    const delta = (offsetHours * 60) + offsetMinutes;
-    const startLocal = startIst + delta;
-    const endLocal = endIst + delta;
-
-    return `${formatMinutesToTime(startLocal)} - ${formatMinutesToTime(endLocal)}`;
-  };
-
+  
   // Complete Course Curriculum - DATA SCIENCE & AI
 
   // Get the most recent video played by user
@@ -1509,6 +2042,7 @@ const Dashboard = ({ user, onLogout }) => {
               }}
             />
             <button 
+              ref={navButtonRefs.current.overview}
               className={`nav-item-modern ${activeSection === 'overview' ? 'active' : ''}`}
               onClick={() => setActiveSection('overview')}
               title="Home"
@@ -1519,6 +2053,7 @@ const Dashboard = ({ user, onLogout }) => {
             </button>
             
             <button 
+              ref={navButtonRefs.current.classroom}
               className={`nav-item-modern ${activeSection === 'classroom' ? 'active' : ''}`}
               onClick={() => setActiveSection('classroom')}
               title="Classroom"
@@ -1528,7 +2063,7 @@ const Dashboard = ({ user, onLogout }) => {
               <span className="nav-badge notification">{classroomVideos.length}</span>
             </button>
             
-            <button 
+            {/* <button 
               className={`nav-item-modern ${activeSection === 'analytics' ? 'active' : ''}`}
               onClick={() => setActiveSection('analytics')}
               title="Analytics"
@@ -1536,9 +2071,10 @@ const Dashboard = ({ user, onLogout }) => {
               <span className="nav-icon-modern">📊</span>
               <span className="nav-text">Analytics</span>
               <span className="nav-badge">0</span>
-            </button>
+            </button> */}
             
             <button 
+              ref={navButtonRefs.current.profile}
               className={`nav-item-modern ${activeSection === 'profile' ? 'active' : ''}`}
               onClick={() => setActiveSection('profile')}
               title="My Profile"
@@ -1652,7 +2188,7 @@ const Dashboard = ({ user, onLogout }) => {
               {/* <AnimatedGradientBackground /> */}
 
               {/* Technology Image Slider */}
-              <ImageSlider />
+              {/* <ImageSlider setActiveSection={setActiveSection} /> */}
 
               {/* Modern Stats Dashboard - Commented Out */}
               {/* 
@@ -1956,24 +2492,74 @@ const Dashboard = ({ user, onLogout }) => {
                           <div className="timing-days">Days: {batchInfo.schedule.days}</div>
                         )}
                         <div className="timing-value-multi">
-                          <div className="timing-row">
-                            <span className="timing-zone">EST</span>
-                            <span className="timing-text">
-                              {convertIstRangeToZone(batchInfo.schedule.time, -10, -30) || 'Unavailable'}
-                            </span>
-                          </div>
-                          <div className="timing-row">
-                            <span className="timing-zone">CST</span>
-                            <span className="timing-text">
-                              {convertIstRangeToZone(batchInfo.schedule.time, -11, -30) || 'Unavailable'}
-                            </span>
-                          </div>
-                          <div className="timing-row">
-                            <span className="timing-zone">PST</span>
-                            <span className="timing-text">
-                              {convertIstRangeToZone(batchInfo.schedule.time, -13, -30) || 'Unavailable'}
-                            </span>
-                          </div>
+                          {(() => {
+                            // Safely extract time range
+                            const timeString = batchInfo.schedule?.time;
+                            if (!timeString || typeof timeString !== 'string') {
+                              return (
+                                <>
+                                  <div className="timing-row">
+                                    <span className="timing-zone">EST</span>
+                                    <span className="timing-text">Time not available</span>
+                                  </div>
+                                  <div className="timing-row">
+                                    <span className="timing-zone">CST</span>
+                                    <span className="timing-text">Time not available</span>
+                                  </div>
+                                  <div className="timing-row">
+                                    <span className="timing-zone">PST</span>
+                                    <span className="timing-text">Time not available</span>
+                                  </div>
+                                </>
+                              );
+                            }
+                            
+                            const timeParts = timeString.split(' - ');
+                            const startTime = timeParts[0]?.trim();
+                            const endTime = timeParts[1]?.trim();
+                            
+                            if (!startTime || !endTime) {
+                              return (
+                                <>
+                                  <div className="timing-row">
+                                    <span className="timing-zone">EST</span>
+                                    <span className="timing-text">Invalid time format</span>
+                                  </div>
+                                  <div className="timing-row">
+                                    <span className="timing-zone">CST</span>
+                                    <span className="timing-text">Invalid time format</span>
+                                  </div>
+                                  <div className="timing-row">
+                                    <span className="timing-zone">PST</span>
+                                    <span className="timing-text">Invalid time format</span>
+                                  </div>
+                                </>
+                              );
+                            }
+                            
+                            return (
+                              <>
+                                <div className="timing-row">
+                                  <span className="timing-zone">EST</span>
+                                  <span className="timing-text">
+                                    {convertIstRangeToZone(startTime, endTime, 'EST') || 'Time conversion failed'}
+                                  </span>
+                                </div>
+                                <div className="timing-row">
+                                  <span className="timing-zone">CST</span>
+                                  <span className="timing-text">
+                                    {convertIstRangeToZone(startTime, endTime, 'CST') || 'Time conversion failed'}
+                                  </span>
+                                </div>
+                                <div className="timing-row">
+                                  <span className="timing-zone">PST</span>
+                                  <span className="timing-text">
+                                    {convertIstRangeToZone(startTime, endTime, 'PST') || 'Time conversion failed'}
+                                  </span>
+                                </div>
+                              </>
+                            );
+                          })()}
                         </div>
                       </>
                     ) : (
@@ -2131,7 +2717,7 @@ const Dashboard = ({ user, onLogout }) => {
                             </div>
                           )}
                           <div style={{ marginBottom: '8px' }}>
-                            <strong>📅 Class Date:</strong> {isOneToOne ? (video.classDate ? formatClassDate(video.classDate) : (video.date ? formatClassDate(video.date) : 'Not specified')) : new Date(video.date || video.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                            <strong>📅 Class Date:</strong> {isOneToOne ? (video.classDate ? formatClassDate(video.classDate) : (video.date ? formatClassDate(video.date) : 'Not specified')) : formatDateForComponent(video.date || video.createdAt)}
                           </div>
                           {/* Commented out Class Schedule as requested */}
                           {/* {isOneToOne && (video.classDate || video.classTime || video.date) && (
@@ -2142,25 +2728,24 @@ const Dashboard = ({ user, onLogout }) => {
                             </div>
                           )} */}
                           {canSeeNotes && (
-                            <div style={{ marginTop: '4px' }}>
+                            <div className="enhanced-notes-download">
                               <button
                                 type="button"
-                                className="btn-secondary"
+                                className="btn-download-notes"
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  window.open(video.notesFilePath, '_blank');
+                                  handleDownloadNotes(video);
                                 }}
-                                style={{
-                                  fontSize: '13px',
-                                  padding: '6px 10px',
-                                  borderRadius: '6px',
-                                  border: '1px solid #cbd5f5',
-                                  backgroundColor: '#edf2ff',
-                                  color: '#4c51bf',
-                                  cursor: 'pointer'
-                                }}
+                                title={`Download ${video.notesFileName || 'notes'} for ${video.title}`}
                               >
-                                📄 Download Notes{video.notesFileName ? ` (${video.notesFileName})` : ''}
+                                <span className="btn-icon">{getFileTypeIcon(video.notesFileName || video.notesFilePath)}</span>
+                                <span className="btn-text">
+                                  Download Notes
+                                  {video.notesFileName && (
+                                    <span className="filename"> ({video.notesFileName})</span>
+                                  )}
+                                </span>
+                                <span className="btn-arrow">⬇</span>
                               </button>
                             </div>
                           )}
@@ -2389,6 +2974,9 @@ const Dashboard = ({ user, onLogout }) => {
           onClose={() => setSelectedVideo(null)}
         />
       )}
+      
+      {/* Toast Container */}
+      <ToastContainer />
     </div>
   );
 };

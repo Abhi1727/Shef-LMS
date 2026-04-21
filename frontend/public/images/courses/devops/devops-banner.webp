@@ -1,0 +1,143 @@
+<svg width="1200" height="400" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#ff6b35;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#f7931e;stop-opacity:1" />
+    </linearGradient>
+    <filter id="glow">
+      <feGaussianBlur stdDeviation="3" result="coloredBlur"/>
+      <feMerge>
+        <feMergeNode in="coloredBlur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    <linearGradient id="cloud" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#fff;stop-opacity:0.8" />
+      <stop offset="100%" style="stop-color:#fff;stop-opacity:0.3" />
+    </linearGradient>
+  </defs>
+  
+  <!-- Background -->
+  <rect width="1200" height="400" fill="url(#bg)"/>
+  
+  <!-- Cloud shapes -->
+  <g opacity="0.6">
+    <ellipse cx="200" cy="120" rx="60" ry="35" fill="url(#cloud)"/>
+    <ellipse cx="160" cy="130" rx="40" ry="30" fill="url(#cloud)"/>
+    <ellipse cx="240" cy="130" rx="45" ry="30" fill="url(#cloud)"/>
+    
+    <ellipse cx="950" cy="100" rx="70" ry="40" fill="url(#cloud)"/>
+    <ellipse cx="910" cy="110" rx="50" ry="35" fill="url(#cloud)"/>
+    <ellipse cx="990" cy="110" rx="55" ry="35" fill="url(#cloud)"/>
+  </g>
+  
+  <!-- CI/CD Pipeline visualization -->
+  <g opacity="0.7">
+    <!-- Pipeline stages -->
+    <rect x="100" y="250" width="80" height="60" fill="#fff" rx="5" opacity="0.8"/>
+    <text x="140" y="285" font-family="Arial" font-size="12" fill="#ff6b35" text-anchor="middle">CODE</text>
+    
+    <rect x="220" y="250" width="80" height="60" fill="#fff" rx="5" opacity="0.8"/>
+    <text x="260" y="285" font-family="Arial" font-size="12" fill="#ff6b35" text-anchor="middle">BUILD</text>
+    
+    <rect x="340" y="250" width="80" height="60" fill="#fff" rx="5" opacity="0.8"/>
+    <text x="380" y="285" font-family="Arial" font-size="12" fill="#ff6b35" text-anchor="middle">TEST</text>
+    
+    <rect x="460" y="250" width="80" height="60" fill="#fff" rx="5" opacity="0.8"/>
+    <text x="500" y="285" font-family="Arial" font-size="12" fill="#ff6b35" text-anchor="middle">DEPLOY</text>
+    
+    <!-- Arrows -->
+    <path d="M 180 280 L 220 280" stroke="#fff" stroke-width="3" marker-end="url(#arrowhead)"/>
+    <path d="M 300 280 L 340 280" stroke="#fff" stroke-width="3" marker-end="url(#arrowhead)"/>
+    <path d="M 420 280 L 460 280" stroke="#fff" stroke-width="3" marker-end="url(#arrowhead)"/>
+  </g>
+  
+  <!-- Arrow marker definition -->
+  <defs>
+    <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#fff"/>
+    </marker>
+  </defs>
+  
+  <!-- Docker containers -->
+  <g opacity="0.6">
+    <rect x="650" y="240" width="50" height="60" fill="#fff" rx="3" opacity="0.8"/>
+    <rect x="655" y="245" width="40" height="8" fill="#ff6b35" opacity="0.8"/>
+    <rect x="655" y="258" width="40" height="8" fill="#f7931e" opacity="0.8"/>
+    <rect x="655" y="271" width="40" height="8" fill="#ff6b35" opacity="0.8"/>
+    
+    <rect x="720" y="240" width="50" height="60" fill="#fff" rx="3" opacity="0.8"/>
+    <rect x="725" y="245" width="40" height="8" fill="#ff6b35" opacity="0.8"/>
+    <rect x="725" y="258" width="40" height="8" fill="#f7931e" opacity="0.8"/>
+    <rect x="725" y="271" width="40" height="8" fill="#ff6b35" opacity="0.8"/>
+    
+    <rect x="790" y="240" width="50" height="60" fill="#fff" rx="3" opacity="0.8"/>
+    <rect x="795" y="245" width="40" height="8" fill="#ff6b35" opacity="0.8"/>
+    <rect x="795" y="258" width="40" height="8" fill="#f7931e" opacity="0.8"/>
+    <rect x="795" y="271" width="40" height="8" fill="#ff6b35" opacity="0.8"/>
+  </g>
+  
+  <!-- Kubernetes nodes -->
+  <g opacity="0.5">
+    <circle cx="900" cy="200" r="25" fill="none" stroke="#fff" stroke-width="2"/>
+    <circle cx="900" cy="200" r="15" fill="#fff" opacity="0.6"/>
+    
+    <circle cx="970" cy="180" r="20" fill="none" stroke="#fff" stroke-width="2"/>
+    <circle cx="970" cy="180" r="12" fill="#fff" opacity="0.6"/>
+    
+    <circle cx="1030" cy="220" r="20" fill="none" stroke="#fff" stroke-width="2"/>
+    <circle cx="1030" cy="220" r="12" fill="#fff" opacity="0.6"/>
+    
+    <!-- Connections -->
+    <line x1="925" y1="200" x2="950" y2="180" stroke="#fff" stroke-width="1" opacity="0.5"/>
+    <line x1="925" y1="200" x2="1010" y2="220" stroke="#fff" stroke-width="1" opacity="0.5"/>
+    <line x1="990" y1="180" x2="1010" y2="220" stroke="#fff" stroke-width="1" opacity="0.5"/>
+  </g>
+  
+  <!-- Automation gears -->
+  <g opacity="0.4">
+    <g transform="translate(150, 150)">
+      <circle cx="0" cy="0" r="20" fill="none" stroke="#fff" stroke-width="2"/>
+      <circle cx="0" cy="0" r="10" fill="#fff" opacity="0.6"/>
+      <!-- Gear teeth -->
+      <rect x="-3" y="-25" width="6" height="10" fill="#fff"/>
+      <rect x="-3" y="15" width="6" height="10" fill="#fff"/>
+      <rect x="-25" y="-3" width="10" height="6" fill="#fff"/>
+      <rect x="15" y="-3" width="10" height="6" fill="#fff"/>
+      <rect x="-18" y="-18" width="8" height="8" fill="#fff" transform="rotate(45)"/>
+      <rect x="10" y="-18" width="8" height="8" fill="#fff" transform="rotate(45)"/>
+      <rect x="-18" y="10" width="8" height="8" fill="#fff" transform="rotate(45)"/>
+      <rect x="10" y="10" width="8" height="8" fill="#fff" transform="rotate(45)"/>
+    </g>
+    
+    <g transform="translate(1050, 280)">
+      <circle cx="0" cy="0" r="15" fill="none" stroke="#fff" stroke-width="2"/>
+      <circle cx="0" cy="0" r="8" fill="#fff" opacity="0.6"/>
+      <!-- Gear teeth -->
+      <rect x="-2" y="-18" width="4" height="8" fill="#fff"/>
+      <rect x="-2" y="10" width="4" height="8" fill="#fff"/>
+      <rect x="-18" y="-2" width="8" height="4" fill="#fff"/>
+      <rect x="10" y="-2" width="8" height="4" fill="#fff"/>
+      <rect x="-13" y="-13" width="6" height="6" fill="#fff" transform="rotate(45)"/>
+      <rect x="7" y="-13" width="6" height="6" fill="#fff" transform="rotate(45)"/>
+      <rect x="-13" y="7" width="6" height="6" fill="#fff" transform="rotate(45)"/>
+      <rect x="7" y="7" width="6" height="6" fill="#fff" transform="rotate(45)"/>
+    </g>
+  </g>
+  
+  <!-- Code snippets -->
+  <g opacity="0.6" font-family="monospace" font-size="10" fill="#fff">
+    <text x="600" y="50">git commit -m "Automate deployment"</text>
+    <text x="850" y="70">docker build -t app:v1.0 .</text>
+    <text x="100" y="70">kubectl apply -f deployment.yaml</text>
+    <text x="400" y="90">CI/CD Pipeline Active</text>
+  </g>
+  
+  <!-- Main title -->
+  <text x="600" y="180" font-family="Arial, sans-serif" font-size="48" font-weight="bold" 
+        fill="#fff" text-anchor="middle" filter="url(#glow)">DevOps & Cloud</text>
+  <text x="600" y="220" font-family="Arial, sans-serif" font-size="24" 
+        fill="#fff" text-anchor="middle" opacity="0.9">Automate | Deploy | Scale</text>
+  <text x="600" y="250" font-family="monospace" font-size="16" 
+        fill="#fff" text-anchor="middle" opacity="0.7">$ docker-compose up --build</text>
+</svg>

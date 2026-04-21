@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { oneToOneBatchService } from '../services/oneToOneBatchService';
+import { formatDateForComponent } from '../utils/dateUtils';
 import { showToast } from './Toast';
 import './BatchDetailsPage.css';
 
@@ -933,7 +934,7 @@ const OneToOneBatchManagement = () => {
                             </span>
                             <span className="meta-item">
                               <span className="label">📅 Class Date:</span>
-                              <span className="value">{video.classDate ? video.classDate : new Date(video.addedAt || video.date || video.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</span>
+                              <span className="value">{video.classDate ? video.classDate : formatDateForComponent(video.addedAt || video.date || video.createdAt)}</span>
                             </span>
                           </div>
                           {video.description && (

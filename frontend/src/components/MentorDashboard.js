@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { firebaseService, COLLECTIONS } from '../services/firebaseService';
+import { formatDateForComponent } from '../utils/dateUtils';
 import './AdminDashboard.css';
 
 const MentorDashboard = ({ user, onLogout }) => {
@@ -375,7 +376,7 @@ const MentorDashboard = ({ user, onLogout }) => {
                         {video.date && (
                           <span className="meta-item">
                             <span className="label">📅 Class Date:</span>
-                            <span className="value">{new Date(video.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</span>
+                            <span className="value">{formatDateForComponent(video.date)}</span>
                           </span>
                         )}
                         {video.duration && (

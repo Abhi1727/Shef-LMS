@@ -3,6 +3,7 @@
  * Shows every detail: logins, video views, assessments with full metadata
  */
 import React, { useState, useEffect, useCallback } from 'react';
+import { formatDateTimeDisplay, formatDateForComponent } from '../utils/dateUtils';
 import './StudentsActivity.css';
 
 const API_BASE = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
@@ -365,7 +366,7 @@ const StudentsActivity = ({ token: tokenProp }) => {
             Auto-refresh (30s)
           </label>
           <button onClick={() => openUserModal()} className="sa-btn sa-btn-secondary">
-            👤 User Activity
+            � User Activity
           </button>
           <button onClick={fetchActivities} disabled={loading} className="sa-btn sa-btn-secondary">
             {loading ? '⏳ Loading…' : '🔄 Refresh'}
@@ -394,13 +395,9 @@ const StudentsActivity = ({ token: tokenProp }) => {
                 <th style={{ width: 40 }}></th>
                 <th>Time</th>
                 <th>User</th>
-                <th>Role</th>
                 <th>Action</th>
                 <th>Details</th>
-                <th>IP</th>
                 <th>Location</th>
-                <th>ISP</th>
-                <th>Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -416,17 +413,15 @@ const StudentsActivity = ({ token: tokenProp }) => {
                       onClick={() => setExpandedId(isExpanded ? null : rowId)}
                     >
                       <td className="sa-expand">{isExpanded ? '▼' : '▶'}</td>
-                      <td className="sa-time">{new Date(a.timestamp).toLocaleString()}</td>
+                      <td className="sa-time">{formatDateTimeDisplay(a.timestamp)}</td>
                       <td>
                         <div className="sa-user">
                           <strong>{a.userName || '—'}</strong>
                           <small>{a.userEmail || ''}</small>
+                          <span className="sa-role" style={{ background: `${roleStyle.color}22`, color: roleStyle.color }}>
+                            {roleStyle.label}
+                          </span>
                         </div>
-                      </td>
-                      <td>
-                        <span className="sa-role" style={{ background: `${roleStyle.color}22`, color: roleStyle.color }}>
-                          {roleStyle.label}
-                        </span>
                       </td>
                       <td>
                         <span className="sa-action" style={{ background: `${actionStyle.color}22`, color: actionStyle.color }}>
@@ -445,30 +440,16 @@ const StudentsActivity = ({ token: tokenProp }) => {
                         {a.action === 'login' && <span className="sa-detail">—</span>}
                         {!['login', 'video_view', 'assessment_submit'].includes(a.action) && <span className="sa-detail">—</span>}
                       </td>
-                      <td className="sa-ip-cell"><code className="sa-ip">{a.ipAddress || '—'}</code></td>
-                      <td className="sa-location-cell">{[a.city, a.country].filter(Boolean).join(', ') || '—'}</td>
-                      <td className="sa-isp-cell">{a.isp || '—'}</td>
-                      <td className="sa-actions-cell">
-                        <button 
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            openUserModal({
-                              id: a.userId,
-                              name: a.userName,
-                              email: a.userEmail,
-                              role: a.userRole
-                            });
-                          }}
-                          className="sa-btn-small"
-                          title="View user activity"
-                        >
-                          📥
-                        </button>
+                      <td className="sa-location-cell">
+                        <div className="sa-location">
+                          {[a.city, a.country].filter(Boolean).join(', ') || '—'}
+                          {a.ipAddress && <small className="sa-location-ip">IP: {a.ipAddress}</small>}
+                        </div>
                       </td>
                     </tr>
                     {isExpanded && (
                       <tr className="sa-detail-row">
-                        <td colSpan={10}>
+                        <td colSpan={6}>
                           <div className="sa-full-details">
                             <h4>Full activity details</h4>
                             <div className="sa-detail-grid">
@@ -627,7 +608,6 @@ const StudentsActivity = ({ token: tokenProp }) => {
                             <th>Time</th>
                             <th>Action</th>
                             <th>Details</th>
-                            <th>IP</th>
                             <th>Location</th>
                           </tr>
                         </thead>
@@ -636,7 +616,7 @@ const StudentsActivity = ({ token: tokenProp }) => {
                             const actionStyle = getActionStyle(a.action);
                             return (
                               <tr key={`user-activity-${i}`}>
-                                <td className="sa-time">{new Date(a.timestamp).toLocaleString()}</td>
+                                <td className="sa-time">{formatDateTimeDisplay(a.timestamp)}</td>
                                 <td>
                                   <span className="sa-action" style={{ background: `${actionStyle.color}22`, color: actionStyle.color }}>
                                     {actionStyle.icon} {actionStyle.label}
@@ -654,8 +634,12 @@ const StudentsActivity = ({ token: tokenProp }) => {
                                   {a.action === 'login' && <span className="sa-detail">—</span>}
                                   {!['login', 'video_view', 'assessment_submit'].includes(a.action) && <span className="sa-detail">—</span>}
                                 </td>
-                                <td className="sa-ip-cell"><code className="sa-ip">{a.ipAddress || '—'}</code></td>
-                                <td className="sa-location-cell">{[a.city, a.country].filter(Boolean).join(', ') || '—'}</td>
+                                <td className="sa-location-cell">
+                                  <div className="sa-location">
+                                    {[a.city, a.country].filter(Boolean).join(', ') || '—'}
+                                    {a.ipAddress && <small className="sa-location-ip">IP: {a.ipAddress}</small>}
+                                  </div>
+                                </td>
                               </tr>
                             );
                           })}
@@ -669,7 +653,7 @@ const StudentsActivity = ({ token: tokenProp }) => {
                             disabled={userFilters.page <= 1}
                             className="sa-btn sa-btn-secondary"
                           >
-                            ← Previous
+                            Previous
                           </button>
                           <span className="sa-page-info">
                             Page {userFilters.page} of {userPagination.pages} ({userPagination.total} total)
@@ -679,7 +663,7 @@ const StudentsActivity = ({ token: tokenProp }) => {
                             disabled={userFilters.page >= userPagination.pages}
                             className="sa-btn sa-btn-secondary"
                           >
-                            Next →
+                            Next 
                           </button>
                         </div>
                       )}

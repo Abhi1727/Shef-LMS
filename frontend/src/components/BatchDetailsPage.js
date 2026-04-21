@@ -1,8 +1,9 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { createPortal } from 'react-dom';
 import { ToastContainer, showToast } from './Toast';
 import { YouTubeUtils } from '../utils/youtubeUtils';
+import { formatDateForComponent } from '../utils/dateUtils';
 import CustomVideoPlayer from './CustomVideoPlayer';
 import './BatchDetailsPage.css';
 
@@ -54,8 +55,109 @@ function formatTimeRangeToIstString(start, end) {
   return `${startStr} - ${endStr}`;
 }
 
+function formatLastLogin(student) {
+  // Check for last login data in multiple possible locations
+  const lastLoginTimestamp = student?.lastLogin?.timestamp || student?.lastLoginTimestamp;
+  
+  if (!lastLoginTimestamp) {
+    return 'Never logged in';
+  }
+  
+  const lastLoginDate = new Date(lastLoginTimestamp);
+  const now = new Date();
+  const diffMs = now - lastLoginDate;
+  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+  
+  // Format based on how recent the login was
+  if (diffDays === 0) {
+    // Today
+    const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+    if (diffHours === 0) {
+      const diffMinutes = Math.floor(diffMs / (1000 * 60));
+      if (diffMinutes === 0) {
+        return 'Just now';
+      }
+      return `${diffMinutes} minute${diffMinutes > 1 ? 's' : ''} ago`;
+    }
+    return `${diffHours} hour${diffHours > 1 ? 's' : ''} ago`;
+  } else if (diffDays === 1) {
+    return 'Yesterday';
+  } else if (diffDays < 7) {
+    return `${diffDays} days ago`;
+  } else if (diffDays < 30) {
+    const weeks = Math.floor(diffDays / 7);
+    return `${weeks} week${weeks > 1 ? 's' : ''} ago`;
+  } else {
+    // For older logins, show the actual date
+    return lastLoginDate.toLocaleDateString();
+  }
+}
+
+// Enhanced file utility functions
+const getFileIcon = (fileName) => {
+  const extension = fileName?.split('.').pop()?.toLowerCase();
+  const iconMap = {
+    'pdf': '📄',
+    'doc': '📝',
+    'docx': '📝',
+    'txt': '📃',
+    'ppt': '📊',
+    'pptx': '📊',
+    'xls': '📈',
+    'xlsx': '📈',
+    'csv': '📋',
+    'ipynb': '🧪',
+    'zip': '🗜️',
+    'jpg': '🖼️',
+    'jpeg': '🖼️',
+    'png': '🖼️',
+    'gif': '🖼️'
+  };
+  return iconMap[extension] || '📎';
+};
+
+const formatFileSize = (bytes) => {
+  if (bytes === 0) return '0 Bytes';
+  const k = 1024;
+  const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+};
+
+const validateFile = (file) => {
+  const maxSize = 10 * 1024 * 1024; // 10MB
+  const allowedTypes = [
+    'application/pdf',
+    'application/msword',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'text/plain',
+    'application/vnd.ms-powerpoint',
+    'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+    'application/vnd.ms-excel',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    'text/csv',
+    'application/zip',
+    'image/jpeg',
+    'image/png',
+    'image/gif'
+  ];
+  
+  // Check file size
+  if (file.size > maxSize) {
+    return 'File size exceeds 10MB limit';
+  }
+  
+  // Check file type
+  if (!allowedTypes.includes(file.type) && !file.name.endsWith('.ipynb')) {
+    return 'File type not supported';
+  }
+  
+  return null; // No error
+};
+
 const BatchDetailsPage = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const { batchId } = useParams();
   const [selectedBatch, setSelectedBatch] = useState(null);
   const [classroomVideos, setClassroomVideos] = useState([]);
@@ -125,6 +227,11 @@ const BatchDetailsPage = () => {
     notesAvailable: false,
     notesFile: null
   });
+
+  // Enhanced notes upload state
+  const [isDragOver, setIsDragOver] = useState(false);
+  const [fileValidationError, setFileValidationError] = useState('');
+  const [uploadedFileInfo, setUploadedFileInfo] = useState(null);
   const [studentFormData, setStudentFormData] = useState({
     name: '',
     email: '',
@@ -142,6 +249,60 @@ const BatchDetailsPage = () => {
     selectedStudents: []
   });
   const [isSendingEmail, setIsSendingEmail] = useState(false);
+  const [emailSearchTerm, setEmailSearchTerm] = useState('');
+  const [emailQuickFilter, setEmailQuickFilter] = useState('all');
+  const [showCharCounter, setShowCharCounter] = useState(false);
+
+  // Helper function for normalizing IDs (moved here to be available for useMemo)
+  const normId = (v) => (v != null && v !== '' ? String(v).trim() : '');
+  const selectedBatchIdNorm = normId(selectedBatch?.id || selectedBatch?._id || batchId);
+
+  // Filter students for email section (moved here to avoid conditional hook usage)
+  const filteredEmailStudents = useMemo(() => {
+    try {
+      // Return empty array if batchStudents is not yet available
+      if (!students || !Array.isArray(students) || !selectedBatch) return [];
+      
+      let filtered = students.filter(student => {
+        try {
+          return student && normId(student.batchId) === selectedBatchIdNorm;
+        } catch (e) {
+          console.warn('Error filtering student:', e, student);
+          return false;
+        }
+      });
+      
+      // Apply search filter
+      if (emailSearchTerm && emailSearchTerm.trim()) {
+        const term = emailSearchTerm.toLowerCase();
+        filtered = filtered.filter(student => {
+          try {
+            return student && 
+              (student.name && student.name.toLowerCase().includes(term)) ||
+              (student.email && student.email.toLowerCase().includes(term));
+          } catch (e) {
+            console.warn('Error searching student:', e, student);
+            return false;
+          }
+        });
+      }
+      
+      // Apply quick filter
+      if (emailQuickFilter === 'active') {
+        filtered = filtered.filter(student => student && student.status === 'active');
+      } else if (emailQuickFilter === 'inactive') {
+        filtered = filtered.filter(student => student && student.status === 'inactive');
+      }
+      
+      return filtered;
+    } catch (e) {
+      console.error('Error in filteredEmailStudents:', e);
+      return [];
+    }
+  }, [students, selectedBatchIdNorm, emailSearchTerm, emailQuickFilter]);
+
+  // Filter students by batchId for consistency with Dashboard
+  const batchStudents = students.filter(student => normId(student.batchId) === selectedBatchIdNorm);
 
   // Lock body scroll when any modal is open (prevents double scrollbar)
   useEffect(() => {
@@ -364,8 +525,26 @@ const BatchDetailsPage = () => {
   }, [selectedBatch]);
 
   const handleBackToAdmin = () => {
-    // Go back to the previous page instead of always forcing /admin
-    navigate(-1);
+    // Check if we have navigation state indicating where we came from
+    const from = location.state?.from;
+    
+    if (from === 'admin-batches') {
+      // Navigate back to admin dashboard batches section
+      navigate('/admin', { state: { activeSection: 'batches' } });
+    } else if (from === 'teacher-batches') {
+      // Navigate back to teacher dashboard batches section
+      navigate('/teacher', { state: { activeSection: 'batches' } });
+    } else {
+      // Fallback to admin dashboard or use browser history
+      const userRole = localStorage.getItem('user') ? 
+        JSON.parse(localStorage.getItem('user')).role : 'admin';
+      
+      if (userRole === 'teacher') {
+        navigate('/teacher');
+      } else {
+        navigate('/admin');
+      }
+    }
   };
 
   const handleSaveSchedule = async () => {
@@ -961,6 +1140,9 @@ const BatchDetailsPage = () => {
         setShowAddVideoModal(false);
         setEditingVideo(null);
         setVideoFormData({ title: '', youtubeVideoUrl: '', description: '', date: '', time: '', notesAvailable: false, notesFile: null });
+        setUploadedFileInfo(null);
+        setFileValidationError('');
+        setIsDragOver(false);
       } else {
         showToast('Error: ' + (data.message || 'Failed to save YouTube video'), 'error');
       }
@@ -1056,9 +1238,76 @@ const BatchDetailsPage = () => {
     }
   };
 
+  // Enhanced file handling functions
+  const handleDragOver = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragOver(true);
+  };
+
+  const handleDragLeave = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragOver(false);
+  };
+
+  const handleFileDrop = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragOver(false);
+    
+    const files = e.dataTransfer.files;
+    if (files.length > 0) {
+      handleFileSelection(files[0]);
+    }
+  };
+
+  const handleFileSelect = (e) => {
+    const files = e.target.files;
+    if (files.length > 0) {
+      handleFileSelection(files[0]);
+    }
+  };
+
+  const handleFileSelection = (file) => {
+    // Clear previous error
+    setFileValidationError('');
+    
+    // Validate file
+    const validationError = validateFile(file);
+    if (validationError) {
+      setFileValidationError(validationError);
+      return;
+    }
+    
+    // Update state with selected file
+    setVideoFormData(prev => ({ ...prev, notesFile: file }));
+    setUploadedFileInfo({
+      name: file.name,
+      size: file.size,
+      type: file.type
+    });
+  };
+
+  const removeUploadedFile = () => {
+    setVideoFormData(prev => ({ ...prev, notesFile: null }));
+    setUploadedFileInfo(null);
+    setFileValidationError('');
+    // Reset file input
+    const fileInput = document.getElementById('notesFileInput');
+    if (fileInput) {
+      fileInput.value = '';
+    }
+  };
+
   const handleEditVideo = (video) => {
     // Set the video being edited
     setEditingVideo(video);
+    
+    // Reset file upload state
+    setUploadedFileInfo(null);
+    setFileValidationError('');
+    setIsDragOver(false);
     
     // Populate the video form with existing video data for editing
     setVideoFormData({
@@ -1185,6 +1434,36 @@ const BatchDetailsPage = () => {
     }
   };
 
+  // Quick select functions
+  const handleQuickSelect = (filter) => {
+    setEmailQuickFilter(filter);
+  };
+
+  const handleSelectAllFiltered = () => {
+    const filteredEmails = filteredEmailStudents.map(student => student.email);
+    setEmailForm(prev => ({
+      ...prev,
+      selectedStudents: filteredEmails
+    }));
+  };
+
+  const handleSelectNone = () => {
+    setEmailForm(prev => ({
+      ...prev,
+      selectedStudents: []
+    }));
+  };
+
+  const handleSelectActive = () => {
+    const activeEmails = batchStudents
+      .filter(student => student.status === 'active')
+      .map(student => student.email);
+    setEmailForm(prev => ({
+      ...prev,
+      selectedStudents: activeEmails
+    }));
+  };
+
   const handleSendEmail = async () => {
     if (!emailForm.subject.trim() || !emailForm.message.trim() || emailForm.selectedStudents.length === 0) {
       showToast('Please fill in all required fields and select at least one student', 'warning');
@@ -1247,10 +1526,6 @@ const BatchDetailsPage = () => {
     );
   }
 
-  const selectedBatchId = selectedBatch?.id || selectedBatch?._id;
-  const normId = (v) => (v != null && v !== '' ? String(v).trim() : '');
-  const selectedBatchIdNorm = normId(selectedBatchId);
-
   // Filter videos for this batch (explicit batchId match only - no course fallback)
   const batchVideos = classroomVideos
     .filter(video => {
@@ -1264,9 +1539,7 @@ const BatchDetailsPage = () => {
       return dateB - dateA;
     });
 
-  // Filter students by batchId for consistency with Dashboard
-  const batchStudents = students.filter(student => normId(student.batchId) === selectedBatchIdNorm);
-
+  
   const hasValidBatch = (student) => {
     if (!student.batchId) return false;
     const val = String(student.batchId).trim();
@@ -1328,41 +1601,58 @@ const BatchDetailsPage = () => {
     <>
     <div className="batch-details-page">
       
-      {/* Header */}
-      <div className="batch-header">
-        <button onClick={handleBackToAdmin} className="btn-back">
-          ← Back to Admin
-        </button>
-        <div className="batch-info">
-          <h1>{selectedBatch.name}</h1>
-          <div className="batch-meta">
-            <span className="course-badge">{selectedBatch.course}</span>
-            <span className={`status-badge ${selectedBatch.status}`}>
-              {selectedBatch.status}
-            </span>
-            <span className="teacher-info">Teacher: {selectedBatch.teacherName || 'N/A'}</span>
+      {/* Compact Header - Optimized Space Utilization */}
+      <div className="batch-header compact">
+        <div className="compact-header-left">
+          <button onClick={handleBackToAdmin} className="btn-back btn-back-compact">
+            ← Back
+          </button>
+          <div className="batch-info-compact">
+            <h1 className="batch-title-compact">{selectedBatch.name}</h1>
+            <div className="batch-meta-compact">
+              <span className="course-badge course-badge-compact">{selectedBatch.course}</span>
+              <span className={`status-badge status-badge-compact ${selectedBatch.status}`}>
+                {selectedBatch.status}
+              </span>
+              <span className="teacher-info-compact">Teacher: {selectedBatch.teacherName || 'N/A'}</span>
+            </div>
           </div>
         </div>
-
-          <div className="batch-timing-panel">
-          <div className="batch-timing-text">
-            <span className="label">Batch Timing (IST):</span>
-            <span className="value">
-              {selectedBatch.schedule && (selectedBatch.schedule.days || selectedBatch.schedule.time)
-                ? `${selectedBatch.schedule.days || ''} ${selectedBatch.schedule.time || ''}`.trim()
-                : 'No timing set yet'}
-            </span>
+        
+        <div className="compact-header-center">
+          {selectedBatch.schedule && (selectedBatch.schedule.days || selectedBatch.schedule.time) && (
+            <div className="timing-display-compact">
+              <span className="timing-icon">⏰</span>
+              <span className="timing-text">
+                {`${selectedBatch.schedule.days || ''} ${selectedBatch.schedule.time || ''}`.trim()}
+              </span>
+            </div>
+          )}
+        </div>
+        
+        <div className="compact-header-right">
+          <div className="quick-stats-compact">
+            <div className="stat-item-compact">
+              <span className="stat-icon">📹</span>
+              <span className="stat-value">{batchVideos.length}</span>
+            </div>
+            <div className="stat-item-compact">
+              <span className="stat-icon">👥</span>
+              <span className="stat-value">{batchStudents.length}</span>
+            </div>
           </div>
+          
           {isAdmin && (
             <button
-              className="btn-add-timing"
+              className="btn-edit-timing-compact"
               onClick={() => {
                 const parsedRange = parseIstRangeToTimeInputs(scheduleForm.time);
                 setTimeRange(parsedRange);
                 setShowScheduleModal(true);
               }}
+              title={selectedBatch.schedule ? 'Edit Timing' : 'Add Timing'}
             >
-              ⏰ {selectedBatch.schedule ? 'Edit Timing (IST)' : 'Add Timing (IST)'}
+              ⏰
             </button>
           )}
         </div>
@@ -1471,7 +1761,7 @@ const BatchDetailsPage = () => {
                             </span>
                             <span className="meta-item">
                               <span className="label">📅 Class Date:</span>
-                              <span className="value">{new Date(video.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</span>
+                              <span className="value">{formatDateForComponent(video.date)}</span>
                             </span>
                           </div>
                         </div>
@@ -1555,7 +1845,7 @@ const BatchDetailsPage = () => {
                       <tr>
                         <th>Name</th>
                         <th>Email</th>
-                        <th>Batch</th>
+                        <th>Last Login</th>
                         <th>Course</th>
                         <th>Status</th>
                         <th>Actions</th>
@@ -1577,7 +1867,7 @@ const BatchDetailsPage = () => {
                             </button>
                           </td>
                           <td>{student.email}</td>
-                          <td>{student.batchId || 'N/A'}</td>
+                          <td>{formatLastLogin(student)}</td>
                           <td>{student.course}</td>
                           <td>
                             <span className={`status-badge ${student.status}`}>
@@ -1623,8 +1913,10 @@ const BatchDetailsPage = () => {
             <div className="email-view">
               <div className="email-header">
                 <div className="email-header-icon">✉️</div>
-                <h2>Send Email to Batch</h2>
-                <p className="email-header-subtitle">{selectedBatch?.name}</p>
+                <div>
+                  <h2>Send Email to Batch</h2>
+                  <p className="email-header-subtitle">{selectedBatch?.name}</p>
+                </div>
               </div>
               
               <div className="email-modal">
@@ -1646,16 +1938,74 @@ const BatchDetailsPage = () => {
                         <span className="email-section-icon">👥</span>
                         Select Students
                       </label>
+                      <div className="email-student-search">
+                        <input
+                          type="text"
+                          placeholder="Search students..."
+                          value={emailSearchTerm}
+                          onChange={(e) => setEmailSearchTerm(e.target.value)}
+                          className="email-student-search-input"
+                        />
+                      </div>
+                    </div>
+                    
+                    {/* Quick Filters */}
+                    <div className="email-quick-filters">
+                      <button
+                        type="button"
+                        className={`email-quick-filter ${emailQuickFilter === 'all' ? 'active' : ''}`}
+                        onClick={() => handleQuickSelect('all')}
+                      >
+                        All ({batchStudents.length})
+                      </button>
+                      <button
+                        type="button"
+                        className={`email-quick-filter ${emailQuickFilter === 'active' ? 'active' : ''}`}
+                        onClick={() => handleQuickSelect('active')}
+                      >
+                        Active ({batchStudents.filter(s => s.status === 'active').length})
+                      </button>
+                      <button
+                        type="button"
+                        className={`email-quick-filter ${emailQuickFilter === 'inactive' ? 'active' : ''}`}
+                        onClick={() => handleQuickSelect('inactive')}
+                      >
+                        Inactive ({batchStudents.filter(s => s.status === 'inactive').length})
+                      </button>
+                      <button
+                        type="button"
+                        className="email-quick-filter"
+                        onClick={handleSelectAllFiltered}
+                      >
+                        Select All Filtered
+                      </button>
+                      <button
+                        type="button"
+                        className="email-quick-filter"
+                        onClick={handleSelectNone}
+                      >
+                        Clear Selection
+                      </button>
+                      <button
+                        type="button"
+                        className="email-quick-filter"
+                        onClick={handleSelectActive}
+                      >
+                        Select Active Only
+                      </button>
+                    </div>
+                    
+                    <div className="email-students-header">
                       <label className="email-select-all" htmlFor="select-all-students">
                         <input
                           type="checkbox"
                           id="select-all-students"
-                          checked={emailForm.selectedStudents.length === batchStudents.length && batchStudents.length > 0}
+                          checked={emailForm.selectedStudents.length === filteredEmailStudents.length && filteredEmailStudents.length > 0}
                           onChange={(e) => {
                             if (e.target.checked) {
                               setEmailForm(prev => ({
                                 ...prev,
-                                selectedStudents: batchStudents.map(student => student.email)
+                                selectedStudents: filteredEmailStudents.map(student => student.email)
                               }));
                             } else {
                               setEmailForm(prev => ({
@@ -1665,13 +2015,13 @@ const BatchDetailsPage = () => {
                             }
                           }}
                         />
-                        <span>Select All ({batchStudents.length})</span>
+                        <span>Select All ({filteredEmailStudents.length} of {batchStudents.length})</span>
                       </label>
                     </div>
                     
                     <div className="email-students-list">
-                      {batchStudents.length > 0 ? (
-                        batchStudents.map(student => (
+                      {filteredEmailStudents.length > 0 ? (
+                        filteredEmailStudents.map(student => (
                           <label key={student.id} htmlFor={`student-${student.id}`} className="email-student-item">
                             <input
                               type="checkbox"
@@ -1699,7 +2049,11 @@ const BatchDetailsPage = () => {
                         ))
                       ) : (
                         <div className="no-students-message">
-                          <p>No students in this batch to email.</p>
+                          <p>
+                            {emailSearchTerm || emailQuickFilter !== 'all' 
+                              ? 'No students match the current filters.' 
+                              : 'No students in this batch to email.'}
+                          </p>
                         </div>
                       )}
                     </div>
@@ -1724,7 +2078,15 @@ const BatchDetailsPage = () => {
                         />
                       </div>
                       <div className="email-field-group">
-                        <label className="email-field-label">Message <span className="required">*</span></label>
+                        <label className="email-field-label">
+                          Message <span className="required">*</span>
+                          <span 
+                            style={{ marginLeft: '8px', fontSize: '0.8rem', color: '#6c757d', cursor: 'pointer' }}
+                            onClick={() => setShowCharCounter(!showCharCounter)}
+                          >
+                            {showCharCounter ? 'Hide' : 'Show'} counter
+                          </span>
+                        </label>
                         <textarea
                           placeholder="Write your message to the selected students..."
                           value={emailForm.message}
@@ -1732,32 +2094,49 @@ const BatchDetailsPage = () => {
                           className="email-message-input"
                           rows="6"
                           required
+                          maxLength="5000"
                         />
+                        {showCharCounter && (
+                          <div className="email-char-counter">
+                            {emailForm.message.length}/5000 characters
+                          </div>
+                        )}
                       </div>
                       
                       <div className="email-actions">
-                        <button
-                          type="button"
-                          className="btn-email-cancel"
-                          onClick={() => {
-                            setEmailForm({ subject: '', message: '', selectedStudents: [] });
-                            setActiveView('videos');
-                          }}
-                        >
-                          Cancel
-                        </button>
-                        <button
-                          type="button"
-                          className="btn-send-email"
-                          onClick={handleSendEmail}
-                          disabled={isSendingEmail || !emailForm.subject.trim() || !emailForm.message.trim() || emailForm.selectedStudents.length === 0}
-                        >
-                          {isSendingEmail ? (
-                            <span className="btn-send-loading">⏳ Sending...</span>
-                          ) : (
-                            <span>Send to {emailForm.selectedStudents.length} student{emailForm.selectedStudents.length !== 1 ? 's' : ''}</span>
+                        <div className="email-selection-info">
+                          {emailForm.selectedStudents.length > 0 && (
+                            <span>
+                              {emailForm.selectedStudents.length} of {batchStudents.length} students selected
+                            </span>
                           )}
-                        </button>
+                        </div>
+                        <div className="email-action-buttons">
+                          <button
+                            type="button"
+                            className="btn-email-cancel"
+                            onClick={() => {
+                              setEmailForm({ subject: '', message: '', selectedStudents: [] });
+                              setEmailSearchTerm('');
+                              setEmailQuickFilter('all');
+                              setActiveView('videos');
+                            }}
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            type="button"
+                            className="btn-send-email"
+                            onClick={handleSendEmail}
+                            disabled={isSendingEmail || !emailForm.subject.trim() || !emailForm.message.trim() || emailForm.selectedStudents.length === 0}
+                          >
+                            {isSendingEmail ? (
+                              <span className="btn-send-loading">⏳ Sending...</span>
+                            ) : (
+                              <span>Send to {emailForm.selectedStudents.length} student{emailForm.selectedStudents.length !== 1 ? 's' : ''}</span>
+                            )}
+                          </button>
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -1856,6 +2235,9 @@ const BatchDetailsPage = () => {
         setShowAddVideoModal(false);
         setEditingVideo(null);
         setVideoFormData({ title: '', youtubeVideoUrl: '', description: '', date: '', time: '', notesAvailable: false, notesFile: null });
+        setUploadedFileInfo(null);
+        setFileValidationError('');
+        setIsDragOver(false);
       }}>
         <div className="modal" onClick={(e) => e.stopPropagation()}>
           <div className="modal-header">
@@ -1866,6 +2248,9 @@ const BatchDetailsPage = () => {
                 setShowAddVideoModal(false);
                 setEditingVideo(null);
                 setVideoFormData({ title: '', youtubeVideoUrl: '', description: '', date: '', time: '', notesAvailable: false, notesFile: null });
+                setUploadedFileInfo(null);
+                setFileValidationError('');
+                setIsDragOver(false);
               }}
             >
               ×
@@ -1915,32 +2300,91 @@ const BatchDetailsPage = () => {
               onChange={(e) => setVideoFormData({ ...videoFormData, description: e.target.value })}
             />
             
-            <div className="notes-section">
-              <label className="notes-label">
-                <input
-                  type="checkbox"
-                  checked={videoFormData.notesAvailable}
-                  onChange={(e) => setVideoFormData({ ...videoFormData, notesAvailable: e.target.checked, notesFile: e.target.checked ? null : null })}
-                />
-                Notes Available
-              </label>
+            <div className="enhanced-notes-section">
+              <div className="notes-header">
+                <label className="enhanced-notes-label">
+                  <input
+                    type="checkbox"
+                    checked={videoFormData.notesAvailable}
+                    onChange={(e) => setVideoFormData({ ...videoFormData, notesAvailable: e.target.checked, notesFile: e.target.checked ? null : null })}
+                    className="notes-checkbox"
+                  />
+                  <span className="checkbox-custom"></span>
+                  <span className="notes-label-text">📄 Upload Notes for Students</span>
+                </label>
+              </div>
               
               {videoFormData.notesAvailable && (
-                <div className="notes-file-input">
-                  <label className="file-input-label">
-                    Select Notes File:
-                    <input
-                      type="file"
-                      accept=".pdf,.doc,.docx,.txt,.ppt,.pptx"
-                      onChange={(e) => setVideoFormData({ ...videoFormData, notesFile: e.target.files[0] })}
-                      className="file-input"
-                    />
-                  </label>
-                  {videoFormData.notesFile && (
-                    <div className="selected-file">
-                      Selected: {videoFormData.notesFile.name}
+                <div className="notes-upload-area">
+                  <div 
+                    className={`drag-drop-zone ${isDragOver ? 'drag-over' : ''} ${uploadedFileInfo ? 'has-file' : ''}`}
+                    onDragOver={handleDragOver}
+                    onDragLeave={handleDragLeave}
+                    onDrop={handleFileDrop}
+                    onClick={() => document.getElementById('notesFileInput').click()}
+                  >
+                    <div className="upload-content">
+                      {uploadedFileInfo ? (
+                        <div className="file-preview">
+                          <div className="file-icon">{getFileIcon(uploadedFileInfo.name)}</div>
+                          <div className="file-details">
+                            <div className="file-name">{uploadedFileInfo.name}</div>
+                            <div className="file-size">{formatFileSize(uploadedFileInfo.size)}</div>
+                          </div>
+                          <button 
+                            className="remove-file-btn" 
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              removeUploadedFile();
+                            }}
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="upload-prompt">
+                          <div className="upload-icon">📁</div>
+                          <div className="upload-text">
+                            <p className="primary-text">Drag & drop your notes file here</p>
+                            <p className="secondary-text">or click to browse</p>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  
+                  <input
+                    id="notesFileInput"
+                    type="file"
+                    accept=".pdf,.doc,.docx,.txt,.ppt,.pptx,.xls,.xlsx,.csv,.ipynb,.zip,.jpg,.jpeg,.png,.gif"
+                    onChange={handleFileSelect}
+                    className="hidden-file-input"
+                  />
+                  
+                  {fileValidationError && (
+                    <div className="file-validation-error">
+                      ⚠️ {fileValidationError}
                     </div>
                   )}
+                  
+                  <div className="supported-formats">
+                    <span className="formats-label">Supported formats:</span>
+                    <div className="format-badges">
+                      <span className="format-badge">PDF</span>
+                      <span className="format-badge">DOC</span>
+                      <span className="format-badge">PPT</span>
+                      <span className="format-badge">XLS</span>
+                      <span className="format-badge">CSV</span>
+                      <span className="format-badge">IPYNB</span>
+                      <span className="format-badge">ZIP</span>
+                      <span className="format-badge">IMG</span>
+                    </div>
+                  </div>
+                  
+                  <div className="upload-guidelines">
+                    <p>📝 Maximum file size: 10MB</p>
+                    <p>🔒 Files are securely stored and shared only with enrolled students</p>
+                  </div>
                 </div>
               )}
             </div>
@@ -1953,6 +2397,9 @@ const BatchDetailsPage = () => {
                           onClick={() => {
                 setShowAddVideoModal(false);
                 setVideoFormData({ title: '', youtubeVideoUrl: '', description: '', date: '', time: '', notesAvailable: false, notesFile: null });
+                setUploadedFileInfo(null);
+                setFileValidationError('');
+                setIsDragOver(false);
               }}
             >
               Cancel
@@ -2105,7 +2552,7 @@ const BatchDetailsPage = () => {
               </thead>
               <tbody>
                 {studentsForAddModal.map(student => {
-                  const isAlreadyInBatch = student.batchId === selectedBatchId;
+                  const isAlreadyInBatch = normId(student.batchId) === selectedBatchIdNorm;
                   return (
                     <tr key={student.id} className={isAlreadyInBatch ? 'already-in-batch-row' : ''}>
                       <td>

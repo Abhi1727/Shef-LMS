@@ -1,0 +1,81 @@
+<svg width="1200" height="400" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#667eea;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#764ba2;stop-opacity:1" />
+    </linearGradient>
+    <filter id="glow">
+      <feGaussianBlur stdDeviation="3" result="coloredBlur"/>
+      <feMerge>
+        <feMergeNode in="coloredBlur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+  
+  <!-- Background -->
+  <rect width="1200" height="400" fill="url(#bg)"/>
+  
+  <!-- Data visualization elements -->
+  <g opacity="0.3">
+    <!-- Bar chart -->
+    <rect x="50" y="250" width="40" height="100" fill="#fff" opacity="0.8"/>
+    <rect x="100" y="200" width="40" height="150" fill="#fff" opacity="0.8"/>
+    <rect x="150" y="180" width="40" height="170" fill="#fff" opacity="0.8"/>
+    <rect x="200" y="220" width="40" height="130" fill="#fff" opacity="0.8"/>
+    
+    <!-- Line chart -->
+    <polyline points="300,300 350,250 400,200 450,180 500,150 550,170 600,120" 
+              fill="none" stroke="#fff" stroke-width="3" opacity="0.8"/>
+    
+    <!-- Pie chart -->
+    <circle cx="700" cy="200" r="60" fill="none" stroke="#fff" stroke-width="2" opacity="0.8"/>
+    <path d="M 700 200 L 700 140 A 60 60 0 0 1 750 170 Z" fill="#fff" opacity="0.8"/>
+  </g>
+  
+  <!-- Neural network visualization -->
+  <g opacity="0.4">
+    <!-- Input layer -->
+    <circle cx="900" cy="150" r="8" fill="#fff"/>
+    <circle cx="900" cy="200" r="8" fill="#fff"/>
+    <circle cx="900" cy="250" r="8" fill="#fff"/>
+    
+    <!-- Hidden layer -->
+    <circle cx="950" cy="125" r="8" fill="#fff"/>
+    <circle cx="950" cy="175" r="8" fill="#fff"/>
+    <circle cx="950" cy="225" r="8" fill="#fff"/>
+    <circle cx="950" cy="275" r="8" fill="#fff"/>
+    
+    <!-- Output layer -->
+    <circle cx="1000" cy="175" r="8" fill="#fff"/>
+    <circle cx="1000" cy="225" r="8" fill="#fff"/>
+    
+    <!-- Connections -->
+    <line x1="908" y1="150" x2="942" y2="125" stroke="#fff" stroke-width="1" opacity="0.5"/>
+    <line x1="908" y1="150" x2="942" y2="175" stroke="#fff" stroke-width="1" opacity="0.5"/>
+    <line x1="908" y1="200" x2="942" y2="175" stroke="#fff" stroke-width="1" opacity="0.5"/>
+    <line x1="908" y1="200" x2="942" y2="225" stroke="#fff" stroke-width="1" opacity="0.5"/>
+    <line x1="908" y1="250" x2="942" y2="225" stroke="#fff" stroke-width="1" opacity="0.5"/>
+    <line x1="908" y1="250" x2="942" y2="275" stroke="#fff" stroke-width="1" opacity="0.5"/>
+    
+    <line x1="958" y1="125" x2="992" y2="175" stroke="#fff" stroke-width="1" opacity="0.5"/>
+    <line x1="958" y1="175" x2="992" y2="175" stroke="#fff" stroke-width="1" opacity="0.5"/>
+    <line x1="958" y1="225" x2="992" y2="225" stroke="#fff" stroke-width="1" opacity="0.5"/>
+    <line x1="958" y1="275" x2="992" y2="225" stroke="#fff" stroke-width="1" opacity="0.5"/>
+  </g>
+  
+  <!-- Floating data particles -->
+  <g opacity="0.6">
+    <text x="100" y="100" font-family="monospace" font-size="14" fill="#fff" filter="url(#glow)">[0.98, 0.23, 0.45]</text>
+    <text x="300" y="80" font-family="monospace" font-size="14" fill="#fff" filter="url(#glow)">[0.12, 0.89, 0.34]</text>
+    <text x="500" y="110" font-family="monospace" font-size="14" fill="#fff" filter="url(#glow)">[0.76, 0.54, 0.91]</text>
+    <text x="800" y="90" font-family="monospace" font-size="14" fill="#fff" filter="url(#glow)">[0.33, 0.67, 0.28]</text>
+    <text x="1050" y="100" font-family="monospace" font-size="14" fill="#fff" filter="url(#glow)">[0.85, 0.41, 0.73]</text>
+  </g>
+  
+  <!-- Main title -->
+  <text x="600" y="200" font-family="Arial, sans-serif" font-size="48" font-weight="bold" 
+        fill="#fff" text-anchor="middle" filter="url(#glow)">Data Science & AI</text>
+  <text x="600" y="240" font-family="Arial, sans-serif" font-size="24" 
+        fill="#fff" text-anchor="middle" opacity="0.9">Transforming Data into Intelligence</text>
+</svg>

@@ -8,6 +8,7 @@ const { connectMongo } = require('./config/mongo');
 const logger = require('./utils/logger');
 // const { startRecordingSync } = require('./jobs/syncRecordings');
 const videoProcessor = require('./middleware/videoProcessor');
+const { apiCacheHeaders, staticAssetCache, developmentCacheBust } = require('./middleware/cacheHeaders');
 
 dotenv.config();
 
@@ -71,13 +72,8 @@ app.use(cors({
 
 app.use(express.json());
 
-// Prevent API response caching - ensures fresh data for users
-app.use('/api', (req, res, next) => {
-  res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
-  res.set('Pragma', 'no-cache');
-  res.set('Expires', '0');
-  next();
-});
+// Enhanced API cache headers with context-aware caching
+app.use('/api', apiCacheHeaders);
 
 // Rate limit auth endpoints (login/register) to reduce brute-force risk
 const authLimiter = rateLimit({
@@ -89,8 +85,14 @@ const authLimiter = rateLimit({
 });
 app.use('/api/auth', authLimiter);
 
-// Serve uploaded files (e.g., lecture notes) statically
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+// Serve uploaded files with enhanced cache headers
+app.use('/uploads', developmentCacheBust, staticAssetCache, express.static(path.join(__dirname, 'uploads'), {
+  etag: true,
+  lastModified: true,
+  setHeaders: (res, filePath) => {
+    // Additional headers can be set here if needed
+  }
+}));
 
 // Routes
 app.use('/api/auth', require('./routes/auth'));

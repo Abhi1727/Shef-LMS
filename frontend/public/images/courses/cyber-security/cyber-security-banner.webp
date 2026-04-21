@@ -1,0 +1,102 @@
+<svg width="1200" height="400" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#1a1a2e;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#16213e;stop-opacity:1" />
+    </linearGradient>
+    <filter id="glow">
+      <feGaussianBlur stdDeviation="3" result="coloredBlur"/>
+      <feMerge>
+        <feMergeNode in="coloredBlur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    <radialGradient id="shield">
+      <stop offset="0%" style="stop-color:#00ff41;stop-opacity:0.8" />
+      <stop offset="100%" style="stop-color:#00ff41;stop-opacity:0.2" />
+    </radialGradient>
+  </defs>
+  
+  <!-- Background -->
+  <rect width="1200" height="400" fill="url(#bg)"/>
+  
+  <!-- Grid pattern -->
+  <g opacity="0.2">
+    <line x1="0" y1="50" x2="1200" y2="50" stroke="#00ff41" stroke-width="1"/>
+    <line x1="0" y1="100" x2="1200" y2="100" stroke="#00ff41" stroke-width="1"/>
+    <line x1="0" y1="150" x2="1200" y2="150" stroke="#00ff41" stroke-width="1"/>
+    <line x1="0" y1="200" x2="1200" y2="200" stroke="#00ff41" stroke-width="1"/>
+    <line x1="0" y1="250" x2="1200" y2="250" stroke="#00ff41" stroke-width="1"/>
+    <line x1="0" y1="300" x2="1200" y2="300" stroke="#00ff41" stroke-width="1"/>
+    <line x1="0" y1="350" x2="1200" y2="350" stroke="#00ff41" stroke-width="1"/>
+    
+    <line x1="100" y1="0" x2="100" y2="400" stroke="#00ff41" stroke-width="1"/>
+    <line x1="200" y1="0" x2="200" y2="400" stroke="#00ff41" stroke-width="1"/>
+    <line x1="300" y1="0" x2="300" y2="400" stroke="#00ff41" stroke-width="1"/>
+    <line x1="400" y1="0" x2="400" y2="400" stroke="#00ff41" stroke-width="1"/>
+    <line x1="500" y1="0" x2="500" y2="400" stroke="#00ff41" stroke-width="1"/>
+    <line x1="600" y1="0" x2="600" y2="400" stroke="#00ff41" stroke-width="1"/>
+    <line x1="700" y1="0" x2="700" y2="400" stroke="#00ff41" stroke-width="1"/>
+    <line x1="800" y1="0" x2="800" y2="400" stroke="#00ff41" stroke-width="1"/>
+    <line x1="900" y1="0" x2="900" y2="400" stroke="#00ff41" stroke-width="1"/>
+    <line x1="1000" y1="0" x2="1000" y2="400" stroke="#00ff41" stroke-width="1"/>
+    <line x1="1100" y1="0" x2="1100" y2="400" stroke="#00ff41" stroke-width="1"/>
+  </g>
+  
+  <!-- Shield -->
+  <g transform="translate(150, 100)">
+    <path d="M 0 0 L 80 0 L 80 60 Q 80 100 40 120 Q 0 100 0 60 Z" 
+          fill="url(#shield)" stroke="#00ff41" stroke-width="2" filter="url(#glow)"/>
+    <!-- Lock icon in shield -->
+    <rect x="25" y="40" width="30" height="25" fill="#00ff41" rx="3"/>
+    <path d="M 30 40 L 30 35 Q 30 25 40 25 Q 50 25 50 35 L 50 40" 
+          fill="none" stroke="#1a1a2e" stroke-width="3"/>
+    <circle cx="40" cy="48" r="3" fill="#1a1a2e"/>
+  </g>
+  
+  <!-- Binary code rain effect -->
+  <g opacity="0.6" font-family="monospace" font-size="12" fill="#00ff41">
+    <text x="50" y="50">01001000 01100001 01100011 01101011</text>
+    <text x="300" y="30">01100101 01110010 00100000 01010000</text>
+    <text x="550" y="60">01110010 01101111 01110100 01100101</text>
+    <text x="800" y="40">01100011 01110100 00100000 01000101</text>
+    <text x="1000" y="50">01101110 01100011 01110010 01111001</text>
+    
+    <text x="100" y="350">01000100 01100101 01100110 01100101</text>
+    <text x="350" y="370">01101110 01110011 01100101 00100000</text>
+    <text x="600" y="360">01010011 01100101 01100011 01110101</text>
+    <text x="850" y="380">01110010 01101001 01110100 01111001</text>
+  </g>
+  
+  <!-- Network nodes -->
+  <g opacity="0.4">
+    <circle cx="950" cy="150" r="6" fill="#00ff41" filter="url(#glow)"/>
+    <circle cx="1000" cy="120" r="6" fill="#00ff41" filter="url(#glow)"/>
+    <circle cx="1050" cy="180" r="6" fill="#00ff41" filter="url(#glow)"/>
+    <circle cx="1020" cy="220" r="6" fill="#00ff41" filter="url(#glow)"/>
+    <circle cx="980" cy="250" r="6" fill="#00ff41" filter="url(#glow)"/>
+    
+    <line x1="950" y1="150" x2="1000" y2="120" stroke="#00ff41" stroke-width="1" opacity="0.5"/>
+    <line x1="1000" y1="120" x2="1050" y2="180" stroke="#00ff41" stroke-width="1" opacity="0.5"/>
+    <line x1="1050" y1="180" x2="1020" y2="220" stroke="#00ff41" stroke-width="1" opacity="0.5"/>
+    <line x1="1020" y1="220" x2="980" y2="250" stroke="#00ff41" stroke-width="1" opacity="0.5"/>
+    <line x1="980" y1="250" x2="950" y2="150" stroke="#00ff41" stroke-width="1" opacity="0.5"/>
+  </g>
+  
+  <!-- Warning symbols -->
+  <g opacity="0.7">
+    <path d="M 350 250 L 370 290 L 330 290 Z" fill="#ff6b35" stroke="#ff6b35" stroke-width="2"/>
+    <text x="350" y="280" font-family="Arial" font-size="20" font-weight="bold" fill="#fff" text-anchor="middle">!</text>
+    
+    <path d="M 750 240 L 770 280 L 730 280 Z" fill="#ff6b35" stroke="#ff6b35" stroke-width="2"/>
+    <text x="750" y="270" font-family="Arial" font-size="20" font-weight="bold" fill="#fff" text-anchor="middle">!</text>
+  </g>
+  
+  <!-- Main title -->
+  <text x="600" y="180" font-family="Arial, sans-serif" font-size="48" font-weight="bold" 
+        fill="#fff" text-anchor="middle" filter="url(#glow)">Cyber Security</text>
+  <text x="600" y="220" font-family="Arial, sans-serif" font-size="24" 
+        fill="#00ff41" text-anchor="middle" opacity="0.9">Ethical Hacking & Defense</text>
+  <text x="600" y="250" font-family="monospace" font-size="16" 
+        fill="#00ff41" text-anchor="middle" opacity="0.7">[PROTECT | DEFEND | SECURE]</text>
+</svg>

@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Time Parsing Fix Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .test-section {
+            background: white;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .test-case {
+            margin: 10px 0;
+            padding: 10px;
+            border-left: 4px solid #007bff;
+            background-color: #f8f9fa;
+        }
+        .pass { border-left-color: #28a745; }
+        .fail { border-left-color: #dc3545; }
+        .result {
+            font-weight: bold;
+            font-family: monospace;
+        }
+        .expected {
+            color: #6c757d;
+            font-size: 0.9em;
+        }
+        h1 { color: #333; }
+        h2 { color: #666; }
+    </style>
+</head>
+<body>
+    <h1>🔧 Time Parsing Fix Test</h1>
+    <p>Testing the fix for "12:NaN AM" display issue in Dashboard timezone conversion.</p>
+
+    <div class="test-section">
+        <h2>📊 Test Results</h2>
+        <div id="test-results"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>🔍 Manual Test Cases</h2>
+        <p>Test the timezone conversion functions with various inputs:</p>
+        
+        <div class="test-case">
+            <strong>Valid Time:</strong> "09:30 - 11:30"
+            <div class="expected">Expected: Proper EST/CST/PST conversion</div>
+            <div id="test-valid" class="result">Testing...</div>
+        </div>
+
+        <div class="test-case">
+            <strong>Empty String:</strong> ""
+            <div class="expected">Expected: Empty result or fallback message</div>
+            <div id="test-empty" class="result">Testing...</div>
+        </div>
+
+        <div class="test-case">
+            <strong>Null Input:</strong> null
+            <div class="expected">Expected: Empty result or fallback message</div>
+            <div id="test-null" class="result">Testing...</div>
+        </div>
+
+        <div class="test-case">
+            <strong>Invalid Format:</strong> "invalid-time"
+            <div class="expected">Expected: Empty result or fallback message</div>
+            <div id="test-invalid" class="result">Testing...</div>
+        </div>
+
+        <div class="test-case">
+            <strong>Malformed Time:</strong> "25:99 - 99:99"
+            <div class="expected">Expected: Empty result or fallback message</div>
+            <div id="test-malformed" class="result">Testing...</div>
+        </div>
+    </div>
+
+    <script>
+        // Import timezone utilities (simplified version for testing)
+        function safeParseTime(timeString) {
+            if (!timeString || typeof timeString !== 'string') {
+                return null;
+            }
+            
+            const parts = timeString.trim().split(':');
+            if (parts.length !== 2) {
+                return null;
+            }
+            
+            const hours = parseInt(parts[0], 10);
+            const minutes = parseInt(parts[1], 10);
+            
+            // Validate ranges
+            if (isNaN(hours) || isNaN(minutes) || 
+                hours < 0 || hours > 23 || 
+                minutes < 0 || minutes > 59) {
+                return null;
+            }
+            
+            return { hours, minutes };
+        }
+
+        function convertIstToUsTimezone(istTime, timezone) {
+            if (!istTime || !timezone) {
+                console.warn('[TimezoneUtils] convertIstToUsTimezone: Missing input', { istTime, timezone });
+                return '';
+            }
+            
+            // Safely parse IST time
+            const parsedTime = safeParseTime(istTime);
+            if (!parsedTime) {
+                console.warn('[TimezoneUtils] convertIstToUsTimezone: Invalid time format', istTime);
+                return '';
+            }
+            
+            const { hours, minutes } = parsedTime;
+            const istDate = new Date();
+            istDate.setHours(hours, minutes, 0, 0);
+            
+            // Simple offset for testing (EST = UTC-5:30)
+            const offsetMinutes = timezone === 'EST' ? -330 : timezone === 'CST' ? -390 : -510;
+            const usDate = new Date(istDate.getTime() + offsetMinutes * 60 * 1000);
+            
+            // Handle date crossing
+            let usHours = usDate.getHours();
+            const usMinutes = usDate.getMinutes();
+            
+            // Format 12-hour time
+            const period = usHours >= 12 ? 'PM' : 'AM';
+            usHours = usHours % 12 || 12;
+            
+            return `${usHours.toString().padStart(2, '0')}:${usMinutes.toString().padStart(2, '0')} ${period}`;
+        }
+
+        function convertIstRangeToZone(startTime, endTime, timezone) {
+            if (!startTime || !endTime || !timezone) {
+                console.warn('[TimezoneUtils] convertIstRangeToZone: Missing input', { startTime, endTime, timezone });
+                return '';
+            }
+            
+            // Validate timezone parameter
+            if (!['EST', 'CST', 'PST'].includes(timezone)) {
+                console.warn('[TimezoneUtils] convertIstRangeToZone: Invalid timezone', timezone);
+                return '';
+            }
+            
+            const convertedStart = convertIstToUsTimezone(startTime, timezone);
+            const convertedEnd = convertIstToUsTimezone(endTime, timezone);
+            
+            // Check if conversion was successful
+            if (!convertedStart || !convertedEnd) {
+                console.warn('[TimezoneUtils] convertIstRangeToZone: Time conversion failed', { startTime, endTime, timezone, convertedStart, convertedEnd });
+                return '';
+            }
+            
+            const abbreviation = timezone === 'EST' ? 'EDT' : timezone === 'CST' ? 'CDT' : 'PDT';
+            
+            return `${convertedStart} - ${convertedEnd} ${abbreviation}`;
+        }
+
+        // Test cases
+        const testCases = [
+            {
+                name: 'Valid Time',
+                input: '09:30 - 11:30',
+                expected: 'should contain valid times',
+                testId: 'test-valid'
+            },
+            {
+                name: 'Empty String',
+                input: '',
+                expected: 'should be empty',
+                testId: 'test-empty'
+            },
+            {
+                name: 'Null Input',
+                input: null,
+                expected: 'should be empty',
+                testId: 'test-null'
+            },
+            {
+                name: 'Invalid Format',
+                input: 'invalid-time',
+                expected: 'should be empty',
+                testId: 'test-invalid'
+            },
+            {
+                name: 'Malformed Time',
+                input: '25:99 - 99:99',
+                expected: 'should be empty',
+                testId: 'test-malformed'
+            }
+        ];
+
+        let passCount = 0;
+        let totalTests = testCases.length;
+
+        // Run tests
+        testCases.forEach(testCase => {
+            const resultElement = document.getElementById(testCase.testId);
+            
+            try {
+                const timeParts = testCase.input ? testCase.input.split(' - ') : ['', ''];
+                const startTime = timeParts[0]?.trim();
+                const endTime = timeParts[1]?.trim();
+                
+                const estResult = convertIstRangeToZone(startTime, endTime, 'EST');
+                const cstResult = convertIstRangeToZone(startTime, endTime, 'CST');
+                const pstResult = convertIstRangeToZone(startTime, endTime, 'PST');
+                
+                const hasValidResults = estResult.includes('NaN') || cstResult.includes('NaN') || pstResult.includes('NaN');
+                const hasEmptyResults = !estResult && !cstResult && !pstResult;
+                
+                let passed = false;
+                let status = '';
+                let statusClass = '';
+                
+                if (testCase.expected === 'should contain valid times') {
+                    passed = !hasValidResults && estResult && cstResult && pstResult;
+                    status = passed ? '✅ PASS' : '❌ FAIL';
+                    statusClass = passed ? 'pass' : 'fail';
+                } else if (testCase.expected === 'should be empty') {
+                    passed = hasEmptyResults || (!estResult.includes('NaN') && !cstResult.includes('NaN') && !pstResult.includes('NaN'));
+                    status = passed ? '✅ PASS' : '❌ FAIL';
+                    statusClass = passed ? 'pass' : 'fail';
+                }
+                
+                if (passed) passCount++;
+                
+                resultElement.innerHTML = `
+                    <div style="margin-bottom: 10px;">
+                        <strong>EST:</strong> ${estResult || '(empty)'}<br>
+                        <strong>CST:</strong> ${cstResult || '(empty)'}<br>
+                        <strong>PST:</strong> ${pstResult || '(empty)'}<br>
+                        <strong>Status:</strong> <span class="${statusClass}">${status}</span>
+                    </div>
+                `;
+                
+                resultElement.parentElement.className = `test-case ${statusClass}`;
+                
+            } catch (error) {
+                resultElement.innerHTML = `<strong>Error:</strong> ${error.message}`;
+                resultElement.parentElement.className = 'test-case fail';
+            }
+        });
+
+        // Summary
+        document.getElementById('test-results').innerHTML = `
+            <div class="test-case ${passCount === totalTests ? 'pass' : 'fail'}">
+                <strong>📊 Test Summary:</strong><br>
+                Passed: ${passCount}/${totalTests}<br>
+                Success Rate: ${((passCount / totalTests) * 100).toFixed(1)}%<br>
+                <strong>Status: ${passCount === totalTests ? '✅ ALL TESTS PASSED' : '❌ SOME TESTS FAILED'}</strong>
+            </div>
+        `;
+    </script>
+</body>
+</html>

@@ -3,6 +3,7 @@ const zoomService = require('../services/zoomService');
 const { connectMongo } = require('../config/mongo');
 const Classroom = require('../models/Classroom');
 const LiveClass = require('../models/LiveClass');
+const { parseZoomTimestamp } = require('../utils/timezoneUtils');
 
 // Function to sync Zoom recordings to classroom
 async function syncZoomRecordings() {
@@ -69,7 +70,7 @@ async function syncZoomRecordings() {
             title: classTitle,
             instructor: instructor,
             duration: `${Math.floor(meeting.duration / 60)} min`,
-            date: meeting.startTime,
+            date: parseZoomTimestamp(meeting.startTime),
             videoSource: 'zoom',
             zoomUrl: recording.playUrl,
             zoomPasscode: meeting.password || '',

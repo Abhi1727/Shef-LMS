@@ -1,12 +1,14 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { createPortal } from 'react-dom';
 import { YouTubeUtils } from '../utils/youtubeUtils';
+import { formatDateForComponent, formatDateTimeDisplay } from '../utils/dateUtils';
 import CustomVideoPlayer from './CustomVideoPlayer';
 import './BatchDetailsPage.css';
 
 const TeacherBatchDetailsPage = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const { batchId } = useParams();
   const [selectedBatch, setSelectedBatch] = useState(null);
   const [classroomVideos, setClassroomVideos] = useState([]);
@@ -28,6 +30,7 @@ const TeacherBatchDetailsPage = () => {
   const [editForm, setEditForm] = useState({ title: '', description: '' });
   const [uploadingNotes, setUploadingNotes] = useState(false);
   const [notesFile, setNotesFile] = useState(null);
+  const [isHeaderExpanded, setIsHeaderExpanded] = useState(false);
 
   const loadBatchData = useCallback(async () => {
     try {
@@ -123,7 +126,16 @@ const TeacherBatchDetailsPage = () => {
   }, [loadBatchData]);
 
   const handleBackToTeacher = () => {
-    navigate('/teacher');
+    // Check if we have navigation state indicating where we came from
+    const from = location.state?.from;
+    
+    if (from === 'teacher-batches') {
+      // Navigate back to teacher dashboard batches section
+      navigate('/teacher', { state: { activeSection: 'batches' } });
+    } else {
+      // Fallback to teacher dashboard
+      navigate('/teacher');
+    }
   };
 
   const handleViewChange = (view) => {
@@ -422,18 +434,113 @@ const TeacherBatchDetailsPage = () => {
 
   return (
     <div className="batch-details-page">
-      <div className="batch-header">
-        <button onClick={handleBackToTeacher} className="btn-back">
-          ← Back to Teacher Dashboard
-        </button>
-        <div className="batch-info">
-          <h1>{selectedBatch.name}</h1>
-          <div className="batch-meta">
-            <span className="course-badge">{selectedBatch.course}</span>
-            <span className={`status-badge ${selectedBatch.status}`}>{selectedBatch.status}</span>
-            <span className="teacher-info">Teacher: You</span>
+      <div className={`batch-header compact ${isHeaderExpanded ? 'expanded' : ''}`}>
+        <div className="compact-header-left">
+          <button onClick={handleBackToTeacher} className="btn-back btn-back-compact">
+            ← Back
+          </button>
+          <div className="batch-info-compact">
+            <h1 className="batch-title-compact">{selectedBatch.name}</h1>
+            <div className="batch-meta-compact">
+              <span className="course-badge course-badge-compact">{selectedBatch.course}</span>
+              <span className={`status-badge status-badge-compact ${selectedBatch.status}`}>{selectedBatch.status}</span>
+            </div>
           </div>
         </div>
+        
+        <div className="compact-header-right">
+          <div className="batch-stats-compact">
+            <div className="stat-item-compact">
+              <span className="stat-icon">📹</span>
+              <span className="stat-value">{classroomVideos.length}</span>
+            </div>
+            <div className="stat-item-compact">
+              <span className="stat-icon">👥</span>
+              <span className="stat-value">{students.length}</span>
+            </div>
+          </div>
+          
+          <button 
+            onClick={() => setIsHeaderExpanded(!isHeaderExpanded)}
+            className="header-toggle-btn"
+            aria-label={isHeaderExpanded ? 'Collapse header' : 'Expand header'}
+          >
+            <span className={`toggle-icon ${isHeaderExpanded ? 'expanded' : ''}`}>
+              {isHeaderExpanded ? '▲' : '▼'}
+            </span>
+          </button>
+        </div>
+        
+        {isHeaderExpanded && (
+          <div className="expanded-header-content">
+            <div className="expanded-header-row">
+              <div className="expanded-info-section">
+                <h3 className="expanded-section-title">Batch Information</h3>
+                <div className="expanded-info-grid">
+                  <div className="info-item">
+                    <span className="info-label">Status:</span>
+                    <span className={`status-badge ${selectedBatch.status}`}>{selectedBatch.status}</span>
+                  </div>
+                  <div className="info-item">
+                    <span className="info-label">Course:</span>
+                    <span className="course-badge">{selectedBatch.course}</span>
+                  </div>
+                  <div className="info-item">
+                    <span className="info-label">Teacher:</span>
+                    <span className="teacher-info">You</span>
+                  </div>
+                  {selectedBatch.startTime && (
+                    <div className="info-item">
+                      <span className="info-label">Start Time:</span>
+                      <span className="info-value">{selectedBatch.startTime}</span>
+                    </div>
+                  )}
+                  {selectedBatch.endTime && (
+                    <div className="info-item">
+                      <span className="info-label">End Time:</span>
+                      <span className="info-value">{selectedBatch.endTime}</span>
+                    </div>
+                  )}
+                  {selectedBatch.days && (
+                    <div className="info-item">
+                      <span className="info-label">Days:</span>
+                      <span className="info-value">{selectedBatch.days}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+              
+              <div className="expanded-stats-section">
+                <h3 className="expanded-section-title">Quick Stats</h3>
+                <div className="expanded-stats-grid">
+                  <div className="stat-card">
+                    <div className="stat-icon-large">📹</div>
+                    <div className="stat-details">
+                      <div className="stat-number">{classroomVideos.length}</div>
+                      <div className="stat-label">Videos</div>
+                    </div>
+                  </div>
+                  <div className="stat-card">
+                    <div className="stat-icon-large">👥</div>
+                    <div className="stat-details">
+                      <div className="stat-number">{students.length}</div>
+                      <div className="stat-label">Students</div>
+                    </div>
+                  </div>
+                  {selectedBatch.notesFile && (
+                    <div className="stat-card">
+                      <div className="stat-icon-large">📋</div>
+                      <div className="stat-details">
+                        <div className="stat-number">1</div>
+                        <div className="stat-label">Notes</div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="horizontal-menu">
@@ -537,7 +644,7 @@ const TeacherBatchDetailsPage = () => {
                           <div className="video-meta">
                             <span className="instructor">{video.instructor || 'Instructor'}</span>
                             <span className="date">
-                              {video.date ? new Date(video.date).toLocaleDateString() : 'No date'}
+                              {formatDateForComponent(video.date)}
                             </span>
                           </div>
                           {video.description && (
@@ -642,7 +749,7 @@ const TeacherBatchDetailsPage = () => {
                   {selectedStudentDetails.phone && <p><strong>Phone:</strong> {selectedStudentDetails.phone}</p>}
                   {selectedStudentDetails.address && <p><strong>Address:</strong> {selectedStudentDetails.address}</p>}
                   <p><strong>Status:</strong> <span className={`status ${selectedStudentDetails.status || 'active'}`}>{selectedStudentDetails.status || 'active'}</span></p>
-                  {selectedStudentDetails.joinedAt && <p><strong>Joined:</strong> {new Date(selectedStudentDetails.joinedAt).toLocaleDateString()}</p>}
+                  {selectedStudentDetails.joinedAt && <p><strong>Joined:</strong> {formatDateForComponent(selectedStudentDetails.joinedAt)}</p>}
                 </div>
               </div>
 
@@ -656,7 +763,7 @@ const TeacherBatchDetailsPage = () => {
                       <div key={index} className="activity-item">
                         <p className="activity-action">{activity.action}</p>
                         <p className="activity-timestamp">
-                          {new Date(activity.timestamp).toLocaleString()}
+                          {formatDateTimeDisplay(activity.timestamp)}
                         </p>
                         {activity.details && <p className="activity-details">{activity.details}</p>}
                       </div>

@@ -236,6 +236,89 @@ router.put('/users/:id', async (req, res) => {
   }
 });
 
+// @route   PUT /api/admin/users/:id/password
+// @desc    Update user password only (admin only)
+router.put('/users/:id/password', async (req, res) => {
+  try {
+    // Validate request body structure
+    if (!req.body || typeof req.body !== 'object') {
+      return res.status(400).json({ message: 'Invalid request body' });
+    }
+
+    const { id } = req.params;
+    const { newPassword, confirmPassword } = req.body;
+
+    // Validation
+    if (!newPassword || !confirmPassword) {
+      return res.status(400).json({ message: 'Both password fields are required' });
+    }
+
+    if (newPassword !== confirmPassword) {
+      return res.status(400).json({ message: 'Passwords do not match' });
+    }
+
+    // Password strength requirements
+    if (newPassword.length < 8) {
+      return res.status(400).json({ message: 'Password must be at least 8 characters long' });
+    }
+
+    if (!/(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])/.test(newPassword)) {
+      return res.status(400).json({ 
+        message: 'Password must contain at least one uppercase letter, one lowercase letter, one number, and one special character' 
+      });
+    }
+
+    // Check if user exists
+    const user = await User.findById(id);
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    // Hash new password
+    const bcrypt = require('bcryptjs');
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(newPassword, salt);
+
+    // Update user password
+    await User.findByIdAndUpdate(id, { 
+      password: hashedPassword,
+      updatedAt: new Date()
+    });
+
+    // Log activity for audit trail
+    try {
+      await ActivityLog.create({
+        user: req.user.id,
+        action: 'Password Updated',
+        details: `Admin ${req.user.name} updated password for user ${user.name} (${user.email})`,
+        timestamp: new Date(),
+        ipAddress: req.ip || req.connection.remoteAddress
+      });
+    } catch (logError) {
+      console.error('Error logging password update:', logError);
+      // Continue even if logging fails
+    }
+
+    res.json({ 
+      message: 'Password updated successfully',
+      userUpdated: true,
+      sessionsInvalidated: true
+    });
+  } catch (err) {
+    console.error('Error updating user password:', err);
+    // Ensure we always return proper JSON
+    try {
+      res.status(500).json({ 
+        message: 'Server error while updating password',
+        error: process.env.NODE_ENV === 'development' ? err.message : undefined
+      });
+    } catch (jsonError) {
+      console.error('Failed to send JSON error response:', jsonError);
+      res.status(500).set('Content-Type', 'application/json').end('{"message":"Server error"}');
+    }
+  }
+});
+
 // @route   DELETE /api/admin/users/:id
 // @desc    Delete a user
 router.delete('/users/:id', async (req, res) => {

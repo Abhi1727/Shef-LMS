@@ -2,6 +2,10 @@ import React, { useState, useEffect, lazy, Suspense } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import Login from './components/Login';
 import tokenService from './services/tokenService';
+import cacheManager from './utils/cacheManager';
+import enhancedApiService from './utils/enhancedApiService';
+import dataFreshnessTracker from './utils/dataFreshness';
+import assetVersioning from './utils/assetVersioning';
 import './App.css';
 
 // Lazy load heavy dashboard components for better performance
@@ -66,45 +70,84 @@ function App() {
     // Register service worker for performance caching
     registerServiceWorker();
     
+    // Initialize cache management utilities
+    initializeCacheManagement();
+    
     // Cleanup token monitoring on unmount
     return () => {
       tokenService.stopTokenValidation();
     };
   }, []);
 
-  const setupTokenMonitoring = () => {
-    try {
-      // Setup axios interceptor for 401 handling
-      tokenService.setupAxiosInterceptor((message) => {
-        console.log('Auto-logout triggered:', message);
-        handleAutoLogout(message);
-      });
-
-      // Start periodic token validation
-      tokenService.startTokenValidation(
-        // onTokenExpired callback
-        (message) => {
-          console.log('Token expired:', message);
-          handleAutoLogout(message);
-        },
-        // onTokenWarning callback
-        (timeUntilExpiry, expiresAt) => {
-          const formattedTime = tokenService.formatTimeUntilExpiry(timeUntilExpiry);
-          setSessionWarning({
-            message: `Session expires in ${formattedTime}`,
-            expiresAt: expiresAt,
-            timeUntilExpiry: timeUntilExpiry
-          });
-          
-          // Clear warning after 10 seconds
-          setTimeout(() => setSessionWarning(null), 10000);
+  const initializeCacheManagement = () => {
+  try {
+    // Setup automatic cache clearing on navigation and auth changes
+    cacheManager.setupAutoClear();
+    
+    // Register common data trackers for freshness monitoring
+    if (isAuthenticated && user) {
+      // Dashboard data tracker
+      dataFreshnessTracker.registerTracker('dashboard', {
+        url: '/api/dashboard/stats',
+        type: 'dashboard',
+        autoRefresh: true,
+        refetchCallback: async () => {
+          // This would be implemented in the dashboard component
+          console.log('Refreshing dashboard data');
         }
-      );
-    } catch (error) {
-      console.error('Error setting up token monitoring:', error);
-      // Don't let token monitoring errors crash the app
+      });
+      
+      // Activity data tracker
+      dataFreshnessTracker.registerTracker('activity', {
+        url: '/api/activity/recent',
+        type: 'activity',
+        autoRefresh: true,
+        refetchCallback: async () => {
+          // This would be implemented in the activity component
+          console.log('Refreshing activity data');
+        }
+      });
     }
-  };
+    
+    console.log('Cache management initialized successfully');
+  } catch (error) {
+    console.error('Error initializing cache management:', error);
+  }
+};
+
+const setupTokenMonitoring = () => {
+  try {
+    // Setup axios interceptor for 401 handling
+    tokenService.setupAxiosInterceptor((message) => {
+      console.log('Auto-logout triggered:', message);
+      handleAutoLogout(message);
+    });
+
+    // Start periodic token validation
+    tokenService.startTokenValidation(
+      // onTokenExpired callback
+      (message) => {
+        console.log('Token expired:', message);
+        handleAutoLogout(message);
+      },
+      // onTokenWarning callback
+      (timeUntilExpiry, expiresAt) => {
+        const formattedTime = tokenService.formatTimeUntilExpiry(timeUntilExpiry);
+        setSessionWarning({
+          message: `Session expires in ${formattedTime}`,
+          expiresAt: expiresAt,
+          timeUntilExpiry: timeUntilExpiry
+        });
+        
+        // Clear warning after 10 seconds
+        setTimeout(() => setSessionWarning(null), 10000);
+      }
+    );
+  } catch (error) {
+    console.error('Error setting up token monitoring:', error);
+    // Don't let token monitoring errors crash the app
+  }
+};
 
   const handleAutoLogout = (reason) => {
     console.log('Performing auto-logout:', reason);
@@ -114,6 +157,12 @@ function App() {
     setUser(null);
     setSessionWarning(null);
     tokenService.stopTokenValidation();
+    
+    // Clear all caches on logout
+    cacheManager.clearAllCaches();
+    enhancedApiService.clearCache();
+    dataFreshnessTracker.clearAll();
+    assetVersioning.clearCache();
     
     // Show alert to user (in production, you might want a nicer notification)
     alert(`Session expired: ${reason}. Please login again.`);
@@ -148,6 +197,12 @@ function App() {
     setUser(null);
     setSessionWarning(null);
     tokenService.stopTokenValidation();
+    
+    // Clear all caches on logout
+    cacheManager.clearAllCaches();
+    enhancedApiService.clearCache();
+    dataFreshnessTracker.clearAll();
+    assetVersioning.clearCache();
   };
 
   return (

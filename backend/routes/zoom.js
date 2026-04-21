@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const zoomService = require('../services/zoomService');
 const auth = require('../middleware/auth');
+const { parseZoomTimestamp } = require('../utils/timezoneUtils');
 
 // All Zoom-based features are temporarily disabled while Firebase/Zoom
 // integrations are removed. Keep routes but return a clear message.
@@ -163,7 +164,7 @@ router.get('/recordings', auth, async (req, res) => {
             title: classTitle,
             instructor: instructor,
             duration: `${Math.floor(meeting.duration / 60)} min`,
-            date: meeting.startTime,
+            date: parseZoomTimestamp(meeting.startTime),
             videoUrl: recording.playUrl, // Zoom video URL
             zoomRecordingId: recording.id,
             zoomMeetingId: meeting.id.toString(),

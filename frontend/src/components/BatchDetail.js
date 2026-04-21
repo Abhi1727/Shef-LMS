@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import './BatchDetail.css';
 import { useNavigate, useParams } from 'react-router-dom';
+import { formatDateForComponent } from '../utils/dateUtils';
 
 const BatchDetail = () => {
   const { batchId } = useParams();
@@ -456,7 +457,7 @@ const BatchDetail = () => {
                     <h4>{video.title}</h4>
                     <p className="video-instructor">{video.instructor || 'Instructor'}</p>
                     <p className="video-date">
-                      {video.date ? new Date(video.date).toLocaleDateString() : 'No date'}
+                      {formatDateForComponent(video.date)}
                     </p>
                     <p className="video-description">
                       {video.description ? video.description.substring(0, 100) + '...' : 'No description'}
@@ -663,7 +664,7 @@ const BatchDetail = () => {
               
               <div className="video-metadata">
                 <p><strong>Instructor:</strong> {selectedVideo.instructor || 'Not specified'}</p>
-                <p><strong>Date:</strong> {selectedVideo.date ? new Date(selectedVideo.date).toLocaleDateString() : 'Not specified'}</p>
+                <p><strong>Date:</strong> {formatDateForComponent(selectedVideo.date)}</p>
                 {selectedVideo.description && (
                   <p><strong>Description:</strong> {selectedVideo.description}</p>
                 )}
