@@ -211,12 +211,12 @@
 .admin-header-full .header-actions {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 8px;
   flex-wrap: wrap;
 }
 
 .btn-header {
-  padding: 8px 14px;
+  padding: 6px 12px;
   font-size: 13px;
 }
 
@@ -246,7 +246,7 @@
 }
 
 .logout-btn-header {
-  padding: 8px 14px;
+  padding: 6px 12px;
   background: #fef2f2;
   color: #dc2626;
   border: 1px solid #fecaca;
@@ -267,15 +267,15 @@
 .admin-horizontal-nav {
   background: white;
   border-top: 1px solid #e2e8f0;
-  padding: 0 20px;
+  padding: 0 16px;
   overflow: visible;
 }
 
 .horizontal-nav-inner,
 .horizontal-nav-scroll {
   display: flex;
-  gap: 8px;
-  padding: 14px 0;
+  gap: 6px;
+  padding: 12px 0;
   align-items: center;
   flex-wrap: wrap;
 }
@@ -286,7 +286,7 @@
 
 .nav-btn-h {
   flex-shrink: 0;
-  padding: 10px 20px;
+  padding: 8px 16px;
   border: 2px solid #e2e8f0;
   background: white;
   border-radius: 10px;
@@ -412,17 +412,17 @@
 .student-search-section {
   background: white;
   border-radius: 12px;
-  padding: 24px;
-  margin-bottom: 32px;
+  padding: 16px;
+  margin-bottom: 20px;
   box-shadow: var(--shadow-md);
   border: 1px solid var(--border-color);
   contain: layout style paint;
 }
 .student-search-header {
   display: flex;
-  flex-direction: column;
-  gap: 4px;
-  margin-bottom: 16px;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
 }
 
 .student-search-section h3 {
@@ -442,7 +442,7 @@
 }
 
 .search-form {
-  margin-bottom: 20px;
+  margin-bottom: 12px;
 }
 
 .search-input-group {
@@ -914,7 +914,7 @@
 
 .admin-top-header {
   background: white;
-  padding: 22px 40px;
+  padding: 16px 24px;
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -1310,6 +1310,38 @@
   transform: scale(1.05);
 }
 
+.btn-secondary {
+  background: #f8fafc;
+  color: #475569;
+  border: 2px solid #e2e8f0;
+  padding: 10px 20px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.btn-secondary:hover:not(:disabled) {
+  background: #667eea;
+  color: white;
+  border-color: #667eea;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+}
+
+.btn-secondary:disabled {
+  background: #f1f5f9;
+  color: #9ca3af;
+  border-color: #e2e8f0;
+  cursor: not-allowed;
+  transform: none;
+}
+
 /* Action Buttons Container */
 .action-btns {
   display: flex;
@@ -1387,7 +1419,7 @@
   .data-table th:last-child,
   .data-table td:last-child {
     min-width: 120px;
-    padding: 12px 8px;
+    padding: 7px 6px;
   }
 }
 
@@ -1408,7 +1440,7 @@
   .data-table th:last-child,
   .data-table td:last-child {
     min-width: 150px;
-    padding: 14px 12px;
+    padding: 6px 4px;
   }
 }
 
@@ -1431,7 +1463,7 @@
 }
 
 .data-table th {
-  padding: 16px;
+  padding: 8px;
   text-align: center;
   font-weight: 600;
   font-size: 14px;
@@ -1440,7 +1472,7 @@
 }
 
 .data-table td {
-  padding: 16px;
+  padding: 8px;
   border-bottom: 1px solid #e2e8f0;
   color: #4a5568;
   font-size: 14px;
@@ -1450,7 +1482,7 @@
 /* Extra padding for Actions column */
 .data-table th:last-child,
 .data-table td:last-child {
-  padding: 16px 20px;
+  padding: 8px 10px;
   text-align: center;
   min-width: 180px;
   white-space: nowrap;
@@ -1585,12 +1617,12 @@
 .table-footer {
   display: flex;
   flex-wrap: wrap;
-  align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  padding: 14px 20px;
-  background: #f9fafb;
+  align-items: center;
+  padding: 16px 0;
+  margin-top: 16px;
   border-top: 1px solid #e2e8f0;
+  gap: 12px;
 }
 
 .rows-per-page {
@@ -1631,6 +1663,54 @@
   align-items: center;
   gap: 12px;
   margin-left: auto;
+}
+
+.page-numbers {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin: 0 12px;
+}
+
+.page-number {
+  padding: 6px 10px;
+  border-radius: 6px;
+  border: 1px solid #e2e8f0;
+  background: white;
+  color: #475569;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  min-width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.page-number:hover {
+  background: #f8fafc;
+  border-color: #cbd5e1;
+  color: #1a202c;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.page-number.active {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  border-color: transparent;
+  box-shadow: 0 2px 6px rgba(102, 126, 234, 0.3);
+  transform: scale(1.05);
+}
+
+.page-ellipsis {
+  color: #9ca3af;
+  font-size: 14px;
+  padding: 0 4px;
+  font-weight: 600;
+  user-select: none;
 }
 
 .pagination-button {
@@ -1674,11 +1754,66 @@
   .table-footer {
     flex-direction: column;
     align-items: flex-start;
+    gap: 16px;
+  }
+
+  .rows-per-page {
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .rows-per-page-button {
+    padding: 5px 10px;
+    font-size: 12px;
   }
 
   .pagination-controls {
     width: 100%;
     justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .page-numbers {
+    margin: 0 8px;
+    gap: 3px;
+  }
+
+  .page-number {
+    padding: 4px 8px;
+    font-size: 12px;
+    min-width: 28px;
+    height: 28px;
+  }
+
+  .page-ellipsis {
+    font-size: 12px;
+    padding: 0 2px;
+  }
+}
+
+@media (max-width: 480px) {
+  .rows-per-page-button {
+    padding: 4px 8px;
+    font-size: 11px;
+    min-width: 32px;
+  }
+
+  .page-numbers {
+    margin: 0 4px;
+    gap: 2px;
+  }
+
+  .page-number {
+    padding: 3px 6px;
+    font-size: 11px;
+    min-width: 24px;
+    height: 24px;
+  }
+
+  .page-ellipsis {
+    font-size: 11px;
+    padding: 0 2px;
   }
 }
 
@@ -2309,7 +2444,7 @@ body.modal-open {
   }
 
   .nav-btn-h {
-    padding: 9px 14px;
+    padding: 7px 12px;
     font-size: 13px;
   }
 
@@ -2351,7 +2486,7 @@ body.modal-open {
   }
 
   .admin-top-header {
-    padding: 18px 24px;
+    padding: 14px 20px;
   }
 
   .admin-top-header .header-right {
@@ -2447,7 +2582,7 @@ body.modal-open {
 
 @media (max-width: 576px) {
   .admin-top-header {
-    padding: 16px;
+    padding: 12px 16px;
   }
 
   .mobile-menu-btn {
@@ -3713,4 +3848,302 @@ body.modal-open {
   font-size: 12px;
   margin-top: 4px;
   display: block;
+}
+
+/* Password input container with toggle button */
+.password-input-container {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.password-input-container input {
+  flex: 1;
+  padding-right: 60px; /* Space for the toggle button */
+}
+
+.password-toggle-btn {
+  position: absolute;
+  right: 8px;
+  background: none;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  padding: 4px 8px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  background: white;
+}
+
+.password-toggle-btn:hover {
+  background: var(--background-light);
+  border-color: var(--primary-color);
+  color: var(--primary-color);
+}
+
+.password-toggle-btn:active {
+  transform: scale(0.95);
+}
+
+/* Mobile responsive for password toggle */
+@media (max-width: 480px) {
+  .password-toggle-btn {
+    right: 6px;
+    padding: 3px 6px;
+    font-size: 11px;
+  }
+  
+  .password-input-container input {
+    padding-right: 50px;
+  }
+}
+
+/* Password Update Section Styles */
+.password-update-section {
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 20px;
+  margin-top: 20px;
+  background: var(--background-light);
+  box-shadow: var(--shadow-sm);
+}
+
+.password-update-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 15px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.password-update-header h4 {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.btn-toggle-password-update {
+  background: var(--primary-color);
+  color: white;
+  border: none;
+  border-radius: 6px;
+  padding: 8px 16px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  font-weight: 500;
+}
+
+.btn-toggle-password-update:hover {
+  background: var(--secondary-color);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-md);
+}
+
+.btn-toggle-password-update:active {
+  transform: translateY(0);
+}
+
+.password-update-form {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+}
+
+.password-update-form .password-input-container {
+  margin-bottom: 5px;
+}
+
+.password-update-form .password-input {
+  width: 100%;
+  padding: 12px 50px 12px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  font-size: 14px;
+  transition: all var(--transition-fast);
+  background: white;
+}
+
+.password-update-form .password-input:focus {
+  outline: none;
+  border-color: var(--primary-color);
+  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+
+.password-requirements {
+  background: #f8f9fa;
+  border: 1px solid #e9ecef;
+  border-radius: 6px;
+  padding: 12px;
+  margin: 5px 0;
+}
+
+.password-requirements small {
+  display: block;
+  margin-bottom: 8px;
+  color: var(--text-secondary);
+  font-weight: 600;
+}
+
+.password-requirements ul {
+  margin: 0;
+  padding-left: 20px;
+  list-style: none;
+}
+
+.password-requirements li {
+  margin-bottom: 4px;
+  color: var(--text-secondary);
+  font-size: 13px;
+  position: relative;
+  padding-left: 20px;
+}
+
+.password-requirements li:before {
+  content: "·";
+  position: absolute;
+  left: 0;
+  color: var(--primary-color);
+  font-weight: bold;
+  font-size: 16px;
+}
+
+.btn-update-password {
+  background: var(--success-color);
+  color: white;
+  border: none;
+  border-radius: 6px;
+  padding: 12px 20px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  margin-top: 10px;
+}
+
+.btn-update-password:hover:not(:disabled) {
+  background: #059669;
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-md);
+}
+
+.btn-update-password:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.btn-update-password:disabled {
+  background: #9ca3af;
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+/* Mobile responsive for password update section */
+@media (max-width: 768px) {
+  .password-update-section {
+    padding: 15px;
+    margin-top: 15px;
+  }
+  
+  .password-update-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+  }
+  
+  .btn-toggle-password-update {
+    align-self: flex-end;
+  }
+  
+  .password-update-form .password-input {
+    padding: 10px 45px 10px 10px;
+    font-size: 13px;
+  }
+  
+  .password-requirements {
+    padding: 10px;
+  }
+  
+  .password-requirements li {
+    font-size: 12px;
+  }
+  
+  .btn-update-password {
+    padding: 10px 16px;
+    font-size: 13px;
+  }
+}
+
+@media (max-width: 480px) {
+  .password-update-section {
+    padding: 12px;
+  }
+  
+  .password-update-header h4 {
+    font-size: 15px;
+  }
+  
+  .btn-toggle-password-update {
+    padding: 6px 12px;
+    font-size: 13px;
+  }
+  
+  .password-update-form .password-input {
+    padding: 8px 40px 8px 8px;
+    font-size: 12px;
+  }
+  
+  .password-requirements {
+    padding: 8px;
+  }
+  
+  .password-requirements li {
+    font-size: 11px;
+    margin-bottom: 3px;
+  }
+  
+  .btn-update-password {
+    padding: 8px 12px;
+    font-size: 12px;
+  }
+}
+
+/* Last Login Column Styling */
+.never-login {
+  color: #9ca3af;
+  font-style: italic;
+  font-size: 13px;
+}
+
+/* Ensure Last Login column has appropriate width */
+.data-table th:nth-child(5),
+.data-table td:nth-child(5) {
+  width: 120px;
+  min-width: 120px;
+  text-align: center;
+}
+
+/* Responsive adjustments for Last Login column */
+@media (max-width: 768px) {
+  .data-table th:nth-child(5),
+  .data-table td:nth-child(5) {
+    width: 100px;
+    min-width: 100px;
+    font-size: 12px;
+  }
+}
+
+@media (max-width: 480px) {
+  .data-table th:nth-child(5),
+  .data-table td:nth-child(5) {
+    width: 80px;
+    min-width: 80px;
+    font-size: 11px;
+  }
+  
+  .never-login {
+    font-size: 11px;
+  }
 }

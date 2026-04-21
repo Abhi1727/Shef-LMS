@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef, memo } from 'react';
 import { createPortal } from 'react-dom';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { adminAnalyticsService, adminAnalyticsUtils } from '../services/adminAnalyticsService';
 import { COLLECTIONS } from '../services/firebaseService';
 import { ToastContainer, showToast } from './Toast';
 import fallbackData from '../data/fallbackData';
 import { YouTubeUtils } from '../utils/youtubeUtils';
+import { formatDateForComponent } from '../utils/dateUtils';
 import StudentsActivity from './StudentsActivity';
 import OneToOneCourseSelection from './OneToOneCourseSelection';
 import './Dashboard.css';
@@ -72,8 +73,8 @@ const BatchFilter = memo(({ batchSearch, setBatchSearch, batchCourseFilter, setB
 
   const courseOptions = [
     { value: 'all', label: 'All Courses', icon: '📚' },
-    { value: 'cyber security', label: 'Cyber Security', icon: '🔒' },
     { value: 'data science', label: 'Data Science', icon: '📊' },
+    { value: 'cyber security', label: 'Cyber Security', icon: '🔒' },
     { value: 'devops & ai', label: 'DevOps & AI', icon: '🚀' },
     { value: 'devops & cloud', label: 'DevOps & Cloud', icon: '☁️' },
     { value: 'one-to-one', label: 'One-to-One', icon: '👤' }
@@ -83,10 +84,10 @@ const BatchFilter = memo(({ batchSearch, setBatchSearch, batchCourseFilter, setB
 
   return (
     <div className="batch-filter-section">
-      <div className="batch-filter-header">
-        <h3>🔍 Filter Batches</h3>
+      {/* <div className="batch-filter-header">
+        <h3>Filter Batches</h3>
         <p className="batch-filter-subtitle">Search by batch name, student name, email, or filter by course type.</p>
-      </div>
+      </div> */}
       
       <div className="batch-filter-controls">
         <div className="batch-search-area">
@@ -131,6 +132,7 @@ const BatchFilter = memo(({ batchSearch, setBatchSearch, batchCourseFilter, setB
 
 const AdminDashboard = ({ user, onLogout }) => {
   const navigate = useNavigate();
+  const location = useLocation();
   const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
   const [activeSection, setActiveSection] = useState('overview');
   const [loading, setLoading] = useState(true);
@@ -234,11 +236,21 @@ const AdminDashboard = ({ user, onLogout }) => {
   // Batch filtering functionality
   const [batchSearch, setBatchSearch] = useState('');
   const [batchCourseFilter, setBatchCourseFilter] = useState('all');
+  
+  // Password visibility states
+  const [showStudentPassword, setShowStudentPassword] = useState(false);
+  const [showTeacherPassword, setShowTeacherPassword] = useState(false);
+  const [showMentorPassword, setShowMentorPassword] = useState(false);
 
-  const clearSearch = useCallback(() => {
-    setSearchEmail('');
-    setStudentPage(1);
-  }, []);
+  // Password update states
+  const [passwordUpdateData, setPasswordUpdateData] = useState({
+    newPassword: '',
+    confirmPassword: ''
+  });
+  const [showPasswordUpdate, setShowPasswordUpdate] = useState(false);
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [studentPage, setStudentPage] = useState(1);
 
   const openStudentDetails = useCallback((student) => {
     setSelectedStudentDetails(student);
@@ -246,8 +258,9 @@ const AdminDashboard = ({ user, onLogout }) => {
     setEditMode(false);
     setEditedProfile({});
     setShowStudentDetailsModal(true);
-    clearSearch();
-  }, [clearSearch]);
+    setSearchEmail('');
+    setStudentPage(1);
+  }, []);
 
   const handleBatchClick = useCallback((batch) => {
     const batchId = batch.id || batch._id;
@@ -256,7 +269,9 @@ const AdminDashboard = ({ user, onLogout }) => {
       batchId: batchId,
       fullBatch: batch
     });
-    navigate(`/admin/batch/${batchId}`);
+    navigate(`/admin/batch/${batchId}`, { 
+      state: { from: 'admin-batches' } 
+    });
   }, [navigate]);
 
   const handleBatchViewSelect = useCallback((view) => {
@@ -318,10 +333,14 @@ const AdminDashboard = ({ user, onLogout }) => {
   const [showBatchDetailsModal, setShowBatchDetailsModal] = useState(false);
   const [selectedBatch, setSelectedBatch] = useState(null);
   const [batchView, setBatchView] = useState(''); // 'videos' or 'students'
-  const [studentPage, setStudentPage] = useState(1);
-  const [studentsPerPage, setStudentsPerPage] = useState(5);
+  const [studentsPerPage, setStudentsPerPage] = useState(15);
   const [moreOpen, setMoreOpen] = useState(false);
   const moreRef = React.useRef(null);
+
+  const clearSearch = useCallback(() => {
+    setSearchEmail('');
+    setStudentPage(1);
+  }, []);
 
   // Manage body scroll when modal is open
   useEffect(() => {
@@ -402,6 +421,13 @@ const AdminDashboard = ({ user, onLogout }) => {
     // at runtime because `loadAllData` is declared later in this file.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Handle navigation state when returning from BatchDetailsPage
+  useEffect(() => {
+    if (location.state?.activeSection) {
+      setActiveSection(location.state.activeSection);
+    }
+  }, [location.state]);
 
   // Reset form when modal type changes to prevent data leakage
   useEffect(() => {
@@ -1343,6 +1369,15 @@ const AdminDashboard = ({ user, onLogout }) => {
       bio: '',
       skills: []
     });
+    
+    // Reset password update states
+    setPasswordUpdateData({
+      newPassword: '',
+      confirmPassword: ''
+    });
+    setShowPasswordUpdate(false);
+    setShowNewPassword(false);
+    setShowConfirmPassword(false);
   };
 
   const getDefaultFormData = (type) => {
@@ -2020,6 +2055,185 @@ const AdminDashboard = ({ user, onLogout }) => {
     }
   };
 
+  // Request logging utility for debugging
+  const logApiRequest = async (url, options, response) => {
+    console.log('=== API Request Debug ===');
+    console.log('URL:', url);
+    console.log('Method:', options.method);
+    console.log('Headers:', options.headers);
+    console.log('Request Body:', options.body);
+    console.log('Response Status:', response.status);
+    console.log('Response Headers:', [...response.headers.entries()]);
+    
+    try {
+      const responseClone = response.clone();
+      const responseText = await responseClone.text();
+      console.log('Response Body:', responseText);
+      
+      // Try to parse as JSON to validate
+      try {
+        JSON.parse(responseText);
+        console.log('✅ Response is valid JSON');
+      } catch (jsonError) {
+        console.log('❌ Response is NOT valid JSON:', jsonError.message);
+      }
+    } catch (error) {
+      console.log('Could not read response body:', error.message);
+    }
+    console.log('=== End Debug ===');
+  };
+
+  const handlePasswordUpdate = async () => {
+    try {
+      setSaving(true);
+      
+      // Validate editingItem first
+      if (!editingItem) {
+        showToast('No user selected. Please select a user to update their password.', 'error');
+        return;
+      }
+
+      if (!editingItem.id && !editingItem._id) {
+        showToast('Invalid user data. Please try selecting the user again.', 'error');
+        return;
+      }
+      
+      // Validation
+      if (!passwordUpdateData.newPassword || !passwordUpdateData.confirmPassword) {
+        showToast('Both password fields are required', 'error');
+        return;
+      }
+
+      if (passwordUpdateData.newPassword !== passwordUpdateData.confirmPassword) {
+        showToast('Passwords do not match', 'error');
+        return;
+      }
+
+      // Password strength requirements
+      if (passwordUpdateData.newPassword.length < 8) {
+        showToast('Password must be at least 8 characters long', 'error');
+        return;
+      }
+
+      if (!/(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])/.test(passwordUpdateData.newPassword)) {
+        showToast('Password must contain at least one uppercase letter, one lowercase letter, one number, and one special character', 'error');
+        return;
+      }
+
+      const token = localStorage.getItem('token');
+      const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
+      const userId = editingItem.id || editingItem._id;
+
+      // Debug logging for userId and URL construction
+      console.log('🔍 Password Update Debug:');
+      console.log('editingItem:', editingItem);
+      console.log('editingItem type:', typeof editingItem);
+      console.log('editingItem keys:', editingItem ? Object.keys(editingItem) : 'N/A');
+      console.log('userId:', userId);
+      console.log('apiUrl:', apiUrl);
+      console.log('passwordUpdateData:', passwordUpdateData);
+
+      if (!userId) {
+        console.error('❌ User ID is missing!');
+        console.error('editingItem.id:', editingItem?.id);
+        console.error('editingItem._id:', editingItem?._id);
+        showToast('User ID is missing. Please try selecting the user again.', 'error');
+        return;
+      }
+
+      if (!token) {
+        console.error('❌ Auth token is missing!');
+        showToast('Authentication token is missing. Please log in again.', 'error');
+        return;
+      }
+
+      const requestOptions = {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          newPassword: passwordUpdateData.newPassword,
+          confirmPassword: passwordUpdateData.confirmPassword
+        })
+      };
+
+      const url = `${apiUrl}/api/admin/users/${userId}/password`;
+      
+      console.log('🌐 Making request to:', url);
+      console.log('📦 Request options:', requestOptions);
+
+      if (!url || url.includes('undefined') || url.includes('null')) {
+        console.error('❌ Invalid URL constructed:', url);
+        showToast('Invalid request URL. Please try again.', 'error');
+        return;
+      }
+
+      const response = await fetch(url, requestOptions);
+
+      // Log the request for debugging (only in development)
+      if (window.location.hostname === 'localhost') {
+        await logApiRequest(url, requestOptions, response);
+      }
+
+      if (response.ok) {
+        const result = await response.json();
+        showToast('Password updated successfully! User will need to login with new password.', 'success');
+        
+        // Clear password update form
+        setPasswordUpdateData({ newPassword: '', confirmPassword: '' });
+        setShowPasswordUpdate(false);
+      } else {
+        // Enhanced error handling with proper JSON parsing fallback
+        let errorMessage = 'Failed to update password';
+        
+        // Handle specific HTTP status codes
+        if (response.status === 404) {
+          errorMessage = 'Password update endpoint not found. The user ID may be invalid or the endpoint may not be available.';
+        } else if (response.status === 401) {
+          errorMessage = 'You are not authorized to update passwords. Please check your admin permissions.';
+        } else if (response.status === 403) {
+          errorMessage = 'Access denied. You do not have permission to update this user\'s password.';
+        } else if (response.status >= 500) {
+          errorMessage = 'Server error occurred. Please try again later.';
+        }
+        
+        try {
+          const errorData = await response.json();
+          errorMessage = errorData.message || errorMessage;
+        } catch (parseError) {
+          console.warn('Failed to parse error response as JSON:', parseError);
+          // Try to get text response as fallback
+          try {
+            const textResponse = await response.text();
+            if (response.status === 404) {
+              errorMessage = `Endpoint not found: ${url}. ${textResponse}`;
+            } else {
+              errorMessage = textResponse || errorMessage;
+            }
+          } catch (textError) {
+            console.warn('Failed to get text response:', textError);
+            errorMessage = `Server error (${response.status})`;
+          }
+        }
+        showToast(errorMessage, 'error');
+      }
+    } catch (error) {
+      console.error('Error updating password:', error);
+      // Enhanced error message for network/connection issues
+      if (error.name === 'TypeError' && error.message.includes('Failed to fetch')) {
+        showToast('Unable to connect to the server. Please check your internet connection.', 'error');
+      } else if (error.name === 'AbortError') {
+        showToast('Request timed out. Please try again.', 'error');
+      } else {
+        showToast('Failed to update password: ' + error.message, 'error');
+      }
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const handleDelete = async (collection, id) => {
     if (window.confirm('Are you sure you want to delete this item?')) {
       try {
@@ -2524,7 +2738,7 @@ const AdminDashboard = ({ user, onLogout }) => {
             <button className={`nav-btn-h ${activeSection === 'students' ? 'active' : ''}`} onClick={() => setActiveSection('students')}>👥 Students</button>
             <button className={`nav-btn-h ${activeSection === 'studentsActivity' ? 'active' : ''}`} onClick={() => setActiveSection('studentsActivity')}>📊 Activity</button>
             <button className={`nav-btn-h ${activeSection === 'batches' ? 'active' : ''}`} onClick={() => setActiveSection('batches')}>📚 Batches</button>
-            <button className={`nav-btn-h ${activeSection === 'oneToOne' ? 'active' : ''}`} onClick={() => setActiveSection('oneToOne')}>👤 One to One</button>
+            {/* <button className={`nav-btn-h ${activeSection === 'oneToOne' ? 'active' : ''}`} onClick={() => setActiveSection('oneToOne')}>👤 One to One</button> */}
             <button className={`nav-btn-h ${activeSection === 'classroom' ? 'active' : ''}`} onClick={() => setActiveSection('classroom')}>🎥 Classroom</button>
             <div className="nav-more-wrapper" ref={moreRef}>
               <button
@@ -2582,18 +2796,18 @@ const AdminDashboard = ({ user, onLogout }) => {
                     <span className="icon">👨‍🏫</span>
                     <span>Add Teacher</span>
                   </button>
-                  <button onClick={() => openModal('course')} className="action-btn">
-                    <span className="icon">➕</span>
-                    <span>Add Course</span>
+                  <button onClick={() => openModal('batch')} className="action-btn">
+                    <span className="icon">+</span>
+                    <span>Add Batch</span>
                   </button>
-                  <button onClick={() => openModal('job')} className="action-btn">
+                  {/* <button onClick={() => openModal('job')} className="action-btn">
                     <span className="icon">➕</span>
                     <span>Add Job</span>
                   </button>
                   <button onClick={() => openModal('mentor')} className="action-btn">
                     <span className="icon">➕</span>
                     <span>Add Mentor</span>
-                  </button>
+                  </button> */}
                   <button onClick={() => openModal('content')} className="action-btn">
                     <span className="icon">📢</span>
                     <span>Post Announcement</span>
@@ -2605,32 +2819,33 @@ const AdminDashboard = ({ user, onLogout }) => {
                 </div>
               </div>
 
-              <div className="recent-activity">
+              {/* <div className="recent-activity">
                 <h3>Recent Activity</h3>
                 <div className="activity-list">
                   <div className="activity-item">
-                    <span className="activity-icon">👤</span>
+                    <span className="activity-icon">?</span>
                     <div className="activity-content">
                       <p><strong>New student enrolled</strong></p>
                       <span className="activity-time">2 hours ago</span>
                     </div>
                   </div>
                   <div className="activity-item">
-                    <span className="activity-icon">📚</span>
+                    <span className="activity-icon">?</span>
                     <div className="activity-content">
                       <p><strong>Course updated</strong></p>
                       <span className="activity-time">5 hours ago</span>
                     </div>
                   </div>
                   <div className="activity-item">
-                    <span className="activity-icon">💼</span>
+                    <span className="activity-icon">?</span>
                     <div className="activity-content">
                       <p><strong>New job posted</strong></p>
                       <span className="activity-time">1 day ago</span>
                     </div>
                   </div>
                 </div>
-              </div>
+              </div> */}
+
             </div>
           )}
 
@@ -2659,6 +2874,7 @@ const AdminDashboard = ({ user, onLogout }) => {
                       <th>Email</th>
                       <th>Batch</th>
                       <th>Course</th>
+                      <th>Last Login</th>
                       <th>Actions</th>
                     </tr>
                   </thead>
@@ -2680,6 +2896,14 @@ const AdminDashboard = ({ user, onLogout }) => {
               student.batchName || 'No Batch Assigned'}</td>
                         <td>{student.course || 'N/A'}</td>
                         <td>
+                          {student.lastLogin?.timestamp ? 
+                            new Date(student.lastLogin.timestamp).toLocaleDateString() : 
+                            student.lastLoginTimestamp ? 
+                            new Date(student.lastLoginTimestamp).toLocaleDateString() : 
+                            <span className="never-login">Never</span>
+                          }
+                        </td>
+                        <td>
                           <button onClick={() => openModal('student', student)} className="btn-edit">✏️</button>
                           <button onClick={() => handleDelete(COLLECTIONS.USERS, student.id)} className="btn-delete">🗑️</button>
                         </td>
@@ -2695,7 +2919,7 @@ const AdminDashboard = ({ user, onLogout }) => {
                   <div className="table-footer">
                     <div className="rows-per-page">
                       <span>Rows per page:</span>
-                      {[5, 10, 15].map(size => (
+                      {[5, 10, 15, 25, 50, 100].map(size => (
                         <button
                           key={size}
                           type="button"
@@ -2724,10 +2948,66 @@ const AdminDashboard = ({ user, onLogout }) => {
                     >
                       ← Previous
                     </button>
-                    <span className="pagination-info">
-                      Page {currentStudentPage} of {totalStudentPages} · Showing{' '}
-                      {studentStartIndex + 1}–{Math.min(studentEndIndex, students.length)} of {students.length} students
-                    </span>
+                    <div className="page-numbers">
+                      {(() => {
+                        const pages = [];
+                        const maxVisiblePages = 5;
+                        let startPage = Math.max(1, currentStudentPage - Math.floor(maxVisiblePages / 2));
+                        let endPage = Math.min(totalStudentPages, startPage + maxVisiblePages - 1);
+                        
+                        // Adjust if we're near the end
+                        if (endPage - startPage + 1 < maxVisiblePages) {
+                          startPage = Math.max(1, endPage - maxVisiblePages + 1);
+                        }
+                        
+                        // Add first page and ellipsis if needed
+                        if (startPage > 1) {
+                          pages.push(
+                            <button
+                              key={1}
+                              className="page-number"
+                              onClick={() => setStudentPage(1)}
+                            >
+                              1
+                            </button>
+                          );
+                          if (startPage > 2) {
+                            pages.push(<span key="start-ellipsis" className="page-ellipsis">...</span>);
+                          }
+                        }
+                        
+                        // Add visible page range
+                        for (let i = startPage; i <= endPage; i++) {
+                          pages.push(
+                            <button
+                              key={i}
+                              className={`page-number ${i === currentStudentPage ? 'active' : ''}`}
+                              onClick={() => setStudentPage(i)}
+                            >
+                              {i}
+                            </button>
+                          );
+                        }
+                        
+                        // Add ellipsis and last page if needed
+                        if (endPage < totalStudentPages) {
+                          if (endPage < totalStudentPages - 1) {
+                            pages.push(<span key="end-ellipsis" className="page-ellipsis">...</span>);
+                          }
+                          pages.push(
+                            <button
+                              key={totalStudentPages}
+                              className="page-number"
+                              onClick={() => setStudentPage(totalStudentPages)}
+                            >
+                              {totalStudentPages}
+                            </button>
+                          );
+                        }
+                        
+                        return pages;
+                      })()}
+                    </div>
                     <button
                       className="btn-secondary"
                       onClick={() => setStudentPage(prev => Math.min(totalStudentPages, prev + 1))}
@@ -3794,17 +4074,27 @@ const AdminDashboard = ({ user, onLogout }) => {
                     onBlur={(e) => e.target.setAttribute('readonly', true)}
                   />
                   {!editingItem && (
-                    <input
-                      type="password"
-                      placeholder="Create password for student *"
-                      value={formData.password || ''}
-                      onChange={(e) => handleInputChange('password', e.target.value)}
-                      required
-                      autoComplete="off"
-                      readOnly
-                      onFocus={(e) => e.target.removeAttribute('readonly')}
-                      onBlur={(e) => e.target.setAttribute('readonly', true)}
-                    />
+                    <div className="password-input-container">
+                      <input
+                        type={showStudentPassword ? "text" : "password"}
+                        placeholder="Create password for student *"
+                        value={formData.password || ''}
+                        onChange={(e) => handleInputChange('password', e.target.value)}
+                        required
+                        autoComplete="off"
+                        readOnly
+                        onFocus={(e) => e.target.removeAttribute('readonly')}
+                        onBlur={(e) => e.target.setAttribute('readonly', true)}
+                      />
+                      <button
+                        type="button"
+                        className="password-toggle-btn"
+                        onClick={() => setShowStudentPassword(!showStudentPassword)}
+                        title={showStudentPassword ? "Hide password" : "Show password"}
+                      >
+                        {showStudentPassword ? "Hide" : "Show"}
+                      </button>
+                    </div>
                   )}
                   {/* Enrollment Number Field - Commented Out */}
                   {/* <input
@@ -3888,6 +4178,82 @@ const AdminDashboard = ({ user, onLogout }) => {
                           </ul>
                         </div>
                       )}
+                      
+                      {/* Password Update Section - Only for existing users */}
+                      {editingItem && (
+                        <div className="password-update-section">
+                          <div className="password-update-header">
+                            <h4>Update Password</h4>
+                            <button 
+                              type="button" 
+                              className="btn-toggle-password-update"
+                              onClick={() => setShowPasswordUpdate(!showPasswordUpdate)}
+                            >
+                              {showPasswordUpdate ? 'Cancel' : 'Update Password'}
+                            </button>
+                          </div>
+                          
+                          {showPasswordUpdate && (
+                            <div className="password-update-form">
+                              <div className="password-input-container">
+                                <input
+                                  type={showNewPassword ? "text" : "password"}
+                                  placeholder="New Password"
+                                  value={passwordUpdateData.newPassword}
+                                  onChange={(e) => setPasswordUpdateData({...passwordUpdateData, newPassword: e.target.value})}
+                                  className="password-input"
+                                />
+                                <button
+                                  type="button"
+                                  className="password-toggle-btn"
+                                  onClick={() => setShowNewPassword(!showNewPassword)}
+                                  title={showNewPassword ? "Hide password" : "Show password"}
+                                >
+                                  {showNewPassword ? "Hide" : "Show"}
+                                </button>
+                              </div>
+                              
+                              <div className="password-input-container">
+                                <input
+                                  type={showConfirmPassword ? "text" : "password"}
+                                  placeholder="Confirm New Password"
+                                  value={passwordUpdateData.confirmPassword}
+                                  onChange={(e) => setPasswordUpdateData({...passwordUpdateData, confirmPassword: e.target.value})}
+                                  className="password-input"
+                                />
+                                <button
+                                  type="button"
+                                  className="password-toggle-btn"
+                                  onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                                  title={showConfirmPassword ? "Hide password" : "Show password"}
+                                >
+                                  {showConfirmPassword ? "Hide" : "Show"}
+                                </button>
+                              </div>
+                              
+                              <div className="password-requirements">
+                                <small>Password must contain:</small>
+                                <ul>
+                                  <li>At least 8 characters</li>
+                                  <li>One uppercase letter</li>
+                                  <li>One lowercase letter</li>
+                                  <li>One number</li>
+                                  <li>One special character (@$!%*?&)</li>
+                                </ul>
+                              </div>
+                              
+                              <button
+                                type="button"
+                                onClick={handlePasswordUpdate}
+                                className="btn-update-password"
+                                disabled={saving || !passwordUpdateData.newPassword || !passwordUpdateData.confirmPassword || !editingItem || (!editingItem.id && !editingItem._id)}
+                              >
+                                {saving ? 'Updating...' : 'Update Password'}
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
                   )}
                 </>
@@ -3914,17 +4280,27 @@ const AdminDashboard = ({ user, onLogout }) => {
                     onBlur={(e) => e.target.setAttribute('readonly', true)}
                   />
                   {!editingItem && (
-                    <input
-                      type="password"
-                      placeholder="Create password for teacher *"
-                      value={formData.password || ''}
-                      onChange={(e) => handleInputChange('password', e.target.value)}
-                      required
-                      autoComplete="off"
-                      readOnly
-                      onFocus={(e) => e.target.removeAttribute('readonly')}
-                      onBlur={(e) => e.target.setAttribute('readonly', true)}
-                    />
+                    <div className="password-input-container">
+                      <input
+                        type={showTeacherPassword ? "text" : "password"}
+                        placeholder="Create password for teacher *"
+                        value={formData.password || ''}
+                        onChange={(e) => handleInputChange('password', e.target.value)}
+                        required
+                        autoComplete="off"
+                        readOnly
+                        onFocus={(e) => e.target.removeAttribute('readonly')}
+                        onBlur={(e) => e.target.setAttribute('readonly', true)}
+                      />
+                      <button
+                        type="button"
+                        className="password-toggle-btn"
+                        onClick={() => setShowTeacherPassword(!showTeacherPassword)}
+                        title={showTeacherPassword ? "Hide password" : "Show password"}
+                      >
+                        {showTeacherPassword ? "Hide" : "Show"}
+                      </button>
+                    </div>
                   )}
                   <input
                     type="number"
@@ -3993,6 +4369,82 @@ const AdminDashboard = ({ user, onLogout }) => {
                     <option value="inactive">Inactive</option>
                     <option value="on-leave">On Leave</option>
                   </select>
+                  
+                  {/* Password Update Section - Only for existing teachers */}
+                  {editingItem && (
+                    <div className="password-update-section">
+                      <div className="password-update-header">
+                        <h4>Update Password</h4>
+                        <button 
+                          type="button" 
+                          className="btn-toggle-password-update"
+                          onClick={() => setShowPasswordUpdate(!showPasswordUpdate)}
+                        >
+                          {showPasswordUpdate ? 'Cancel' : 'Update Password'}
+                        </button>
+                      </div>
+                      
+                      {showPasswordUpdate && (
+                        <div className="password-update-form">
+                          <div className="password-input-container">
+                            <input
+                              type={showNewPassword ? "text" : "password"}
+                              placeholder="New Password"
+                              value={passwordUpdateData.newPassword}
+                              onChange={(e) => setPasswordUpdateData({...passwordUpdateData, newPassword: e.target.value})}
+                              className="password-input"
+                            />
+                            <button
+                              type="button"
+                              className="password-toggle-btn"
+                              onClick={() => setShowNewPassword(!showNewPassword)}
+                              title={showNewPassword ? "Hide password" : "Show password"}
+                            >
+                              {showNewPassword ? "Hide" : "Show"}
+                            </button>
+                          </div>
+                          
+                          <div className="password-input-container">
+                            <input
+                              type={showConfirmPassword ? "text" : "password"}
+                              placeholder="Confirm New Password"
+                              value={passwordUpdateData.confirmPassword}
+                              onChange={(e) => setPasswordUpdateData({...passwordUpdateData, confirmPassword: e.target.value})}
+                              className="password-input"
+                            />
+                            <button
+                              type="button"
+                              className="password-toggle-btn"
+                              onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                              title={showConfirmPassword ? "Hide password" : "Show password"}
+                            >
+                              {showConfirmPassword ? "Hide" : "Show"}
+                            </button>
+                          </div>
+                          
+                          <div className="password-requirements">
+                            <small>Password must contain:</small>
+                            <ul>
+                              <li>At least 8 characters</li>
+                              <li>One uppercase letter</li>
+                              <li>One lowercase letter</li>
+                              <li>One number</li>
+                              <li>One special character (@$!%*?&)</li>
+                            </ul>
+                          </div>
+                          
+                          <button
+                            type="button"
+                            onClick={handlePasswordUpdate}
+                            className="btn-update-password"
+                            disabled={saving || !passwordUpdateData.newPassword || !passwordUpdateData.confirmPassword || !editingItem || (!editingItem.id && !editingItem._id)}
+                          >
+                            {saving ? 'Updating...' : 'Update Password'}
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </>
               )}
 
@@ -4520,17 +4972,27 @@ const AdminDashboard = ({ user, onLogout }) => {
                     onBlur={(e) => e.target.setAttribute('readonly', true)}
                   />
                   {!editingItem && (
-                    <input
-                      type="password"
-                      placeholder="Create password for mentor *"
-                      value={formData.password || ''}
-                      onChange={(e) => handleInputChange('password', e.target.value)}
-                      required
-                      autoComplete="off"
-                      readOnly
-                      onFocus={(e) => e.target.removeAttribute('readonly')}
-                      onBlur={(e) => e.target.setAttribute('readonly', true)}
-                    />
+                    <div className="password-input-container">
+                      <input
+                        type={showMentorPassword ? "text" : "password"}
+                        placeholder="Create password for mentor *"
+                        value={formData.password || ''}
+                        onChange={(e) => handleInputChange('password', e.target.value)}
+                        required
+                        autoComplete="off"
+                        readOnly
+                        onFocus={(e) => e.target.removeAttribute('readonly')}
+                        onBlur={(e) => e.target.setAttribute('readonly', true)}
+                      />
+                      <button
+                        type="button"
+                        className="password-toggle-btn"
+                        onClick={() => setShowMentorPassword(!showMentorPassword)}
+                        title={showMentorPassword ? "Hide password" : "Show password"}
+                      >
+                        {showMentorPassword ? "Hide" : "Show"}
+                      </button>
+                    </div>
                   )}
                   <select
                     value={formData.domain}
@@ -4568,6 +5030,81 @@ const AdminDashboard = ({ user, onLogout }) => {
                     onChange={(e) => handleInputChange('bio', e.target.value)}
                     rows="4"
                   />
+                  {/* Password Update Section - Only for existing mentors */}
+                  {editingItem && (
+                    <div className="password-update-section">
+                      <div className="password-update-header">
+                        <h4>Update Password</h4>
+                        <button 
+                          type="button" 
+                          className="btn-toggle-password-update"
+                          onClick={() => setShowPasswordUpdate(!showPasswordUpdate)}
+                        >
+                          {showPasswordUpdate ? 'Cancel' : 'Update Password'}
+                        </button>
+                      </div>
+                      
+                      {showPasswordUpdate && (
+                        <div className="password-update-form">
+                          <div className="password-input-container">
+                            <input
+                              type={showNewPassword ? "text" : "password"}
+                              placeholder="New Password"
+                              value={passwordUpdateData.newPassword}
+                              onChange={(e) => setPasswordUpdateData({...passwordUpdateData, newPassword: e.target.value})}
+                              className="password-input"
+                            />
+                            <button
+                              type="button"
+                              className="password-toggle-btn"
+                              onClick={() => setShowNewPassword(!showNewPassword)}
+                              title={showNewPassword ? "Hide password" : "Show password"}
+                            >
+                              {showNewPassword ? "Hide" : "Show"}
+                            </button>
+                          </div>
+                          
+                          <div className="password-input-container">
+                            <input
+                              type={showConfirmPassword ? "text" : "password"}
+                              placeholder="Confirm New Password"
+                              value={passwordUpdateData.confirmPassword}
+                              onChange={(e) => setPasswordUpdateData({...passwordUpdateData, confirmPassword: e.target.value})}
+                              className="password-input"
+                            />
+                            <button
+                              type="button"
+                              className="password-toggle-btn"
+                              onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                              title={showConfirmPassword ? "Hide password" : "Show password"}
+                            >
+                              {showConfirmPassword ? "Hide" : "Show"}
+                            </button>
+                          </div>
+                          
+                          <div className="password-requirements">
+                            <small>Password must contain:</small>
+                            <ul>
+                              <li>At least 8 characters</li>
+                              <li>One uppercase letter</li>
+                              <li>One lowercase letter</li>
+                              <li>One number</li>
+                              <li>One special character (@$!%*?&)</li>
+                            </ul>
+                          </div>
+                          
+                          <button
+                            type="button"
+                            onClick={handlePasswordUpdate}
+                            className="btn-update-password"
+                            disabled={saving || !passwordUpdateData.newPassword || !passwordUpdateData.confirmPassword || !editingItem || (!editingItem.id && !editingItem._id)}
+                          >
+                            {saving ? 'Updating...' : 'Update Password'}
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </>
               )}
 
@@ -4889,7 +5426,7 @@ const AdminDashboard = ({ user, onLogout }) => {
                               <div className="video-info">
                                 <h5>{video.title}</h5>
                                 <p><strong>Instructor:</strong> {video.instructor}</p>
-                                <p><strong>Date:</strong> {video.date}</p>
+                                <p><strong>Date:</strong> {formatDateForComponent(video.date)}</p>
                                 <p><strong>Duration:</strong> {video.duration}</p>
                                 {video.videoSource === 'youtube' && video.youtubeVideoUrl && (
                                   <a 
