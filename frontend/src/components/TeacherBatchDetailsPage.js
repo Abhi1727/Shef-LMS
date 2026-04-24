@@ -32,6 +32,15 @@ const TeacherBatchDetailsPage = () => {
   const [notesFile, setNotesFile] = useState(null);
   const [isHeaderExpanded, setIsHeaderExpanded] = useState(false);
 
+  // Cleanup styles on unmount to prevent conflicts with dashboard
+  useEffect(() => {
+    return () => {
+      // Reset any global styles that might have been modified
+      document.body.style.background = '';
+      document.body.style.fontFamily = '';
+    };
+  }, []);
+
   const loadBatchData = useCallback(async () => {
     try {
       const token = localStorage.getItem('token');
@@ -131,7 +140,7 @@ const TeacherBatchDetailsPage = () => {
     
     if (from === 'teacher-batches') {
       // Navigate back to teacher dashboard batches section
-      navigate('/teacher', { state: { activeSection: 'batches' } });
+      navigate('/teacher', { state: { activeSection: 'courses' } });
     } else {
       // Fallback to teacher dashboard
       navigate('/teacher');
@@ -433,7 +442,7 @@ const TeacherBatchDetailsPage = () => {
   if (!selectedBatch) return <div className="error">Batch not found</div>;
 
   return (
-    <div className="batch-details-page">
+    <div className="teacher-batch-details-page">
       <div className={`batch-header compact ${isHeaderExpanded ? 'expanded' : ''}`}>
         <div className="compact-header-left">
           <button onClick={handleBackToTeacher} className="btn-back btn-back-compact">

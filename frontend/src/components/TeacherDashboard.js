@@ -30,6 +30,8 @@ const TeacherDashboard = ({ user, onLogout }) => {
   const [batchSearch, setBatchSearch] = useState('');
   const [courseFilter, setCourseFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [loadingProgress, setLoadingProgress] = useState(0);
+  const [loadingState, setLoadingState] = useState('Initializing dashboard...');
 
   useEffect(() => {
     loadTeacherData();
@@ -42,7 +44,7 @@ const TeacherDashboard = ({ user, onLogout }) => {
     }
   }, [location.state]);
 
-  // Create floating particles and geometric shapes
+  // Create floating particles and geometric shapes for dashboard
   useEffect(() => {
     const createParticles = () => {
       const container = document.getElementById('particles-container');
@@ -92,6 +94,59 @@ const TeacherDashboard = ({ user, onLogout }) => {
       if (geometricContainer) geometricContainer.innerHTML = '';
     };
   }, [activeSection]); // Recreate when section changes
+
+  // Create loading particles and geometric shapes
+  useEffect(() => {
+    if (!loading) return;
+
+    const createLoadingParticles = () => {
+      const container = document.getElementById('loading-particles-container');
+      if (!container) return;
+      
+      // Clear existing particles
+      container.innerHTML = '';
+      
+      // Create loading particles
+      for (let i = 0; i < 30; i++) {
+        const particle = document.createElement('div');
+        particle.className = 'loading-particle';
+        particle.style.left = Math.random() * 100 + '%';
+        particle.style.animationDelay = Math.random() * 10 + 's';
+        particle.style.animationDuration = (8 + Math.random() * 6) + 's';
+        container.appendChild(particle);
+      }
+    };
+
+    const createLoadingGeometric = () => {
+      const container = document.getElementById('loading-geometric-container');
+      if (!container) return;
+      
+      // Clear existing shapes
+      container.innerHTML = '';
+      
+      // Create loading geometric shapes
+      for (let i = 0; i < 5; i++) {
+        const shape = document.createElement('div');
+        shape.className = 'loading-geometric-shape';
+        shape.style.left = Math.random() * 100 + '%';
+        shape.style.animationDelay = Math.random() * 8 + 's';
+        shape.style.animationDuration = (12 + Math.random() * 8) + 's';
+        container.appendChild(shape);
+      }
+    };
+
+    // Create loading animations
+    createLoadingParticles();
+    createLoadingGeometric();
+
+    // Cleanup
+    return () => {
+      const loadingParticlesContainer = document.getElementById('loading-particles-container');
+      const loadingGeometricContainer = document.getElementById('loading-geometric-container');
+      if (loadingParticlesContainer) loadingParticlesContainer.innerHTML = '';
+      if (loadingGeometricContainer) loadingGeometricContainer.innerHTML = '';
+    };
+  }, [loading]);
 
   // Handle batch deletion
   const handleDeleteBatch = async (batchId) => {
@@ -186,9 +241,16 @@ const TeacherDashboard = ({ user, onLogout }) => {
 
   const loadTeacherData = async () => {
     setLoading(true);
+    setLoadingProgress(0);
+    setLoadingState('Initializing dashboard...');
+    
     try {
       const token = localStorage.getItem('token');
       const apiUrl = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' ? 'http://localhost:5000' : '';
+      
+      // Progressive loading states
+      setLoadingProgress(25);
+      setLoadingState('Loading courses...');
       
       // Load teacher dashboard data
       const coursesRes = await fetch(`${apiUrl}/api/teacher/courses`, {
@@ -198,6 +260,9 @@ const TeacherDashboard = ({ user, onLogout }) => {
       const coursesData = coursesRes.ok ? await coursesRes.json() : [];
       setCourses(coursesData.courses || []);
 
+      setLoadingProgress(50);
+      setLoadingState('Loading batches...');
+
       // Load teacher's batches using new teacher-specific endpoint
       const batchesRes = await fetch(`${apiUrl}/api/teacher/batches`, {
         headers: { 'Authorization': `Bearer ${token}` }
@@ -206,6 +271,9 @@ const TeacherDashboard = ({ user, onLogout }) => {
       if (batchesRes.ok) {
         const batchesData = await batchesRes.json();
         setBatches(batchesData.batches || batchesData || []);
+
+        setLoadingProgress(75);
+        setLoadingState('Loading student data...');
 
         // Calculate total students from batches (now includes both regular and one-to-one)
         const batchesArray = batchesData.batches || batchesData || [];
@@ -219,6 +287,8 @@ const TeacherDashboard = ({ user, onLogout }) => {
       } else {
         // Fallback to admin endpoint if teacher endpoint fails
         console.log('Teacher endpoint failed, using admin endpoint fallback...');
+        setLoadingState('Switching to backup connection...');
+        
         const adminBatchesRes = await fetch(`${apiUrl}/api/batches`, {
           headers: { 'Authorization': `Bearer ${token}` }
         });
@@ -233,6 +303,9 @@ const TeacherDashboard = ({ user, onLogout }) => {
 
           setBatches(teacherBatches);
 
+          setLoadingProgress(75);
+          setLoadingState('Loading student data...');
+
           const totalStudents = teacherBatches.reduce((total, batch) => {
             const studentCount = batch.students?.length || batch.studentCount || 0;
             console.log(`Fallback - Batch ${batch.name}: ${studentCount} students`);
@@ -245,13 +318,27 @@ const TeacherDashboard = ({ user, onLogout }) => {
           setStudents([]);
         }
       }
+
+      setLoadingProgress(90);
+      setLoadingState('Finalizing dashboard...');
+      
+      // Simulate final processing time for smooth UX
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      setLoadingProgress(100);
+      setLoadingState('Almost ready...');
+      
     } catch (error) {
       console.error('Error loading teacher data:', error);
       showToast('Error loading dashboard data', 'error');
       setBatches([]);
       setStudents([]);
+      setLoadingState('Connection error. Retrying...');
     } finally {
-      setLoading(false);
+      // Add a small delay for smooth transition
+      setTimeout(() => {
+        setLoading(false);
+      }, 300);
     }
   };
 
@@ -486,9 +573,112 @@ const TeacherDashboard = ({ user, onLogout }) => {
   if (loading) {
     return (
       <div className="dashboard">
-        <div className="loading-spinner">
-          <div className="spinner"></div>
-          <p>Loading your teacher dashboard...</p>
+        <div className="premium-loading-container">
+          <div className="loading-backdrop">
+            {/* Animated Background Elements */}
+            <div className="loading-particles" id="loading-particles-container"></div>
+            <div className="loading-geometric" id="loading-geometric-container"></div>
+            
+            <div className="loading-content">
+              <div className="loading-animation">
+                {/* Advanced Multi-Ring Spinner */}
+                <div className="loading-spinner-advanced">
+                  <div className="spinner-ring ring-1"></div>
+                  <div className="spinner-ring ring-2"></div>
+                  <div className="spinner-ring ring-3"></div>
+                  <div className="spinner-core">
+                    <div className="core-icon">📚</div>
+                  </div>
+                </div>
+                
+                {/* SVG Progress Ring */}
+                <svg className="progress-ring" width="120" height="120">
+                  <circle
+                    className="progress-ring-background"
+                    cx="60"
+                    cy="60"
+                    r="54"
+                    fill="none"
+                    stroke="rgba(79, 70, 229, 0.1)"
+                    strokeWidth="4"
+                  />
+                  <circle
+                    className="progress-ring-fill"
+                    cx="60"
+                    cy="60"
+                    r="54"
+                    fill="none"
+                    stroke="url(#gradient)"
+                    strokeWidth="4"
+                    strokeLinecap="round"
+                    strokeDasharray={`${2 * Math.PI * 54}`}
+                    strokeDashoffset={`${2 * Math.PI * 54 * (1 - loadingProgress / 100)}`}
+                    style={{
+                      transition: 'stroke-dashoffset 0.3s ease'
+                    }}
+                  />
+                  <defs>
+                    <linearGradient id="gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                      <stop offset="0%" stopColor="#4F46E5" />
+                      <stop offset="50%" stopColor="#7C3AED" />
+                      <stop offset="100%" stopColor="#06B6D4" />
+                    </linearGradient>
+                  </defs>
+                </svg>
+              </div>
+              
+              <div className="loading-text">
+                <h3 className="loading-title">Setting up your dashboard</h3>
+                <p className="loading-status">{loadingState}</p>
+                <div className="progress-bar">
+                  <div 
+                    className="progress-fill" 
+                    style={{ width: `${loadingProgress}%` }}
+                  ></div>
+                </div>
+                <div className="progress-percentage">{loadingProgress}%</div>
+              </div>
+              
+              {/* Skeleton Cards representing dashboard sections */}
+              <div className="loading-skeleton">
+                <div className="skeleton-card skeleton-overview">
+                  <div className="skeleton-header">
+                    <div className="skeleton-title"></div>
+                    <div className="skeleton-subtitle"></div>
+                  </div>
+                  <div className="skeleton-stats">
+                    <div className="skeleton-stat"></div>
+                    <div className="skeleton-stat"></div>
+                    <div className="skeleton-stat"></div>
+                  </div>
+                </div>
+                
+                <div className="skeleton-card skeleton-batches">
+                  <div className="skeleton-header">
+                    <div className="skeleton-title"></div>
+                    <div className="skeleton-badge"></div>
+                  </div>
+                  <div className="skeleton-content">
+                    <div className="skeleton-row"></div>
+                    <div className="skeleton-row"></div>
+                    <div className="skeleton-row"></div>
+                  </div>
+                </div>
+                
+                <div className="skeleton-card skeleton-students">
+                  <div className="skeleton-header">
+                    <div className="skeleton-title"></div>
+                  </div>
+                  <div className="skeleton-grid">
+                    <div className="skeleton-item"></div>
+                    <div className="skeleton-item"></div>
+                    <div className="skeleton-item"></div>
+                    <div className="skeleton-item"></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     );
@@ -544,8 +734,8 @@ const TeacherDashboard = ({ user, onLogout }) => {
         </button> */}
       </nav>
 
-      {/* Main Content */}
-      <main className="dashboard-main">
+      {/* Main Content Area */}
+      <div className="main-content">
         {activeSection === 'overview' && (
 // ... (rest of the code remains the same)
           <div className="dashboard-section">
@@ -1136,7 +1326,7 @@ const TeacherDashboard = ({ user, onLogout }) => {
             </div>
           </div>
         )}
-      </main>
+      </div>
 
       {/* Toast Notifications - Rendered via portal for proper stacking */}
       {createPortal(<ToastContainer />, document.body)}
