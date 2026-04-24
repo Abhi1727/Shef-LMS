@@ -9,6 +9,8 @@ import { YouTubeUtils } from '../utils/youtubeUtils';
 import { formatDateForComponent } from '../utils/dateUtils';
 import StudentsActivity from './StudentsActivity';
 import OneToOneCourseSelection from './OneToOneCourseSelection';
+import ActivityTimelineChart from './charts/ActivityTimelineChart';
+import { processActivityData, exportToCSV } from '../utils/activityDataProcessor';
 import './Dashboard.css';
 import './AdminDashboard.css';
 import './AdminAnalytics.css';
@@ -16,7 +18,7 @@ import './AdminAnalytics.css';
 const CACHE_DURATION = 15 * 60 * 1000; // 15 minutes
 
 // Student search bar that filters the main students table
-const StudentSearch = memo(({ searchEmail, setSearchEmail, clearSearch }) => {
+const StudentSearch = memo(({ searchEmail, setSearchEmail, clearSearch, onAddStudent }) => {
   const handleInputChange = useCallback((e) => {
     const value = e.target.value;
     setSearchEmail(value);
@@ -33,8 +35,15 @@ const StudentSearch = memo(({ searchEmail, setSearchEmail, clearSearch }) => {
   return (
     <div className="student-search-section">
       <div className="student-search-header">
-        <h3>🔍 Search Students</h3>
-        <p className="student-search-subtitle">Filter the students list by email or name.</p>
+        <div>
+          <h3>🔍 Search Students</h3>
+          <p className="student-search-subtitle">Filter the students list by email or name.</p>
+        </div>
+        {onAddStudent && (
+          <button onClick={onAddStudent} className="btn-add">
+            ➕ Add Student
+          </button>
+        )}
       </div>
       <form onSubmit={handleSearchSubmit} className="search-form">
         <div className="search-input-group">
@@ -57,7 +66,7 @@ const StudentSearch = memo(({ searchEmail, setSearchEmail, clearSearch }) => {
 });
 
 // Batch filter component with search and course filter buttons
-const BatchFilter = memo(({ batchSearch, setBatchSearch, batchCourseFilter, setBatchCourseFilter, filteredCount, totalCount }) => {
+const BatchFilter = memo(({ batchSearch, setBatchSearch, batchCourseFilter, setBatchCourseFilter, filteredCount, totalCount, openModal }) => {
   const handleSearchChange = useCallback((e) => {
     setBatchSearch(e.target.value);
   }, [setBatchSearch]);
@@ -90,41 +99,49 @@ const BatchFilter = memo(({ batchSearch, setBatchSearch, batchCourseFilter, setB
       </div> */}
       
       <div className="batch-filter-controls">
-        <div className="batch-search-area">
-          <input
-            type="search"
-            placeholder="Search batches, students, teachers..."
-            value={batchSearch}
-            onChange={handleSearchChange}
-            className="batch-search-input"
-          />
+        <div className="batch-filter-row">
+          <div className="batch-search-area">
+            <input
+              type="search"
+              placeholder="Search batches..."
+              value={batchSearch}
+              onChange={handleSearchChange}
+              className="batch-search-input"
+            />
+            <div className="batch-filter-results">
+              Showing <span className="result-count">{filteredCount}</span> of <span className="total-count">{totalCount}</span> batches
+              {hasActiveFilters && (
+                <span className="filter-indicator"> (filters applied)</span>
+              )}
+            </div>
+          </div>
         </div>
         
-        <div className="batch-course-filters">
-          {courseOptions.map(option => (
-            <button
-              key={option.value}
-              onClick={() => handleCourseFilterChange(option.value)}
-              className={`batch-course-btn ${batchCourseFilter === option.value ? 'active' : ''}`}
-            >
-              <span className="btn-icon">{option.icon}</span>
-              <span className="btn-label">{option.label}</span>
+        <div className="batch-filter-row">
+          <div className="batch-course-filters">
+            {courseOptions.map(option => (
+              <button
+                key={option.value}
+                onClick={() => handleCourseFilterChange(option.value)}
+                className={`batch-course-btn ${batchCourseFilter === option.value ? 'active' : ''}`}
+              >
+                <span className="btn-icon">{option.icon}</span>
+                <span className="btn-label">{option.label}</span>
+              </button>
+            ))}
+            <button onClick={() => openModal('batch')} className="btn-add batch-filter-add-btn">
+              ➕ Add Batch
             </button>
-          ))}
+          </div>
         </div>
         
-        {hasActiveFilters && (
-          <button onClick={clearFilters} className="batch-clear-filters">
-            ✖️ Clear Filters
-          </button>
-        )}
-      </div>
-      
-      <div className="batch-filter-results">
-        Showing <span className="result-count">{filteredCount}</span> of <span className="total-count">{totalCount}</span> batches
-        {hasActiveFilters && (
-          <span className="filter-indicator"> (filters applied)</span>
-        )}
+        <div className="batch-filter-actions">
+          {hasActiveFilters && (
+            <button onClick={clearFilters} className="batch-clear-filters">
+              ✖️ Clear
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -166,6 +183,17 @@ const AdminDashboard = ({ user, onLogout }) => {
   const [reportPeriod, setReportPeriod] = useState('7days');
   const [customDateRange, setCustomDateRange] = useState({ start: '', end: '' });
   const [reportData, setReportData] = useState(null);
+  
+  // Activity Chart states
+  const [chartData, setChartData] = useState([]);
+  const [activitySummary, setActivitySummary] = useState({});
+  const [showLogins, setShowLogins] = useState(true);
+  const [showVideoViews, setShowVideoViews] = useState(true);
+  const [loadingActivity, setLoadingActivity] = useState(false);
+  const [graphDateRange, setGraphDateRange] = useState({
+    start: '',
+    end: ''
+  });
   
   // Analytics states
   const [analyticsData, setAnalyticsData] = useState(null);
@@ -422,6 +450,54 @@ const AdminDashboard = ({ user, onLogout }) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Dynamic header height detection for dual sticky system
+  useEffect(() => {
+    const updateAdminHeaderHeight = () => {
+      const adminHeader = document.querySelector('.admin-top-header');
+      if (adminHeader) {
+        const height = adminHeader.offsetHeight;
+        document.documentElement.style.setProperty('--admin-header-height', `${height}px`);
+      }
+    };
+
+    // Initial measurement
+    updateAdminHeaderHeight();
+
+    // Update on resize
+    const handleResize = () => {
+      updateAdminHeaderHeight();
+    };
+
+    // Update on scroll (in case header height changes dynamically)
+    const handleScroll = () => {
+      updateAdminHeaderHeight();
+    };
+
+    window.addEventListener('resize', handleResize);
+    window.addEventListener('scroll', handleScroll);
+
+    // Also update when DOM changes
+    const observer = new MutationObserver(() => {
+      updateAdminHeaderHeight();
+    });
+
+    const adminHeader = document.querySelector('.admin-top-header');
+    if (adminHeader) {
+      observer.observe(adminHeader, {
+        childList: true,
+        subtree: true,
+        attributes: true,
+        attributeFilter: ['class', 'style']
+      });
+    }
+
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      window.removeEventListener('scroll', handleScroll);
+      observer.disconnect();
+    };
+  }, []);
+
   // Handle navigation state when returning from BatchDetailsPage
   useEffect(() => {
     if (location.state?.activeSection) {
@@ -442,9 +518,9 @@ const AdminDashboard = ({ user, onLogout }) => {
 
   // Derived filtered & paginated data for students section
   const filteredStudents = useMemo(() => {
-    if (!searchEmail.trim()) return students;
+    if (!searchEmail.trim()) return students || [];
     const term = searchEmail.trim().toLowerCase();
-    return students.filter(student => {
+    return (students || []).filter(student => {
       const email = (student.email || '').toLowerCase();
       const name = (student.name || '').toLowerCase();
       return email.includes(term) || name.includes(term);
@@ -463,10 +539,10 @@ const AdminDashboard = ({ user, onLogout }) => {
     
     // Debug logging
     console.log('Batch Filter Debug:', {
-      totalBatches: batches.length,
+      totalBatches: batches?.length || 0,
       courseFilter: batchCourseFilter,
       searchTerm: batchSearch,
-      sampleBatches: batches.slice(0, 3).map(b => ({ name: b.name, course: b.course }))
+      sampleBatches: (batches || []).slice(0, 3).map(b => ({ name: b.name, course: b.course }))
     });
     
     // Apply course filter
@@ -1261,11 +1337,11 @@ const AdminDashboard = ({ user, onLogout }) => {
   }, []);
 
   useEffect(() => {
-    const totalStudents = students.length;
-    const activeStudents = students.filter(s => s.status === 'active').length;
-    const totalCourses = courses.length;
-    const activeJobs = jobs.filter(j => j.status === 'active').length;
-    const totalRevenue = students.reduce((sum, s) => sum + (s.tuitionPaid || 0), 0);
+    const totalStudents = (students || []).length;
+    const activeStudents = (students || []).filter(s => s.status === 'active').length;
+    const totalCourses = (courses || []).length;
+    const activeJobs = (jobs || []).filter(j => j.status === 'active').length;
+    const totalRevenue = (students || []).reduce((sum, s) => sum + (s.tuitionPaid || 0), 0);
 
     setStats({
       totalStudents,
@@ -2343,7 +2419,8 @@ const AdminDashboard = ({ user, onLogout }) => {
 
       if (response.ok) {
         const data = await response.json();
-        setStudentActivities(data.activities || []);
+        const activities = data.activities || [];
+        setStudentActivities(activities);
         setActivityPagination({
           page: data.page || 1,
           totalPages: data.totalPages || 1,
@@ -2369,6 +2446,21 @@ const AdminDashboard = ({ user, onLogout }) => {
       loadStudentActivities(selectedStudentDetails.id || selectedStudentDetails._id, newPage, activityFilter);
     }
   }, [selectedStudentDetails, activityFilter, loadStudentActivities]);
+
+  // Process activity data for graph
+  const { chartData: processedChartData, summary: processedActivitySummary } = useMemo(() => {
+    return processActivityData(
+      studentActivities,
+      graphDateRange.start || activityFilter.startDate,
+      graphDateRange.end || activityFilter.endDate
+    );
+  }, [studentActivities, graphDateRange, activityFilter]);
+
+  // Update chart data and summary when processed data changes
+  useEffect(() => {
+    setChartData(processedChartData);
+    setActivitySummary(processedActivitySummary);
+  }, [processedChartData, processedActivitySummary]);
 
   const handleEditProfile = useCallback(() => {
     setEditedProfile({
@@ -2474,6 +2566,19 @@ const AdminDashboard = ({ user, onLogout }) => {
       showToast('Error downloading activity CSV', 'error');
     }
   }, [selectedStudentDetails, activityFilter]);
+
+  // Download graph data CSV
+  const handleDownloadGraphCSV = () => {
+    const { rawFilteredData } = processActivityData(
+      studentActivities,
+      graphDateRange.start || activityFilter.startDate,
+      graphDateRange.end || activityFilter.endDate
+    );
+    
+    const filename = `graph-activity-${selectedStudentDetails?.name?.replace(/\s+/g, '-') || 'student'}-${new Date().toISOString().split('T')[0]}.csv`;
+    exportToCSV(rawFilteredData, filename);
+    showToast('Graph data CSV downloaded successfully!', 'success');
+  };
 
   const handleGenerateReport = useCallback(async () => {
     try {
@@ -2781,6 +2886,7 @@ const AdminDashboard = ({ user, onLogout }) => {
                 searchEmail={searchEmail}
                 setSearchEmail={setSearchEmail}
                 clearSearch={clearSearch}
+                onAddStudent={() => openModal('student')}
               />
               
               <StatsCards stats={stats} />
@@ -2852,18 +2958,16 @@ const AdminDashboard = ({ user, onLogout }) => {
           {/* Students Section */}
           {activeSection === 'students' && (
             <div className="admin-section">
-              <div className="section-header">
+              {/* <div className="section-header">
                 <h2>Manage Students</h2>
-                <button onClick={() => openModal('student')} className="btn-add">
-                  ➕ Add Student
-                </button>
-              </div>
+              </div> */}
 
               {/* Student Search Section */}
               <StudentSearch 
                 searchEmail={searchEmail}
                 setSearchEmail={setSearchEmail}
                 clearSearch={clearSearch}
+                onAddStudent={() => openModal('student')}
               />
 
               <div className="data-table-container">
@@ -3087,12 +3191,9 @@ const AdminDashboard = ({ user, onLogout }) => {
           {/* Courses Section */}
           {activeSection === 'batches' && (
             <div className="admin-section">
-              <div className="section-header">
+              {/* <div className="section-header">
                 <h2>Manage Batches</h2>
-                <button onClick={() => openModal('batch')} className="btn-add">
-                  ➕ Add Batch
-                </button>
-              </div>
+              </div> */}
 
               {/* Batch Filter Component */}
               <BatchFilter
@@ -3101,7 +3202,8 @@ const AdminDashboard = ({ user, onLogout }) => {
                 batchCourseFilter={batchCourseFilter}
                 setBatchCourseFilter={setBatchCourseFilter}
                 filteredCount={filteredBatches.length}
-                totalCount={batches.length}
+                totalCount={(batches || []).length}
+                openModal={openModal}
               />
 
               <div className="data-table-container">
@@ -5584,6 +5686,20 @@ const AdminDashboard = ({ user, onLogout }) => {
                   </div>
                 </div>
               </div>
+              <div className="header-tab-buttons">
+                <button
+                  className={`header-tab-btn ${activeProfileTab === 'profile' ? 'active' : ''}`}
+                  onClick={() => setActiveProfileTab('profile')}
+                >
+                  👤 Profile
+                </button>
+                <button
+                  className={`header-tab-btn ${activeProfileTab === 'activity' ? 'active' : ''}`}
+                  onClick={() => setActiveProfileTab('activity')}
+                >
+                  📊 Activity Log
+                </button>
+              </div>
               <div className="modal-header-actions">
                 {activeProfileTab === 'profile' && !editMode && (
                   <button className="btn-edit-profile" onClick={handleEditProfile}>
@@ -5594,28 +5710,6 @@ const AdminDashboard = ({ user, onLogout }) => {
                   ×
                 </button>
               </div>
-            </div>
-
-            {/* Tab Navigation */}
-            <div className="profile-tabs-nav">
-              <button
-                className={`tab-btn ${activeProfileTab === 'profile' ? 'active' : ''}`}
-                onClick={() => setActiveProfileTab('profile')}
-              >
-                👤 Profile
-              </button>
-              <button
-                className={`tab-btn ${activeProfileTab === 'activity' ? 'active' : ''}`}
-                onClick={() => setActiveProfileTab('activity')}
-              >
-                📊 Activity Log
-              </button>
-              <button
-                className={`tab-btn ${activeProfileTab === 'reports' ? 'active' : ''}`}
-                onClick={() => setActiveProfileTab('reports')}
-              >
-                📈 Reports
-              </button>
             </div>
 
             {/* Modal Content */}
@@ -5827,7 +5921,77 @@ const AdminDashboard = ({ user, onLogout }) => {
                     </div>
                   </div>
 
-                  <div className="activity-list">
+                  {/* Graph Controls */}
+                  {/* <div className="graph-controls">
+                    <div className="control-row">
+                      <div className="control-group">
+                        <label>Activity Type:</label>
+                        <div className="toggle-group">
+                          <label className="toggle-label">
+                            <input
+                              type="checkbox"
+                              checked={showLogins}
+                              onChange={(e) => setShowLogins(e.target.checked)}
+                            />
+                            <span className="toggle-indicator login"></span>
+                            Logins
+                          </label>
+                          <label className="toggle-label">
+                            <input
+                              type="checkbox"
+                              checked={showVideoViews}
+                              onChange={(e) => setShowVideoViews(e.target.checked)}
+                            />
+                            <span className="toggle-indicator video"></span>
+                            Video Views
+                          </label>
+                        </div>
+                      </div>
+                      <div className="control-group">
+                        <label>Date Range:</label>
+                        <div className="date-inputs">
+                          <input
+                            type="date"
+                            value={graphDateRange.start || ''}
+                            onChange={(e) => setGraphDateRange(prev => ({ ...prev, start: e.target.value }))}
+                            className="date-input"
+                            placeholder="Start date"
+                          />
+                          <span>to</span>
+                          <input
+                            type="date"
+                            value={graphDateRange.end || ''}
+                            onChange={(e) => setGraphDateRange(prev => ({ ...prev, end: e.target.value }))}
+                            className="date-input"
+                            placeholder="End date"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </div> */}
+
+                  {/* Graph Download Button */}
+                  <div className="graph-download-section">
+                    <button className="btn-download-csv" onClick={handleDownloadGraphCSV}>
+                      📊 Download Graph CSV
+                    </button>
+                  </div>
+
+                  {/* Activity Timeline Chart */}
+                  <div className="activity-graph-section">
+                    {loadingActivity ? (
+                      <div className="chart-loading">Loading activity data...</div>
+                    ) : (
+                      <ActivityTimelineChart
+                        data={chartData}
+                        showLogins={showLogins}
+                        showVideoViews={showVideoViews}
+                        summary={activitySummary}
+                      />
+                    )}
+                  </div>
+
+                  <div className="activity-table-container">
                     <div className="activity-summary">
                       <h3>📊 Activity Log</h3>
                       <button className="btn-download-csv" onClick={handleDownloadActivityCSV}>
@@ -5837,46 +6001,52 @@ const AdminDashboard = ({ user, onLogout }) => {
 
                     {studentActivities.length > 0 ? (
                       <>
-                        {studentActivities.map((activity, index) => (
-                          <div key={index} className="activity-item">
-                            <div className="activity-header">
-                              <span className="activity-action">{activity.action}</span>
-                              <span className="activity-timestamp">
-                                {new Date(activity.timestamp).toLocaleString()}
-                              </span>
-                            </div>
-                            <div className="activity-details">
-                              <div className="activity-detail">
-                                <label>IP:</label>
-                                <span>{activity.ipAddress || 'N/A'}</span>
-                              </div>
-                              <div className="activity-detail">
-                                <label>Location:</label>
-                                <span>
-                                  {[activity.city, activity.country].filter(Boolean).join(', ') || 'N/A'}
-                                </span>
-                              </div>
-                              {activity.videoTitle && (
-                                <div className="activity-detail">
-                                  <label>Video:</label>
-                                  <span>{activity.videoTitle}</span>
-                                </div>
-                              )}
-                              {activity.assessmentTitle && (
-                                <div className="activity-detail">
-                                  <label>Assessment:</label>
-                                  <span>{activity.assessmentTitle}</span>
-                                </div>
-                              )}
-                              {activity.path && (
-                                <div className="activity-detail">
-                                  <label>Page:</label>
-                                  <span>{activity.path}</span>
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        ))}
+                        <div className="activity-table-wrapper">
+                          <table className="activity-table">
+                            <thead>
+                              <tr>
+                                <th>Action</th>
+                                <th>Timestamp</th>
+                                <th>IP Address</th>
+                                <th>Location</th>
+                                <th>Details</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {studentActivities.map((activity, index) => (
+                                <tr key={index} className="activity-row">
+                                  <td className="activity-action-cell">
+                                    <span className={`action-badge ${activity.action}`}>
+                                      {activity.action}
+                                    </span>
+                                  </td>
+                                  <td className="activity-timestamp-cell">
+                                    {new Date(activity.timestamp).toLocaleString()}
+                                  </td>
+                                  <td className="activity-ip-cell">
+                                    <span className="ip-address">
+                                      {activity.ipAddress || 'N/A'}
+                                    </span>
+                                  </td>
+                                  <td className="activity-location-cell">
+                                    {[activity.city, activity.country].filter(Boolean).join(', ') || 'N/A'}
+                                  </td>
+                                  <td className="activity-details-cell">
+                                    {activity.videoTitle && (
+                                      <span className="detail-item">📹 {activity.videoTitle}</span>
+                                    )}
+                                    {activity.assessmentTitle && (
+                                      <span className="detail-item">📝 {activity.assessmentTitle}</span>
+                                    )}
+                                    {activity.path && (
+                                      <span className="detail-item">📄 {activity.path}</span>
+                                    )}
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
 
                         <div className="pagination">
                           <button 

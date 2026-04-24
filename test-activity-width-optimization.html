@@ -1,0 +1,431 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Activity Sections Width Optimization Test</title>
+    <style>
+        /* Import the optimized CSS styles */
+        /* CSS Custom Properties for better performance */
+        :root {
+            --primary-color: #667eea;
+            --secondary-color: #764ba2;
+            --success-color: #10b981;
+            --warning-color: #f59e0b;
+            --error-color: #ef4444;
+            --text-primary: #2c3e50;
+            --text-secondary: #64748b;
+            --border-color: #e8ecf1;
+            --background-light: #f8fafc;
+            --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
+            --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.07);
+            --shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.1);
+            --transition-fast: 150ms ease;
+            --transition-normal: 300ms ease;
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+            background: linear-gradient(135deg, #f5f7fa 0%, #f0f2f5 100%);
+        }
+
+        /* Optimized Admin Content Area - Full Width */
+        .admin-content {
+            padding: 20px 16px;
+            min-height: calc(100vh - 85px);
+            max-width: none;
+            width: 100%;
+            margin: 0;
+            box-sizing: border-box;
+        }
+
+        /* Activity Graph Section - Full Width */
+        .activity-graph-section {
+            background: white;
+            border-radius: 14px;
+            padding: 24px;
+            margin-bottom: 24px;
+            box-shadow: 0 4px 16px rgba(102, 126, 234, 0.08);
+            border: 1px solid #e8ecf4;
+            transition: box-shadow 0.2s ease;
+            width: 100%;
+            max-width: none;
+            box-sizing: border-box;
+        }
+
+        /* Activity Graph Controls - Full Width */
+        .graph-controls {
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 24px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+            width: 100%;
+            max-width: none;
+            box-sizing: border-box;
+        }
+
+        /* Activity List - Full Width */
+        .activity-list {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            width: 100%;
+            max-width: none;
+            box-sizing: border-box;
+        }
+
+        /* Activity Item - Optimized Grid Layout */
+        .activity-item {
+            display: grid;
+            grid-template-columns: auto 1fr auto;
+            gap: 20px;
+            align-items: center;
+            padding: 20px;
+            background: #f7fafc;
+            border-radius: 12px;
+            transition: all 0.3s ease;
+            width: 100%;
+            box-sizing: border-box;
+        }
+
+        .activity-item:hover {
+            background: #edf2f7;
+            transform: translateX(5px);
+        }
+
+        .activity-icon {
+            font-size: 28px;
+            width: 50px;
+            height: 50px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: white;
+            border-radius: 10px;
+        }
+
+        /* Activity Content - Grid Layout for Information Density */
+        .activity-content {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 12px;
+            flex: 1;
+        }
+
+        .activity-content p {
+            margin: 0 0 5px 0;
+            color: #2d3748;
+        }
+
+        .activity-time {
+            font-size: 12px;
+            color: #a0aec0;
+        }
+
+        /* Control Layout */
+        .control-row {
+            display: flex;
+            gap: 24px;
+            align-items: flex-end;
+            flex-wrap: wrap;
+        }
+
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .control-group label {
+            font-size: 13px;
+            font-weight: 600;
+            color: #374151;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        /* Chart Placeholder */
+        .chart-placeholder {
+            height: 300px;
+            background: linear-gradient(45deg, #f0f2f5 25%, transparent 25%, transparent 75%, #f0f2f5 75%, #f0f2f5),
+                        linear-gradient(45deg, #f0f2f5 25%, transparent 25%, transparent 75%, #f0f2f5 75%, #f0f2f5);
+            background-size: 20px 20px;
+            background-position: 0 0, 10px 10px;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #6c757d;
+            font-size: 1.1rem;
+            margin: 20px 0;
+        }
+
+        /* Width Indicators */
+        .width-indicator {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            background: rgba(102, 126, 234, 0.9);
+            color: white;
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 12px;
+            font-weight: 600;
+            z-index: 1000;
+        }
+
+        /* Responsive Breakpoints */
+        @media (max-width: 1600px) {
+            .admin-content {
+                max-width: none;
+                padding: 18px 14px;
+            }
+            
+            .activity-graph-section {
+                padding: 22px;
+                margin-bottom: 20px;
+            }
+            
+            .graph-controls {
+                padding: 18px;
+                margin-bottom: 20px;
+            }
+            
+            .activity-item {
+                padding: 18px;
+                gap: 18px;
+            }
+        }
+
+        @media (max-width: 1200px) {
+            .admin-content {
+                max-width: none;
+                padding: 16px 12px;
+            }
+            
+            .activity-graph-section {
+                padding: 20px;
+                margin-bottom: 18px;
+            }
+            
+            .graph-controls {
+                padding: 16px;
+                margin-bottom: 18px;
+            }
+            
+            .activity-item {
+                padding: 16px;
+                gap: 16px;
+            }
+            
+            .activity-content {
+                grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+                gap: 10px;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .admin-content {
+                padding: 12px 8px;
+            }
+            
+            .activity-graph-section {
+                padding: 16px;
+                margin-bottom: 16px;
+            }
+            
+            .graph-controls {
+                padding: 16px;
+                margin-bottom: 16px;
+            }
+            
+            .control-row {
+                flex-direction: column;
+                align-items: stretch;
+                gap: 16px;
+            }
+            
+            .activity-item {
+                grid-template-columns: 1fr;
+                gap: 12px;
+                padding: 14px;
+            }
+            
+            .activity-content {
+                grid-template-columns: 1fr;
+                gap: 8px;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .admin-content {
+                padding: 10px 6px;
+            }
+            
+            .activity-graph-section {
+                padding: 12px;
+                margin-bottom: 12px;
+            }
+            
+            .graph-controls {
+                padding: 12px;
+                margin-bottom: 12px;
+            }
+            
+            .activity-item {
+                padding: 12px;
+                gap: 10px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="width-indicator" id="widthIndicator">Width: <span id="windowWidth"></span>px</div>
+    
+    <div class="admin-content">
+        <h1 style="text-align: center; color: #2d3748; margin-bottom: 30px;">Activity Sections Width Optimization Test</h1>
+        
+        <!-- Graph Controls Section -->
+        <div class="graph-controls">
+            <h3 style="margin: 0 0 16px 0; color: #2d3748;">Graph Controls</h3>
+            <div class="control-row">
+                <div class="control-group">
+                    <label>Date Range</label>
+                    <select style="padding: 8px; border: 1px solid #e2e8f0; border-radius: 6px;">
+                        <option>Last 7 Days</option>
+                        <option>Last 30 Days</option>
+                        <option>Last 90 Days</option>
+                    </select>
+                </div>
+                <div class="control-group">
+                    <label>Activity Type</label>
+                    <select style="padding: 8px; border: 1px solid #e2e8f0; border-radius: 6px;">
+                        <option>All Activities</option>
+                        <option>Logins Only</option>
+                        <option>Video Views Only</option>
+                    </select>
+                </div>
+                <div class="control-group">
+                    <label>Actions</label>
+                    <button style="padding: 8px 16px; background: #667eea; color: white; border: none; border-radius: 6px; cursor: pointer;">Apply Filters</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Activity Graph Section -->
+        <div class="activity-graph-section">
+            <h3 style="margin: 0 0 16px 0; color: #2d3748;">Activity Graph</h3>
+            <div class="chart-placeholder">
+                Activity Chart Visualization (Full Width)
+            </div>
+        </div>
+
+        <!-- Activity List Section -->
+        <div class="activity-list">
+            <h3 style="margin: 0 0 16px 0; color: #2d3748;">Recent Activity</h3>
+            
+            <div class="activity-item">
+                <div class="activity-icon">📊</div>
+                <div class="activity-content">
+                    <p><strong>John Doe</strong> logged into the system</p>
+                    <p>Course: Data Science</p>
+                    <p>Session Duration: 2h 15m</p>
+                    <p class="activity-time">2 hours ago</p>
+                </div>
+                <div style="display: flex; gap: 8px;">
+                    <button style="padding: 6px 12px; background: #667eea; color: white; border: none; border-radius: 4px; cursor: pointer;">View</button>
+                </div>
+            </div>
+
+            <div class="activity-item">
+                <div class="activity-icon">🎥</div>
+                <div class="activity-content">
+                    <p><strong>Jane Smith</strong> watched video lesson</p>
+                    <p>Video: Introduction to Machine Learning</p>
+                    <p>Course: Data Science</p>
+                    <p>Progress: 75% complete</p>
+                    <p class="activity-time">3 hours ago</p>
+                </div>
+                <div style="display: flex; gap: 8px;">
+                    <button style="padding: 6px 12px; background: #667eea; color: white; border: none; border-radius: 4px; cursor: pointer;">View</button>
+                </div>
+            </div>
+
+            <div class="activity-item">
+                <div class="activity-icon">📝</div>
+                <div class="activity-content">
+                    <p><strong>Mike Johnson</strong> completed assessment</p>
+                    <p>Assessment: Python Basics Quiz</p>
+                    <p>Score: 85/100</p>
+                    <p>Course: Cyber Security</p>
+                    <p class="activity-time">5 hours ago</p>
+                </div>
+                <div style="display: flex; gap: 8px;">
+                    <button style="padding: 6px 12px; background: #667eea; color: white; border: none; border-radius: 4px; cursor: pointer;">View</button>
+                </div>
+            </div>
+
+            <div class="activity-item">
+                <div class="activity-icon">👤</div>
+                <div class="activity-content">
+                    <p><strong>Sarah Wilson</strong> updated profile</p>
+                    <p>Changed: Email address and phone number</p>
+                    <p>Previous email: old@email.com</p>
+                    <p>New email: new@email.com</p>
+                    <p class="activity-time">1 day ago</p>
+                </div>
+                <div style="display: flex; gap: 8px;">
+                    <button style="padding: 6px 12px; background: #667eea; color: white; border: none; border-radius: 4px; cursor: pointer;">View</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Update width indicator
+        function updateWidthIndicator() {
+            document.getElementById('windowWidth').textContent = window.innerWidth;
+        }
+        
+        updateWidthIndicator();
+        window.addEventListener('resize', updateWidthIndicator);
+
+        // Log width usage for testing
+        function logWidthUsage() {
+            const adminContent = document.querySelector('.admin-content');
+            const activityGraph = document.querySelector('.activity-graph-section');
+            const graphControls = document.querySelector('.graph-controls');
+            const activityList = document.querySelector('.activity-list');
+            
+            console.log('Width Usage Analysis:');
+            console.log('Window Width:', window.innerWidth);
+            console.log('Admin Content Width:', adminContent.offsetWidth);
+            console.log('Activity Graph Width:', activityGraph.offsetWidth);
+            console.log('Graph Controls Width:', graphControls.offsetWidth);
+            console.log('Activity List Width:', activityList.offsetWidth);
+            console.log('Admin Content Max Width:', getComputedStyle(adminContent).maxWidth);
+            console.log('Activity Graph Max Width:', getComputedStyle(activityGraph).maxWidth);
+        }
+
+        // Log on load and resize
+        logWidthUsage();
+        window.addEventListener('resize', logWidthUsage);
+
+        // Add interaction testing
+        document.querySelectorAll('.activity-item').forEach(item => {
+            item.addEventListener('click', function() {
+                console.log('Activity item clicked:', this.querySelector('.activity-content p').textContent);
+            });
+        });
+
+        console.log('Activity Sections Width Optimization Test Loaded');
+        console.log('Expected: All sections should use 100% available width at all screen sizes');
+        console.log('Test: Resize browser window to verify responsive behavior');
+    </script>
+</body>
+</html>

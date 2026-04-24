@@ -1,33 +1,37 @@
-/* Batch Details Page Styles */
+/* Teacher Batch Details Page Styles - Scoped to prevent conflicts */
+.teacher-batch-details-page,
 .batch-details-page {
-  min-height: 100vh;
+  height: 100vh;
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  padding: 20px;
+  padding: 12px;
   font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 /* Enhanced Notes Section Styles */
 .enhanced-notes-section {
   background: rgba(255, 255, 255, 0.95);
   border-radius: 16px;
-  padding: 24px;
-  margin-top: 20px;
+  padding: 16px;
+  margin-top: 12px;
   backdrop-filter: blur(20px);
   border: 1px solid rgba(255, 255, 255, 0.3);
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
   transition: all 0.3s ease;
 }
 
-.enhanced-notes-section:hover {
+.teacher-batch-details-page .enhanced-notes-section:hover {
   transform: translateY(-2px);
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.15);
 }
 
-.notes-header {
-  margin-bottom: 20px;
+.teacher-batch-details-page .notes-header {
+  margin-bottom: 12px;
 }
 
-.enhanced-notes-label {
+.teacher-batch-details-page .enhanced-notes-label {
   display: flex;
   align-items: center;
   cursor: pointer;
@@ -38,11 +42,11 @@
   position: relative;
 }
 
-.enhanced-notes-label:hover {
+.teacher-batch-details-page .enhanced-notes-label:hover {
   color: #4F46E5;
 }
 
-.notes-checkbox {
+.teacher-batch-details-page .notes-checkbox {
   position: absolute;
   opacity: 0;
   cursor: pointer;
@@ -59,12 +63,12 @@
   background: white;
 }
 
-.notes-checkbox:checked + .checkbox-custom {
+.teacher-batch-details-page .notes-checkbox:checked + .checkbox-custom {
   background: linear-gradient(135deg, #4F46E5 0%, #7C3AED 100%);
   border-color: #4F46E5;
 }
 
-.notes-checkbox:checked + .checkbox-custom::after {
+.teacher-batch-details-page .notes-checkbox:checked + .checkbox-custom::after {
   content: '✓';
   position: absolute;
   top: 50%;
@@ -75,15 +79,15 @@
   font-weight: bold;
 }
 
-.notes-label-text {
+.teacher-batch-details-page .notes-label-text {
   display: flex;
   align-items: center;
   gap: 8px;
 }
 
 /* Notes Upload Area */
-.notes-upload-area {
-  margin-top: 20px;
+.teacher-batch-details-page .notes-upload-area {
+  margin-top: 12px;
 }
 
 .drag-drop-zone {
@@ -98,23 +102,23 @@
   overflow: hidden;
 }
 
-.drag-drop-zone:hover {
+.teacher-batch-details-page .drag-drop-zone:hover {
   border-color: #4F46E5;
   background: rgba(79, 70, 229, 0.05);
 }
 
-.drag-drop-zone.drag-over {
+.teacher-batch-details-page .drag-drop-zone.drag-over {
   border-color: #4F46E5;
   background: rgba(79, 70, 229, 0.1);
   transform: scale(1.02);
 }
 
-.drag-drop-zone.has-file {
+.teacher-batch-details-page .drag-drop-zone.has-file {
   border-color: #10B981;
   background: rgba(16, 185, 129, 0.05);
 }
 
-.upload-content {
+.teacher-batch-details-page .upload-content {
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -157,7 +161,7 @@
   flex-shrink: 0;
 }
 
-.file-details {
+.teacher-batch-details-page .file-details {
   flex: 1;
   min-width: 0;
 }
@@ -177,7 +181,7 @@
   color: #64748B;
 }
 
-.remove-file-btn {
+.teacher-batch-details-page .remove-file-btn {
   background: #ef4444;
   color: white;
   border: none;
@@ -193,18 +197,18 @@
   flex-shrink: 0;
 }
 
-.remove-file-btn:hover {
+.teacher-batch-details-page .remove-file-btn:hover {
   background: #dc2626;
   transform: scale(1.1);
 }
 
 /* Hidden File Input */
-.hidden-file-input {
+.teacher-batch-details-page .hidden-file-input {
   display: none;
 }
 
 /* File Validation Error */
-.file-validation-error {
+.teacher-batch-details-page .file-validation-error {
   margin-top: 12px;
   padding: 12px 16px;
   background: rgba(239, 68, 68, 0.1);
@@ -218,11 +222,11 @@
 }
 
 /* Supported Formats */
-.supported-formats {
-  margin-top: 20px;
+.teacher-batch-details-page .supported-formats {
+  margin-top: 12px;
 }
 
-.formats-label {
+.teacher-batch-details-page .formats-label {
   font-size: 14px;
   font-weight: 600;
   color: #2c3e50;
@@ -247,7 +251,7 @@
 }
 
 /* Upload Guidelines */
-.upload-guidelines {
+.teacher-batch-details-page .upload-guidelines {
   margin-top: 16px;
   padding: 12px;
   background: rgba(79, 70, 229, 0.05);
@@ -255,14 +259,14 @@
   border-left: 4px solid #4F46E5;
 }
 
-.upload-guidelines p {
+.teacher-batch-details-page .upload-guidelines p {
   margin: 0 0 4px 0;
   font-size: 13px;
   color: #64748B;
   line-height: 1.4;
 }
 
-.upload-guidelines p:last-child {
+.teacher-batch-details-page .upload-guidelines p:last-child {
   margin-bottom: 0;
 }
 
@@ -331,12 +335,14 @@
 }
 
 /* Compact Page Layout */
-.batch-header.compact ~ .batch-content {
+.teacher-batch-details-page .batch-header.compact ~ .batch-content,
+.batch-details-page .batch-header.compact ~ .batch-content {
   margin-top: 0;
 }
 
 .batch-header.compact ~ .batch-content .main-content {
-  padding: 20px;
+  padding: 12px;
+  height: calc(100% - 70px) !important;
 }
 
 /* Header Styles */
@@ -356,8 +362,8 @@
 .batch-header.compact {
   background: rgba(255, 255, 255, 0.98);
   border-radius: 12px;
-  padding: 12px 20px;
-  margin-bottom: 15px;
+  padding: 8px 16px;
+  margin-bottom: 8px;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -476,7 +482,7 @@
   flex-shrink: 0;
 }
 
-.timing-display-compact {
+.teacher-batch-details-page .timing-display-compact {
   display: flex;
   align-items: center;
   gap: 6px;
@@ -486,7 +492,7 @@
   border: 1px solid rgba(102, 126, 234, 0.15);
 }
 
-.timing-icon {
+.teacher-batch-details-page .timing-icon {
   font-size: 0.9rem;
   opacity: 0.8;
 }
@@ -549,7 +555,7 @@
   flex-shrink: 0;
 }
 
-.btn-edit-timing-compact:hover {
+.teacher-batch-details-page .btn-edit-timing-compact:hover {
   transform: translateY(-1px) scale(1.05);
   box-shadow: 0 4px 14px rgba(102, 126, 234, 0.4);
 }
@@ -574,11 +580,25 @@
 }
 
 @media (max-width: 768px) {
+  .teacher-batch-details-page {
+    padding: 8px;
+  }
+  
+  .main-content {
+    padding: 12px;
+    height: calc(100% - 60px) !important;
+  }
+  
+  /* Responsive height overrides for tablet */
+  .teacher-batch-details-page .batch-content,
+  .batch-details-page .batch-content {
+    height: calc(100% - 60px) !important;
+  }
+  
   .batch-header.compact {
-    padding: 10px 16px;
-    margin-bottom: 12px;
+    padding: 6px 12px;
+    margin-bottom: 6px;
     flex-wrap: wrap;
-    gap: 12px;
   }
   
   .compact-header-left {
@@ -628,8 +648,22 @@
 }
 
 @media (max-width: 480px) {
+  .teacher-batch-details-page {
+    padding: 6px;
+  }
+  
+  .main-content {
+    height: calc(100% - 50px) !important;
+  }
+  
+  /* Responsive height overrides for mobile */
+  .teacher-batch-details-page .batch-content,
+  .batch-details-page .batch-content {
+    height: calc(100% - 50px) !important;
+  }
+  
   .batch-header.compact {
-    padding: 8px 12px;
+    padding: 6px 10px;
   }
   
   .btn-back-compact {
@@ -687,8 +721,8 @@
 .batch-meta {
   display: flex;
   align-items: center;
-  gap: 15px;
-  margin-top: 10px;
+  gap: 12px;
+  margin-top: 8px;
   flex-wrap: wrap;
 }
 
@@ -740,7 +774,7 @@
   display: flex;
   flex-direction: column;
   align-items: flex-end;
-  gap: 8px;
+  gap: 6px;
 }
 
 .batch-timing-text .label {
@@ -774,46 +808,14 @@
 /* Content Layout */
 .batch-content {
   width: 100%;
-  display: block;
-}
-
-/* Horizontal Menu Styles - After Header */
-.horizontal-menu {
-  background: rgba(255, 255, 255, 0.95);
-  border-radius: 12px;
-  padding: 15px 20px;
-  margin-bottom: 15px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
-  backdrop-filter: blur(10px);
-}
-
-/* Compact Menu Styles */
-.batch-header.compact + .horizontal-menu {
-  background: rgba(255, 255, 255, 0.95);
-  border-radius: 10px;
-  padding: 10px 16px;
-  margin-bottom: 12px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
-  backdrop-filter: blur(10px);
-}
-
-.horizontal-menu h3 {
-  margin: 0 0 10px 0;
-  color: #2c3e50;
-  font-size: 1.1rem;
-  font-weight: 600;
-  border-bottom: 2px solid #e9ecef;
-  padding-bottom: 6px;
-}
-
-.menu-items-horizontal {
   display: flex;
-  gap: 10px;
-  flex-wrap: wrap;
-  justify-content: center;
-  align-items: center;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
 }
 
+/* Legacy menu-item-horizontal styles kept for backward compatibility */
 .menu-item-horizontal {
   background: transparent;
   border: 2px solid #e9ecef;
@@ -830,22 +832,14 @@
   gap: 6px;
 }
 
-/* Compact Menu Items */
-.batch-header.compact + .horizontal-menu .menu-item-horizontal {
-  padding: 6px 12px;
-  font-size: 0.85rem;
-  border-radius: 6px;
-  gap: 4px;
-}
-
-.menu-item-horizontal:hover {
+.teacher-batch-details-page .menu-item-horizontal:hover {
   background: #f8f9fa;
   border-color: #007bff;
   transform: translateY(-2px);
   box-shadow: 0 4px 12px rgba(0, 123, 255, 0.2);
 }
 
-.menu-item-horizontal.active {
+.teacher-batch-details-page .menu-item-horizontal.active {
   background: #007bff;
   color: white;
   border-color: #007bff;
@@ -854,31 +848,31 @@
 }
 
 /* Student Details Modal Styles */
-.student-details-modal {
-  max-width: 600px;
-  width: 90%;
+.teacher-batch-details-page .student-details-modal {
+  max-width: 800px;
+  width: 95%;
 }
 
-.student-details-content {
+.teacher-batch-details-page .student-details-content {
   padding: 0;
 }
 
 .student-details-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 30px;
-  margin-bottom: 20px;
+  gap: 15px;
+  margin-bottom: 15px;
 }
 
 .detail-section {
   background: #f8f9fa;
-  padding: 20px;
+  padding: 15px;
   border-radius: 8px;
   border: 1px solid #e9ecef;
 }
 
-.detail-section h4 {
-  margin: 0 0 15px 0;
+.teacher-batch-details-page .detail-section h4 {
+  margin: 0 0 10px 0;
   color: #2c3e50;
   font-size: 1.1rem;
   font-weight: 600;
@@ -909,20 +903,20 @@
 }
 
 /* Clickable Student Rows */
-.student-row {
+.teacher-batch-details-page .student-row {
   transition: all 0.2s ease;
   cursor: pointer;
 }
 
-.student-row:hover {
+.teacher-batch-details-page .student-row:hover {
   background-color: #f8f9fa;
 }
 
-.student-row:hover td {
+.teacher-batch-details-page .student-row:hover td {
   color: #2c3e50;
 }
 
-.student-row:hover .btn-link {
+.teacher-batch-details-page .student-row:hover .btn-link {
   color: #007bff;
 }
 
@@ -954,7 +948,7 @@
 }
 
 /* Students Actions Styles */
-.students-actions {
+.teacher-batch-details-page .students-actions {
   display: flex;
   gap: 10px;
   align-items: center;
@@ -974,13 +968,13 @@
   transition: all 0.2s ease;
 }
 
-.btn-link:hover {
+.teacher-batch-details-page .btn-link:hover {
   color: #007bff;
   background: rgba(0, 123, 255, 0.1);
   text-decoration: underline;
 }
 
-.students-actions .btn-add {
+.teacher-batch-details-page .students-actions .btn-add {
   background: #28a745;
   color: white;
   border: none;
@@ -995,13 +989,13 @@
   gap: 6px;
 }
 
-.students-actions .btn-add:hover {
+.teacher-batch-details-page .students-actions .btn-add:hover {
   background: #218838;
   transform: translateY(-2px);
   box-shadow: 0 4px 12px rgba(40, 167, 69, 0.3);
 }
 
-.students-actions .btn-secondary {
+.teacher-batch-details-page .students-actions .btn-secondary {
   background: #6c757d;
   color: white;
   border: none;
@@ -1016,7 +1010,7 @@
   gap: 6px;
 }
 
-.students-actions .btn-secondary:hover {
+.teacher-batch-details-page .students-actions .btn-secondary:hover {
   background: #5a6268;
   transform: translateY(-2px);
   box-shadow: 0 4px 12px rgba(108, 117, 125, 0.3);
@@ -1026,15 +1020,15 @@
 .side-menu {
   background: rgba(255, 255, 255, 0.95);
   border-radius: 12px;
-  padding: 25px;
+  padding: 20px;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
   backdrop-filter: blur(10px);
   position: sticky;
   top: 20px;
 }
 
-.side-menu h3 {
-  margin: 0 0 20px 0;
+.teacher-batch-details-page .side-menu h3 {
+  margin: 0 0 10px 0;
   color: #2c3e50;
   font-size: 1.2rem;
   font-weight: 600;
@@ -1045,13 +1039,13 @@
 .menu-items {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
 }
 
 .menu-item {
   background: transparent;
   border: 2px solid #e9ecef;
-  padding: 15px 20px;
+  padding: 12px 16px;
   border-radius: 8px;
   cursor: pointer;
   font-weight: 500;
@@ -1061,13 +1055,13 @@
   color: #495057;
 }
 
-.menu-item:hover {
+.teacher-batch-details-page .menu-item:hover {
   background: #f8f9fa;
   border-color: #007bff;
   transform: translateX(5px);
 }
 
-.menu-item.active {
+.teacher-batch-details-page .menu-item.active {
   background: #007bff;
   border-color: #007bff;
   color: white;
@@ -1078,14 +1072,17 @@
 .main-content {
   background: rgba(255, 255, 255, 0.95);
   border-radius: 12px;
-  padding: 30px;
+  padding: 16px;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
   backdrop-filter: blur(10px);
-  min-height: 500px;
+  height: calc(100% - 70px) !important;
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
 }
 
-.main-content h2 {
-  margin: 0 0 25px 0;
+.teacher-batch-details-page .main-content h2 {
+  margin: 0 0 16px 0;
   color: #2c3e50;
   font-size: 1.5rem;
   font-weight: 600;
@@ -1093,8 +1090,47 @@
   padding-bottom: 10px;
 }
 
-.videos-header,
-.students-header {
+/* Force height calculations - Override any conflicting styles */
+.teacher-batch-details-page .batch-content,
+.batch-details-page .batch-content {
+  flex: 1 !important;
+  height: calc(100% - 70px) !important;
+  min-height: 0 !important;
+  overflow: hidden !important;
+}
+
+.teacher-batch-details-page .main-content,
+.batch-details-page .main-content {
+  flex: 1 !important;
+  min-height: 0 !important;
+  overflow-y: auto !important;
+}
+
+/* Content sections should expand properly */
+.teacher-batch-details-page .students-view,
+.teacher-batch-details-page .videos-view,
+.teacher-batch-details-page .email-view {
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Force table containers to expand */
+.teacher-batch-details-page .students-table-container {
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+/* Force video grids to expand */
+.teacher-batch-details-page .video-grid {
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.teacher-batch-details-page .videos-header,
+.teacher-batch-details-page .students-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -1102,9 +1138,9 @@
   margin-bottom: 16px;
 }
 
-.students-header h2 {
+.teacher-batch-details-page .students-header h2 {
   margin: 0;
-  font-size: 1.3rem;
+  font-size: 1.2rem;
   font-weight: 600;
   color: #2c3e50;
 }
@@ -1112,8 +1148,8 @@
 /* Videos Grid */
 .video-grid {
   display: grid;
-  gap: 24px;
-  grid-template-columns: repeat(auto-fit, minmax(384px, 1fr));
+  gap: 16px;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
   max-width: 100%;
 }
 
@@ -1126,6 +1162,15 @@
 @media (min-width: 768px) and (max-width: 1199px) {
   .video-grid {
     grid-template-columns: repeat(2, 1fr);
+  }
+  
+  .header-menu-buttons {
+    gap: 5px;
+  }
+  
+  .header-menu-buttons .menu-item-horizontal {
+    padding: 3.5px 7px;
+    font-size: 0.775rem;
   }
 }
 
@@ -1145,17 +1190,19 @@
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
   min-height: 180px;
+  max-width: 100%;
+  word-wrap: break-word;
 }
 
-.video-card:hover {
+.teacher-batch-details-page .video-card:hover {
   transform: translateY(-4px);
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.15);
   border-color: #667eea;
 }
 
-.video-thumbnail {
-  width: 192px;
-  height: 108px;
+.teacher-batch-details-page .video-thumbnail {
+  width: 120px;
+  height: 68px;
   flex-shrink: 0;
   position: relative;
   background: #f8f9fa;
@@ -1164,7 +1211,7 @@
   justify-content: center;
 }
 
-.video-right {
+.teacher-batch-details-page .video-right {
   flex: 1;
   display: flex;
   flex-direction: column;
@@ -1172,45 +1219,194 @@
   min-width: 0;
 }
 
-.video-info {
-  padding: 18px 18px 10px 18px;
+.teacher-batch-details-page .video-info {
+  padding: 20px 20px 12px 20px;
   flex: 1;
 }
 
-.video-actions {
-  padding: 10px 18px 18px 18px;
+.teacher-batch-details-page .video-actions {
+  padding: 12px 18px 18px 18px;
   display: flex;
-  gap: 10px;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
 }
 
-.video-title {
-  font-size: 16px;
+/* Video Action Buttons - Missing Styles Added */
+.teacher-batch-details-page .view-btn {
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  color: white;
+  border: none;
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.teacher-batch-details-page .view-btn:hover {
+  background: linear-gradient(135deg, #059669 0%, #047857 100%);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+}
+
+.teacher-batch-details-page .view-btn:disabled {
+  background: #9ca3af;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+.teacher-batch-details-page .edit-btn {
+  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+  color: white;
+  border: none;
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.teacher-batch-details-page .edit-btn:hover {
+  background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+}
+
+.teacher-batch-details-page .edit-btn:disabled {
+  background: #9ca3af;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+.teacher-batch-details-page .notes-btn {
+  background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+  color: white;
+  border: none;
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.teacher-batch-details-page .notes-btn:hover {
+  background: linear-gradient(135deg, #d97706 0%, #b45309 100%);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(245, 158, 11, 0.3);
+}
+
+.teacher-batch-details-page .notes-btn:disabled {
+  background: #9ca3af;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+.teacher-batch-details-page .confirm-upload-btn {
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  color: white;
+  border: none;
+  padding: 6px 10px;
+  border-radius: 5px;
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.teacher-batch-details-page .confirm-upload-btn:hover {
+  background: linear-gradient(135deg, #059669 0%, #047857 100%);
+  transform: translateY(-1px);
+  box-shadow: 0 3px 8px rgba(16, 185, 129, 0.3);
+}
+
+.teacher-batch-details-page .confirm-upload-btn:disabled {
+  background: #9ca3af;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+/* Enhanced Video Actions Layout */
+.teacher-batch-details-page .notes-upload-section {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.teacher-batch-details-page .video-title {
+  font-size: 17px;
   font-weight: 600;
-  color: #2d3748;
-  line-height: 1.4;
-  margin-bottom: 10px;
+  color: #1a202c;
+  line-height: 1.5;
+  margin-bottom: 12px;
   overflow: hidden;
   text-overflow: ellipsis;
   display: -webkit-box;
-  -webkit-line-clamp: 2;
-  line-clamp: 2;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
   -webkit-box-orient: vertical;
   box-orient: vertical;
+  word-wrap: break-word;
+  hyphens: auto;
+  transition: all 0.3s ease;
+  cursor: help;
+  position: relative;
 }
 
-.video-description {
+.teacher-batch-details-page .video-title:hover {
+  -webkit-line-clamp: unset;
+  line-clamp: unset;
+  overflow: visible;
+  color: #2b6cb0;
+  z-index: 10;
+  background: rgba(255, 255, 255, 0.95);
+  padding: 8px;
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  margin: -8px;
+}
+
+.teacher-batch-details-page .video-description {
   margin-bottom: 8px;
   padding-bottom: 8px;
   border-bottom: 1px solid #f0f0f0;
 }
 
-.video-source {
+.teacher-batch-details-page .video-source {
   margin-top: 8px;
   padding-top: 8px;
   border-top: 1px solid #f0f0f0;
 }
 
-.video-meta {
+.teacher-batch-details-page .video-meta {
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -1218,7 +1414,7 @@
   color: #718096;
 }
 
-.meta-item {
+.teacher-batch-details-page .meta-item {
   display: flex;
   align-items: center;
   gap: 6px;
@@ -1237,7 +1433,7 @@
 }
 
 /* Edit Button Styles */
-.btn-edit {
+.teacher-batch-details-page .btn-edit {
   background: #667eea;
   color: white;
   border: none;
@@ -1250,7 +1446,7 @@
   margin-right: 4px;
 }
 
-.btn-edit:hover {
+.teacher-batch-details-page .btn-edit:hover {
   background: #5a67d8;
 }
 
@@ -1267,12 +1463,12 @@
   font-weight: 500;
 }
 
-.btn-delete:hover {
+.teacher-batch-details-page .btn-delete:hover {
   background: #dc2626;
 }
 
 /* Notes Button Styles */
-.btn-notes {
+.teacher-batch-details-page .btn-notes {
   background: #10b981;
   color: white;
   border: none;
@@ -1284,21 +1480,21 @@
   font-weight: 500;
 }
 
-.btn-notes:hover {
+.teacher-batch-details-page .btn-notes:hover {
   background: #059669;
   transform: translateY(-1px);
 }
 
 /* Notes Section Styles */
-.notes-section {
-  margin-top: 20px;
-  padding: 15px;
+.teacher-batch-details-page .notes-section {
+  margin-top: 12px;
+  padding: 12px;
   border: 1px solid #e9ecef;
   border-radius: 8px;
   background: #f8f9fa;
 }
 
-.notes-label {
+.teacher-batch-details-page .notes-label {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -1308,24 +1504,132 @@
   cursor: pointer;
 }
 
-.notes-label input[type="checkbox"] {
+.teacher-batch-details-page .notes-label input[type="checkbox"] {
   width: 18px;
   height: 18px;
   accent-color: #667eea;
 }
 
-.notes-file-input {
+.teacher-batch-details-page .notes-file-input {
   margin-top: 10px;
 }
 
-.file-input-label {
+/* Responsive Design for Video Cards */
+@media (max-width: 768px) {
+  .teacher-batch-details-page .video-card {
+    min-height: 170px;
+  }
+  
+  .teacher-batch-details-page .video-thumbnail {
+    width: 100%;
+    height: 120px;
+  }
+  
+  .teacher-batch-details-page .video-title {
+    font-size: 16px;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+  }
+  
+  .teacher-batch-details-page .video-title:hover {
+    -webkit-line-clamp: 3;
+    line-clamp: 3;
+    background: rgba(255, 255, 255, 0.98);
+    padding: 6px;
+    margin: -6px;
+  }
+  
+  .teacher-batch-details-page .video-actions {
+    padding: 10px 14px 14px 14px;
+    gap: 6px;
+  }
+  
+  .teacher-batch-details-page .view-btn,
+  .teacher-batch-details-page .edit-btn,
+  .teacher-batch-details-page .notes-btn {
+    padding: 6px 10px;
+    font-size: 11px;
+  }
+  
+  .teacher-batch-details-page .confirm-upload-btn {
+    padding: 5px 8px;
+    font-size: 10px;
+  }
+  
+  .teacher-batch-details-page .notes-upload-section {
+    gap: 4px;
+  }
+}
+
+@media (max-width: 480px) {
+  .teacher-batch-details-page .video-card {
+    flex-direction: column;
+    min-height: auto;
+  }
+  
+  .teacher-batch-details-page .video-thumbnail {
+    width: 100%;
+    height: 126px;
+  }
+  
+  .teacher-batch-details-page .video-right {
+    width: 100%;
+  }
+  
+  .teacher-batch-details-page .video-title {
+    font-size: 15px;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    margin-bottom: 10px;
+  }
+  
+  .teacher-batch-details-page .video-title:hover {
+    -webkit-line-clamp: unset;
+    line-clamp: unset;
+    background: rgba(255, 255, 255, 0.95);
+    padding: 6px;
+    margin: -6px 0;
+    border-radius: 4px;
+  }
+  
+  .teacher-batch-details-page .video-actions {
+    padding: 12px;
+    gap: 8px;
+    justify-content: center;
+  }
+  
+  .teacher-batch-details-page .view-btn,
+  .teacher-batch-details-page .edit-btn,
+  .teacher-batch-details-page .notes-btn {
+    flex: 1;
+    min-width: 80px;
+    justify-content: center;
+    padding: 8px 6px;
+    font-size: 11px;
+  }
+  
+  .teacher-batch-details-page .confirm-upload-btn {
+    width: 100%;
+    margin-top: 4px;
+    padding: 8px;
+    font-size: 11px;
+  }
+  
+  .teacher-batch-details-page .notes-upload-section {
+    width: 100%;
+    flex-direction: column;
+    gap: 8px;
+  }
+}
+
+.teacher-batch-details-page .file-input-label {
   display: block;
   font-weight: 500;
   color: #4a5568;
   margin-bottom: 8px;
 }
 
-.file-input {
+.teacher-batch-details-page .file-input {
   width: 100%;
   padding: 8px;
   border: 1px solid #ddd;
@@ -1334,7 +1638,7 @@
   background: white;
 }
 
-.selected-file {
+.teacher-batch-details-page .selected-file {
   margin-top: 8px;
   padding: 8px;
   background: #e6fffa;
@@ -1345,7 +1649,7 @@
 }
 
 /* Modal Styles */
-.modal-overlay {
+.teacher-batch-details-page .modal-overlay {
   position: fixed;
   top: 0;
   left: 0;
@@ -1363,7 +1667,7 @@ body.modal-open {
   overflow: hidden !important;
 }
 
-.modal {
+.teacher-batch-details-page .modal {
   background: white;
   border-radius: 12px;
   padding: 0;
@@ -1374,11 +1678,11 @@ body.modal-open {
   box-shadow: 0 20px 25px rgba(0, 0, 0, 0.3);
 }
 
-.add-students-modal {
+.teacher-batch-details-page .add-students-modal {
   max-width: 900px;
 }
 
-.modal-header {
+.teacher-batch-details-page .modal-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -1386,13 +1690,13 @@ body.modal-open {
   border-bottom: 1px solid #e9ecef;
 }
 
-.modal-header h3 {
+.teacher-batch-details-page .modal-header h3 {
   margin: 0;
   color: #2c3e50;
   font-size: 1.2rem;
 }
 
-.modal-close {
+.teacher-batch-details-page .modal-close {
   background: none;
   border: none;
   font-size: 24px;
@@ -1406,23 +1710,23 @@ body.modal-open {
   justify-content: center;
 }
 
-.modal-close:hover {
+.teacher-batch-details-page .modal-close:hover {
   color: #dc3545;
 }
 
-.modal-content {
+.teacher-batch-details-page .modal-content {
   padding: 20px;
 }
 
-.modal-subtitle {
+.teacher-batch-details-page .modal-subtitle {
   margin: 0 0 15px 0;
   color: #6c757d;
   font-size: 0.9rem;
 }
 
-.modal-content input,
-.modal-content select,
-.modal-content textarea {
+.teacher-batch-details-page .modal-content input,
+.teacher-batch-details-page .modal-content select,
+.teacher-batch-details-page .modal-content textarea {
   width: 100%;
   padding: 10px;
   margin-bottom: 15px;
@@ -1431,7 +1735,7 @@ body.modal-open {
   font-size: 14px;
 }
 
-.modal-actions {
+.teacher-batch-details-page .modal-actions {
   display: flex;
   justify-content: flex-end;
   gap: 10px;
@@ -1468,7 +1772,7 @@ body.modal-open {
 }
 
 /* Primary/Secondary buttons (used in Add Students modal) */
-.btn-primary {
+.teacher-batch-details-page .btn-primary {
   background: #007bff;
   color: white;
   border: none;
@@ -1478,7 +1782,7 @@ body.modal-open {
   font-weight: 500;
 }
 
-.btn-primary:hover {
+.teacher-batch-details-page .btn-primary:hover {
   background: #0056b3;
 }
 
@@ -1722,7 +2026,8 @@ body.modal-open {
   }
   
   .main-content {
-    padding: 20px;
+    padding: 12px;
+    height: calc(100% - 60px) !important;
   }
   
   .videos-grid {
@@ -1754,13 +2059,10 @@ body.modal-open {
     margin-bottom: 10px;
   }
   
-  .batch-header.compact ~ .horizontal-menu {
-    margin-bottom: 8px;
-    padding: 8px 12px;
-  }
-  
+    
   .batch-header.compact ~ .batch-content .main-content {
-    padding: 15px;
+    padding: 8px;
+    height: calc(100% - 50px) !important;
   }
 }
 
@@ -1778,7 +2080,8 @@ body.modal-open {
   }
   
   .main-content {
-    padding: 15px;
+    padding: 8px;
+    height: calc(100% - 50px) !important;
   }
   
   .video-card {
@@ -1838,7 +2141,7 @@ body.modal-open {
 }
 
 .email-content {
-  padding: 16px;
+  padding: 12px;
 }
 
 /* Email Sender Section */
@@ -1890,8 +2193,8 @@ body.modal-open {
 
 /* Email Students Section */
 .email-students-section {
-  margin-bottom: 16px;
-  padding: 16px;
+  margin-bottom: 12px;
+  padding: 12px;
   background: #ffffff;
   border-radius: 8px;
   border: 1px solid #e8ecf4;
@@ -2076,7 +2379,7 @@ body.modal-open {
 
 /* Email Composition Section */
 .email-composition {
-  margin-bottom: 16px;
+  margin-bottom: 12px;
 }
 
 .email-form {
@@ -2209,7 +2512,7 @@ body.modal-open {
 /* Responsive Email View */
 @media (max-width: 768px) {
   .email-content {
-    padding: 12px;
+    padding: 8px;
   }
   
   .email-header {
@@ -2224,7 +2527,7 @@ body.modal-open {
   }
   
   .email-students-section {
-    padding: 12px;
+    padding: 8px;
   }
   
   .email-students-header {
@@ -2276,7 +2579,7 @@ body.modal-open {
 
 @media (max-width: 480px) {
   .email-content {
-    padding: 8px;
+    padding: 6px;
   }
   
   .email-header {
@@ -2284,7 +2587,7 @@ body.modal-open {
   }
   
   .email-students-section {
-    padding: 8px;
+    padding: 6px;
   }
   
   .email-students-list {
@@ -2323,10 +2626,10 @@ body.modal-open {
 }
 
 .fullscreen-modal {
-  width: 95vw;
-  height: 95vh;
-  max-width: 1400px;
-  max-height: 900px;
+  width: 100vw;
+  height: 100vh;
+  max-width: none;
+  max-height: none;
   background: white;
   border-radius: 16px;
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
@@ -2531,7 +2834,7 @@ body.modal-open {
 }
 
 .profile-section h3 {
-  margin: 0 0 20px 0;
+  margin: 0 0 12px 0;
   color: #1a1d26;
   font-size: 1.1rem;
   font-weight: 700;
@@ -2632,8 +2935,8 @@ body.modal-open {
 .form-actions {
   display: flex;
   gap: 12px;
-  margin-top: 20px;
-  padding-top: 20px;
+  margin-top: 12px;
+  padding-top: 12px;
   border-top: 1px solid #e9ecef;
 }
 
@@ -2672,8 +2975,10 @@ body.modal-open {
 
 /* Activity Tab Content */
 .activity-tab-content {
-  max-width: 1200px;
-  margin: 0 auto;
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  padding: 0;
 }
 
 .activity-filters {
@@ -2833,8 +3138,8 @@ body.modal-open {
 
 .activity-details {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 8px;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 6px;
 }
 
 .activity-detail {
@@ -3016,8 +3321,8 @@ body.modal-open {
 
 .summary-cards {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 20px;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
 }
 
 .summary-card {
@@ -3345,6 +3650,38 @@ body.modal-open {
   gap: 16px;
 }
 
+/* Header Menu Buttons Container */
+.header-menu-buttons {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.header-menu-buttons .menu-item-horizontal {
+  padding: 4px 8px;
+  font-size: 0.8rem;
+  border-radius: 4px;
+  background: transparent;
+  border: 1px solid #e9ecef;
+  color: #495057;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.header-menu-buttons .menu-item-horizontal:hover {
+  background: #f8f9fa;
+  border-color: #007bff;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(0, 123, 255, 0.2);
+}
+
+.header-menu-buttons .menu-item-horizontal.active {
+  background: #007bff;
+  color: white;
+  border-color: #007bff;
+  box-shadow: 0 2px 8px rgba(0, 123, 255, 0.3);
+}
+
 .batch-stats-compact {
   display: flex;
   align-items: center;
@@ -3452,8 +3789,8 @@ body.modal-open {
 
 .expanded-info-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 16px;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
 }
 
 .info-item {
@@ -3580,6 +3917,15 @@ body.modal-open {
   
   .compact-header-right {
     gap: 12px;
+  }
+  
+  .header-menu-buttons {
+    gap: 4px;
+  }
+  
+  .header-menu-buttons .menu-item-horizontal {
+    padding: 3px 6px;
+    font-size: 0.75rem;
   }
   
   .batch-stats-compact {
@@ -3763,5 +4109,296 @@ body.modal-open {
   .btn-back-compact,
   .header-toggle-btn {
     border: 2px solid #fff;
+  }
+}
+
+/* Activity Graph Styles */
+.graph-controls {
+  background: rgba(255, 255, 255, 0.95);
+  border-radius: 12px;
+  padding: 20px;
+  margin-bottom: 24px;
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+}
+
+.control-row {
+  display: flex;
+  gap: 24px;
+  align-items: flex-end;
+  flex-wrap: wrap;
+}
+
+.control-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.control-group label {
+  font-size: 13px;
+  font-weight: 600;
+  color: #374151;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.toggle-group {
+  display: flex;
+  gap: 16px;
+}
+
+.toggle-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  font-size: 14px;
+  color: #4b5563;
+  transition: color 0.2s ease;
+}
+
+.toggle-label:hover {
+  color: #1f2937;
+}
+
+.toggle-label input[type="checkbox"] {
+  display: none;
+}
+
+.toggle-indicator {
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+  border: 2px solid #d1d5db;
+  background: #ffffff;
+  position: relative;
+  transition: all 0.2s ease;
+}
+
+.toggle-label input[type="checkbox"]:checked + .toggle-indicator {
+  border-color: #3b82f6;
+  background: #3b82f6;
+}
+
+.toggle-label input[type="checkbox"]:checked + .toggle-indicator.login {
+  border-color: #3b82f6;
+  background: #3b82f6;
+}
+
+.toggle-label input[type="checkbox"]:checked + .toggle-indicator.video {
+  border-color: #10b981;
+  background: #10b981;
+}
+
+.toggle-indicator::after {
+  content: '✓';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  color: white;
+  font-size: 10px;
+  font-weight: bold;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.toggle-label input[type="checkbox"]:checked + .toggle-indicator::after {
+  opacity: 1;
+}
+
+.date-inputs {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.date-input {
+  padding: 8px 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 14px;
+  background: #ffffff;
+  transition: border-color 0.2s ease;
+}
+
+.date-input:focus {
+  outline: none;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.date-inputs span {
+  color: #6b7280;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.control-actions {
+  display: flex;
+  align-items: center;
+  margin-left: auto;
+}
+
+.activity-graph-section {
+  margin-bottom: 32px;
+}
+
+.detailed-activity-section {
+  background: rgba(255, 255, 255, 0.95);
+  border-radius: 12px;
+  padding: 20px;
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+}
+
+.section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.section-header h4 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: #1f2937;
+}
+
+.legacy-filters {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.activity-list.compact {
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.activity-list.compact .activity-item {
+  padding: 12px 16px;
+  margin-bottom: 8px;
+  background: #f8fafc;
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
+  transition: all 0.2s ease;
+}
+
+.activity-list.compact .activity-item:hover {
+  background: #f1f5f9;
+  border-color: #cbd5e1;
+  transform: translateY(-1px);
+}
+
+.activity-list.compact .activity-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 4px;
+}
+
+.activity-list.compact .activity-action {
+  font-weight: 600;
+  color: #1f2937;
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.activity-list.compact .activity-timestamp {
+  font-size: 12px;
+  color: #6b7280;
+}
+
+.activity-list.compact .activity-details {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.activity-list.compact .activity-detail {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+}
+
+.activity-list.compact .activity-detail label {
+  font-weight: 600;
+  color: #374151;
+}
+
+.activity-list.compact .activity-detail span {
+  color: #6b7280;
+}
+
+.show-more {
+  text-align: center;
+  padding: 16px;
+  color: #6b7280;
+  font-size: 13px;
+}
+
+/* Responsive Design for Graph Controls */
+@media (max-width: 768px) {
+  .control-row {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 16px;
+  }
+  
+  .toggle-group {
+    justify-content: center;
+  }
+  
+  .date-inputs {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  
+  .date-inputs span {
+    text-align: center;
+  }
+  
+  .control-actions {
+    margin-left: 0;
+    justify-content: center;
+  }
+  
+  .section-header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+  }
+  
+  .legacy-filters {
+    justify-content: center;
+    flex-wrap: wrap;
+  }
+}
+
+@media (max-width: 480px) {
+  .graph-controls {
+    padding: 16px;
+  }
+  
+  .detailed-activity-section {
+    padding: 16px;
+  }
+  
+  .toggle-group {
+    flex-direction: column;
+    gap: 8px;
+  }
+  
+  .activity-list.compact {
+    max-height: 300px;
   }
 }

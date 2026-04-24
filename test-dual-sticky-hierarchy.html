@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dual Sticky Hierarchy Test</title>
+    <style>
+        /* CSS Custom Properties for dual sticky system */
+        :root {
+            --admin-header-height: 80px;
+            --toolbar-height: 80px;
+            --stats-grid-height: 120px;
+            --header-height: 100px;
+            --total-sticky-height: calc(var(--admin-header-height) + var(--header-height) + var(--stats-grid-height) + var(--toolbar-height));
+        }
+
+        html {
+            scroll-behavior: smooth;
+        }
+
+        body {
+            margin: 0;
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+            background: linear-gradient(135deg, #f5f7fa 0%, #f0f2f5 100%);
+        }
+
+        /* Admin Header - Highest z-index (100) */
+        .admin-top-header {
+            background: white;
+            padding: 16px 24px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 4px 20px rgba(102, 126, 234, 0.08);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            border-bottom: 1px solid #f0f0f0;
+            height: var(--admin-header-height);
+            box-sizing: border-box;
+        }
+
+        .admin-top-header h1 {
+            font-size: 28px;
+            font-weight: 700;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin: 0;
+        }
+
+        /* Students Activity Section */
+        .students-activity-page {
+            padding: 16px 8px 24px;
+            max-width: 100%;
+            width: 100%;
+            background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+            min-height: calc(100vh - 160px);
+            display: flex;
+            flex-direction: column;
+            flex: 1;
+            box-sizing: border-box;
+            padding-top: var(--header-height);
+        }
+
+        /* SA Header - z-index 95 */
+        .sa-header {
+            margin-bottom: 24px;
+            position: sticky;
+            top: var(--admin-header-height);
+            z-index: 95;
+            background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+            padding: 16px 8px;
+            margin: -16px -8px 24px -8px;
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            transition: all 0.3s ease;
+            transform: translateY(0);
+            border-bottom: 1px solid rgba(226, 232, 240, 0.8);
+        }
+
+        .sa-header h1 {
+            margin: 0 0 8px 0;
+            font-size: 1.75rem;
+            font-weight: 700;
+            color: #1e293b;
+        }
+
+        /* Stats Grid - z-index 85 */
+        .sa-stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 16px;
+            margin-bottom: 24px;
+            position: sticky;
+            top: calc(var(--admin-header-height) + var(--header-height));
+            z-index: 85;
+            background: inherit;
+            padding: 8px 0;
+            transition: all 0.3s ease;
+            transform: translateY(0);
+            border-bottom: 1px solid rgba(226, 232, 240, 0.6);
+        }
+
+        .sa-stat-card {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+            border: 1px solid #e2e8f0;
+            transition: box-shadow 0.2s, transform 0.2s;
+        }
+
+        .sa-stat-card:hover {
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            transform: translateY(-2px);
+        }
+
+        /* Toolbar - z-index 90 */
+        .sa-toolbar {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 16px;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 20px;
+            position: sticky;
+            top: calc(var(--admin-header-height) + var(--header-height) + var(--stats-grid-height));
+            z-index: 90;
+            background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+            padding: 16px;
+            border-radius: 12px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            border: 1px solid rgba(226, 232, 240, 0.8);
+            transition: all 0.3s ease;
+            transform: translateY(0);
+        }
+
+        /* Table Headers - z-index 88 */
+        .sa-table-wrapper {
+            overflow-x: auto;
+            border-radius: 12px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+            border: 1px solid #e2e8f0;
+            background: white;
+        }
+
+        .sa-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 14px;
+        }
+
+        .sa-table th {
+            padding: 14px 12px;
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: #64748b;
+            background: #f8fafc;
+            border-bottom: 2px solid #e2e8f0;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            position: sticky;
+            top: calc(var(--admin-header-height) + var(--header-height) + var(--stats-grid-height) + var(--toolbar-height));
+            z-index: 88;
+        }
+
+        .sa-table td {
+            padding: 12px;
+            border-bottom: 1px solid #f1f5f9;
+            vertical-align: middle;
+        }
+
+        /* Content for testing scroll */
+        .content-spacer {
+            height: 200vh;
+            background: linear-gradient(to bottom, transparent, rgba(102, 126, 234, 0.05), transparent);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            color: #64748b;
+        }
+
+        /* Z-index indicators */
+        .z-index-indicator {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            background: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 12px;
+            z-index: 10001;
+        }
+
+        /* Mobile responsive */
+        @media (max-width: 768px) {
+            :root {
+                --admin-header-height: 60px;
+                --toolbar-height: 120px;
+                --stats-grid-height: 200px;
+                --header-height: 80px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Z-index indicator for testing -->
+    <div class="z-index-indicator">
+        Admin Header: z-index 100 (always on top)<br>
+        SA Header: z-index 95<br>
+        Toolbar: z-index 90<br>
+        Table Headers: z-index 88<br>
+        Stats Grid: z-index 85
+    </div>
+
+    <!-- Admin Header -->
+    <header class="admin-top-header">
+        <h1>Admin Dashboard</h1>
+        <div>Admin Actions | User Menu | Logout</div>
+    </header>
+
+    <!-- Students Activity Section -->
+    <main class="students-activity-page">
+        <!-- SA Header -->
+        <section class="sa-header">
+            <h1>Students Activity</h1>
+            <p>Monitor and analyze student engagement across the platform</p>
+        </section>
+
+        <!-- Stats Grid -->
+        <section class="sa-stats-grid">
+            <div class="sa-stat-card">
+                <div style="font-size: 2rem;">👥</div>
+                <div>
+                    <div style="font-size: 1.5rem; font-weight: 700; color: #1e293b;">1,234</div>
+                    <div style="font-size: 0.8rem; color: #64748b;">Total Students</div>
+                </div>
+            </div>
+            <div class="sa-stat-card">
+                <div style="font-size: 2rem;">📹</div>
+                <div>
+                    <div style="font-size: 1.5rem; font-weight: 700; color: #1e293b;">5,678</div>
+                    <div style="font-size: 0.8rem; color: #64748b;">Video Views</div>
+                </div>
+            </div>
+            <div class="sa-stat-card">
+                <div style="font-size: 2rem;">✏️</div>
+                <div>
+                    <div style="font-size: 1.5rem; font-weight: 700; color: #1e293b;">890</div>
+                    <div style="font-size: 0.8rem; color: #64748b;">Assessments</div>
+                </div>
+            </div>
+            <div class="sa-stat-card">
+                <div style="font-size: 2rem;">🔐</div>
+                <div>
+                    <div style="font-size: 1.5rem; font-weight: 700; color: #1e293b;">2,345</div>
+                    <div style="font-size: 0.8rem; color: #64748b;">Total Logins</div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Toolbar -->
+        <section class="sa-toolbar">
+            <div>Filters: [Student] [Action] [Date Range] [Search]</div>
+            <div>Actions: [Export] [Refresh] [Settings]</div>
+        </section>
+
+        <!-- Table -->
+        <section class="sa-table-wrapper">
+            <table class="sa-table">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Student Name</th>
+                        <th>Email</th>
+                        <th>Action</th>
+                        <th>Details</th>
+                        <th>Timestamp</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>1</td>
+                        <td>John Doe</td>
+                        <td>john@example.com</td>
+                        <td>🔐 Login</td>
+                        <td>Logged in from IP 192.168.1.1</td>
+                        <td>2024-01-15 10:30:00</td>
+                    </tr>
+                    <tr>
+                        <td>2</td>
+                        <td>Jane Smith</td>
+                        <td>jane@example.com</td>
+                        <td>📹 Video View</td>
+                        <td>Watched "Introduction to React"</td>
+                        <td>2024-01-15 11:15:00</td>
+                    </tr>
+                    <tr>
+                        <td>3</td>
+                        <td>Bob Johnson</td>
+                        <td>bob@example.com</td>
+                        <td>✏️ Assessment</td>
+                        <td>Completed JavaScript Quiz</td>
+                        <td>2024-01-15 12:00:00</td>
+                    </tr>
+                    <tr>
+                        <td>4</td>
+                        <td>Alice Brown</td>
+                        <td>alice@example.com</td>
+                        <td>🔐 Login</td>
+                        <td>Logged in from mobile device</td>
+                        <td>2024-01-15 13:30:00</td>
+                    </tr>
+                    <tr>
+                        <td>5</td>
+                        <td>Charlie Wilson</td>
+                        <td>charlie@example.com</td>
+                        <td>📹 Video View</td>
+                        <td>Watched "Advanced CSS Techniques"</td>
+                        <td>2024-01-15 14:45:00</td>
+                    </tr>
+                </tbody>
+            </table>
+        </section>
+
+        <!-- Content spacer for testing scroll -->
+        <div class="content-spacer">
+            Scroll to test sticky hierarchy behavior
+        </div>
+    </main>
+
+    <script>
+        // Dynamic header height detection
+        function updateAdminHeaderHeight() {
+            const adminHeader = document.querySelector('.admin-top-header');
+            if (adminHeader) {
+                const height = adminHeader.offsetHeight;
+                document.documentElement.style.setProperty('--admin-header-height', `${height}px`);
+                console.log('Admin header height updated to:', height);
+            }
+        }
+
+        // Initial measurement
+        updateAdminHeaderHeight();
+
+        // Update on resize
+        window.addEventListener('resize', updateAdminHeaderHeight);
+
+        // Log current z-index hierarchy
+        console.log('Dual Sticky Hierarchy Test Loaded');
+        console.log('Z-Index Hierarchy:');
+        console.log('- Admin Header: z-index 100 (always on top)');
+        console.log('- SA Header: z-index 95');
+        console.log('- Toolbar: z-index 90');
+        console.log('- Table Headers: z-index 88');
+        console.log('- Stats Grid: z-index 85');
+    </script>
+</body>
+</html>

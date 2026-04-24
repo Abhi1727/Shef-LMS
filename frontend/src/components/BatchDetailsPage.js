@@ -5,6 +5,8 @@ import { ToastContainer, showToast } from './Toast';
 import { YouTubeUtils } from '../utils/youtubeUtils';
 import { formatDateForComponent } from '../utils/dateUtils';
 import CustomVideoPlayer from './CustomVideoPlayer';
+import ActivityTimelineChart from './charts/ActivityTimelineChart';
+import { processActivityData, exportToCSV } from '../utils/activityDataProcessor';
 import './BatchDetailsPage.css';
 
 const DAYS_OF_WEEK = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -253,6 +255,14 @@ const BatchDetailsPage = () => {
   const [emailQuickFilter, setEmailQuickFilter] = useState('all');
   const [showCharCounter, setShowCharCounter] = useState(false);
 
+  // Activity graph state
+  const [showLogins, setShowLogins] = useState(true);
+  const [showVideoViews, setShowVideoViews] = useState(true);
+  const [graphDateRange, setGraphDateRange] = useState({
+    start: '',
+    end: ''
+  });
+
   // Helper function for normalizing IDs (moved here to be available for useMemo)
   const normId = (v) => (v != null && v !== '' ? String(v).trim() : '');
   const selectedBatchIdNorm = normId(selectedBatch?.id || selectedBatch?._id || batchId);
@@ -300,6 +310,15 @@ const BatchDetailsPage = () => {
       return [];
     }
   }, [students, selectedBatchIdNorm, emailSearchTerm, emailQuickFilter]);
+
+  // Process activity data for graph
+  const { chartData, summary: activitySummary } = useMemo(() => {
+    return processActivityData(
+      studentActivities,
+      graphDateRange.start || activityFilter.startDate,
+      graphDateRange.end || activityFilter.endDate
+    );
+  }, [studentActivities, graphDateRange, activityFilter]);
 
   // Filter students by batchId for consistency with Dashboard
   const batchStudents = students.filter(student => normId(student.batchId) === selectedBatchIdNorm);
@@ -775,6 +794,19 @@ const BatchDetailsPage = () => {
       console.error('Error downloading activity data:', error);
       showToast('Error downloading activity data', 'error');
     }
+  };
+
+  // Download graph data CSV
+  const handleDownloadGraphCSV = () => {
+    const { rawFilteredData } = processActivityData(
+      studentActivities,
+      graphDateRange.start || activityFilter.startDate,
+      graphDateRange.end || activityFilter.endDate
+    );
+    
+    const filename = `graph-activity-${selectedStudentDetails?.name?.replace(/\s+/g, '-') || 'student'}-${new Date().toISOString().split('T')[0]}.csv`;
+    exportToCSV(rawFilteredData, filename);
+    showToast('Graph data downloaded successfully!', 'success');
   };
 
   // Generate report
@@ -1512,7 +1544,7 @@ const BatchDetailsPage = () => {
 
   if (loading) {
     return (
-      <div className="batch-details-page">
+      <div className="teacher-batch-details-page">
         <div className="loading">Loading batch details...</div>
       </div>
     );
@@ -1520,7 +1552,7 @@ const BatchDetailsPage = () => {
 
   if (!selectedBatch) {
     return (
-      <div className="batch-details-page">
+      <div className="teacher-batch-details-page">
         <div className="error">Batch not found</div>
       </div>
     );
@@ -1599,7 +1631,7 @@ const BatchDetailsPage = () => {
 
   return (
     <>
-    <div className="batch-details-page">
+    <div className="teacher-batch-details-page">
       
       {/* Compact Header - Optimized Space Utilization */}
       <div className="batch-header compact">
@@ -1642,6 +1674,29 @@ const BatchDetailsPage = () => {
             </div>
           </div>
           
+          <div className="header-menu-buttons">
+            <button 
+              className={`menu-item-horizontal ${activeView === 'videos' ? 'active' : ''}`}
+              onClick={() => handleViewChange('videos')}
+            >
+              📹 Videos ({batchVideos.length})
+            </button>
+            <button 
+              className={`menu-item-horizontal ${activeView === 'students' ? 'active' : ''}`}
+              onClick={() => handleViewChange('students')}
+            >
+              👥 Students ({batchStudents.length})
+            </button>
+            {isAdmin && (
+              <button 
+                className={`menu-item-horizontal ${activeView === 'email' ? 'active' : ''}`}
+                onClick={() => handleViewChange('email')}
+              >
+                📧 Send Email
+              </button>
+            )}
+          </div>
+          
           {isAdmin && (
             <button
               className="btn-edit-timing-compact"
@@ -1658,33 +1713,7 @@ const BatchDetailsPage = () => {
         </div>
       </div>
 
-      {/* Horizontal Menu - After Header */}
-      <div className="horizontal-menu">
-        {/* <h3>Batch Options</h3> */}
-        <div className="menu-items-horizontal">
-          <button 
-            className={`menu-item-horizontal ${activeView === 'videos' ? 'active' : ''}`}
-            onClick={() => handleViewChange('videos')}
-          >
-            📹 Videos ({batchVideos.length})
-          </button>
-          <button 
-            className={`menu-item-horizontal ${activeView === 'students' ? 'active' : ''}`}
-            onClick={() => handleViewChange('students')}
-          >
-            👥 Students ({batchStudents.length})
-          </button>
-          {isAdmin && (
-            <button 
-              className={`menu-item-horizontal ${activeView === 'email' ? 'active' : ''}`}
-              onClick={() => handleViewChange('email')}
-            >
-              📧 Send Email
-            </button>
-          )}
-        </div>
-      </div>
-
+      
       <div className="batch-content">
         {/* Main Content */}
         <div className="main-content">
@@ -2806,10 +2835,82 @@ const BatchDetailsPage = () => {
             {/* Activity Tab */}
             {activeProfileTab === 'activity' && (
               <div className="activity-tab-content">
-                <div className="activity-filters">
-                  <div className="filter-row">
-                    <div className="filter-group">
-                      <label>Action Type:</label>
+                {/* Graph Controls */}
+                <div className="graph-controls">
+                  <div className="control-row">
+                    <div className="control-group">
+                      <label>Activity Type:</label>
+                      <div className="toggle-group">
+                        <label className="toggle-label">
+                          <input
+                            type="checkbox"
+                            checked={showLogins}
+                            onChange={(e) => setShowLogins(e.target.checked)}
+                          />
+                          <span className="toggle-indicator login"></span>
+                          Logins
+                        </label>
+                        <label className="toggle-label">
+                          <input
+                            type="checkbox"
+                            checked={showVideoViews}
+                            onChange={(e) => setShowVideoViews(e.target.checked)}
+                          />
+                          <span className="toggle-indicator video"></span>
+                          Video Views
+                        </label>
+                      </div>
+                    </div>
+                    <div className="control-group">
+                      <label>Date Range:</label>
+                      <div className="date-inputs">
+                        <input
+                          type="date"
+                          value={graphDateRange.start || ''}
+                          onChange={(e) => setGraphDateRange(prev => ({ ...prev, start: e.target.value }))}
+                          className="date-input"
+                          placeholder="Start date"
+                        />
+                        <span>to</span>
+                        <input
+                          type="date"
+                          value={graphDateRange.end || ''}
+                          onChange={(e) => setGraphDateRange(prev => ({ ...prev, end: e.target.value }))}
+                          className="date-input"
+                          placeholder="End date"
+                        />
+                      </div>
+                    </div>
+                    <div className="control-actions">
+                      <button 
+                        className="btn-download-csv"
+                        onClick={handleDownloadGraphCSV}
+                      >
+                        📥 Download CSV
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Activity Timeline Chart */}
+                <div className="activity-graph-section">
+                  {loadingActivity ? (
+                    <div className="chart-loading">Loading activity data...</div>
+                  ) : (
+                    <ActivityTimelineChart
+                      data={chartData}
+                      showLogins={showLogins}
+                      showVideoViews={showVideoViews}
+                      summary={activitySummary}
+                    />
+                  )}
+                </div>
+
+                {/* Detailed Activity List */}
+                <div className="detailed-activity-section">
+                  <div className="section-header">
+                    <h4>📋 Detailed Activity Log</h4>
+                    <div className="legacy-filters">
                       <select
                         value={activityFilter.action || ''}
                         onChange={(e) => setActivityFilter(prev => ({ ...prev, action: e.target.value }))}
@@ -2821,26 +2922,6 @@ const BatchDetailsPage = () => {
                         <option value="assessment_submit">Assessment Submit</option>
                         <option value="page_view">Page View</option>
                       </select>
-                    </div>
-                    <div className="filter-group">
-                      <label>Start Date:</label>
-                      <input
-                        type="date"
-                        value={activityFilter.startDate || ''}
-                        onChange={(e) => setActivityFilter(prev => ({ ...prev, startDate: e.target.value }))}
-                        className="filter-input"
-                      />
-                    </div>
-                    <div className="filter-group">
-                      <label>End Date:</label>
-                      <input
-                        type="date"
-                        value={activityFilter.endDate || ''}
-                        onChange={(e) => setActivityFilter(prev => ({ ...prev, endDate: e.target.value }))}
-                        className="filter-input"
-                      />
-                    </div>
-                    <div className="filter-actions">
                       <button className="btn-filter" onClick={handleFilterActivity}>
                         🔍 Apply Filters
                       </button>
@@ -2849,77 +2930,38 @@ const BatchDetailsPage = () => {
                       </button>
                     </div>
                   </div>
-                </div>
-
-                <div className="activity-list">
-                  {loadingActivity ? (
-                    <div className="loading-activity">Loading activity data...</div>
-                  ) : studentActivities.length > 0 ? (
+                  
+                  {studentActivities.length > 0 ? (
                     <>
-                      <div className="activity-summary">
-                        <span>Total Activities: {activityTotal}</span>
-                        <button 
-                          className="btn-download-csv"
-                          onClick={handleDownloadActivityCSV}
-                        >
-                          📥 Download CSV
-                        </button>
+                      <div className="activity-list compact">
+                        {studentActivities.slice(0, 10).map((activity, index) => (
+                          <div key={activity.id || index} className="activity-item compact">
+                            <div className="activity-header">
+                              <span className="activity-action">{activity.action}</span>
+                              <span className="activity-timestamp">
+                                {activity.timestamp ? new Date(activity.timestamp).toLocaleString() : 'N/A'}
+                              </span>
+                            </div>
+                            <div className="activity-details">
+                              {activity.videoTitle && (
+                                <div className="activity-detail">
+                                  <label>Video:</label>
+                                  <span>{activity.videoTitle}</span>
+                                </div>
+                              )}
+                              {activity.assessmentTitle && (
+                                <div className="activity-detail">
+                                  <label>Assessment:</label>
+                                  <span>{activity.assessmentTitle} (Score: {activity.score})</span>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        ))}
                       </div>
-                      {studentActivities.map((activity, index) => (
-                        <div key={activity.id || index} className="activity-item">
-                          <div className="activity-header">
-                            <span className="activity-action">{activity.action}</span>
-                            <span className="activity-timestamp">
-                              {activity.timestamp ? new Date(activity.timestamp).toLocaleString() : 'N/A'}
-                            </span>
-                          </div>
-                          <div className="activity-details">
-                            {activity.videoTitle && (
-                              <div className="activity-detail">
-                                <label>Video:</label>
-                                <span>{activity.videoTitle}</span>
-                              </div>
-                            )}
-                            {activity.assessmentTitle && (
-                              <div className="activity-detail">
-                                <label>Assessment:</label>
-                                <span>{activity.assessmentTitle} (Score: {activity.score})</span>
-                              </div>
-                            )}
-                            {activity.ipAddress && (
-                              <div className="activity-detail">
-                                <label>IP:</label>
-                                <span>{activity.ipAddress}</span>
-                              </div>
-                            )}
-                            {activity.city && activity.country && (
-                              <div className="activity-detail">
-                                <label>Location:</label>
-                                <span>{activity.city}, {activity.country}</span>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      ))}
-                      {activityPagination.pages > 1 && (
-                        <div className="pagination">
-                          <button 
-                            disabled={activityPagination.page <= 1}
-                            onClick={() => handleActivityPageChange(activityPagination.page - 1)}
-                            className="btn-page"
-                          >
-                            Previous
-                          </button>
-                          <span className="page-info">
-                            Page {activityPagination.page} of {activityPagination.pages}
-                          </span>
-                          <button 
-                            disabled={activityPagination.page >= activityPagination.pages}
-                            onClick={() => handleActivityPageChange(activityPagination.page + 1)}
-                            className="btn-page"
-                          >
-                            Next
-                          </button>
+                      {studentActivities.length > 10 && (
+                        <div className="show-more">
+                          <small>Showing first 10 activities of {activityTotal}. Use filters above for more specific results.</small>
                         </div>
                       )}
                     </>
