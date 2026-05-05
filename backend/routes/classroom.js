@@ -1,10 +1,38 @@
 const express = require('express');
 const router = express.Router();
 const multer = require('multer');
+const path = require('path');
+const fs = require('fs');
 const auth = require('../middleware/auth');
 const { roleAuth } = require('../middleware/roleAuth');
 const classroomService = require('../services/classroomService');
 const { logActivity } = require('../utils/activityLogger');
+const Classroom = require('../models/Classroom');
+
+// Content-Type mapping for proper file download headers
+const contentTypes = {
+  'pdf': 'application/pdf',
+  'doc': 'application/msword',
+  'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'txt': 'text/plain',
+  'ppt': 'application/vnd.ms-powerpoint',
+  'pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  'xls': 'application/vnd.ms-excel',
+  'xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'csv': 'text/csv',
+  'zip': 'application/zip',
+  'jpg': 'image/jpeg',
+  'jpeg': 'image/jpeg',
+  'png': 'image/png',
+  'gif': 'image/gif',
+  'ipynb': 'application/json'
+};
+
+// Helper function to get content-type based on file extension
+function getContentType(filename) {
+  const fileExtension = path.extname(filename).toLowerCase().substring(1);
+  return contentTypes[fileExtension] || 'application/octet-stream';
+}
 
 // Configure multer for memory storage (for large video files)
 const upload = multer({
@@ -22,8 +50,132 @@ const upload = multer({
   }
 });
 
-// Apply authentication middleware to all routes
-router.use(auth);
+// @route   GET /api/classroom/:id/notes
+// @desc    Download notes file for a classroom video
+// @access  Private (Admin, Teacher, Student)
+// NOTE: This route is defined first to avoid conflicts with other routes
+router.get('/:id/notes', async (req, res) => {
+  try {
+    console.log('Download request received for video ID:', req.params.id);
+    
+    const { id } = req.params;
+    
+    // Use standard auth middleware for consistency
+    const token = req.header('x-auth-token') || req.header('Authorization')?.replace('Bearer ', '');
+    
+    if (!token) {
+      console.log('No token provided for download request');
+      return res.status(401).json({ message: 'Authentication required' });
+    }
+    
+    // Verify token
+    const jwt = require('jsonwebtoken');
+    const jwtSecret = process.env.JWT_SECRET || 'dev_only_fallback';
+    
+    try {
+      const decoded = jwt.verify(token, jwtSecret);
+      req.user = decoded.user;
+      console.log('User authenticated for download:', req.user.email, 'Role:', req.user.role);
+    } catch (err) {
+      console.log('Invalid token for download:', err.message);
+      return res.status(401).json({ message: 'Token is not valid' });
+    }
+    
+    // Find the classroom video
+    const video = await Classroom.findById(id).exec();
+    if (!video) {
+      console.log('Video not found for ID:', id);
+      return res.status(404).json({ message: 'Video not found' });
+    }
+    
+    console.log('Video found:', video.title, 'Notes available:', video.notesAvailable);
+    
+    // Check if notes are available
+    if (!video.notesAvailable || !video.notesFilePath) {
+      console.log('No notes available for video:', id);
+      return res.status(404).json({ message: 'No notes available for this video' });
+    }
+    
+    // Construct file path - handle both relative and absolute paths
+    let notesPath;
+    if (video.notesFilePath.startsWith('/')) {
+      // Absolute path - remove leading slash and make relative to backend root
+      notesPath = path.join(__dirname, '..', video.notesFilePath.substring(1));
+    } else {
+      // Relative path - make relative to backend root
+      notesPath = path.join(__dirname, '..', video.notesFilePath);
+    }
+    
+    console.log('Constructed notes path:', notesPath);
+    
+    // Security check - prevent directory traversal
+    const normalizedPath = path.normalize(notesPath);
+    const uploadsDir = path.normalize(path.join(__dirname, '..', 'uploads'));
+    if (!normalizedPath.startsWith(uploadsDir)) {
+      console.error('Security violation - path traversal attempt:', normalizedPath);
+      return res.status(403).json({ message: 'Access denied' });
+    }
+    
+    // Check if file exists
+    if (!fs.existsSync(notesPath)) {
+      console.error('Notes file not found:', notesPath);
+      return res.status(404).json({ message: 'Notes file not found on server' });
+    }
+    
+    // Get file stats
+    const stats = fs.statSync(notesPath);
+    console.log('File stats:', { size: stats.size, modified: stats.mtime });
+    
+    // Set appropriate headers
+    const filename = video.notesFileName || path.basename(notesPath);
+    const contentType = getContentType(filename);
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Content-Length', stats.size);
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Headers', 'Authorization, Content-Type');
+    
+    // Create read stream and pipe to response
+    const fileStream = fs.createReadStream(notesPath);
+    
+    fileStream.on('error', (error) => {
+      console.error('Error reading notes file:', error);
+      if (!res.headersSent) {
+        res.status(500).json({ message: 'Error reading notes file' });
+      }
+    });
+    
+    fileStream.on('end', () => {
+      console.log('Notes file downloaded successfully:', {
+        videoId: id,
+        filename: filename,
+        size: stats.size,
+        userId: req.user?.id
+      });
+    });
+    
+    // Pipe the file to the response
+    fileStream.pipe(res);
+    
+  } catch (error) {
+    console.error('Error downloading notes:', error);
+    if (!res.headersSent) {
+      res.status(500).json({ message: 'Failed to download notes' });
+    }
+  }
+});
+
+// Apply authentication middleware to all routes EXCEPT download endpoints
+// Download endpoints will have their own auth logic to handle multiple auth methods
+router.use((req, res, next) => {
+  // Skip auth for download endpoints - they handle auth manually
+  if (req.path.includes('/notes')) {
+    return next();
+  }
+  // Apply auth to all other routes
+  return auth(req, res, next);
+});
 
 // @route   POST /api/admin/classroom/upload
 // @desc    Upload video + metadata to Firebase Storage
@@ -342,6 +494,89 @@ router.use((error, req, res, next) => {
   }
   
   next(error);
+});
+
+// @route   GET /api/classroom/notes/:id
+// @desc    Alternative endpoint for downloading notes
+// @access  Private (Admin, Teacher, Student)
+router.get('/notes/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    // Use standard auth for consistency
+    const token = req.header('x-auth-token') || req.header('Authorization')?.replace('Bearer ', '');
+    
+    if (!token) {
+      return res.status(401).json({ message: 'Authentication required' });
+    }
+    
+    // Verify token
+    const jwt = require('jsonwebtoken');
+    const jwtSecret = process.env.JWT_SECRET || 'dev_only_fallback';
+    
+    try {
+      const decoded = jwt.verify(token, jwtSecret);
+      req.user = decoded.user;
+    } catch (err) {
+      return res.status(401).json({ message: 'Token is not valid' });
+    }
+    
+    // Find the classroom video
+    const video = await Classroom.findById(id).exec();
+    if (!video) {
+      return res.status(404).json({ message: 'Video not found' });
+    }
+    
+    // Check if notes are available
+    if (!video.notesAvailable || !video.notesFilePath) {
+      return res.status(404).json({ message: 'No notes available for this video' });
+    }
+    
+    // Construct file path - handle both relative and absolute paths
+    let notesPath;
+    if (video.notesFilePath.startsWith('/')) {
+      // Absolute path - remove leading slash and make relative to backend root
+      notesPath = path.join(__dirname, '..', video.notesFilePath.substring(1));
+    } else {
+      // Relative path - make relative to backend root
+      notesPath = path.join(__dirname, '..', video.notesFilePath);
+    }
+    
+    // Security check - prevent directory traversal
+    const normalizedPath = path.normalize(notesPath);
+    const uploadsDir = path.normalize(path.join(__dirname, '..', 'uploads'));
+    if (!normalizedPath.startsWith(uploadsDir)) {
+      return res.status(403).json({ message: 'Access denied' });
+    }
+    
+    // Check if file exists
+    if (!fs.existsSync(notesPath)) {
+      return res.status(404).json({ message: 'Notes file not found on server' });
+    }
+    
+    // Get file stats
+    const stats = fs.statSync(notesPath);
+    
+    // Set appropriate headers
+    const filename = video.notesFileName || path.basename(notesPath);
+    const contentType = getContentType(filename);
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Content-Length', stats.size);
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Headers', 'Authorization, Content-Type');
+    
+    // Create read stream and pipe to response
+    const fileStream = fs.createReadStream(notesPath);
+    fileStream.pipe(res);
+    
+  } catch (error) {
+    console.error('Error downloading notes (alternative endpoint):', error);
+    if (!res.headersSent) {
+      res.status(500).json({ message: 'Failed to download notes' });
+    }
+  }
 });
 
 module.exports = router;

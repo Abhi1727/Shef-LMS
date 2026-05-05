@@ -43,36 +43,15 @@ html {
   flex-direction: column;
   flex: 1;
   box-sizing: border-box;
-  padding-top: var(--header-height);
 }
 
 .sa-header {
   margin-bottom: 24px;
-  position: sticky;
-  top: var(--admin-header-height);
-  z-index: 95;
   background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
   padding: 16px 8px;
   margin: -16px -8px 24px -8px;
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
-  transition: all 0.3s ease;
-  transform: translateY(0);
 }
 
-.sa-header.scrolled {
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
-  background: linear-gradient(135deg, rgba(248, 250, 252, 0.95) 0%, rgba(241, 245, 249, 0.95) 100%);
-  border-bottom: 1px solid rgba(226, 232, 240, 0.8);
-}
-
-.sa-header.scroll-down {
-  transform: translateY(-100%);
-}
-
-.sa-header.scroll-up {
-  transform: translateY(0);
-}
 
 .sa-header h1 {
   margin: 0 0 8px 0;
@@ -93,29 +72,8 @@ html {
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: 16px;
   margin-bottom: 24px;
-  position: sticky;
-  top: calc(var(--admin-header-height) + var(--header-height));
-  z-index: 85;
-  background: inherit;
-  padding: 8px 0;
-  transition: all 0.3s ease;
-  transform: translateY(0);
 }
 
-.sa-stats-grid.scrolled {
-  background: linear-gradient(135deg, rgba(248, 250, 252, 0.9) 0%, rgba(241, 245, 249, 0.9) 100%);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
-  border-bottom: 1px solid rgba(226, 232, 240, 0.6);
-}
-
-.sa-stats-grid.scroll-down {
-  transform: translateY(-100%);
-}
-
-.sa-stats-grid.scroll-up {
-  transform: translateY(0);
-}
 
 .sa-stat-card {
   background: white;
@@ -160,34 +118,13 @@ html {
   align-items: center;
   justify-content: space-between;
   margin-bottom: 20px;
-  position: sticky;
-  top: calc(var(--admin-header-height) + var(--header-height) + var(--stats-grid-height));
-  z-index: 90;
   background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
   padding: 16px;
   border-radius: 12px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
   border: 1px solid rgba(226, 232, 240, 0.8);
-  transition: all 0.3s ease;
-  transform: translateY(0);
 }
 
-.sa-toolbar.scrolled {
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
-  background: linear-gradient(135deg, rgba(248, 250, 252, 0.95) 0%, rgba(241, 245, 249, 0.95) 100%);
-  border-color: rgba(226, 232, 240, 0.9);
-  border-bottom: 1px solid rgba(226, 232, 240, 0.9);
-}
-
-.sa-toolbar.scroll-down {
-  transform: translateY(-100%);
-}
-
-.sa-toolbar.scroll-up {
-  transform: translateY(0);
-}
 
 .sa-filters {
   display: flex;
@@ -357,9 +294,6 @@ html {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  position: sticky;
-  top: calc(var(--admin-header-height) + var(--header-height) + var(--stats-grid-height) + var(--toolbar-height));
-  z-index: 88;
 }
 
 /* Optimized widths for 6-column layout - maximize content space */
@@ -1100,17 +1034,9 @@ html {
 }
 
 @media (max-width: 768px) {
-  :root {
-    --admin-header-height: 60px;
-    --toolbar-height: 120px;
-    --stats-grid-height: 200px;
-    --header-height: 80px;
-  }
-
   .students-activity-page {
     padding: 16px;
     min-height: calc(100vh - 180px);
-    padding-top: var(--header-height);
   }
 
   .sa-header {

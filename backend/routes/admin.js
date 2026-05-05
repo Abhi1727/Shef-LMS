@@ -15,6 +15,31 @@ const Classroom = require('../models/Classroom');
 const OneToOne = require('../models/OneToOne');
 const { sendEmail } = require('../services/emailService');
 
+// Content-Type mapping for proper file download headers
+const contentTypes = {
+  'pdf': 'application/pdf',
+  'doc': 'application/msword',
+  'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'txt': 'text/plain',
+  'ppt': 'application/vnd.ms-powerpoint',
+  'pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  'xls': 'application/vnd.ms-excel',
+  'xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'csv': 'text/csv',
+  'zip': 'application/zip',
+  'jpg': 'image/jpeg',
+  'jpeg': 'image/jpeg',
+  'png': 'image/png',
+  'gif': 'image/gif',
+  'ipynb': 'application/json'
+};
+
+// Helper function to get content-type based on file extension
+function getContentType(filename) {
+  const fileExtension = path.extname(filename).toLowerCase().substring(1);
+  return contentTypes[fileExtension] || 'application/octet-stream';
+}
+
 // Apply auth and admin role check to all admin routes
 router.use(auth);
 router.use(roleAuth('admin'));
@@ -91,17 +116,29 @@ const notesUpload = multer({
     fileSize: 50 * 1024 * 1024, // 50MB limit for notes
   },
   fileFilter: (req, file, cb) => {
-    // Allow common document types (PDF, Word, text)
+    // Allow common document types, presentations, spreadsheets, images, and zip files
     const allowedTypes = [
       'application/pdf',
       'application/msword',
       'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-      'text/plain'
+      'text/plain',
+      'application/vnd.ms-powerpoint',
+      'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+      'application/vnd.ms-excel',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'text/csv',
+      'application/zip',
+      'application/x-zip-compressed',
+      'application/octet-stream',
+      'image/jpeg',
+      'image/png',
+      'image/gif',
+      'application/json' // For .ipynb files
     ];
     if (allowedTypes.includes(file.mimetype)) {
       cb(null, true);
     } else {
-      cb(new Error('Only document files (PDF, Word, text) are allowed for notes'), false);
+      cb(new Error('Only document files (PDF, Word, PowerPoint, Excel, CSV, text), images, Jupyter notebooks, and zip files are allowed for notes'), false);
     }
   }
 });
@@ -969,6 +1006,50 @@ router.get('/classroom', async (req, res) => {
 // @access  Private (Admin only)
 router.post('/classroom/youtube-url', notesUpload.single('notesFile'), async (req, res) => {
   try {
+    // Ensure uploads directory exists
+    const fs = require('fs');
+    const path = require('path');
+    const uploadsDir = path.join(__dirname, '..', 'uploads', 'notes');
+    
+    if (!fs.existsSync(uploadsDir)) {
+      console.log('Creating uploads directory:', uploadsDir);
+      try {
+        fs.mkdirSync(uploadsDir, { recursive: true });
+      } catch (mkdirError) {
+        console.error('Failed to create uploads directory:', mkdirError);
+        return res.status(500).json({
+          message: 'Server configuration error: Cannot create upload directory',
+          code: 'UPLOAD_DIR_ERROR'
+        });
+      }
+    }
+    
+    // Check directory permissions
+    try {
+      fs.accessSync(uploadsDir, fs.constants.W_OK);
+      console.log('Uploads directory is writable:', uploadsDir);
+    } catch (accessError) {
+      console.error('Uploads directory is not writable:', accessError);
+      return res.status(500).json({
+        message: 'Server configuration error: Upload directory not writable',
+        code: 'UPLOAD_DIR_PERMISSION'
+      });
+    }
+
+    // Enhanced logging for file upload debugging
+    console.log('YouTube URL upload request received:', {
+      body: req.body,
+      file: req.file ? {
+        fieldname: req.file.fieldname,
+        originalname: req.file.originalname,
+        mimetype: req.file.mimetype,
+        size: req.file.size,
+        destination: req.file.destination,
+        filename: req.file.filename,
+        path: req.file.path
+      } : null,
+      headers: req.headers
+    });
     const {
       title,
       instructor,
@@ -1030,12 +1111,45 @@ router.post('/classroom/youtube-url', notesUpload.single('notesFile'), async (re
       updatedAt: new Date().toISOString()
     };
 
-    // Attach notes metadata if provided
+    // Attach notes metadata if provided with enhanced validation
     const notesFlag = String(notesAvailable).trim().toLowerCase() === 'true';
     if (notesFlag && (req.file || notesFileName)) {
       lectureData.notesAvailable = true;
       lectureData.notesFileName = (notesFileName || req.file?.originalname || '').trim() || undefined;
+      
       if (req.file) {
+        // Additional validation for zip files
+        if (req.file.mimetype.includes('zip')) {
+          console.log('Processing zip file upload:', {
+            originalname: req.file.originalname,
+            size: req.file.size,
+            mimetype: req.file.mimetype
+          });
+          
+          // Validate zip file size (reasonable limit for zip files)
+          if (req.file.size > 50 * 1024 * 1024) {
+            return res.status(413).json({
+              message: 'Zip file too large. Maximum size is 50MB.',
+              code: 'ZIP_FILE_TOO_LARGE'
+            });
+          }
+          
+          // Check if file actually exists on disk
+          const fs = require('fs');
+          const filePath = req.file.path;
+          if (!fs.existsSync(filePath)) {
+            return res.status(500).json({
+              message: 'Zip file was not saved properly.',
+              code: 'ZIP_FILE_NOT_SAVED'
+            });
+          }
+          
+          console.log('Zip file validation passed:', {
+            fileExists: fs.existsSync(filePath),
+            fileSize: req.file.size
+          });
+        }
+        
         lectureData.notesFilePath = `/uploads/notes/${req.file.filename}`;
       }
     }
@@ -1999,6 +2113,171 @@ router.get('/analytics', async (req, res) => {
   } catch (error) {
     console.error('Error fetching analytics:', error);
     res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// @route   GET /api/admin/classroom/:id/notes
+// @desc    Download notes file for a classroom video (Admin endpoint)
+// @access  Private (Admin only)
+router.get('/classroom/:id/notes', roleAuth('admin'), async (req, res) => {
+  try {
+    const { id } = req.params;
+    console.log('Admin download request received for video ID:', id);
+    
+    // Find the classroom video
+    const video = await Classroom.findById(id).exec();
+    if (!video) {
+      console.log('Video not found for ID:', id);
+      return res.status(404).json({ message: 'Video not found' });
+    }
+    
+    console.log('Video found:', video.title, 'Notes available:', video.notesAvailable);
+    
+    // Check if notes are available
+    if (!video.notesAvailable || !video.notesFilePath) {
+      console.log('No notes available for video:', id);
+      return res.status(404).json({ message: 'No notes available for this video' });
+    }
+    
+    // Construct file path - handle both relative and absolute paths
+    let notesPath;
+    if (video.notesFilePath.startsWith('/')) {
+      // Absolute path - remove leading slash and make relative to backend root
+      notesPath = path.join(__dirname, '..', video.notesFilePath.substring(1));
+    } else {
+      // Relative path - make relative to backend root
+      notesPath = path.join(__dirname, '..', video.notesFilePath);
+    }
+    
+    console.log('Constructed notes path:', notesPath);
+    
+    // Security check - prevent directory traversal
+    const normalizedPath = path.normalize(notesPath);
+    const uploadsDir = path.normalize(path.join(__dirname, '..', 'uploads'));
+    if (!normalizedPath.startsWith(uploadsDir)) {
+      console.error('Security violation - path traversal attempt:', normalizedPath);
+      return res.status(403).json({ message: 'Access denied' });
+    }
+    
+    // Check if file exists
+    if (!fs.existsSync(notesPath)) {
+      console.error('Notes file not found:', notesPath);
+      return res.status(404).json({ message: 'Notes file not found on server' });
+    }
+    
+    // Get file stats
+    const stats = fs.statSync(notesPath);
+    console.log('File stats:', { size: stats.size, modified: stats.mtime });
+    
+    // Set appropriate headers
+    const filename = video.notesFileName || path.basename(notesPath);
+    const contentType = getContentType(filename);
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Content-Length', stats.size);
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Headers', 'Authorization, Content-Type');
+    
+    // Create read stream and pipe to response
+    const fileStream = fs.createReadStream(notesPath);
+    
+    fileStream.on('error', (error) => {
+      console.error('Error reading notes file:', error);
+      if (!res.headersSent) {
+        res.status(500).json({ message: 'Error reading notes file' });
+      }
+    });
+    
+    fileStream.on('end', () => {
+      console.log('Admin notes file downloaded successfully:', {
+        videoId: id,
+        filename: filename,
+        size: stats.size,
+        adminId: req.user.id
+      });
+    });
+    
+    // Pipe the file to the response
+    fileStream.pipe(res);
+    
+  } catch (error) {
+    console.error('Error downloading notes (admin endpoint):', error);
+    if (!res.headersSent) {
+      res.status(500).json({ message: 'Failed to download notes' });
+    }
+  }
+});
+
+// @route   GET /api/admin/classroom/notes/:id
+// @desc    Alternative admin endpoint for downloading notes
+// @access  Private (Admin only)
+router.get('/classroom/notes/:id', roleAuth('admin'), async (req, res) => {
+  try {
+    const { id } = req.params;
+    console.log('Admin alternative download request received for video ID:', id);
+    
+    // Find the classroom video
+    const video = await Classroom.findById(id).exec();
+    if (!video) {
+      console.log('Video not found for ID:', id);
+      return res.status(404).json({ message: 'Video not found' });
+    }
+    
+    // Check if notes are available
+    if (!video.notesAvailable || !video.notesFilePath) {
+      console.log('No notes available for video:', id);
+      return res.status(404).json({ message: 'No notes available for this video' });
+    }
+    
+    // Construct file path - handle both relative and absolute paths
+    let notesPath;
+    if (video.notesFilePath.startsWith('/')) {
+      // Absolute path - remove leading slash and make relative to backend root
+      notesPath = path.join(__dirname, '..', video.notesFilePath.substring(1));
+    } else {
+      // Relative path - make relative to backend root
+      notesPath = path.join(__dirname, '..', video.notesFilePath);
+    }
+    
+    console.log('Constructed notes path:', notesPath);
+    
+    // Security check - prevent directory traversal
+    const normalizedPath = path.normalize(notesPath);
+    const uploadsDir = path.normalize(path.join(__dirname, '..', 'uploads'));
+    if (!normalizedPath.startsWith(uploadsDir)) {
+      console.error('Security violation - path traversal attempt:', normalizedPath);
+      return res.status(403).json({ message: 'Access denied' });
+    }
+    
+    // Check if file exists
+    if (!fs.existsSync(notesPath)) {
+      console.error('Notes file not found:', notesPath);
+      return res.status(404).json({ message: 'Notes file not found on server' });
+    }
+    
+    // Get file stats
+    const stats = fs.statSync(notesPath);
+    
+    // Set appropriate headers
+    const filename = video.notesFileName || path.basename(notesPath);
+    const contentType = getContentType(filename);
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Content-Length', stats.size);
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Headers', 'Authorization, Content-Type');
+    
+    // Create read stream and pipe to response
+    const fileStream = fs.createReadStream(notesPath);
+    fileStream.pipe(res);
+    
+  } catch (error) {
+    console.error('Error downloading notes (admin alternative endpoint):', error);
+    if (!res.headersSent) {
+      res.status(500).json({ message: 'Failed to download notes' });
+    }
   }
 });
 

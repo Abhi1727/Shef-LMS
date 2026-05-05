@@ -78,6 +78,13 @@ const BatchFilter = memo(({ batchSearch, setBatchSearch, batchCourseFilter, setB
   const clearFilters = useCallback(() => {
     setBatchSearch('');
     setBatchCourseFilter('all');
+    // Clear localStorage
+    try {
+      localStorage.removeItem('admin_batch_search');
+      localStorage.removeItem('admin_batch_course_filter');
+    } catch (error) {
+      console.warn('Failed to clear batch filters from localStorage:', error);
+    }
   }, [setBatchSearch, setBatchCourseFilter]);
 
   const courseOptions = [
@@ -261,9 +268,43 @@ const AdminDashboard = ({ user, onLogout }) => {
   // Search functionality (filters the students table)
   const [searchEmail, setSearchEmail] = useState('');
   
-  // Batch filtering functionality
-  const [batchSearch, setBatchSearch] = useState('');
-  const [batchCourseFilter, setBatchCourseFilter] = useState('all');
+  // Batch filtering functionality with localStorage persistence
+  const [batchSearch, setBatchSearch] = useState(() => {
+    try {
+      return localStorage.getItem('admin_batch_search') || '';
+    } catch (error) {
+      console.warn('Failed to read batch search from localStorage:', error);
+      return '';
+    }
+  });
+  
+  const [batchCourseFilter, setBatchCourseFilter] = useState(() => {
+    try {
+      return localStorage.getItem('admin_batch_course_filter') || 'all';
+    } catch (error) {
+      console.warn('Failed to read batch course filter from localStorage:', error);
+      return 'all';
+    }
+  });
+
+  // Enhanced setter functions with localStorage persistence
+  const setBatchSearchWithPersistence = useCallback((value) => {
+    setBatchSearch(value);
+    try {
+      localStorage.setItem('admin_batch_search', value);
+    } catch (error) {
+      console.warn('Failed to save batch search to localStorage:', error);
+    }
+  }, []);
+
+  const setBatchCourseFilterWithPersistence = useCallback((value) => {
+    setBatchCourseFilter(value);
+    try {
+      localStorage.setItem('admin_batch_course_filter', value);
+    } catch (error) {
+      console.warn('Failed to save batch course filter to localStorage:', error);
+    }
+  }, []);
   
   // Password visibility states
   const [showStudentPassword, setShowStudentPassword] = useState(false);
@@ -627,7 +668,7 @@ const AdminDashboard = ({ user, onLogout }) => {
 
     setDataLoading(prev => ({ ...prev, students: true }));
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 10000);
+    let timeoutId = setTimeout(() => controller.abort(), 10000);
     try {
       const token = localStorage.getItem('token');
       const apiUrl = isLocalhost ? 'http://localhost:5000' : '';
@@ -3198,9 +3239,9 @@ const AdminDashboard = ({ user, onLogout }) => {
               {/* Batch Filter Component */}
               <BatchFilter
                 batchSearch={batchSearch}
-                setBatchSearch={setBatchSearch}
+                setBatchSearch={setBatchSearchWithPersistence}
                 batchCourseFilter={batchCourseFilter}
-                setBatchCourseFilter={setBatchCourseFilter}
+                setBatchCourseFilter={setBatchCourseFilterWithPersistence}
                 filteredCount={filteredBatches.length}
                 totalCount={(batches || []).length}
                 openModal={openModal}

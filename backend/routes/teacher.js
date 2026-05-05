@@ -354,17 +354,29 @@ const teacherNotesUpload = multer({
     fileSize: 50 * 1024 * 1024, // 50MB limit for notes
   },
   fileFilter: (req, file, cb) => {
-    // Allow common document types (PDF, Word, text)
+    // Allow common document types, presentations, spreadsheets, images, and zip files
     const allowedTypes = [
       'application/pdf',
       'application/msword',
       'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-      'text/plain'
+      'text/plain',
+      'application/vnd.ms-powerpoint',
+      'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+      'application/vnd.ms-excel',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'text/csv',
+      'application/zip',
+      'application/x-zip-compressed',
+      'application/octet-stream',
+      'image/jpeg',
+      'image/png',
+      'image/gif',
+      'application/json' // For .ipynb files
     ];
     if (allowedTypes.includes(file.mimetype)) {
       cb(null, true);
     } else {
-      cb(new Error('Only PDF, Word, and text files are allowed'), false);
+      cb(new Error('Only document files (PDF, Word, PowerPoint, Excel, CSV, text), images, Jupyter notebooks, and zip files are allowed'), false);
     }
   }
 });

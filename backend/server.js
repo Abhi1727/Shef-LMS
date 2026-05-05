@@ -94,6 +94,52 @@ app.use('/uploads', developmentCacheBust, staticAssetCache, express.static(path.
   }
 }));
 
+// Error handling middleware for consistent JSON responses
+app.use((error, req, res, next) => {
+  console.error('Error middleware caught:', {
+    error: error.message,
+    stack: error.stack,
+    url: req.url,
+    method: req.method
+  });
+
+  // Handle multer errors specifically
+  if (error.code === 'LIMIT_FILE_SIZE') {
+    return res.status(413).json({
+      message: 'File too large. Maximum size is 50MB.',
+      code: 'LIMIT_FILE_SIZE'
+    });
+  }
+
+  if (error.code === 'LIMIT_FILE_COUNT') {
+    return res.status(400).json({
+      message: 'Too many files uploaded.',
+      code: 'LIMIT_FILE_COUNT'
+    });
+  }
+
+  if (error.code === 'LIMIT_UNEXPECTED_FILE') {
+    return res.status(400).json({
+      message: 'Unexpected file field.',
+      code: 'LIMIT_UNEXPECTED_FILE'
+    });
+  }
+
+  // Handle file type errors
+  if (error.message && error.message.includes('File type')) {
+    return res.status(415).json({
+      message: error.message,
+      code: 'INVALID_FILE_TYPE'
+    });
+  }
+
+  // Default error response
+  res.status(error.status || 500).json({
+    message: error.message || 'Internal server error',
+    code: error.code || 'INTERNAL_ERROR'
+  });
+});
+
 // Routes
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/courses', require('./routes/courses'));
@@ -112,6 +158,39 @@ app.use('/api/batches', require('./routes/batches'));
 app.use('/api/one-to-one-batches', require('./routes/oneToOneBatches'));
 app.use('/api/student', require('./routes/student'));
 app.use('/api/activity', require('./routes/activity'));
+
+// Fallback endpoint for direct file access
+app.get('/api/uploads/notes/:filename', (req, res) => {
+  try {
+    const { filename } = req.params;
+    const filePath = path.join(__dirname, 'uploads', 'notes', filename);
+    
+    // Security check - prevent directory traversal
+    const normalizedPath = path.normalize(filePath);
+    const uploadsDir = path.normalize(path.join(__dirname, 'uploads', 'notes'));
+    if (!normalizedPath.startsWith(uploadsDir)) {
+      return res.status(403).json({ message: 'Access denied' });
+    }
+    
+    // Check if file exists
+    if (!fs.existsSync(filePath)) {
+      return res.status(404).json({ message: 'File not found' });
+    }
+    
+    // Set headers for file download
+    res.setHeader('Content-Type', 'application/octet-stream');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    
+    // Stream file to response
+    const fileStream = fs.createReadStream(filePath);
+    fileStream.pipe(res);
+    
+  } catch (error) {
+    console.error('Error serving file:', error);
+    res.status(500).json({ message: 'Failed to serve file' });
+  }
+});
 
 // Health check & API root
 app.get('/api/health', (req, res) => {

@@ -62,12 +62,6 @@ const StudentsActivity = ({ token: tokenProp }) => {
   const [hoveredBar, setHoveredBar] = useState(null);
   const [selectedDate, setSelectedDate] = useState(null);
 
-  // Sticky positioning states
-  const [scrollDirection, setScrollDirection] = useState('up');
-  const [isScrolled, setIsScrolled] = useState(false);
-  const [toolbarHeight, setToolbarHeight] = useState(80);
-  const [statsGridHeight, setStatsGridHeight] = useState(120);
-  const [headerHeight, setHeaderHeight] = useState(100);
 
   const fetchActivities = useCallback(async () => {
     if (!token) return;
@@ -389,69 +383,17 @@ const StudentsActivity = ({ token: tokenProp }) => {
     }
   };
 
-  // Sticky positioning scroll detection
-  useEffect(() => {
-    let lastScrollY = window.scrollY;
-    let ticking = false;
 
-    const updateScrollDirection = () => {
-      const scrollY = window.scrollY;
-      const direction = scrollY > lastScrollY ? 'down' : 'up';
-      
-      if (direction !== scrollDirection && (scrollY - lastScrollY > 5 || scrollY - lastScrollY < -5)) {
-        setScrollDirection(direction);
-      }
-      
-      setIsScrolled(scrollY > 50);
-      lastScrollY = scrollY > 0 ? scrollY : 0;
-      ticking = false;
-    };
-
-    const onScroll = () => {
-      if (!ticking) {
-        window.requestAnimationFrame(updateScrollDirection);
-        ticking = true;
-      }
-    };
-
-    // Measure element heights
-    const measureHeights = () => {
-      const header = document.querySelector('.sa-header');
-      const statsGrid = document.querySelector('.sa-stats-grid');
-      const toolbar = document.querySelector('.sa-toolbar');
-      
-      if (header) setHeaderHeight(header.offsetHeight);
-      if (statsGrid) setStatsGridHeight(statsGrid.offsetHeight);
-      if (toolbar) setToolbarHeight(toolbar.offsetHeight);
-    };
-
-    measureHeights();
-    window.addEventListener('scroll', onScroll);
-    window.addEventListener('resize', measureHeights);
-
-    return () => {
-      window.removeEventListener('scroll', onScroll);
-      window.removeEventListener('resize', measureHeights);
-    };
-  }, [scrollDirection]);
-
-  // Dynamic CSS variable updates
-  useEffect(() => {
-    const root = document.documentElement;
-    root.style.setProperty('--toolbar-height', `${toolbarHeight}px`);
-    root.style.setProperty('--stats-grid-height', `${statsGridHeight}px`);
-    root.style.setProperty('--header-height', `${headerHeight}px`);
-  }, [toolbarHeight, statsGridHeight, headerHeight]);
 
   return (
     <div className="students-activity-page">
-      <div className={`sa-header ${isScrolled ? 'scrolled' : ''} ${scrollDirection === 'down' ? 'scroll-down' : 'scroll-up'}`}>
+      <div className="sa-header">
         <h1>📊 Activity</h1>
         <p className="sa-subtitle">Logins, video views, assessments. Default: students. Use role filter for teachers/admins.</p>
       </div>
 
       {/* Stats Cards */}
-      <div className={`sa-stats-grid ${isScrolled ? 'scrolled' : ''} ${scrollDirection === 'down' ? 'scroll-down' : 'scroll-up'}`}>
+      <div className="sa-stats-grid">
         <div className="sa-stat-card">
           <span className="sa-stat-icon">🔐</span>
           <div>
@@ -483,7 +425,7 @@ const StudentsActivity = ({ token: tokenProp }) => {
       </div>
 
       {/* Toolbar */}
-      <div className={`sa-toolbar ${isScrolled ? 'scrolled' : ''} ${scrollDirection === 'down' ? 'scroll-down' : 'scroll-up'}`}>
+      <div className="sa-toolbar">
         <div className="sa-filters">
           <select
             value={filters.role}

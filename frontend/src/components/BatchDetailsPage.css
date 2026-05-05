@@ -1739,8 +1739,121 @@ body.modal-open {
   display: flex;
   justify-content: flex-end;
   gap: 10px;
+  padding: 15px 20px;
+  border-top: 1px solid #e9ecef;
+}
+
+/* Confirmation Dialog Specific Styles */
+.teacher-batch-details-page .modal.confirm-dialog {
+  max-width: 450px;
+  width: 90%;
+}
+
+.teacher-batch-details-page .modal.confirm-dialog .modal-header {
+  background: linear-gradient(135deg, #ff6b6b 0%, #ee5a52 100%);
+  color: white;
+  border-radius: 12px 12px 0 0;
+  padding: 20px;
+}
+
+.teacher-batch-details-page .modal.confirm-dialog .modal-header h3 {
+  color: white;
+  font-size: 1.1rem;
+  margin: 0;
+}
+
+.teacher-batch-details-page .modal.confirm-dialog .modal-content {
+  padding: 25px 20px;
+  text-align: center;
+}
+
+.teacher-batch-details-page .modal.confirm-dialog .modal-content p {
+  margin: 0;
+  color: #495057;
+  font-size: 1rem;
+  line-height: 1.5;
+}
+
+.teacher-batch-details-page .modal.confirm-dialog .confirm-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
   padding: 20px;
   border-top: 1px solid #e9ecef;
+}
+
+.teacher-batch-details-page .modal.confirm-dialog .confirm-actions button {
+  width: 100%;
+  padding: 12px 20px;
+  border: none;
+  border-radius: 8px;
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  margin: 0;
+}
+
+.teacher-batch-details-page .modal.confirm-dialog .confirm-actions .btn-save {
+  background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+  color: white;
+  order: 1;
+}
+
+.teacher-batch-details-page .modal.confirm-dialog .confirm-actions .btn-save:hover {
+  background: linear-gradient(135deg, #218838 0%, #1ea085 100%);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(40, 167, 69, 0.3);
+}
+
+.teacher-batch-details-page .modal.confirm-dialog .confirm-actions .btn-cancel {
+  background: linear-gradient(135deg, #dc3545 0%, #c82333 100%);
+  color: white;
+  order: 2;
+}
+
+.teacher-batch-details-page .modal.confirm-dialog .confirm-actions .btn-cancel:hover {
+  background: linear-gradient(135deg, #c82333 0%, #bd2130 100%);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(220, 53, 69, 0.3);
+}
+
+.teacher-batch-details-page .modal.confirm-dialog .confirm-actions .btn-secondary {
+  background: #6c757d;
+  color: white;
+  order: 3;
+}
+
+.teacher-batch-details-page .modal.confirm-dialog .confirm-actions .btn-secondary:hover {
+  background: #5a6268;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(108, 117, 125, 0.3);
+}
+
+/* Responsive Design for Confirmation Dialog */
+@media (max-width: 768px) {
+  .teacher-batch-details-page .modal.confirm-dialog {
+    max-width: 95%;
+    margin: 20px;
+  }
+
+  .teacher-batch-details-page .modal.confirm-dialog .modal-header {
+    padding: 15px;
+  }
+
+  .teacher-batch-details-page .modal.confirm-dialog .modal-content {
+    padding: 20px 15px;
+  }
+
+  .teacher-batch-details-page .modal.confirm-dialog .confirm-actions {
+    padding: 15px;
+    gap: 10px;
+  }
+
+  .teacher-batch-details-page .modal.confirm-dialog .confirm-actions button {
+    padding: 10px 16px;
+    font-size: 0.9rem;
+  }
 }
 
 .btn-cancel {

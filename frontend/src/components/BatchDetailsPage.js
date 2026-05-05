@@ -127,7 +127,7 @@ const formatFileSize = (bytes) => {
 };
 
 const validateFile = (file) => {
-  const maxSize = 10 * 1024 * 1024; // 10MB
+  const maxSize = 50 * 1024 * 1024; // 50MB - matched with backend limit
   const allowedTypes = [
     'application/pdf',
     'application/msword',
@@ -139,19 +139,58 @@ const validateFile = (file) => {
     'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     'text/csv',
     'application/zip',
+    'application/x-zip-compressed',
+    'application/octet-stream',
     'image/jpeg',
     'image/png',
-    'image/gif'
+    'image/gif',
+    'text/x-python',
+    'application/json' // For .ipynb files
   ];
   
   // Check file size
   if (file.size > maxSize) {
-    return 'File size exceeds 10MB limit';
+    return `File size (${formatFileSize(file.size)}) exceeds 50MB limit`;
   }
   
-  // Check file type
-  if (!allowedTypes.includes(file.type) && !file.name.endsWith('.ipynb')) {
-    return 'File type not supported';
+  // Enhanced file type validation with extension fallback
+  const fileExtension = file.name.toLowerCase().split('.').pop();
+  const allowedExtensions = [
+    'pdf', 'doc', 'docx', 'txt', 'ppt', 'pptx', 'xls', 'xlsx', 'csv', 
+    'zip', 'jpg', 'jpeg', 'png', 'gif', 'ipynb'
+  ];
+  
+  // MIME type validation with fallback for files without proper MIME types
+  const mimeMappings = {
+    'image/jpeg': ['jpg', 'jpeg'],
+    'image/png': ['png'],
+    'image/gif': ['gif'],
+    'application/vnd.ms-powerpoint': ['ppt'],
+    'application/vnd.openxmlformats-officedocument.presentationml.presentation': ['pptx'],
+    'application/vnd.ms-excel': ['xls'],
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['xlsx'],
+    'text/csv': ['csv'],
+    'application/json': ['ipynb']
+  };
+  
+  // Check MIME type first, then extension as fallback
+  const isValidMimeType = allowedTypes.includes(file.type);
+  let isValidExtension = allowedExtensions.includes(fileExtension);
+  
+  // Additional validation for files with specific MIME types
+  if (file.type && mimeMappings[file.type]) {
+    const expectedExtensions = mimeMappings[file.type];
+    isValidExtension = expectedExtensions.includes(fileExtension);
+  }
+  
+  if (!isValidMimeType && !isValidExtension) {
+    return `File type not supported. Allowed types: ${allowedExtensions.join(', ')}`;
+  }
+  
+  // Additional validation for specific file types
+  if (fileExtension === 'ipynb' && file.type !== 'application/json' && !file.type.includes('text')) {
+    console.warn('Jupyter notebook MIME type warning:', file.type);
+    // Allow but log warning for .ipynb files
   }
   
   return null; // No error
@@ -202,6 +241,11 @@ const BatchDetailsPage = () => {
   const [selectedStudentIds, setSelectedStudentIds] = useState([]);
   const [showAddVideoModal, setShowAddVideoModal] = useState(false);
   const [editingVideo, setEditingVideo] = useState(null);
+  
+  // Video modal confirmation dialog state
+  const [showVideoConfirmDialog, setShowVideoConfirmDialog] = useState(false);
+  const [hasUnsavedVideoChanges, setHasUnsavedVideoChanges] = useState(false);
+  const [initialVideoFormData, setInitialVideoFormData] = useState({});
   const [showScheduleModal, setShowScheduleModal] = useState(false);
   const [scheduleForm, setScheduleForm] = useState({ days: '', time: '' });
   const [timeRange, setTimeRange] = useState({ start: '', end: '' });
@@ -326,7 +370,7 @@ const BatchDetailsPage = () => {
   // Lock body scroll when any modal is open (prevents double scrollbar)
   useEffect(() => {
     const anyModalOpen = showAddStudentModal || showAddStudentsModal || showStudentModal ||
-      showStudentDetailsModal || showScheduleModal || showAddVideoModal;
+      showStudentDetailsModal || showScheduleModal || showAddVideoModal || showVideoConfirmDialog;
     if (anyModalOpen) {
       document.body.classList.add('modal-open');
       document.body.style.overflow = 'hidden';
@@ -338,7 +382,33 @@ const BatchDetailsPage = () => {
       document.body.classList.remove('modal-open');
       document.body.style.overflow = '';
     };
-  }, [showAddStudentModal, showAddStudentsModal, showStudentModal, showStudentDetailsModal, showScheduleModal, showAddVideoModal]);
+  }, [showAddStudentModal, showAddStudentsModal, showStudentModal, showStudentDetailsModal, showScheduleModal, showAddVideoModal, showVideoConfirmDialog]);
+
+  // Video modal change detection logic
+  useEffect(() => {
+    // Check if video form data has changed from initial state
+    const hasChanges = JSON.stringify(videoFormData) !== JSON.stringify(initialVideoFormData);
+    setHasUnsavedVideoChanges(hasChanges);
+  }, [videoFormData, initialVideoFormData]);
+
+  // Escape key handling for video modal
+  useEffect(() => {
+    const handleEscapeKey = (e) => {
+      if (e.key === 'Escape' && showAddVideoModal) {
+        e.preventDefault();
+        e.stopPropagation();
+        handleVideoModalClose();
+      }
+    };
+
+    if (showAddVideoModal) {
+      document.addEventListener('keydown', handleEscapeKey);
+    }
+
+    return () => {
+      document.removeEventListener('keydown', handleEscapeKey);
+    };
+  }, [showAddVideoModal, hasUnsavedVideoChanges]);
 
   // Determine if current user is an admin (from JWT)
   useEffect(() => {
@@ -1073,7 +1143,47 @@ const BatchDetailsPage = () => {
     }
   };
 
+  // Video modal confirmation dialog handlers
+  const handleVideoModalClose = () => {
+    if (hasUnsavedVideoChanges) {
+      setShowVideoConfirmDialog(true);
+    } else {
+      closeVideoModal();
+    }
+  };
+
+  const closeVideoModal = () => {
+    setShowAddVideoModal(false);
+    setEditingVideo(null);
+    setVideoFormData({ title: '', youtubeVideoUrl: '', description: '', date: '', time: '', notesAvailable: false, notesFile: null });
+    setInitialVideoFormData({});
+    setHasUnsavedVideoChanges(false);
+    setUploadedFileInfo(null);
+    setFileValidationError('');
+    setIsDragOver(false);
+  };
+
+  const handleVideoConfirmSave = async () => {
+    // Save and close
+    await handleAddVideoToBatch();
+    setShowVideoConfirmDialog(false);
+  };
+
+  const handleVideoConfirmDiscard = () => {
+    // Close without saving
+    closeVideoModal();
+    setShowVideoConfirmDialog(false);
+  };
+
+  const handleVideoConfirmCancel = () => {
+    // Keep modal open
+    setShowVideoConfirmDialog(false);
+  };
+
   const handleAddVideoToBatch = async () => {
+    // Declare timeoutId at function scope to be accessible in finally block
+    let timeoutId;
+    
     try {
       const { title, youtubeVideoUrl, description, date, notesAvailable, notesFile } = videoFormData;
       if (!title || !youtubeVideoUrl || !date) {
@@ -1111,7 +1221,7 @@ const BatchDetailsPage = () => {
         : '';
       const batchIdForApi = selectedBatch?.id || selectedBatch?._id;
 
-      // Create FormData for file upload
+      // Create FormData for file upload with enhanced error handling
       const formData = new FormData();
       formData.append('title', title);
       formData.append('instructor', 'Admin');
@@ -1127,37 +1237,115 @@ const BatchDetailsPage = () => {
       formData.append('time', videoFormData.time || '');
       formData.append('notesAvailable', notesAvailable);
       
+      // Enhanced file handling with validation
       if (notesAvailable && notesFile) {
+        // Double-check file validation before upload
+        const validationError = validateFile(notesFile);
+        if (validationError) {
+          showToast(`File validation error: ${validationError}`, 'error');
+          return;
+        }
+        
+        console.log('Uploading file:', {
+          name: notesFile.name,
+          size: formatFileSize(notesFile.size),
+          type: notesFile.type
+        });
+        
         formData.append('notesFile', notesFile);
+        formData.append('notesFileName', notesFile.name);
       }
+
+      const controller = new AbortController();
+      timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
 
       let response;
+      let uploadError = null;
       
-      if (editingVideo) {
-        // Update existing video
-        response = await fetch(`${apiUrl}/api/admin/classroom/${editingVideo.id}`, {
-          method: 'PUT',
-          headers: {
-            'Authorization': `Bearer ${token}`
-          },
-          body: formData
-        });
-      } else {
-        // Create new video
-        response = await fetch(`${apiUrl}/api/admin/classroom/youtube-url`, {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${token}`
-          },
-          body: formData
-        });
+      try {
+        if (editingVideo) {
+          // Update existing video
+          response = await fetch(`${apiUrl}/api/admin/classroom/${editingVideo.id}`, {
+            method: 'PUT',
+            headers: {
+              'Authorization': `Bearer ${token}`
+            },
+            body: formData,
+            signal: controller.signal
+          });
+        } else {
+          // Create new video
+          response = await fetch(`${apiUrl}/api/admin/classroom/youtube-url`, {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${token}`
+            },
+            body: formData,
+            signal: controller.signal
+          });
+        }
+      } catch (networkError) {
+        console.error('Network error during upload:', networkError);
+        uploadError = {
+          type: 'network',
+          message: 'Network connection failed. Please check your internet connection and try again.',
+          details: networkError.message
+        };
       }
 
-      const data = await response.json();
+      // Handle network errors
+      if (uploadError) {
+        showToast(uploadError.message, 'error');
+        console.error('Upload failed:', uploadError.details);
+        return;
+      }
+
+      // Parse response with enhanced error handling
+      let data;
+      try {
+        // Check if response is JSON before parsing
+        const contentType = response.headers.get('content-type');
+        if (contentType && contentType.includes('application/json')) {
+          data = await response.json();
+        } else {
+          // Handle non-JSON responses (like HTML error pages)
+          const text = await response.text();
+          console.error('Non-JSON response received:', {
+            status: response.status,
+            statusText: response.statusText,
+            contentType: contentType,
+            responseText: text.substring(0, 500) // First 500 chars
+          });
+          
+          // Try to extract error message from HTML response
+          if (text.includes('File too large')) {
+            showToast('File too large. Maximum size is 50MB.', 'error');
+          } else if (text.includes('File type')) {
+            showToast('File type not supported. Please check file format.', 'error');
+          } else if (response.status === 413) {
+            showToast('File too large. Maximum size is 50MB.', 'error');
+          } else if (response.status === 415) {
+            showToast('File type not supported. Please check file format.', 'error');
+          } else {
+            showToast('Server error occurred. Please try again.', 'error');
+          }
+          return;
+        }
+      } catch (parseError) {
+        console.error('Response parsing error:', parseError);
+        showToast('Server response error. Please try again.', 'error');
+        return;
+      }
 
       if (response.ok) {
         const successMessage = editingVideo ? 'Video updated successfully!' : 'YouTube video added successfully!';
-        showToast(successMessage, 'success');
+        
+        // Enhanced success message with file info
+        if (notesAvailable && notesFile) {
+          showToast(`${successMessage} Notes file "${notesFile.name}" uploaded.`, 'success');
+        } else {
+          showToast(successMessage, 'success');
+        }
 
         if (editingVideo) {
           // Update existing video in the list
@@ -1169,6 +1357,7 @@ const BatchDetailsPage = () => {
           setClassroomVideos(prev => [{ id: data.lecture.id, ...data.lecture }, ...prev]);
         }
 
+        // Reset form state
         setShowAddVideoModal(false);
         setEditingVideo(null);
         setVideoFormData({ title: '', youtubeVideoUrl: '', description: '', date: '', time: '', notesAvailable: false, notesFile: null });
@@ -1176,11 +1365,36 @@ const BatchDetailsPage = () => {
         setFileValidationError('');
         setIsDragOver(false);
       } else {
-        showToast('Error: ' + (data.message || 'Failed to save YouTube video'), 'error');
+        // Enhanced error handling with specific messages
+        let errorMessage = data.message || 'Failed to save YouTube video';
+        
+        if (response.status === 413) {
+          errorMessage = 'File too large. Maximum size is 10MB.';
+        } else if (response.status === 415) {
+          errorMessage = 'Unsupported file type. Please check the file format.';
+        } else if (response.status === 401) {
+          errorMessage = 'Authentication failed. Please log in again.';
+        } else if (response.status === 403) {
+          errorMessage = 'Permission denied. You do not have access to perform this action.';
+        } else if (response.status >= 500) {
+          errorMessage = 'Server error. Please try again later.';
+        }
+        
+        console.error('Upload error response:', {
+          status: response.status,
+          statusText: response.statusText,
+          message: data.message,
+          error: data.error
+        });
+        
+        showToast('Error: ' + errorMessage, 'error');
       }
     } catch (error) {
-      console.error('Error saving classroom video:', error);
-      showToast('Failed to save YouTube video. Please try again.', 'error');
+      console.error('Unexpected error in handleAddVideoToBatch:', error);
+      showToast('An unexpected error occurred. Please try again.', 'error');
+    } finally {
+      // Clean up timeout
+      clearTimeout(timeoutId);
     }
   };
 
@@ -1189,84 +1403,180 @@ const BatchDetailsPage = () => {
       const token = localStorage.getItem('token');
       const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
       
-      // Try different possible endpoints for notes download
-      let response;
+      // Enhanced download with comprehensive endpoint fallback
       const endpoints = [
         `${apiUrl}/api/classroom/${video.id}/notes`,
         `${apiUrl}/api/admin/classroom/${video.id}/notes`,
         `${apiUrl}/api/classroom/notes/${video.id}`,
-        `${apiUrl}/api/admin/classroom/notes/${video.id}`
+        `${apiUrl}/api/admin/classroom/notes/${video.id}`,
+        `${apiUrl}/api/teacher/videos/${video.id}/notes`,
+        `${apiUrl}/api/classroom/download/notes/${video.id}`
       ];
       
+      let response;
+      let workingEndpoint = null;
+      
+      // Try each endpoint with enhanced error handling
       for (const endpoint of endpoints) {
         try {
+          console.log(`Trying endpoint: ${endpoint}`);
           response = await fetch(endpoint, {
+            method: 'GET',
             headers: {
-              'Authorization': `Bearer ${token}`
+              'Authorization': `Bearer ${token}`,
+              'Cache-Control': 'no-cache'
             }
           });
           
           if (response.ok) {
-            break; // Found working endpoint
+            workingEndpoint = endpoint;
+            console.log(`Success with endpoint: ${endpoint}`);
+            break;
+          } else {
+            console.warn(`Endpoint ${endpoint} failed with status: ${response.status}`);
           }
-        } catch (e) {
-          continue; // Try next endpoint
+        } catch (endpointError) {
+          console.warn(`Endpoint ${endpoint} error:`, endpointError.message);
+          continue;
         }
       }
 
       if (response && response.ok) {
-        const blob = await response.blob();
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        
-        // Try to get filename from response headers or use default
+        // Get file info from response
         const contentDisposition = response.headers.get('content-disposition');
-        let filename = `notes-${video.title}.pdf`;
+        const contentType = response.headers.get('content-type');
+        const contentLength = response.headers.get('content-length');
         
+        console.log('Download response:', {
+          contentDisposition,
+          contentType,
+          contentLength
+        });
+        
+        let filename = `notes-${video.title || 'untitled'}.pdf`;
+        
+        // Extract filename from Content-Disposition header
         if (contentDisposition) {
-          const filenameMatch = contentDisposition.match(/filename="(.+)"/);
-          if (filenameMatch) {
-            filename = filenameMatch[1];
+          const filenameMatch = contentDisposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
+          if (filenameMatch && filenameMatch[1]) {
+            filename = filenameMatch[1].replace(/['"]/g, '');
           }
         }
         
-        a.download = filename;
-        document.body.appendChild(a);
-        a.click();
-        window.URL.revokeObjectURL(url);
-        document.body.removeChild(a);
-        showToast('Notes downloaded successfully!', 'success');
-      } else {
-        // If no endpoint works, try to get notes from video object directly
-        if (video.notesFileUrl || video.notesUrl) {
-          const notesUrl = video.notesFileUrl || video.notesUrl;
-          const notesResponse = await fetch(`${apiUrl}${notesUrl}`, {
-            headers: {
-              'Authorization': `Bearer ${token}`
-            }
+        // Fallback to video's stored filename
+        if (!filename || filename === 'notes-untitled.pdf') {
+          if (video.notesFileName) {
+            filename = video.notesFileName;
+          } else if (video.notesFileUrl) {
+            const urlParts = video.notesFileUrl.split('/');
+            filename = urlParts[urlParts.length - 1] || `notes-${video.title || 'untitled'}.pdf`;
+          }
+        }
+        
+        try {
+          const blob = await response.blob();
+          
+          // Validate blob
+          if (blob.size === 0) {
+            throw new Error('Downloaded file is empty');
+          }
+          
+          // Create download link
+          const url = window.URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = filename;
+          a.style.display = 'none';
+          
+          document.body.appendChild(a);
+          a.click();
+          
+          // Cleanup
+          setTimeout(() => {
+            document.body.removeChild(a);
+            window.URL.revokeObjectURL(url);
+          }, 100);
+          
+          showToast(`Notes "${filename}" downloaded successfully!`, 'success');
+          console.log('Download completed:', {
+            filename,
+            size: formatFileSize(blob.size),
+            type: blob.type
           });
           
-          if (notesResponse.ok) {
-            const blob = await notesResponse.blob();
-            const url = window.URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `notes-${video.title}.pdf`;
-            document.body.appendChild(a);
-            a.click();
-            window.URL.revokeObjectURL(url);
-            document.body.removeChild(a);
-            showToast('Notes downloaded successfully!', 'success');
-            return;
+        } catch (blobError) {
+          console.error('Error creating download blob:', blobError);
+          showToast('Failed to process downloaded file. Please try again.', 'error');
+        }
+      } else {
+        // Enhanced fallback handling
+        console.log('All endpoints failed, trying fallback methods...');
+        
+        // Try direct file URL from video object
+        const possibleUrls = [
+          video.notesFileUrl,
+          video.notesUrl,
+          video.notesFilePath,
+          `${apiUrl}/uploads/notes/${video.notesFileName}`,
+          `${apiUrl}${video.notesFilePath}`,
+          `${apiUrl}${video.notesFileUrl}`
+        ].filter(Boolean);
+        
+        for (const url of possibleUrls) {
+          try {
+            console.log(`Trying direct URL: ${url}`);
+            const directResponse = await fetch(url, {
+              headers: {
+                'Authorization': `Bearer ${token}`
+              }
+            });
+            
+            if (directResponse.ok) {
+              const blob = await directResponse.blob();
+              if (blob.size > 0) {
+                const downloadUrl = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = downloadUrl;
+                a.download = video.notesFileName || `notes-${video.title || 'untitled'}.pdf`;
+                document.body.appendChild(a);
+                a.click();
+                setTimeout(() => {
+                  document.body.removeChild(a);
+                  window.URL.revokeObjectURL(downloadUrl);
+                }, 100);
+                
+                showToast('Notes downloaded successfully!', 'success');
+                return;
+              }
+            }
+          } catch (urlError) {
+            console.warn(`Direct URL ${url} failed:`, urlError.message);
+            continue;
           }
         }
         
-        showToast('Failed to download notes. The notes file may not be available yet.', 'error');
+        // All methods failed
+        const errorMessage = response ? 
+          `Download failed with status ${response.status}` : 
+          'No download endpoints available';
+        
+        console.error('All download methods failed:', {
+          videoId: video.id,
+          videoTitle: video.title,
+          notesAvailable: video.notesAvailable,
+          notesFileName: video.notesFileName,
+          endpointsTried: endpoints.length,
+          lastStatus: response?.status
+        });
+        
+        showToast(
+          'Unable to download notes. The file may not be available or has been moved. Please contact support.',
+          'error'
+        );
       }
     } catch (error) {
-      console.error('Error downloading notes:', error);
-      showToast('Error downloading notes. Please try again later.', 'error');
+      console.error('Unexpected error in handleDownloadNotes:', error);
+      showToast('An unexpected error occurred while downloading notes. Please try again.', 'error');
     }
   };
 
@@ -1302,13 +1612,19 @@ const BatchDetailsPage = () => {
   };
 
   const handleFileSelection = (file) => {
-    // Clear previous error
+    // Clear previous error and uploaded file info
     setFileValidationError('');
+    setUploadedFileInfo(null);
     
     // Validate file
     const validationError = validateFile(file);
     if (validationError) {
       setFileValidationError(validationError);
+      // Reset file input
+      const fileInput = document.getElementById('notesFileInput');
+      if (fileInput) {
+        fileInput.value = '';
+      }
       return;
     }
     
@@ -1317,7 +1633,15 @@ const BatchDetailsPage = () => {
     setUploadedFileInfo({
       name: file.name,
       size: file.size,
-      type: file.type
+      type: file.type || 'unknown',
+      lastModified: file.lastModified
+    });
+    
+    console.log('File selected successfully:', {
+      name: file.name,
+      size: formatFileSize(file.size),
+      type: file.type,
+      lastModified: new Date(file.lastModified).toISOString()
     });
   };
 
@@ -1333,24 +1657,22 @@ const BatchDetailsPage = () => {
   };
 
   const handleEditVideo = (video) => {
-    // Set the video being edited
     setEditingVideo(video);
     
-    // Reset file upload state
-    setUploadedFileInfo(null);
-    setFileValidationError('');
-    setIsDragOver(false);
-    
     // Populate the video form with existing video data for editing
-    setVideoFormData({
+    const formData = {
       title: video.title || '',
       youtubeVideoUrl: video.youtubeVideoUrl || '',
       description: video.description || '',
-      date: video.date || new Date().toISOString().split('T')[0],
+      date: video.date || '',
       time: video.time || '',
       notesAvailable: video.notesAvailable || false,
       notesFile: null
-    });
+    };
+    
+    setVideoFormData(formData);
+    setInitialVideoFormData(formData);
+    setHasUnsavedVideoChanges(false);
     
     // Open the add video modal with populated data
     setShowAddVideoModal(true);
@@ -1723,7 +2045,13 @@ const BatchDetailsPage = () => {
                 <h2>📹 Videos in {selectedBatch.name}</h2>
                 <button
                   className="btn-add"
-                  onClick={() => setShowAddVideoModal(true)}
+                  onClick={() => {
+                    const emptyFormData = { title: '', youtubeVideoUrl: '', description: '', date: '', time: '', notesAvailable: false, notesFile: null };
+                    setVideoFormData(emptyFormData);
+                    setInitialVideoFormData(emptyFormData);
+                    setHasUnsavedVideoChanges(false);
+                    setShowAddVideoModal(true);
+                  }}
                 >
                   ➕ Add Video to Batch
                 </button>
@@ -2260,27 +2588,13 @@ const BatchDetailsPage = () => {
     )}
 
     {showAddVideoModal && createPortal(
-      <div className="modal-overlay" onClick={() => {
-        setShowAddVideoModal(false);
-        setEditingVideo(null);
-        setVideoFormData({ title: '', youtubeVideoUrl: '', description: '', date: '', time: '', notesAvailable: false, notesFile: null });
-        setUploadedFileInfo(null);
-        setFileValidationError('');
-        setIsDragOver(false);
-      }}>
+      <div className="modal-overlay" onClick={handleVideoModalClose}>
         <div className="modal" onClick={(e) => e.stopPropagation()}>
           <div className="modal-header">
             <h3>{editingVideo ? 'Edit Video' : 'Add Video'} to {selectedBatch.name}</h3>
             <button
               className="modal-close"
-              onClick={() => {
-                setShowAddVideoModal(false);
-                setEditingVideo(null);
-                setVideoFormData({ title: '', youtubeVideoUrl: '', description: '', date: '', time: '', notesAvailable: false, notesFile: null });
-                setUploadedFileInfo(null);
-                setFileValidationError('');
-                setIsDragOver(false);
-              }}
+              onClick={handleVideoModalClose}
             >
               ×
             </button>
@@ -2423,13 +2737,7 @@ const BatchDetailsPage = () => {
                         <button
                           type="button"
                           className="btn-email-cancel"
-                          onClick={() => {
-                setShowAddVideoModal(false);
-                setVideoFormData({ title: '', youtubeVideoUrl: '', description: '', date: '', time: '', notesAvailable: false, notesFile: null });
-                setUploadedFileInfo(null);
-                setFileValidationError('');
-                setIsDragOver(false);
-              }}
+                          onClick={handleVideoModalClose}
             >
               Cancel
             </button>
@@ -2438,6 +2746,43 @@ const BatchDetailsPage = () => {
               onClick={handleAddVideoToBatch}
             >
               Save Video
+            </button>
+          </div>
+        </div>
+      </div>,
+      document.body
+    )}
+
+    {/* Video Modal Confirmation Dialog */}
+    {showVideoConfirmDialog && createPortal(
+      <div className="modal-overlay">
+        <div className="modal confirm-dialog" onClick={(e) => e.stopPropagation()}>
+          <div className="modal-header">
+            <h3>Unsaved Changes</h3>
+          </div>
+          
+          <div className="modal-content">
+            <p>You have unsaved changes in the video form. What would you like to do?</p>
+          </div>
+          
+          <div className="modal-actions confirm-actions">
+            <button
+              className="btn-save"
+              onClick={handleVideoConfirmSave}
+            >
+              Save & Close
+            </button>
+            <button
+              className="btn-cancel"
+              onClick={handleVideoConfirmDiscard}
+            >
+              Close without Saving
+            </button>
+            <button
+              className="btn-secondary"
+              onClick={handleVideoConfirmCancel}
+            >
+              Cancel
             </button>
           </div>
         </div>

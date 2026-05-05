@@ -1,0 +1,458 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Download Endpoint Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .test-container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            margin: 20px 0;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .endpoint {
+            background: #f8f9fa;
+            padding: 15px;
+            margin: 10px 0;
+            border-left: 4px solid #007bff;
+            border-radius: 4px;
+        }
+        .endpoint.success {
+            border-left-color: #28a745;
+        }
+        .endpoint.error {
+            border-left-color: #dc3545;
+        }
+        .endpoint.pending {
+            border-left-color: #ffc107;
+        }
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        .result {
+            margin-top: 10px;
+            padding: 10px;
+            border-radius: 4px;
+            font-family: monospace;
+            font-size: 12px;
+        }
+        .result.success {
+            background: #d4edda;
+            color: #155724;
+        }
+        .result.error {
+            background: #f8d7da;
+            color: #721c24;
+        }
+        .result.info {
+            background: #d1ecf1;
+            color: #0c5460;
+        }
+        input {
+            width: 100%;
+            padding: 8px;
+            margin: 5px 0;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        .header {
+            text-align: center;
+            color: #333;
+            margin-bottom: 30px;
+        }
+        .status-indicator {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 8px;
+        }
+        .status-indicator.success { background: #28a745; }
+        .status-indicator.error { background: #dc3545; }
+        .status-indicator.pending { background: #ffc107; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>📁 Download Endpoint Test Suite</h1>
+        <p>Testing the fixed download endpoints after implementing the 404 error fix</p>
+    </div>
+
+    <div class="test-container">
+        <h2>🔧 Configuration</h2>
+        <div>
+            <label>API Base URL:</label>
+            <input type="text" id="apiBaseUrl" value="http://localhost:5000" placeholder="API Base URL">
+        </div>
+        <div>
+            <label>Auth Token:</label>
+            <input type="text" id="authToken" placeholder="Bearer token or leave empty to test without auth">
+        </div>
+        <div>
+            <label>Video ID:</label>
+            <input type="text" id="videoId" value="test-video-id" placeholder="Classroom video ID">
+        </div>
+        <button onclick="runAllTests()">🚀 Run All Tests</button>
+        <button onclick="clearResults()">🗑️ Clear Results</button>
+    </div>
+
+    <div class="test-container">
+        <h2>📋 Test Results</h2>
+        
+        <div class="endpoint pending" id="test-1">
+            <h4><span class="status-indicator pending"></span>GET /api/classroom/:id/notes</h4>
+            <p>Primary classroom download endpoint with enhanced authentication</p>
+            <button onclick="testClassroomNotes1()">Test Endpoint</button>
+            <div id="result-1" class="result" style="display:none;"></div>
+        </div>
+
+        <div class="endpoint pending" id="test-2">
+            <h4><span class="status-indicator pending"></span>GET /api/classroom/notes/:id</h4>
+            <p>Alternative classroom download endpoint</p>
+            <button onclick="testClassroomNotes2()">Test Endpoint</button>
+            <div id="result-2" class="result" style="display:none;"></div>
+        </div>
+
+        <div class="endpoint pending" id="test-3">
+            <h4><span class="status-indicator pending"></span>GET /api/admin/classroom/:id/notes</h4>
+            <p>Admin-only download endpoint with role authentication</p>
+            <button onclick="testAdminClassroomNotes1()">Test Endpoint</button>
+            <div id="result-3" class="result" style="display:none;"></div>
+        </div>
+
+        <div class="endpoint pending" id="test-4">
+            <h4><span class="status-indicator pending"></span>GET /api/admin/classroom/notes/:id</h4>
+            <p>Alternative admin download endpoint</p>
+            <button onclick="testAdminClassroomNotes2()">Test Endpoint</button>
+            <div id="result-4" class="result" style="display:none;"></div>
+        </div>
+
+        <div class="endpoint pending" id="test-5">
+            <h4><span class="status-indicator pending"></span>GET /api/uploads/notes/:filename</h4>
+            <p>Fallback static file serving endpoint</p>
+            <button onclick="testStaticFile()">Test Endpoint</button>
+            <div id="result-5" class="result" style="display:none;"></div>
+        </div>
+    </div>
+
+    <div class="test-container">
+        <h2>📊 Summary</h2>
+        <div id="summary">
+            <p>Click "Run All Tests" to execute the complete test suite</p>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = document.getElementById('apiBaseUrl').value;
+        
+        function getAuthHeaders() {
+            const token = document.getElementById('authToken').value.trim();
+            const headers = {
+                'Content-Type': 'application/json'
+            };
+            
+            if (token) {
+                if (token.startsWith('Bearer ')) {
+                    headers['Authorization'] = token;
+                } else {
+                    headers['Authorization'] = `Bearer ${token}`;
+                }
+                headers['x-auth-token'] = token.replace('Bearer ', '');
+            }
+            
+            return headers;
+        }
+
+        function showResult(testId, status, message, details = '') {
+            const resultDiv = document.getElementById(`result-${testId}`);
+            const endpointDiv = document.getElementById(`test-${testId}`);
+            const indicator = endpointDiv.querySelector('.status-indicator');
+            
+            resultDiv.style.display = 'block';
+            resultDiv.className = `result ${status}`;
+            resultDiv.innerHTML = `
+                <strong>Status:</strong> ${status.toUpperCase()}<br>
+                <strong>Message:</strong> ${message}<br>
+                ${details ? `<strong>Details:</strong><br>${details}` : ''}
+            `;
+            
+            endpointDiv.className = `endpoint ${status}`;
+            indicator.className = `status-indicator ${status}`;
+        }
+
+        async function testClassroomNotes1() {
+            const videoId = document.getElementById('videoId').value;
+            const url = `${API_BASE}/api/classroom/${videoId}/notes`;
+            
+            try {
+                const response = await fetch(url, {
+                    method: 'GET',
+                    headers: getAuthHeaders()
+                });
+                
+                const status = response.status;
+                let message, details;
+                
+                if (status === 200) {
+                    message = '✅ Download successful';
+                    details = `Content-Type: ${response.headers.get('Content-Type')}<br>
+                              Content-Length: ${response.headers.get('Content-Length')}<br>
+                              Content-Disposition: ${response.headers.get('Content-Disposition')}`;
+                } else if (status === 401) {
+                    message = '🔐 Authentication required';
+                    details = 'Endpoint is working but requires valid authentication';
+                } else if (status === 404) {
+                    message = '📄 Video or notes not found';
+                    details = 'Endpoint is working but the requested video/notes do not exist';
+                } else {
+                    const errorText = await response.text();
+                    message = `❌ HTTP ${status}`;
+                    details = errorText;
+                }
+                
+                showResult(1, status === 200 ? 'success' : status === 401 || status === 404 ? 'info' : 'error', message, details);
+                
+            } catch (error) {
+                showResult(1, 'error', '❌ Network error', error.message);
+            }
+        }
+
+        async function testClassroomNotes2() {
+            const videoId = document.getElementById('videoId').value;
+            const url = `${API_BASE}/api/classroom/notes/${videoId}`;
+            
+            try {
+                const response = await fetch(url, {
+                    method: 'GET',
+                    headers: getAuthHeaders()
+                });
+                
+                const status = response.status;
+                let message, details;
+                
+                if (status === 200) {
+                    message = '✅ Download successful';
+                    details = `Content-Type: ${response.headers.get('Content-Type')}<br>
+                              Content-Length: ${response.headers.get('Content-Length')}<br>
+                              Content-Disposition: ${response.headers.get('Content-Disposition')}`;
+                } else if (status === 401) {
+                    message = '🔐 Authentication required';
+                    details = 'Endpoint is working but requires valid authentication';
+                } else if (status === 404) {
+                    message = '📄 Video or notes not found';
+                    details = 'Endpoint is working but the requested video/notes do not exist';
+                } else {
+                    const errorText = await response.text();
+                    message = `❌ HTTP ${status}`;
+                    details = errorText;
+                }
+                
+                showResult(2, status === 200 ? 'success' : status === 401 || status === 404 ? 'info' : 'error', message, details);
+                
+            } catch (error) {
+                showResult(2, 'error', '❌ Network error', error.message);
+            }
+        }
+
+        async function testAdminClassroomNotes1() {
+            const videoId = document.getElementById('videoId').value;
+            const url = `${API_BASE}/api/admin/classroom/${videoId}/notes`;
+            
+            try {
+                const response = await fetch(url, {
+                    method: 'GET',
+                    headers: getAuthHeaders()
+                });
+                
+                const status = response.status;
+                let message, details;
+                
+                if (status === 200) {
+                    message = '✅ Admin download successful';
+                    details = `Content-Type: ${response.headers.get('Content-Type')}<br>
+                              Content-Length: ${response.headers.get('Content-Length')}<br>
+                              Content-Disposition: ${response.headers.get('Content-Disposition')}`;
+                } else if (status === 401) {
+                    message = '🔐 Authentication required';
+                    details = 'Admin endpoint requires valid authentication';
+                } else if (status === 403) {
+                    message = '🚫 Admin access required';
+                    details = 'Endpoint is working but requires admin role';
+                } else if (status === 404) {
+                    message = '📄 Video or notes not found';
+                    details = 'Endpoint is working but the requested video/notes do not exist';
+                } else {
+                    const errorText = await response.text();
+                    message = `❌ HTTP ${status}`;
+                    details = errorText;
+                }
+                
+                showResult(3, status === 200 ? 'success' : status === 401 || status === 403 || status === 404 ? 'info' : 'error', message, details);
+                
+            } catch (error) {
+                showResult(3, 'error', '❌ Network error', error.message);
+            }
+        }
+
+        async function testAdminClassroomNotes2() {
+            const videoId = document.getElementById('videoId').value;
+            const url = `${API_BASE}/api/admin/classroom/notes/${videoId}`;
+            
+            try {
+                const response = await fetch(url, {
+                    method: 'GET',
+                    headers: getAuthHeaders()
+                });
+                
+                const status = response.status;
+                let message, details;
+                
+                if (status === 200) {
+                    message = '✅ Admin download successful';
+                    details = `Content-Type: ${response.headers.get('Content-Type')}<br>
+                              Content-Length: ${response.headers.get('Content-Length')}<br>
+                              Content-Disposition: ${response.headers.get('Content-Disposition')}`;
+                } else if (status === 401) {
+                    message = '🔐 Authentication required';
+                    details = 'Admin endpoint requires valid authentication';
+                } else if (status === 403) {
+                    message = '🚫 Admin access required';
+                    details = 'Endpoint is working but requires admin role';
+                } else if (status === 404) {
+                    message = '📄 Video or notes not found';
+                    details = 'Endpoint is working but the requested video/notes do not exist';
+                } else {
+                    const errorText = await response.text();
+                    message = `❌ HTTP ${status}`;
+                    details = errorText;
+                }
+                
+                showResult(4, status === 200 ? 'success' : status === 401 || status === 403 || status === 404 ? 'info' : 'error', message, details);
+                
+            } catch (error) {
+                showResult(4, 'error', '❌ Network error', error.message);
+            }
+        }
+
+        async function testStaticFile() {
+            const filename = 'test-file.pdf';
+            const url = `${API_BASE}/api/uploads/notes/${filename}`;
+            
+            try {
+                const response = await fetch(url, {
+                    method: 'GET'
+                });
+                
+                const status = response.status;
+                let message, details;
+                
+                if (status === 200) {
+                    message = '✅ Static file serving works';
+                    details = `Content-Type: ${response.headers.get('Content-Type')}<br>
+                              Content-Length: ${response.headers.get('Content-Length')}<br>
+                              Content-Disposition: ${response.headers.get('Content-Disposition')}`;
+                } else if (status === 404) {
+                    message = '📄 File not found';
+                    details = 'Static endpoint is working but the test file does not exist';
+                } else {
+                    const errorText = await response.text();
+                    message = `❌ HTTP ${status}`;
+                    details = errorText;
+                }
+                
+                showResult(5, status === 200 ? 'success' : status === 404 ? 'info' : 'error', message, details);
+                
+            } catch (error) {
+                showResult(5, 'error', '❌ Network error', error.message);
+            }
+        }
+
+        async function runAllTests() {
+            const tests = [
+                testClassroomNotes1,
+                testClassroomNotes2,
+                testAdminClassroomNotes1,
+                testAdminClassroomNotes2,
+                testStaticFile
+            ];
+            
+            for (let i = 0; i < tests.length; i++) {
+                await tests[i]();
+                await new Promise(resolve => setTimeout(resolve, 500)); // Small delay between tests
+            }
+            
+            updateSummary();
+        }
+
+        function clearResults() {
+            for (let i = 1; i <= 5; i++) {
+                const resultDiv = document.getElementById(`result-${i}`);
+                const endpointDiv = document.getElementById(`test-${i}`);
+                const indicator = endpointDiv.querySelector('.status-indicator');
+                
+                resultDiv.style.display = 'none';
+                endpointDiv.className = 'endpoint pending';
+                indicator.className = 'status-indicator pending';
+            }
+            
+            document.getElementById('summary').innerHTML = '<p>Click "Run All Tests" to execute the complete test suite</p>';
+        }
+
+        function updateSummary() {
+            const endpoints = document.querySelectorAll('.endpoint');
+            let success = 0, error = 0, info = 0;
+            
+            endpoints.forEach(endpoint => {
+                if (endpoint.classList.contains('success')) success++;
+                else if (endpoint.classList.contains('error')) error++;
+                else if (endpoint.classList.contains('info')) info++;
+            });
+            
+            const total = endpoints.length;
+            const summaryHtml = `
+                <div style="display: flex; justify-content: space-around; text-align: center;">
+                    <div>
+                        <div style="font-size: 2em; color: #28a745;">${success}</div>
+                        <div>Success</div>
+                    </div>
+                    <div>
+                        <div style="font-size: 2em; color: #ffc107;">${info}</div>
+                        <div>Expected (401/403/404)</div>
+                    </div>
+                    <div>
+                        <div style="font-size: 2em; color: #dc3545;">${error}</div>
+                        <div>Errors</div>
+                    </div>
+                    <div>
+                        <div style="font-size: 2em; color: #6c757d;">${total}</div>
+                        <div>Total</div>
+                    </div>
+                </div>
+                <p style="margin-top: 20px;">
+                    <strong>Result:</strong> ${error === 0 ? '✅ All endpoints are working correctly!' : '⚠️ Some endpoints need attention'}
+                </p>
+            `;
+            
+            document.getElementById('summary').innerHTML = summaryHtml;
+        }
+    </script>
+</body>
+</html>
