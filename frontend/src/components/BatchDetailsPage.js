@@ -126,8 +126,9 @@ const formatFileSize = (bytes) => {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
 };
 
+const NOTES_MAX_FILE_SIZE = 10 * 1024 * 1024;
+
 const validateFile = (file) => {
-  const maxSize = 50 * 1024 * 1024; // 50MB - matched with backend limit
   const allowedTypes = [
     'application/pdf',
     'application/msword',
@@ -149,8 +150,8 @@ const validateFile = (file) => {
   ];
   
   // Check file size
-  if (file.size > maxSize) {
-    return `File size (${formatFileSize(file.size)}) exceeds 50MB limit`;
+  if (file.size > NOTES_MAX_FILE_SIZE) {
+    return `File size (${formatFileSize(file.size)}) exceeds 10MB limit`;
   }
   
   // Enhanced file type validation with extension fallback
@@ -1319,11 +1320,11 @@ const BatchDetailsPage = () => {
           
           // Try to extract error message from HTML response
           if (text.includes('File too large')) {
-            showToast('File too large. Maximum size is 50MB.', 'error');
+            showToast('File too large. Maximum size is 10MB.', 'error');
           } else if (text.includes('File type')) {
             showToast('File type not supported. Please check file format.', 'error');
           } else if (response.status === 413) {
-            showToast('File too large. Maximum size is 50MB.', 'error');
+            showToast('File too large. Maximum size is 10MB.', 'error');
           } else if (response.status === 415) {
             showToast('File type not supported. Please check file format.', 'error');
           } else {

@@ -95,6 +95,7 @@ const moduleUpload = multer({
 });
 
 // Configure multer for lecture notes uploads (PDF/Word/etc.) stored on disk
+const NOTES_MAX_FILE_SIZE = 10 * 1024 * 1024;
 const notesUploadStorage = multer.diskStorage({
   destination: (req, file, cb) => {
     const notesDir = path.join(__dirname, '..', 'uploads', 'notes');
@@ -113,7 +114,7 @@ const notesUploadStorage = multer.diskStorage({
 const notesUpload = multer({
   storage: notesUploadStorage,
   limits: {
-    fileSize: 50 * 1024 * 1024, // 50MB limit for notes
+    fileSize: NOTES_MAX_FILE_SIZE,
   },
   fileFilter: (req, file, cb) => {
     // Allow common document types, presentations, spreadsheets, images, and zip files
@@ -1127,9 +1128,9 @@ router.post('/classroom/youtube-url', notesUpload.single('notesFile'), async (re
           });
           
           // Validate zip file size (reasonable limit for zip files)
-          if (req.file.size > 50 * 1024 * 1024) {
+          if (req.file.size > NOTES_MAX_FILE_SIZE) {
             return res.status(413).json({
-              message: 'Zip file too large. Maximum size is 50MB.',
+              message: 'Zip file too large. Maximum size is 10MB.',
               code: 'ZIP_FILE_TOO_LARGE'
             });
           }

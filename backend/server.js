@@ -106,7 +106,7 @@ app.use((error, req, res, next) => {
   // Handle multer errors specifically
   if (error.code === 'LIMIT_FILE_SIZE') {
     return res.status(413).json({
-      message: 'File too large. Maximum size is 50MB.',
+      message: 'File too large. Maximum size is 10MB.',
       code: 'LIMIT_FILE_SIZE'
     });
   }

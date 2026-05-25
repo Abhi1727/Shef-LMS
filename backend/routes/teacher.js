@@ -333,6 +333,7 @@ router.delete('/batches/:id', async (req, res) => {
 });
 
 // Multer for teacher notes uploads
+const NOTES_MAX_FILE_SIZE = 10 * 1024 * 1024;
 const teacherNotesStorage = multer.diskStorage({
   destination: (req, file, cb) => {
     const notesDir = path.join(__dirname, '..', 'uploads', 'teacher-notes');
@@ -351,7 +352,7 @@ const teacherNotesStorage = multer.diskStorage({
 const teacherNotesUpload = multer({
   storage: teacherNotesStorage,
   limits: {
-    fileSize: 50 * 1024 * 1024, // 50MB limit for notes
+    fileSize: NOTES_MAX_FILE_SIZE,
   },
   fileFilter: (req, file, cb) => {
     // Allow common document types, presentations, spreadsheets, images, and zip files
