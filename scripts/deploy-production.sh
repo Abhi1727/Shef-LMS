@@ -39,6 +39,14 @@ sudo cp -r frontend/build/* /var/www/shef-lms/
 sudo chown -R www-data:www-data /var/www/shef-lms
 
 echo ""
+echo "🌐 Ensuring Nginx upload limit is high enough for multipart requests..."
+if ! sudo grep -q "client_max_body_size 12M;" /etc/nginx/sites-available/shef-lms; then
+    sudo perl -0pi -e 's/(server_name learnwithus\.sbs www\.learnwithus\.sbs 31\.220\.55\.193;\n)/$1\n    client_max_body_size 12M;\n/' /etc/nginx/sites-available/shef-lms
+fi
+sudo nginx -t
+sudo systemctl reload nginx
+
+echo ""
 echo "🐳 Rebuilding and restarting production backend..."
 cd backend
 (docker compose -p shef-lms-prod -f docker-compose.yml build --no-cache 2>/dev/null || docker-compose -p shef-lms-prod -f docker-compose.yml build --no-cache 2>/dev/null) || true
