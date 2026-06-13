@@ -32,7 +32,8 @@ router.post('/video-view', async (req, res) => {
       userEmail: user.email || '',
       userRole: user.role || 'student',
       videoId: String(videoId),
-      videoTitle
+      videoTitle,
+      req
     });
 
     res.json({ success: true });

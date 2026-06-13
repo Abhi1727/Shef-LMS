@@ -18,6 +18,9 @@ const TeacherBatchDetailsPage = lazy(() => import('./components/TeacherBatchDeta
 const BatchDetail = lazy(() => import('./components/BatchDetail'));
 const OneToOneBatchManagement = lazy(() => import('./components/OneToOneBatchManagement'));
 const StudentAnalyticsDashboard = lazy(() => import('./components/StudentAnalyticsDashboard'));
+const ResourcesHome = lazy(() => import('./components/ResourcesHome'));
+const StudentAssessmentView = lazy(() => import('./components/StudentAssessmentView'));
+const StudentAssessmentResults = lazy(() => import('./components/StudentAssessmentResults'));
 
 // Loading component for lazy loaded components
 const LoadingSpinner = () => (
@@ -47,22 +50,31 @@ const registerServiceWorker = async () => {
 };
 
 function App() {
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [user, setUser] = useState(null);
-  const [sessionWarning, setSessionWarning] = useState(null);
+  const readStoredUser = () => {
+    try {
+      const token = localStorage.getItem('token');
+      const userData = localStorage.getItem('user');
 
-  useEffect(() => {
-    const token = localStorage.getItem('token');
-    const userData = localStorage.getItem('user');
-    if (token && userData) {
+      if (!token || !userData) return null;
+
       const parsedUser = JSON.parse(userData);
-      // Fix role mapping: treat 'mentor' as 'teacher' for proper routing
       if (parsedUser.role === 'mentor') {
         parsedUser.role = 'teacher';
       }
-      setIsAuthenticated(true);
-      setUser(parsedUser);
-      
+
+      return parsedUser;
+    } catch (error) {
+      console.error('Failed to restore session from storage:', error);
+      return null;
+    }
+  };
+
+  const [user, setUser] = useState(() => readStoredUser());
+  const [isAuthenticated, setIsAuthenticated] = useState(() => Boolean(readStoredUser()));
+  const [sessionWarning, setSessionWarning] = useState(null);
+
+  useEffect(() => {
+    if (isAuthenticated && user) {
       // Setup token monitoring for authenticated users
       setupTokenMonitoring();
     }
@@ -272,6 +284,16 @@ const setupTokenMonitoring = () => {
             } 
           />
           <Route 
+            path="/resources" 
+            element={
+              <Suspense fallback={<LoadingSpinner />}>
+                {isAuthenticated ? 
+                <ResourcesHome user={user} onLogout={handleLogout} /> : 
+                <Navigate to="/login" replace />}
+              </Suspense>
+            } 
+          />
+          <Route 
             path="/mentor" 
             element={
               <Suspense fallback={<LoadingSpinner />}>
@@ -356,6 +378,26 @@ const setupTokenMonitoring = () => {
                 user?.role === 'mentor' ?
                 <Navigate to="/mentor" replace /> :
                 <Navigate to="/dashboard" replace />}
+              </Suspense>
+            } 
+          />
+          <Route 
+            path="/student/assessment/:assessmentId" 
+            element={
+              <Suspense fallback={<LoadingSpinner />}>
+                {isAuthenticated && user?.role === 'student' ? 
+                <StudentAssessmentView /> : 
+                <Navigate to="/login" replace />}
+              </Suspense>
+            } 
+          />
+          <Route 
+            path="/student/assessment/results/:attemptId" 
+            element={
+              <Suspense fallback={<LoadingSpinner />}>
+                {isAuthenticated && user?.role === 'student' ? 
+                <StudentAssessmentResults /> : 
+                <Navigate to="/login" replace />}
               </Suspense>
             } 
           />

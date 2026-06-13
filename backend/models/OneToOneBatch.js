@@ -24,6 +24,7 @@ const oneToOneBatchSchema = new mongoose.Schema({
         addedAt: { type: Date, default: Date.now }
     }],
     schedule: { type: mongoose.Schema.Types.Mixed },
+    resourcesEnabled: { type: Boolean, default: false },
     notes: { type: String },
     progress: { type: Number, default: 0 },
     createdAt: { type: Date, default: Date.now },

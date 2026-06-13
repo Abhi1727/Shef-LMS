@@ -76,6 +76,8 @@ const OneToOneBatchManagement = () => {
 
   // View management state (like BatchDetailsPage)
   const [activeView, setActiveView] = useState('videos'); // 'videos' or 'students'
+  const [allResources, setAllResources] = useState([]);
+  const [batchResourcesEnabled, setBatchResourcesEnabled] = useState(false);
   
   // Video editing state
   const [editingVideo, setEditingVideo] = useState(null);
@@ -230,6 +232,22 @@ const OneToOneBatchManagement = () => {
       if (response.success) {
         setBatch(response.batch);
         setVideos(response.batch.videos || []);
+        setBatchResourcesEnabled(response.batch.resourcesEnabled || false);
+
+        // Fetch all resources for assignment checklist
+        try {
+          const token = localStorage.getItem('token');
+          const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
+          const resListResp = await fetch(`${apiUrl}/api/resources/admin/list`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+          });
+          if (resListResp.ok) {
+            const resList = await resListResp.json();
+            setAllResources(resList);
+          }
+        } catch (e) {
+          console.error('Error fetching admin resources list:', e);
+        }
       } else {
         setError('Failed to load batch details');
       }
@@ -504,6 +522,65 @@ const OneToOneBatchManagement = () => {
 
   const handleViewChange = (view) => {
     setActiveView(view);
+  };
+
+  const handleToggleResourcesEnabled = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
+      
+      const newStatus = !batchResourcesEnabled;
+      const response = await fetch(`${apiUrl}/api/one-to-one-batches/${batchId}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ resourcesEnabled: newStatus })
+      });
+      
+      if (response.ok) {
+        setBatchResourcesEnabled(newStatus);
+        showToast(`Resources Center ${newStatus ? 'activated' : 'deactivated'} for this batch`, 'success');
+      } else {
+        showToast('Failed to update resource activation status', 'error');
+      }
+    } catch (err) {
+      console.error('Error toggling resources:', err);
+    }
+  };
+
+  const handleToggleResourceAssignment = async (resourceId, isAssigned) => {
+    try {
+      const token = localStorage.getItem('token');
+      const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
+      
+      const method = isAssigned ? 'DELETE' : 'PUT';
+      const response = await fetch(`${apiUrl}/api/resources/admin/batches/${batchId}/resources/${resourceId}`, {
+        method: method,
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ isOneToOne: true })
+      });
+      
+      if (response.ok) {
+        // reload resources
+        const resListResp = await fetch(`${apiUrl}/api/resources/admin/list`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (resListResp.ok) {
+          const resList = await resListResp.json();
+          setAllResources(resList);
+        }
+        showToast(isAssigned ? 'Resource removed from batch' : 'Resource assigned to batch', 'success');
+      } else {
+        showToast('Failed to update resource assignment', 'error');
+      }
+    } catch (err) {
+      console.error('Error toggling resource assignment:', err);
+    }
   };
 
   const handleEditVideo = (video, index) => {
@@ -839,6 +916,12 @@ const OneToOneBatchManagement = () => {
           >
             👥 Student ({batch.studentId ? '1' : '0'})
           </button>
+          <button 
+            className={`menu-item-horizontal ${activeView === 'resources' ? 'active' : ''}`}
+            onClick={() => handleViewChange('resources')}
+          >
+            📚 Resources Center
+          </button>
         </div>
       </div>
 
@@ -973,6 +1056,79 @@ const OneToOneBatchManagement = () => {
                 <div className="no-data">
                   <p>📹 No videos found for this batch</p>
                   <small>Click "Add Video to Batch" to add lectures.</small>
+                </div>
+              )}
+            </div>
+          )}
+
+          {activeView === 'resources' && (
+            <div className="resources-view" style={{ padding: '20px', background: '#0D1117', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.08)', color: '#F0F6FC', margin: '20px 0' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '25px', borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '15px' }}>
+                <div>
+                  <h2 style={{ fontSize: '20px', fontWeight: '600', margin: 0 }}>📚 Resources Center Management (1:1)</h2>
+                  <p style={{ fontSize: '12px', color: '#8B949E', margin: '4px 0 0 0' }}>Configure student access and assign specific handouts/tools to this cohort.</p>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', background: '#111827', padding: '10px 20px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.05)' }}>
+                  <span style={{ fontSize: '13px', fontWeight: '500' }}>Resources Activated:</span>
+                  <label className="res-toggle-switch">
+                    <input 
+                      type="checkbox" 
+                      checked={batchResourcesEnabled}
+                      onChange={handleToggleResourcesEnabled}
+                    />
+                    <span className="res-toggle-slider"></span>
+                  </label>
+                </div>
+              </div>
+
+              {!batchResourcesEnabled ? (
+                <div style={{ textAlign: 'center', padding: '40px 20px', background: 'rgba(255,255,255,0.01)', borderRadius: '8px', border: '1px dashed rgba(255,255,255,0.1)' }}>
+                  <span style={{ fontSize: '32px' }}>🔒</span>
+                  <h3 style={{ fontSize: '15px', marginTop: '15px', color: '#F0F6FC' }}>Resources Center is Disabled</h3>
+                  <p style={{ fontSize: '12px', color: '#8B949E', maxWidth: '400px', margin: '8px auto 0 auto' }}>Students in this 1:1 batch cannot see the resources icon or access files. Activate the switch above to open access.</p>
+                </div>
+              ) : (
+                <div>
+                  <h3 style={{ fontSize: '14px', fontWeight: '600', marginBottom: '15px' }}>Select Handouts to Showcase</h3>
+                  <div style={{ overflowX: 'auto' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', textAlign: 'left' }}>
+                      <thead>
+                        <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.08)', color: '#8B949E' }}>
+                          <th style={{ padding: '10px' }}>Resource Title</th>
+                          <th style={{ padding: '10px' }}>Type</th>
+                          <th style={{ padding: '10px' }}>Universe</th>
+                          <th style={{ padding: '10px', textAlign: 'center' }}>Visible to Batch</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {allResources.length === 0 ? (
+                          <tr>
+                            <td colSpan="4" style={{ textAlign: 'center', padding: '20px', color: '#8B949E' }}>No resources registered in the database yet.</td>
+                          </tr>
+                        ) : (
+                          allResources.map((res, index) => {
+                            const selectedIdStr = String(batch?.id || batch?._id || batchId);
+                            const isAssigned = (res.assignedOneToOneBatches || []).some(id => String(id) === selectedIdStr);
+                            return (
+                              <tr key={index} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                                <td style={{ padding: '12px 10px', fontWeight: '500' }}>{res.title}</td>
+                                <td style={{ padding: '12px 10px', textTransform: 'uppercase', fontSize: '11px', color: '#8B949E' }}>{res.resourceType}</td>
+                                <td style={{ padding: '12px 10px', textTransform: 'capitalize', fontSize: '12px' }}>{res.course}</td>
+                                <td style={{ padding: '12px 10px', textAlign: 'center' }}>
+                                  <input 
+                                    type="checkbox"
+                                    checked={isAssigned}
+                                    onChange={() => handleToggleResourceAssignment(res._id || res.id, isAssigned)}
+                                    style={{ width: '16px', height: '16px', cursor: 'pointer' }}
+                                  />
+                                </td>
+                              </tr>
+                            );
+                          })
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
               )}
             </div>

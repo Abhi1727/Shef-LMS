@@ -289,6 +289,9 @@ const BatchDetailsPage = () => {
     address: ''
   }); // 'videos' or 'students'
   
+  const [allResources, setAllResources] = useState([]);
+  const [batchResourcesEnabled, setBatchResourcesEnabled] = useState(false);
+  
   // Email-related state
   const [emailForm, setEmailForm] = useState({
     subject: '',
@@ -485,6 +488,8 @@ const BatchDetailsPage = () => {
       ? 'http://localhost:5000'
       : '';
       let foundBatch = null;
+      const normalizeId = (value) => (value != null ? String(value).trim() : '');
+      const batchIdNorm = normalizeId(batchId);
 
       // Load batch details
       const batchesResponse = await fetch(`${apiUrl}/api/admin/batches`, {
@@ -498,18 +503,33 @@ const BatchDetailsPage = () => {
         console.log('Available Batches:', batches);
         
         const batch = batches.find(b => {
+          const currentBatchId = normalizeId(b.id || b._id);
           console.log('Checking batch:', {
             batchName: b.name,
-            batchId: b.id || b._id,
-            urlId: batchId,
-            matches: b.id === batchId || b._id === batchId
+            batchId: currentBatchId,
+            urlId: batchIdNorm,
+            matches: currentBatchId === batchIdNorm
           });
-          return b.id === batchId || b._id === batchId;
+          return currentBatchId === batchIdNorm;
         });
         
         if (batch) {
           foundBatch = batch;
           setSelectedBatch(batch);
+          setBatchResourcesEnabled(batch.resourcesEnabled || false);
+
+          // Fetch all resources for assignment checklist
+          try {
+            const resListResp = await fetch(`${apiUrl}/api/resources/admin/list`, {
+              headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (resListResp.ok) {
+              const resList = await resListResp.json();
+              setAllResources(resList);
+            }
+          } catch (e) {
+            console.error('Error fetching admin resources list:', e);
+          }
           
           if (batch.schedule) {
             const days = batch.schedule.days || '';
@@ -560,7 +580,6 @@ const BatchDetailsPage = () => {
         } else {
           console.error('Batch not found. Available IDs:', batches.map(b => ({ name: b.name, id: b.id || b._id })));
           showToast('Batch not found', 'error');
-          navigate('/admin');
           return;
         }
       }
@@ -691,6 +710,67 @@ const BatchDetailsPage = () => {
     } catch (error) {
       console.error('Error updating batch timing:', error);
       showToast('Error updating batch timing', 'error');
+    }
+  };
+
+  const handleToggleResourcesEnabled = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
+      const batchIdForApi = selectedBatch?.id || selectedBatch?._id;
+      
+      const newStatus = !batchResourcesEnabled;
+      const response = await fetch(`${apiUrl}/api/admin/batches/${batchIdForApi}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ resourcesEnabled: newStatus })
+      });
+      
+      if (response.ok) {
+        setBatchResourcesEnabled(newStatus);
+        showToast(`Resources Center ${newStatus ? 'activated' : 'deactivated'} for this batch`, 'success');
+      } else {
+        showToast('Failed to update resource activation status', 'error');
+      }
+    } catch (err) {
+      console.error('Error toggling resources:', err);
+    }
+  };
+
+  const handleToggleResourceAssignment = async (resourceId, isAssigned) => {
+    try {
+      const token = localStorage.getItem('token');
+      const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
+      const batchIdForApi = selectedBatch?.id || selectedBatch?._id;
+      
+      const method = isAssigned ? 'DELETE' : 'PUT';
+      const response = await fetch(`${apiUrl}/api/resources/admin/batches/${batchIdForApi}/resources/${resourceId}`, {
+        method: method,
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ isOneToOne: false })
+      });
+      
+      if (response.ok) {
+        // reload resources
+        const resListResp = await fetch(`${apiUrl}/api/resources/admin/list`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (resListResp.ok) {
+          const resList = await resListResp.json();
+          setAllResources(resList);
+        }
+        showToast(isAssigned ? 'Resource removed from batch' : 'Resource assigned to batch', 'success');
+      } else {
+        showToast('Failed to update resource assignment', 'error');
+      }
+    } catch (err) {
+      console.error('Error toggling resource assignment:', err);
     }
   };
 
@@ -2010,6 +2090,12 @@ const BatchDetailsPage = () => {
             >
               👥 Students ({batchStudents.length})
             </button>
+            <button 
+              className={`menu-item-horizontal ${activeView === 'resources' ? 'active' : ''}`}
+              onClick={() => handleViewChange('resources')}
+            >
+              📚 Resources Center
+            </button>
             {isAdmin && (
               <button 
                 className={`menu-item-horizontal ${activeView === 'email' ? 'active' : ''}`}
@@ -2262,6 +2348,79 @@ const BatchDetailsPage = () => {
                 <div className="no-data">
                   <p>👥 No students found in this batch</p>
                   <small>Students may be enrolled by batch ID or course matching</small>
+                </div>
+              )}
+            </div>
+          )}
+
+          {activeView === 'resources' && (
+            <div className="resources-view" style={{ padding: '20px', background: '#0D1117', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.08)', color: '#F0F6FC' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '25px', borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '15px' }}>
+                <div>
+                  <h2 style={{ fontSize: '20px', fontWeight: '600', margin: 0 }}>📚 Resources Center Management</h2>
+                  <p style={{ fontSize: '12px', color: '#8B949E', margin: '4px 0 0 0' }}>Configure student access and assign specific handouts/tools to this cohort.</p>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', background: '#111827', padding: '10px 20px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.05)' }}>
+                  <span style={{ fontSize: '13px', fontWeight: '500' }}>Resources Activated:</span>
+                  <label className="res-toggle-switch">
+                    <input 
+                      type="checkbox" 
+                      checked={batchResourcesEnabled}
+                      onChange={handleToggleResourcesEnabled}
+                    />
+                    <span className="res-toggle-slider"></span>
+                  </label>
+                </div>
+              </div>
+
+              {!batchResourcesEnabled ? (
+                <div style={{ textAlign: 'center', padding: '40px 20px', background: 'rgba(255,255,255,0.01)', borderRadius: '8px', border: '1px dashed rgba(255,255,255,0.1)' }}>
+                  <span style={{ fontSize: '32px' }}>🔒</span>
+                  <h3 style={{ fontSize: '15px', marginTop: '15px', color: '#F0F6FC' }}>Resources Center is Disabled</h3>
+                  <p style={{ fontSize: '12px', color: '#8B949E', maxWidth: '400px', margin: '8px auto 0 auto' }}>Students in this batch cannot see the resources icon or access files. Activate the switch above to open access.</p>
+                </div>
+              ) : (
+                <div>
+                  <h3 style={{ fontSize: '14px', fontWeight: '600', marginBottom: '15px' }}>Select Handouts to Showcase</h3>
+                  <div style={{ overflowX: 'auto' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', textAlign: 'left' }}>
+                      <thead>
+                        <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.08)', color: '#8B949E' }}>
+                          <th style={{ padding: '10px' }}>Resource Title</th>
+                          <th style={{ padding: '10px' }}>Type</th>
+                          <th style={{ padding: '10px' }}>Universe</th>
+                          <th style={{ padding: '10px', textAlign: 'center' }}>Visible to Batch</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {allResources.length === 0 ? (
+                          <tr>
+                            <td colSpan="4" style={{ textAlign: 'center', padding: '20px', color: '#8B949E' }}>No resources registered in the database yet.</td>
+                          </tr>
+                        ) : (
+                          allResources.map((res, index) => {
+                            const selectedIdStr = String(selectedBatch?.id || selectedBatch?._id);
+                            const isAssigned = (res.assignedBatches || []).some(id => String(id) === selectedIdStr);
+                            return (
+                              <tr key={index} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                                <td style={{ padding: '12px 10px', fontWeight: '500' }}>{res.title}</td>
+                                <td style={{ padding: '12px 10px', textTransform: 'uppercase', fontSize: '11px', color: '#8B949E' }}>{res.resourceType}</td>
+                                <td style={{ padding: '12px 10px', textTransform: 'capitalize', fontSize: '12px' }}>{res.course}</td>
+                                <td style={{ padding: '12px 10px', textAlign: 'center' }}>
+                                  <input 
+                                    type="checkbox"
+                                    checked={isAssigned}
+                                    onChange={() => handleToggleResourceAssignment(res._id || res.id, isAssigned)}
+                                    style={{ width: '16px', height: '16px', cursor: 'pointer' }}
+                                  />
+                                </td>
+                              </tr>
+                            );
+                          })
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
               )}
             </div>
@@ -3039,142 +3198,170 @@ const BatchDetailsPage = () => {
             {/* Profile Tab */}
             {activeProfileTab === 'profile' && (
               <div className="profile-tab-content">
-                <div className="profile-grid">
-                  <div className="profile-section">
-                    <h3>📝 Personal Information</h3>
-                    {editMode ? (
-                      <div className="edit-profile-form">
-                        <div className="form-row">
-                          <div className="form-group">
-                            <label>Full Name</label>
-                            <input
-                              type="text"
-                              value={editedProfile.name || ''}
-                              onChange={(e) => setEditedProfile(prev => ({ ...prev, name: e.target.value }))}
-                              className="profile-input"
-                            />
-                          </div>
-                          <div className="form-group">
-                            <label>Email Address</label>
-                            <input
-                              type="email"
-                              value={editedProfile.email || ''}
-                              onChange={(e) => setEditedProfile(prev => ({ ...prev, email: e.target.value }))}
-                              className="profile-input"
-                            />
-                          </div>
-                        </div>
-                        <div className="form-row">
-                          <div className="form-group">
-                            <label>Phone Number</label>
-                            <input
-                              type="tel"
-                              value={editedProfile.phone || ''}
-                              onChange={(e) => setEditedProfile(prev => ({ ...prev, phone: e.target.value }))}
-                              className="profile-input"
-                            />
-                          </div>
-                          <div className="form-group">
-                            <label>Status</label>
-                            <select
-                              value={editedProfile.status || 'active'}
-                              onChange={(e) => setEditedProfile(prev => ({ ...prev, status: e.target.value }))}
-                              className="profile-input"
-                            >
-                              <option value="active">Active</option>
-                              <option value="inactive">Inactive</option>
-                              <option value="on-leave">On Leave</option>
-                            </select>
-                          </div>
-                        </div>
-                        <div className="form-group full-width">
-                          <label>Address</label>
-                          <textarea
-                            value={editedProfile.address || ''}
-                            onChange={(e) => setEditedProfile(prev => ({ ...prev, address: e.target.value }))}
-                            className="profile-input"
-                            rows="3"
-                          />
-                        </div>
-                        <div className="form-actions">
-                          <button className="btn-save" onClick={handleSaveProfile}>
-                            💾 Save Changes
-                          </button>
-                          <button className="btn-cancel" onClick={handleCancelEdit}>
-                            ❌ Cancel
-                          </button>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="profile-details">
-                        <div className="detail-item">
-                          <label>Full Name:</label>
-                          <span>{selectedStudentDetails?.name || 'N/A'}</span>
-                        </div>
-                        <div className="detail-item">
-                          <label>Email Address:</label>
-                          <span>{selectedStudentDetails?.email || 'N/A'}</span>
-                        </div>
-                        <div className="detail-item">
-                          <label>Phone Number:</label>
-                          <span>{selectedStudentDetails?.phone || 'N/A'}</span>
-                        </div>
-                        <div className="detail-item">
-                          <label>Address:</label>
-                          <span>{selectedStudentDetails?.address || 'N/A'}</span>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="profile-section">
-                    <h3>🎓 Academic Information</h3>
-                    <div className="profile-details">
-                      <div className="detail-item">
-                        <label>Course:</label>
-                        <span>{selectedStudentDetails?.course || 'N/A'}</span>
-                      </div>
-                      <div className="detail-item">
-                        <label>Status:</label>
-                        <span>
-                          <span className={`status-badge ${(selectedStudentDetails?.status || 'active').toLowerCase()}`}>
-                            {selectedStudentDetails?.status || 'Active'}
-                          </span>
+                <div className="profile-snapshot">
+                  <div className="profile-snapshot-main">
+                    <div className="profile-snapshot-avatar">
+                      <span>{selectedStudentDetails?.name?.charAt(0).toUpperCase() || 'S'}</span>
+                    </div>
+                    <div className="profile-snapshot-copy">
+                      <div className="profile-snapshot-title-row">
+                        <h3>{selectedStudentDetails?.name || 'Student Profile'}</h3>
+                        <span className={`status-pill ${(selectedStudentDetails?.status || 'inactive').toLowerCase()}`}>
+                          {selectedStudentDetails?.status || 'Unknown'}
                         </span>
                       </div>
-                      <div className="detail-item">
-                        <label>Batch Name:</label>
-                        <span>{selectedBatch?.name || 'N/A'}</span>
-                      </div>
-                      <div className="detail-item">
-                        <label>Student ID:</label>
-                        <span>{selectedStudentDetails?.id || 'N/A'}</span>
+                      <p className="profile-snapshot-subtitle">{selectedStudentDetails?.email || 'email@example.com'}</p>
+                      <div className="profile-snapshot-meta">
+                        <span className="meta-chip">{selectedStudentDetails?.course || 'No Course'}</span>
+                        <span className="meta-chip">Batch: {selectedBatch?.name || 'N/A'}</span>
+                        <span className="meta-chip">ID: {selectedStudentDetails?.id || 'N/A'}</span>
                       </div>
                     </div>
                   </div>
-
-                  <div className="profile-section">
-                    <h3>📍 Login Activity</h3>
-                    {(selectedStudentDetails?.lastLogin || selectedStudentDetails?.lastLoginIP) ? (
-                      <div className="profile-details">
-                        <div className="detail-item">
-                          <label>Last Login:</label>
-                          <span>{selectedStudentDetails?.lastLogin?.timestamp ? new Date(selectedStudentDetails.lastLogin.timestamp).toLocaleString() : selectedStudentDetails?.lastLoginTimestamp ? new Date(selectedStudentDetails.lastLoginTimestamp).toLocaleString() : 'Never'}</span>
-                        </div>
-                        <div className="detail-item">
-                          <label>Last IP:</label>
-                          <span className="ip-address">{selectedStudentDetails?.lastLoginIP || selectedStudentDetails?.lastLogin?.ipAddress || 'N/A'}</span>
-                        </div>
-                        <div className="detail-item">
-                          <label>Location:</label>
-                          <span>{[selectedStudentDetails?.lastLogin?.city, selectedStudentDetails?.lastLogin?.country].filter(Boolean).join(', ') || 'N/A'}</span>
-                        </div>
-                      </div>
-                    ) : (
-                      <p className="no-activity">No login activity recorded yet.</p>
-                    )}
+                  <div className="profile-snapshot-actions">
+                    <button 
+                      className="btn-edit-profile"
+                      onClick={() => setEditMode(!editMode)}
+                    >
+                      {editMode ? '👁️ View Mode' : '✏️ Edit Profile'}
+                    </button>
                   </div>
                 </div>
+
+                {editMode ? (
+                  <div className="edit-profile-form compact-profile-form">
+                    <div className="profile-form-grid">
+                      <div className="form-group">
+                        <label>Full Name</label>
+                        <input
+                          type="text"
+                          value={editedProfile.name || ''}
+                          onChange={(e) => setEditedProfile(prev => ({ ...prev, name: e.target.value }))}
+                          className="profile-input"
+                        />
+                      </div>
+                      <div className="form-group">
+                        <label>Email Address</label>
+                        <input
+                          type="email"
+                          value={editedProfile.email || ''}
+                          onChange={(e) => setEditedProfile(prev => ({ ...prev, email: e.target.value }))}
+                          className="profile-input"
+                        />
+                      </div>
+                      <div className="form-group">
+                        <label>Phone Number</label>
+                        <input
+                          type="tel"
+                          value={editedProfile.phone || ''}
+                          onChange={(e) => setEditedProfile(prev => ({ ...prev, phone: e.target.value }))}
+                          className="profile-input"
+                        />
+                      </div>
+                      <div className="form-group">
+                        <label>Status</label>
+                        <select
+                          value={editedProfile.status || 'active'}
+                          onChange={(e) => setEditedProfile(prev => ({ ...prev, status: e.target.value }))}
+                          className="profile-input"
+                        >
+                          <option value="active">Active</option>
+                          <option value="inactive">Inactive</option>
+                          <option value="on-leave">On Leave</option>
+                        </select>
+                      </div>
+                    </div>
+                    <div className="form-group full-width">
+                      <label>Address</label>
+                      <textarea
+                        value={editedProfile.address || ''}
+                        onChange={(e) => setEditedProfile(prev => ({ ...prev, address: e.target.value }))}
+                        className="profile-input"
+                        rows="2"
+                      />
+                    </div>
+                    <div className="form-actions compact-form-actions">
+                      <button className="btn-save" onClick={handleSaveProfile}>
+                        💾 Save Changes
+                      </button>
+                      <button className="btn-cancel" onClick={handleCancelEdit}>
+                        ❌ Cancel
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="profile-dense-grid">
+                    <div className="profile-card profile-card-personal">
+                      <h3>📝 Personal Information</h3>
+                      <div className="profile-details compact-details">
+                        <div className="detail-item">
+                          <label>Full Name</label>
+                          <span>{selectedStudentDetails?.name || 'N/A'}</span>
+                        </div>
+                        <div className="detail-item">
+                          <label>Email Address</label>
+                          <span className="truncate-value">{selectedStudentDetails?.email || 'N/A'}</span>
+                        </div>
+                        <div className="detail-item">
+                          <label>Phone Number</label>
+                          <span>{selectedStudentDetails?.phone || 'N/A'}</span>
+                        </div>
+                        <div className="detail-item wide-detail">
+                          <label>Address</label>
+                          <span>{selectedStudentDetails?.address || 'N/A'}</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="profile-card profile-card-academic">
+                      <h3>🎓 Academic Information</h3>
+                      <div className="profile-details compact-details">
+                        <div className="detail-item">
+                          <label>Course</label>
+                          <span>{selectedStudentDetails?.course || 'N/A'}</span>
+                        </div>
+                        <div className="detail-item">
+                          <label>Status</label>
+                          <span>
+                            <span className={`status-badge ${(selectedStudentDetails?.status || 'active').toLowerCase()}`}>
+                              {selectedStudentDetails?.status || 'Active'}
+                            </span>
+                          </span>
+                        </div>
+                        <div className="detail-item">
+                          <label>Batch Name</label>
+                          <span>{selectedBatch?.name || 'N/A'}</span>
+                        </div>
+                        <div className="detail-item">
+                          <label>Student ID</label>
+                          <span>{selectedStudentDetails?.id || 'N/A'}</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="profile-card profile-card-login">
+                      <h3>📍 Login Activity</h3>
+                      {(selectedStudentDetails?.lastLogin || selectedStudentDetails?.lastLoginIP) ? (
+                        <div className="profile-details compact-details">
+                          <div className="detail-item wide-detail">
+                            <label>Last Login</label>
+                            <span>{selectedStudentDetails?.lastLogin?.timestamp ? new Date(selectedStudentDetails.lastLogin.timestamp).toLocaleString() : selectedStudentDetails?.lastLoginTimestamp ? new Date(selectedStudentDetails.lastLoginTimestamp).toLocaleString() : 'Never'}</span>
+                          </div>
+                          <div className="detail-item">
+                            <label>Last IP</label>
+                            <span className="ip-address">{selectedStudentDetails?.lastLoginIP || selectedStudentDetails?.lastLogin?.ipAddress || 'N/A'}</span>
+                          </div>
+                          <div className="detail-item">
+                            <label>Location</label>
+                            <span>{[selectedStudentDetails?.lastLogin?.city, selectedStudentDetails?.lastLogin?.country].filter(Boolean).join(', ') || 'N/A'}</span>
+                          </div>
+                        </div>
+                      ) : (
+                        <p className="no-activity">No login activity recorded yet.</p>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 
@@ -3299,6 +3486,18 @@ const BatchDetailsPage = () => {
                                 <div className="activity-detail">
                                   <label>Assessment:</label>
                                   <span>{activity.assessmentTitle} (Score: {activity.score})</span>
+                                </div>
+                              )}
+                              {activity.ipAddress && (
+                                <div className="activity-detail">
+                                  <label>IP:</label>
+                                  <span>{activity.ipAddress}</span>
+                                </div>
+                              )}
+                              {(activity.city || activity.country) && (
+                                <div className="activity-detail">
+                                  <label>Location:</label>
+                                  <span>{[activity.city, activity.country].filter(Boolean).join(', ')}</span>
                                 </div>
                               )}
                             </div>

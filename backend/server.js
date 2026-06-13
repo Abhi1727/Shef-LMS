@@ -158,6 +158,8 @@ app.use('/api/batches', require('./routes/batches'));
 app.use('/api/one-to-one-batches', require('./routes/oneToOneBatches'));
 app.use('/api/student', require('./routes/student'));
 app.use('/api/activity', require('./routes/activity'));
+app.use('/api/resources', require('./routes/resources'));
+app.use('/api/assessment-studio', require('./routes/assessmentStudio'));
 
 // Fallback endpoint for direct file access
 app.get('/api/uploads/notes/:filename', (req, res) => {

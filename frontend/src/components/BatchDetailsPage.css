@@ -10,80 +10,94 @@
   overflow: hidden;
 }
 
-/* Enhanced Notes Section Styles */
-.enhanced-notes-section {
+  overflow: hidden;
+  padding: 20px 24px 18px;
   background: rgba(255, 255, 255, 0.95);
   border-radius: 16px;
-  padding: 16px;
-  margin-top: 12px;
-  backdrop-filter: blur(20px);
-  border: 1px solid rgba(255, 255, 255, 0.3);
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
-  transition: all 0.3s ease;
-}
+  /* Enhanced Notes Section Styles */
+  .enhanced-notes-section {
+    background: rgba(255, 255, 255, 0.95);
+    border-radius: 16px;
+    padding: 16px;
+    margin-top: 12px;
+    backdrop-filter: blur(20px);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+    transition: all 0.3s ease;
+  }
 
-.teacher-batch-details-page .enhanced-notes-section:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.15);
-}
+  .teacher-batch-details-page .enhanced-notes-section:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.15);
+  }
 
-.teacher-batch-details-page .notes-header {
-  margin-bottom: 12px;
-}
+  .teacher-batch-details-page .notes-header {
+    margin-bottom: 12px;
+  }
 
-.teacher-batch-details-page .enhanced-notes-label {
-  display: flex;
-  align-items: center;
-  cursor: pointer;
-  font-size: 16px;
-  font-weight: 600;
-  color: #2c3e50;
-  transition: all 0.3s ease;
-  position: relative;
-}
+  .teacher-batch-details-page .enhanced-notes-label {
+    display: flex;
+    align-items: center;
+    cursor: pointer;
+    font-size: 16px;
+    font-weight: 600;
+    color: #2c3e50;
+    transition: all 0.3s ease;
+    position: relative;
+  }
 
-.teacher-batch-details-page .enhanced-notes-label:hover {
-  color: #4F46E5;
-}
+  .teacher-batch-details-page .enhanced-notes-label:hover {
+    color: #4F46E5;
+  }
 
-.teacher-batch-details-page .notes-checkbox {
-  position: absolute;
-  opacity: 0;
-  cursor: pointer;
-}
+  .teacher-batch-details-page .notes-checkbox {
+    position: absolute;
+    opacity: 0;
+    cursor: pointer;
+  }
 
-.checkbox-custom {
-  width: 24px;
-  height: 24px;
-  border: 2px solid #cbd5e1;
-  border-radius: 6px;
-  margin-right: 12px;
-  position: relative;
-  transition: all 0.3s ease;
-  background: white;
-}
+  .checkbox-custom {
+    width: 24px;
+    height: 24px;
+    border: 2px solid #cbd5e1;
+    border-radius: 6px;
+    margin-right: 12px;
+    position: relative;
+    transition: all 0.3s ease;
+    background: white;
+  }
 
-.teacher-batch-details-page .notes-checkbox:checked + .checkbox-custom {
-  background: linear-gradient(135deg, #4F46E5 0%, #7C3AED 100%);
-  border-color: #4F46E5;
-}
+  .teacher-batch-details-page .notes-checkbox:checked + .checkbox-custom {
+    background: linear-gradient(135deg, #4F46E5 0%, #7C3AED 100%);
+    border-color: #4F46E5;
+  }
 
-.teacher-batch-details-page .notes-checkbox:checked + .checkbox-custom::after {
-  content: '✓';
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  color: white;
-  font-size: 14px;
-  font-weight: bold;
-}
+  .teacher-batch-details-page .notes-checkbox:checked + .checkbox-custom::after {
+    content: '✓';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    color: white;
+    font-size: 14px;
+    font-weight: bold;
+  }
 
-.teacher-batch-details-page .notes-label-text {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
+  .teacher-batch-details-page .notes-label-text {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .student-profile-modal .no-activity {
+    margin: 0;
+    color: #64748b;
+    font-size: 0.92rem;
+  }
+
+  .student-profile-modal .status-badge {
+    white-space: nowrap;
+  }
 
 /* Notes Upload Area */
 .teacher-batch-details-page .notes-upload-area {
@@ -2915,15 +2929,132 @@ body.modal-open {
 /* Modal Content */
 .fullscreen-modal-content {
   flex: 1;
-  overflow-y: auto;
-  padding: 32px;
+  min-height: 0;
+  overflow: hidden;
+  padding: 22px 24px 24px;
   background: #fafbfc;
+  display: flex;
+  flex-direction: column;
 }
 
 /* Profile Tab Content */
 .profile-tab-content {
   max-width: 1200px;
+  width: 100%;
   margin: 0 auto;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.profile-dense-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 18px;
+  margin-bottom: 0;
+  min-height: 0;
+}
+
+.profile-card {
+  background: white;
+  border-radius: 14px;
+  padding: 20px;
+  box-shadow: 0 4px 16px rgba(102, 126, 234, 0.08);
+  border: 1px solid #e8ecf4;
+  transition: box-shadow 0.2s ease;
+  min-width: 0;
+}
+
+.profile-card:hover {
+  box-shadow: 0 6px 24px rgba(102, 126, 234, 0.12);
+}
+
+.profile-card h3 {
+  margin: 0 0 12px 0;
+  color: #1a1d26;
+  font-size: 1.1rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  border-bottom: 3px solid #667eea;
+  padding-bottom: 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.profile-details.compact-details {
+  display: grid;
+  gap: 10px;
+}
+
+.profile-details.compact-details .detail-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  padding: 10px 0;
+  border-bottom: 1px solid #f1f3f8;
+  gap: 12px;
+}
+
+.profile-details.compact-details .detail-item:last-child {
+  border-bottom: none;
+}
+
+.profile-details.compact-details .detail-item label {
+  font-weight: 500;
+  color: #6c757d;
+  margin: 0;
+  min-width: 110px;
+  font-size: 0.85rem;
+}
+
+.profile-details.compact-details .detail-item span {
+  color: #2c3e50;
+  font-weight: 400;
+  text-align: right;
+  flex: 1;
+  min-width: 0;
+}
+
+.profile-card .ip-address {
+  font-family: monospace;
+  font-size: 0.9rem;
+  color: #495057;
+}
+
+.profile-card .no-activity {
+  margin: 0;
+  padding: 14px 0 4px;
+  color: #6c757d;
+  font-size: 0.95rem;
+  text-align: center;
+}
+
+.wide-detail {
+  grid-column: 1 / -1;
+}
+
+.truncate-value {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.profile-card-login {
+  grid-column: 1 / -1;
+}
+
+.profile-card-personal,
+.profile-card-academic,
+.profile-card-login {
+  align-self: start;
+}
+
+.profile-tab-content .activity-tab-content,
+.profile-tab-content .reports-tab-content {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
 }
 
 .profile-grid {
@@ -3092,6 +3223,9 @@ body.modal-open {
   max-width: none;
   margin: 0;
   padding: 0;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
 }
 
 .activity-filters {
@@ -3328,6 +3462,9 @@ body.modal-open {
 .reports-tab-content {
   max-width: 1200px;
   margin: 0 auto;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
 }
 
 .reports-header {
@@ -3528,11 +3665,15 @@ body.modal-open {
   }
   
   .fullscreen-modal-content {
-    padding: 24px;
+    padding: 18px 20px 20px;
   }
   
-  .profile-grid {
-    grid-template-columns: repeat(2, 1fr);
+  .profile-dense-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .profile-card-login {
+    grid-column: 1 / -1;
   }
   
   .form-row {
@@ -3586,15 +3727,28 @@ body.modal-open {
   }
   
   .fullscreen-modal-content {
-    padding: 16px;
+    padding: 14px 14px 16px;
   }
   
-  .profile-grid {
+  .profile-snapshot {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .profile-dense-grid {
     grid-template-columns: 1fr;
   }
   
-  .profile-section {
-    padding: 16px;
+  .profile-form-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .profile-card {
+    padding: 14px;
+  }
+
+  .profile-details {
+    grid-template-columns: 1fr;
   }
   
   .activity-filters,

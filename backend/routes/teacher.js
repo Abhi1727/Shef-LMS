@@ -1496,7 +1496,8 @@ router.get('/classroom/play/:lectureId', async (req, res) => {
             userEmail: req.user.email || '',
             userRole: 'teacher',
             videoId: lectureId,
-            videoTitle: lecture.title || null
+            videoTitle: lecture.title || null,
+            req
           });
         } catch (logErr) {
           console.warn('ActivityLog video_view failed:', logErr.message);
@@ -1543,7 +1544,8 @@ router.get('/classroom/play/:lectureId', async (req, res) => {
           userEmail: req.user.email || '',
           userRole: 'teacher',
           videoId: lectureId,
-          videoTitle: lecture.title || null
+          videoTitle: lecture.title || null,
+          req
         });
       } catch (logErr) {
         console.warn('ActivityLog video_view failed:', logErr.message);
@@ -1572,7 +1574,8 @@ router.get('/classroom/play/:lectureId', async (req, res) => {
           userEmail: req.user.email || '',
           userRole: 'teacher',
           videoId: lectureId,
-          videoTitle: lecture.title || null
+          videoTitle: lecture.title || null,
+          req
         });
       } catch (logErr) {
         console.warn('ActivityLog video_view failed:', logErr.message);

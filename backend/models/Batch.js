@@ -19,6 +19,7 @@ const batchSchema = new mongoose.Schema({
         createdAt: { type: Date, default: Date.now }
     }],
     schedule: { type: mongoose.Schema.Types.Mixed }, // e.g. { days: 'Mon,Wed,Fri' or [], time: '10:00 AM - 11:00 AM IST' }
+    resourcesEnabled: { type: Boolean, default: false },
     notesFile: {
         fileName: { type: String },
         filePath: { type: String },

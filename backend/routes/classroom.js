@@ -351,7 +351,8 @@ router.get('/play/:lectureId', async (req, res) => {
         userEmail: user.email || '',
         userRole: user.role || 'student',
         videoId: lectureId,
-        videoTitle: lecture.title || null
+            videoTitle: lecture.title || null,
+            req
       });
     } catch (logErr) {
       console.warn('ActivityLog video_view failed:', logErr.message);

@@ -8,9 +8,15 @@
  */
 const ActivityLog = require('../models/ActivityLog');
 const logger = require('./logger');
+const { getClientIP, getGeoFromIP } = require('./geoIP');
 
 async function logActivity(data) {
   try {
+    const req = data.req;
+    const shouldResolveLocation = req && !data.ipAddress && !data.city && !data.country && !data.isp;
+    const ipAddress = data.ipAddress || (req ? getClientIP(req) : undefined);
+    const geo = shouldResolveLocation ? await getGeoFromIP(ipAddress) : null;
+
     const entry = {
       action: data.action || 'login',
       userId: data.userId || '',
@@ -18,10 +24,10 @@ async function logActivity(data) {
       userEmail: data.userEmail || '',
       userRole: data.userRole || 'student',
       timestamp: data.timestamp || new Date(),
-      ipAddress: data.ipAddress,
-      city: data.city,
-      country: data.country,
-      isp: data.isp,
+      ipAddress,
+      city: data.city || geo?.city,
+      country: data.country || geo?.country,
+      isp: data.isp || geo?.isp,
       videoId: data.videoId,
       videoTitle: data.videoTitle,
       assessmentId: data.assessmentId,

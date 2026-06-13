@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { ToastContainer, showToast } from './Toast';
 import axios from 'axios';
+import AssessmentStudio from './AssessmentStudio';
 import './Dashboard.css';
 
 const TeacherDashboard = ({ user, onLogout }) => {
@@ -711,6 +712,12 @@ const TeacherDashboard = ({ user, onLogout }) => {
         >
           📚 My Batches
         </button>
+        <button
+          className={`nav-item ${activeSection === 'assessment-studio' ? 'active' : ''}`}
+          onClick={() => setActiveSection('assessment-studio')}
+        >
+          🧠 Assessment Studio
+        </button>
         {/* Commented out - My Students option disabled */}
         {/* <button
           className={`nav-item ${activeSection === 'students' ? 'active' : ''}`}
@@ -1324,6 +1331,11 @@ const TeacherDashboard = ({ user, onLogout }) => {
                 </button>
               </form>
             </div>
+          </div>
+        )}
+        {activeSection === 'assessment-studio' && (
+          <div className="dashboard-section">
+            <AssessmentStudio user={user} />
           </div>
         )}
       </div>

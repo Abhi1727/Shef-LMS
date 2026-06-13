@@ -11,6 +11,7 @@ import StudentsActivity from './StudentsActivity';
 import OneToOneCourseSelection from './OneToOneCourseSelection';
 import ActivityTimelineChart from './charts/ActivityTimelineChart';
 import { processActivityData, exportToCSV } from '../utils/activityDataProcessor';
+import AssessmentStudio from './AssessmentStudio';
 import './Dashboard.css';
 import './AdminDashboard.css';
 import './AdminAnalytics.css';
@@ -66,7 +67,9 @@ const StudentSearch = memo(({ searchEmail, setSearchEmail, clearSearch, onAddStu
 });
 
 // Batch filter component with search and course filter buttons
-const BatchFilter = memo(({ batchSearch, setBatchSearch, batchCourseFilter, setBatchCourseFilter, filteredCount, totalCount, openModal }) => {
+const BatchFilter = memo(({ batchSearch, setBatchSearch, batchCourseFilter, setBatchCourseFilter, filteredCount, totalCount, openModal, teachers, batchTeacherFilter, setBatchTeacherFilter }) => {
+  const [hoveredCourse, setHoveredCourse] = useState(null);
+
   const handleSearchChange = useCallback((e) => {
     setBatchSearch(e.target.value);
   }, [setBatchSearch]);
@@ -78,14 +81,16 @@ const BatchFilter = memo(({ batchSearch, setBatchSearch, batchCourseFilter, setB
   const clearFilters = useCallback(() => {
     setBatchSearch('');
     setBatchCourseFilter('all');
+    setBatchTeacherFilter('all');
     // Clear localStorage
     try {
       localStorage.removeItem('admin_batch_search');
       localStorage.removeItem('admin_batch_course_filter');
+      localStorage.removeItem('admin_batch_teacher_filter');
     } catch (error) {
       console.warn('Failed to clear batch filters from localStorage:', error);
     }
-  }, [setBatchSearch, setBatchCourseFilter]);
+  }, [setBatchSearch, setBatchCourseFilter, setBatchTeacherFilter]);
 
   const courseOptions = [
     { value: 'all', label: 'All Courses', icon: '📚' },
@@ -96,7 +101,42 @@ const BatchFilter = memo(({ batchSearch, setBatchSearch, batchCourseFilter, setB
     { value: 'one-to-one', label: 'One-to-One', icon: '👤' }
   ];
 
-  const hasActiveFilters = batchSearch.trim() || batchCourseFilter !== 'all';
+  const getCourseTeachers = useCallback((courseValue) => {
+    if (courseValue === 'all') {
+      return teachers || [];
+    }
+    
+    const matchesCourse = (teacherCourse, filterCourseValue) => {
+      if (!teacherCourse || !filterCourseValue) return false;
+      const course = teacherCourse.toLowerCase().trim();
+      const filterValue = filterCourseValue.toLowerCase().trim();
+      
+      if (filterValue === 'all') return true;
+      
+      if (filterValue === 'cyber security') {
+        return course.includes('cyber') || course.includes('security');
+      } else if (filterValue === 'data science') {
+        return course.includes('data') || course.includes('science');
+      } else if (filterValue === 'devops & ai') {
+        return course.includes('devops') && (course.includes('ai') || course.toLowerCase().includes('ai'));
+      } else if (filterValue === 'devops & cloud') {
+        return course.includes('devops') && (course.includes('cloud') || course.includes('cloud'));
+      } else if (filterValue === 'one-to-one') {
+        return course.includes('one') || course.includes('1') || course.includes('single');
+      }
+      
+      return course === filterValue;
+    };
+
+    return (teachers || []).filter(teacher => {
+      if (teacher.assignedCourses && teacher.assignedCourses.length > 0) {
+        return teacher.assignedCourses.some(c => matchesCourse(c, courseValue));
+      }
+      return matchesCourse(teacher.domain, courseValue);
+    });
+  }, [teachers]);
+
+  const hasActiveFilters = batchSearch.trim() || batchCourseFilter !== 'all' || batchTeacherFilter !== 'all';
 
   return (
     <div className="batch-filter-section">
@@ -126,16 +166,64 @@ const BatchFilter = memo(({ batchSearch, setBatchSearch, batchCourseFilter, setB
         
         <div className="batch-filter-row">
           <div className="batch-course-filters">
-            {courseOptions.map(option => (
-              <button
-                key={option.value}
-                onClick={() => handleCourseFilterChange(option.value)}
-                className={`batch-course-btn ${batchCourseFilter === option.value ? 'active' : ''}`}
-              >
-                <span className="btn-icon">{option.icon}</span>
-                <span className="btn-label">{option.label}</span>
-              </button>
-            ))}
+            {courseOptions.map(option => {
+              const activeTeachers = getCourseTeachers(option.value);
+              const isSelected = batchCourseFilter === option.value;
+              
+              return (
+                <div
+                  key={option.value}
+                  className="batch-course-btn-wrapper"
+                  onMouseEnter={() => setHoveredCourse(option.value)}
+                  onMouseLeave={() => setHoveredCourse(null)}
+                >
+                  <button
+                    onClick={() => {
+                      handleCourseFilterChange(option.value);
+                      setBatchTeacherFilter('all');
+                    }}
+                    className={`batch-course-btn ${isSelected ? 'active' : ''}`}
+                  >
+                    <span className="btn-icon">{option.icon}</span>
+                    <span className="btn-label">
+                      {option.label}
+                      {isSelected && batchTeacherFilter !== 'all' && (
+                        <span className="selected-teacher-indicator">
+                          : {teachers.find(t => (t.id || t._id) === batchTeacherFilter)?.name || 'Teacher'}
+                        </span>
+                      )}
+                    </span>
+                  </button>
+                  
+                  {hoveredCourse === option.value && (
+                    <div className="teachers-dropdown">
+                      <div className="dropdown-header">Filter by Teacher</div>
+                      {activeTeachers.length > 0 ? (
+                        activeTeachers.map(teacher => {
+                          const teacherId = teacher.id || teacher._id;
+                          const isTeacherActive = batchTeacherFilter === teacherId && isSelected;
+                          return (
+                            <button
+                              key={teacherId}
+                              onClick={() => {
+                                handleCourseFilterChange(option.value);
+                                setBatchTeacherFilter(teacherId);
+                                setHoveredCourse(null);
+                              }}
+                              className={`dropdown-item ${isTeacherActive ? 'active' : ''}`}
+                            >
+                              👨‍🏫 {teacher.name}
+                            </button>
+                          );
+                        })
+                      ) : (
+                        <div className="dropdown-no-teachers">No teachers assigned</div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
             <button onClick={() => openModal('batch')} className="btn-add batch-filter-add-btn">
               ➕ Add Batch
             </button>
@@ -287,6 +375,15 @@ const AdminDashboard = ({ user, onLogout }) => {
     }
   });
 
+  const [batchTeacherFilter, setBatchTeacherFilter] = useState(() => {
+    try {
+      return localStorage.getItem('admin_batch_teacher_filter') || 'all';
+    } catch (error) {
+      console.warn('Failed to read batch teacher filter from localStorage:', error);
+      return 'all';
+    }
+  });
+
   // Enhanced setter functions with localStorage persistence
   const setBatchSearchWithPersistence = useCallback((value) => {
     setBatchSearch(value);
@@ -303,6 +400,15 @@ const AdminDashboard = ({ user, onLogout }) => {
       localStorage.setItem('admin_batch_course_filter', value);
     } catch (error) {
       console.warn('Failed to save batch course filter to localStorage:', error);
+    }
+  }, []);
+
+  const setBatchTeacherFilterWithPersistence = useCallback((value) => {
+    setBatchTeacherFilter(value);
+    try {
+      localStorage.setItem('admin_batch_teacher_filter', value);
+    } catch (error) {
+      console.warn('Failed to save batch teacher filter to localStorage:', error);
     }
   }, []);
   
@@ -582,6 +688,7 @@ const AdminDashboard = ({ user, onLogout }) => {
     console.log('Batch Filter Debug:', {
       totalBatches: batches?.length || 0,
       courseFilter: batchCourseFilter,
+      teacherFilter: batchTeacherFilter,
       searchTerm: batchSearch,
       sampleBatches: (batches || []).slice(0, 3).map(b => ({ name: b.name, course: b.course }))
     });
@@ -609,6 +716,21 @@ const AdminDashboard = ({ user, onLogout }) => {
       });
       
       console.log('After course filter:', filtered.length, 'batches remaining');
+    }
+
+    // Apply teacher filter
+    if (batchTeacherFilter !== 'all') {
+      const selectedTeacher = teachers.find(t => (t.id || t._id) === batchTeacherFilter);
+      const selectedTeacherName = selectedTeacher ? (selectedTeacher.name || '').toLowerCase().trim() : '';
+
+      filtered = filtered.filter(batch => {
+        const batchTeacherId = batch.teacherId;
+        const batchTeacherName = (batch.teacherName || '').toLowerCase().trim();
+
+        return batchTeacherId === batchTeacherFilter || 
+               (selectedTeacherName && batchTeacherName === selectedTeacherName);
+      });
+      console.log('After teacher filter:', filtered.length, 'batches remaining');
     }
     
     // Apply search filter
@@ -655,7 +777,7 @@ const AdminDashboard = ({ user, onLogout }) => {
     
     console.log('Final filtered count:', filtered.length);
     return filtered;
-  }, [batches, batchCourseFilter, batchSearch, students]);
+  }, [batches, batchCourseFilter, batchTeacherFilter, batchSearch, students, teachers]);
 
   // Optimized individual data loading functions
   const loadStudents = useCallback(async (forceRefresh = false) => {
@@ -2829,10 +2951,11 @@ const AdminDashboard = ({ user, onLogout }) => {
     );
   }
 
-  const moreSections = ['teachers', 'modules', 'projects', 'assessments', 'jobs', 'mentors', 'content', 'activity'];
+  const moreSections = ['teachers', 'modules', 'projects', 'assessments', 'jobs', 'mentors', 'content', 'activity', 'assessment-studio'];
   const isMoreActive = moreSections.includes(activeSection);
   const moreItems = [
     { id: 'teachers', label: 'Teachers', icon: '👨‍🏫' },
+    { id: 'assessment-studio', label: 'Assessment Studio', icon: '🧠' },
     { id: 'modules', label: 'Modules', icon: '📖' },
     { id: 'projects', label: 'Projects', icon: '📁' },
     { id: 'assessments', label: 'Assessments', icon: '✏️' },
@@ -3236,7 +3359,6 @@ const AdminDashboard = ({ user, onLogout }) => {
                 <h2>Manage Batches</h2>
               </div> */}
 
-              {/* Batch Filter Component */}
               <BatchFilter
                 batchSearch={batchSearch}
                 setBatchSearch={setBatchSearchWithPersistence}
@@ -3245,6 +3367,9 @@ const AdminDashboard = ({ user, onLogout }) => {
                 filteredCount={filteredBatches.length}
                 totalCount={(batches || []).length}
                 openModal={openModal}
+                teachers={teachers}
+                batchTeacherFilter={batchTeacherFilter}
+                setBatchTeacherFilter={setBatchTeacherFilterWithPersistence}
               />
 
               <div className="data-table-container">
@@ -4181,6 +4306,12 @@ const AdminDashboard = ({ user, onLogout }) => {
                   </div>
                 </div>
               </div> */}
+            </div>
+          )}
+
+          {activeSection === 'assessment-studio' && (
+            <div className="admin-section">
+              <AssessmentStudio user={user} />
             </div>
           )}
         </div>
@@ -5759,80 +5890,75 @@ const AdminDashboard = ({ user, onLogout }) => {
               {activeProfileTab === 'profile' && (
                 <div className="profile-tab-content">
                   {!editMode ? (
-                    <div className="profile-grid">
-                      <div className="profile-section">
+                    <div className="profile-dense-grid">
+                      <div className="profile-card profile-card-personal">
                         <h3>📝 Personal Information</h3>
-                        <div className="profile-details">
+                        <div className="profile-details compact-details">
                           <div className="detail-item">
-                            <label>Full Name:</label>
+                            <label>Full Name</label>
                             <span>{selectedStudentDetails?.name || 'N/A'}</span>
                           </div>
                           <div className="detail-item">
-                            <label>Email Address:</label>
-                            <span>{selectedStudentDetails?.email || 'N/A'}</span>
+                            <label>Email Address</label>
+                            <span className="truncate-value">{selectedStudentDetails?.email || 'N/A'}</span>
                           </div>
                           <div className="detail-item">
-                            <label>Phone Number:</label>
+                            <label>Phone Number</label>
                             <span>{selectedStudentDetails?.phone || 'N/A'}</span>
                           </div>
-                          <div className="detail-item">
-                            <label>Address:</label>
+                          <div className="detail-item wide-detail">
+                            <label>Address</label>
                             <span>{selectedStudentDetails?.address || 'N/A'}</span>
                           </div>
                         </div>
                       </div>
 
-                      <div className="profile-section">
+                      <div className="profile-card profile-card-academic">
                         <h3>🎓 Academic Information</h3>
-                        <div className="profile-details">
+                        <div className="profile-details compact-details">
                           <div className="detail-item">
-                            <label>Course:</label>
+                            <label>Course</label>
                             <span>{selectedStudentDetails?.course || 'N/A'}</span>
                           </div>
                           <div className="detail-item">
-                            <label>Status:</label>
-                            <span className={`status-badge ${selectedStudentDetails?.status || 'inactive'}`}>
-                              {selectedStudentDetails?.status || 'N/A'}
+                            <label>Status</label>
+                            <span>
+                              <span className={`status-badge ${selectedStudentDetails?.status || 'inactive'}`}>
+                                {selectedStudentDetails?.status || 'N/A'}
+                              </span>
                             </span>
                           </div>
                           <div className="detail-item">
-                            <label>Batch Name:</label>
+                            <label>Batch Name</label>
                             <span>{selectedStudentDetails?.batchName || 'N/A'}</span>
+                          </div>
+                          <div className="detail-item">
+                            <label>Student ID</label>
+                            <span>{selectedStudentDetails?.id || 'N/A'}</span>
                           </div>
                         </div>
                       </div>
 
-                      <div className="profile-section">
+                      <div className="profile-card profile-card-login">
                         <h3>📍 Login Activity</h3>
-                        <div className="profile-details">
-                          <div className="detail-item">
-                            <label>Last Login:</label>
-                            <span>
-                              {selectedStudentDetails?.lastLogin?.timestamp ? 
-                                new Date(selectedStudentDetails.lastLogin.timestamp).toLocaleString() : 
-                                selectedStudentDetails?.lastLoginTimestamp ? 
-                                new Date(selectedStudentDetails.lastLoginTimestamp).toLocaleString() : 
-                                'Never'
-                              }
-                            </span>
+                        {(selectedStudentDetails?.lastLogin || selectedStudentDetails?.lastLoginIP) ? (
+                          <div className="profile-details compact-details">
+                            <div className="detail-item wide-detail">
+                              <label>Last Login</label>
+                              <span>{selectedStudentDetails?.lastLogin?.timestamp ? new Date(selectedStudentDetails.lastLogin.timestamp).toLocaleString() : selectedStudentDetails?.lastLoginTimestamp ? new Date(selectedStudentDetails.lastLoginTimestamp).toLocaleString() : 'Never'}</span>
+                            </div>
+                            <div className="detail-item">
+                              <label>Last IP</label>
+                              <span className="ip-address">{selectedStudentDetails?.lastLoginIP || selectedStudentDetails?.lastLogin?.ipAddress || 'N/A'}</span>
+                            </div>
+                            <div className="detail-item">
+                              <label>Location</label>
+                              <span>{[selectedStudentDetails?.lastLogin?.city, selectedStudentDetails?.lastLogin?.country].filter(Boolean).join(', ') || 'N/A'}</span>
+                            </div>
                           </div>
-                          <div className="detail-item">
-                            <label>Last IP:</label>
-                            <span className="ip-address">
-                              {selectedStudentDetails?.lastLoginIP || 
-                               selectedStudentDetails?.lastLogin?.ipAddress || 
-                               'N/A'
-                              }
-                            </span>
-                          </div>
-                          <div className="detail-item">
-                            <label>Location:</label>
-                            <span>
-                              {[selectedStudentDetails?.lastLogin?.city, selectedStudentDetails?.lastLogin?.country]
-                                .filter(Boolean).join(', ') || 'N/A'}
-                            </span>
-                          </div>
-                        </div>
+                        ) : (
+                          <p className="no-activity">No login activity recorded yet.</p>
+                        )}
                       </div>
                     </div>
                   ) : (

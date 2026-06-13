@@ -43,6 +43,11 @@ const UserSchema = new mongoose.Schema({
   domain: {
     type: String,
   },
+  enrolledCourse: {
+    type: String,
+    enum: ['data-science-ai', 'cyber-security', 'both'],
+    default: 'data-science-ai'
+  },
   assignedCourses: [{
     type: String
   }],

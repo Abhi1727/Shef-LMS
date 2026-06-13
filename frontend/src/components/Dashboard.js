@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import CustomVideoPlayer from './CustomVideoPlayer';
 import StudentProfile from './StudentProfile';
 import StudentAnalyticsDashboard from './StudentAnalyticsDashboard';
@@ -563,10 +564,11 @@ const getFileTypeIcon = (fileName) => {
 };
 
 const Dashboard = ({ user, onLogout }) => {
+  const navigate = useNavigate();
   const [lessons] = useState([]);
   const [loading, setLoading] = useState(true);
   const [activeSection, setActiveSection] = useState('overview');
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [selectedVideo, setSelectedVideo] = useState(null);
   const [darkMode, setDarkMode] = useState(true);
   
@@ -595,6 +597,7 @@ const Dashboard = ({ user, onLogout }) => {
   const [statsError, setStatsError] = useState(null);
 
   // Navigation button width tracking state
+  const [studentAssessments, setStudentAssessments] = useState([]);
   const [navButtonWidths, setNavButtonWidths] = useState({});
   const navButtonRefs = useRef({
     overview: useRef(null),
@@ -847,6 +850,24 @@ const Dashboard = ({ user, onLogout }) => {
     }
   }, []);
 
+  useEffect(() => {
+    const fetchStudentAssessments = async () => {
+      try {
+        const token = localStorage.getItem('token');
+        const res = await fetch('/api/assessment-studio/assessments', {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setStudentAssessments(data);
+        }
+      } catch (err) {
+        console.error('Failed to fetch student assessments', err);
+      }
+    };
+    fetchStudentAssessments();
+  }, []);
+
   // Apply dark mode class to body
   useEffect(() => {
     if (darkMode) {
@@ -919,30 +940,83 @@ const Dashboard = ({ user, onLogout }) => {
     return 'data-science';
   }, [user?.currentCourse]);
 
-  // Load user's progress from Firebase and initialize if new
+  // Load user's progress from localStorage and initialize if new
   const loadUserProgress = useCallback(async () => {
-    // Firebase-based progress tracking has been removed.
-    // Keep local state only so UI continues to work.
-    setViewedFiles([]);
-    setVideoWatchHistory([]);
-  }, []);
+    try {
+      const coursePrefix = getCourseSlug();
+      const storedHistory = localStorage.getItem(`${coursePrefix}_videoWatchHistory`);
+      const storedViewed = localStorage.getItem(`${coursePrefix}_viewedFiles`);
+      
+      if (storedHistory) {
+        setVideoWatchHistory(JSON.parse(storedHistory));
+      } else {
+        setVideoWatchHistory([]);
+      }
+      
+      if (storedViewed) {
+        setViewedFiles(JSON.parse(storedViewed));
+      } else {
+        setViewedFiles([]);
+      }
+    } catch (e) {
+      console.error('Error loading user progress from local storage:', e);
+      setViewedFiles([]);
+      setVideoWatchHistory([]);
+    }
+  }, [getCourseSlug]);
 
-  // Update video progress tracking (local only)
+  // Update video progress tracking (local + persisted)
   const updateVideoProgress = async (videoId, progress, position) => {
+    const coursePrefix = getCourseSlug();
     setVideoWatchHistory(prevHistory => {
       const videoHistory = prevHistory || [];
-      const updatedHistory = videoHistory.map(record => {
-        if (record.videoId === videoId) {
-          return {
-            ...record,
-            watchProgress: Math.max(record.watchProgress, progress),
+      const exists = videoHistory.some(record => record.videoId === videoId);
+      let updatedHistory;
+      
+      if (exists) {
+        updatedHistory = videoHistory.map(record => {
+          if (record.videoId === videoId) {
+            return {
+              ...record,
+              watchProgress: Math.max(record.watchProgress, progress),
+              lastWatchedPosition: position,
+              lastWatchedAt: new Date().toISOString(),
+              isCompleted: progress >= 95
+            };
+          }
+          return record;
+        });
+      } else {
+        updatedHistory = [
+          ...videoHistory,
+          {
+            videoId,
+            watchProgress: progress,
             lastWatchedPosition: position,
             lastWatchedAt: new Date().toISOString(),
             isCompleted: progress >= 95
-          };
+          }
+        ];
+      }
+      
+      localStorage.setItem(`${coursePrefix}_videoWatchHistory`, JSON.stringify(updatedHistory));
+      
+      // Also mark as viewed file if progress started
+      setViewedFiles(prevViewed => {
+        if (!prevViewed.includes(videoId)) {
+          const updatedViewed = [...prevViewed, videoId];
+          localStorage.setItem(`${coursePrefix}_viewedFiles`, JSON.stringify(updatedViewed));
+          return updatedViewed;
         }
-        return record;
+        return prevViewed;
       });
+
+      // Store the exact last played video info to resume it
+      const currentVideo = classroomVideos.find(v => v.id === videoId);
+      if (currentVideo) {
+        localStorage.setItem(`${coursePrefix}_lastPlayedVideo`, JSON.stringify(currentVideo));
+      }
+
       return updatedHistory;
     });
   };
@@ -952,6 +1026,57 @@ const Dashboard = ({ user, onLogout }) => {
     const videoRecord = videoWatchHistory.find(record => record.videoId === videoId);
     return videoRecord ? videoRecord.lastWatchedPosition : 0;
   };
+
+  // Local storage streak helper for real-time streak count
+  const getLocalStorageStreak = useCallback(() => {
+    try {
+      const todayStr = new Date().toISOString().split('T')[0];
+      const lastActive = localStorage.getItem('student_streak_lastActiveDate');
+      let currentStreak = parseInt(localStorage.getItem('student_streak_currentCount') || '1', 10);
+      
+      if (!lastActive) {
+        localStorage.setItem('student_streak_lastActiveDate', todayStr);
+        localStorage.setItem('student_streak_currentCount', '1');
+        return 1;
+      }
+      
+      if (lastActive === todayStr) {
+        return currentStreak;
+      }
+      
+      const lastActiveDate = new Date(lastActive);
+      const todayDate = new Date(todayStr);
+      const diffTime = Math.abs(todayDate - lastActiveDate);
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+      
+      if (diffDays === 1) {
+        currentStreak += 1;
+        localStorage.setItem('student_streak_lastActiveDate', todayStr);
+        localStorage.setItem('student_streak_currentCount', currentStreak.toString());
+      } else if (diffDays > 1) {
+        currentStreak = 1;
+        localStorage.setItem('student_streak_lastActiveDate', todayStr);
+        localStorage.setItem('student_streak_currentCount', '1');
+      }
+      return currentStreak;
+    } catch (e) {
+      console.error(e);
+      return 1;
+    }
+  }, []);
+
+  // Play video helper to immediately save lastPlayedVideo
+  const handlePlayVideo = useCallback((video) => {
+    if (!video) return;
+    setSelectedVideo(video);
+    try {
+      const coursePrefix = getCourseSlug();
+      localStorage.setItem(`${coursePrefix}_lastPlayedVideo`, JSON.stringify(video));
+    } catch (e) {
+      console.error('Error saving last played video:', e);
+    }
+  }, [getCourseSlug]);
+
 
   // Enhanced notes download function
   const handleDownloadNotes = async (video) => {
@@ -1014,6 +1139,18 @@ const Dashboard = ({ user, onLogout }) => {
         window.URL.revokeObjectURL(url);
         document.body.removeChild(a);
         
+        // Track notes downloaded as viewed file
+        setViewedFiles(prevViewed => {
+          const noteKey = `${video.id}_notes`;
+          if (!prevViewed.includes(noteKey)) {
+            const updatedViewed = [...prevViewed, noteKey];
+            const coursePrefix = getCourseSlug();
+            localStorage.setItem(`${coursePrefix}_viewedFiles`, JSON.stringify(updatedViewed));
+            return updatedViewed;
+          }
+          return prevViewed;
+        });
+
         // Show success message
         showToast('Notes downloaded successfully!', 'success');
       } else {
@@ -1036,6 +1173,19 @@ const Dashboard = ({ user, onLogout }) => {
             a.click();
             window.URL.revokeObjectURL(url);
             document.body.removeChild(a);
+
+            // Track notes downloaded as viewed file
+            setViewedFiles(prevViewed => {
+              const noteKey = `${video.id}_notes`;
+              if (!prevViewed.includes(noteKey)) {
+                const updatedViewed = [...prevViewed, noteKey];
+                const coursePrefix = getCourseSlug();
+                localStorage.setItem(`${coursePrefix}_viewedFiles`, JSON.stringify(updatedViewed));
+                return updatedViewed;
+              }
+              return prevViewed;
+            });
+
             showToast('Notes downloaded successfully!', 'success');
             return;
           }
@@ -1974,17 +2124,8 @@ const Dashboard = ({ user, onLogout }) => {
   const relevantJobTypes = isDataScience() ? dsJobTypes : cyberJobTypes;
 
   useEffect(() => {
-    const handleResize = () => {
-      if (window.innerWidth <= 1024) {
-        setSidebarOpen(false);
-      } else {
-        setSidebarOpen(true);
-      }
-    };
-
-    window.addEventListener('resize', handleResize);
-    handleResize(); // Call on mount
-    return () => window.removeEventListener('resize', handleResize);
+    // Start collapsed so the user has full screen mode by default
+    setSidebarOpen(false);
   }, []);
 
   // Load course content when switching to Learn section
@@ -1994,978 +2135,493 @@ const Dashboard = ({ user, onLogout }) => {
     }
   }, [activeSection]);
 
-  if (loading) {
-    return (
-      <div className="loading-container">
-        <div className="loader"></div>
-        <p>Loading your dashboard...</p>
-      </div>
-    );
-  }
+  // Custom global search function
+  const [searchQuery, setSearchQuery] = useState('');
+  const getFilteredSearchItems = () => {
+    if (!searchQuery) return [];
+    const query = searchQuery.toLowerCase();
+    const results = [];
+
+    // Search videos
+    classroomVideos.forEach(video => {
+      if ((video.title || '').toLowerCase().includes(query) || (video.instructor || '').toLowerCase().includes(query)) {
+        results.push({ type: 'video', title: video.title, icon: '🎥', item: video });
+      }
+    });
+
+    // Search modules/lessons
+    const list = isDataScience() ? dsCourseData.modules_detail : cyberCourseData.modules_detail;
+    list.forEach(mod => {
+      if (mod.name.toLowerCase().includes(query)) {
+        results.push({ type: 'module', title: mod.name, icon: '📦', action: () => { setActiveSection('classroom') } });
+      }
+      mod.chapters.forEach(ch => {
+        if (ch.title.toLowerCase().includes(query)) {
+          results.push({ type: 'lesson', title: ch.title, icon: '📄', action: () => { setActiveSection('classroom') } });
+        }
+      });
+    });
+
+    return results;
+  };
 
   return (
-    <div className="dashboard">
-      {/* 3D Educational Background Elements */}
-      <div className="edu-3d-container">
-        <div className="edu-3d-element book">📚</div>
-        <div className="edu-3d-element graduation-cap">🎓</div>
-        <div className="edu-3d-element microscope">🔬</div>
-        <div className="edu-3d-element calculator">🧮</div>
-        <div className="edu-3d-element flask">⚗️</div>
-        <div className="edu-3d-element laptop">💻</div>
-        <div className="edu-3d-element dna">🧬</div>
-        <div className="edu-3d-element brain">🧠</div>
-      </div>
+    <div className="dashboard aetherial-theme dark">
+      {/* Background Neural / Grid Overlay */}
+      <div className="grid-overlay" />
+      <div className="aurora-glow bg-primary top-1/4 left-1/4" />
+      <div className="aurora-glow bg-secondary bottom-1/4 right-1/4" />
 
-      {/* Mobile Menu Toggle */}
-      <button 
-        className="mobile-menu-toggle"
-        onClick={() => setSidebarOpen(!sidebarOpen)}
-      >
-        <span style={{ fontSize: '1.5rem' }}>☰</span>
-      </button>
-
-      {/* Top Navigation Bar */}
-      <header className="top-nav">
-        <div className="top-nav-header">
-          <h2>LMS</h2>
-          <div className="subtitle">Student Portal</div>
+      {/* Modern Sidebar Navigation */}
+      <aside className={`sidebar ${sidebarOpen ? 'expanded' : 'collapsed'}`}>
+        <div className="sidebar-brand" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <div className="brand-logo">🌌</div>
+            <span className="brand-text">Sky States</span>
+          </div>
+          {sidebarOpen && (
+            <button 
+              className="sidebar-close-btn" 
+              onClick={() => setSidebarOpen(false)}
+              style={{ background: 'none', border: 'none', color: 'var(--on-surface-variant)', fontSize: '18px', cursor: 'pointer' }}
+            >
+              ✖
+            </button>
+          )}
         </div>
-        
-        <nav className="top-nav-menu-modern">
-          <div className="nav-slider-container">
-            <div 
-              className="nav-slider-indicator"
-              style={{
-                left: getNavIndicatorPosition(),
-                width: getNavIndicatorWidth()
-              }}
-            />
-            <button 
-              ref={navButtonRefs.current.overview}
-              className={`nav-item-modern ${activeSection === 'overview' ? 'active' : ''}`}
-              onClick={() => setActiveSection('overview')}
-              title="Home"
-            >
-              <span className="nav-icon-modern">🏠</span>
-              <span className="nav-text">Home</span>
-              <span className="nav-badge">0</span>
-            </button>
-            
-            <button 
-              ref={navButtonRefs.current.classroom}
-              className={`nav-item-modern ${activeSection === 'classroom' ? 'active' : ''}`}
-              onClick={() => setActiveSection('classroom')}
-              title="Classroom"
-            >
-              <span className="nav-icon-modern">🎥</span>
-              <span className="nav-text">Classroom</span>
-              <span className="nav-badge notification">{classroomVideos.length}</span>
-            </button>
-            
-            {/* <button 
-              className={`nav-item-modern ${activeSection === 'analytics' ? 'active' : ''}`}
-              onClick={() => setActiveSection('analytics')}
-              title="Analytics"
-            >
-              <span className="nav-icon-modern">📊</span>
-              <span className="nav-text">Analytics</span>
-              <span className="nav-badge">0</span>
-            </button> */}
-            
-            <button 
-              ref={navButtonRefs.current.profile}
-              className={`nav-item-modern ${activeSection === 'profile' ? 'active' : ''}`}
-              onClick={() => setActiveSection('profile')}
-              title="My Profile"
-            >
-              <span className="nav-icon-modern">👤</span>
-              <span className="nav-text">Profile</span>
-              <span className="nav-badge">0</span>
-            </button>
-          </div>
+
+        <nav className="sidebar-menu">
+          <button 
+            className={`menu-item ${activeSection === 'overview' ? 'active' : ''}`}
+            onClick={() => { setActiveSection('overview'); setSidebarOpen(false); }}
+          >
+            <span className="menu-icon">🏠</span>
+            <span className="menu-label">Home</span>
+          </button>
           
-          <div className="nav-actions">
-            <button 
-              className="nav-item-modern theme-toggle" 
-              onClick={toggleDarkMode}
-              title={darkMode ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
-            >
-              <span className="nav-icon-modern theme-icon">{darkMode ? '☀️' : '🌙'}</span>
-              <span className="nav-text theme-text">{darkMode ? 'Light' : 'Dark'}</span>
-            </button>
-            
-            <button 
-              className="nav-item-modern logout-btn-modern" 
-              onClick={onLogout}
-              title="Logout"
-            >
-              <span className="nav-icon-modern">🚪</span>
-              <span className="nav-text">Logout</span>
-            </button>
-          </div>
+          <button 
+            className={`menu-item ${activeSection === 'classroom' ? 'active' : ''}`}
+            onClick={() => { setActiveSection('classroom'); setSidebarOpen(false); }}
+          >
+            <span className="menu-icon">🎥</span>
+            <span className="menu-label">Classroom</span>
+            {classroomVideos.length > 0 && (
+              <span className="menu-badge">{classroomVideos.length}</span>
+            )}
+          </button>
+
+          <button 
+            className={`menu-item ${activeSection === 'assessments' ? 'active' : ''}`}
+            onClick={() => { setActiveSection('assessments'); setSidebarOpen(false); }}
+          >
+            <span className="menu-icon">✏️</span>
+            <span className="menu-label">Assessments</span>
+            {studentAssessments.length > 0 && (
+              <span className="menu-badge">{studentAssessments.length}</span>
+            )}
+          </button>
+          
+          <button 
+            className="menu-item"
+            onClick={() => { navigate('/resources'); setSidebarOpen(false); }}
+          >
+            <span className="menu-icon">📚</span>
+            <span className="menu-label">Resources</span>
+          </button>
+
+          <button 
+            className={`menu-item ${activeSection === 'profile' ? 'active' : ''}`}
+            onClick={() => { setActiveSection('profile'); setSidebarOpen(false); }}
+          >
+            <span className="menu-icon">👤</span>
+            <span className="menu-label">Profile</span>
+          </button>
+
+          <button 
+            className="menu-item logout-menu-btn"
+            onClick={onLogout}
+          >
+            <span className="menu-icon">🚪</span>
+            <span className="menu-label">Logout</span>
+          </button>
         </nav>
-        
-        <div className="top-nav-spacer"></div>
-      </header>
+      </aside>
 
-      {/* Main Content */}
-      <main className="main-content">
+      {/* Sidebar overlay backdrop for mobile/collapsing close */}
+      {sidebarOpen && (
+        <div 
+          className="sidebar-overlay visible" 
+          onClick={() => setSidebarOpen(false)} 
+          style={{ zIndex: 99, position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)' }} 
+        />
+      )}
 
-        {/* Dashboard Content */}
-        <div className="dashboard-content">
+      {/* Main Layout Container */}
+      <div className="main-layout">
+        {/* Top Header Bar */}
+        <header className="aetherial-header">
+          <button 
+            className="sidebar-toggle"
+            onClick={() => setSidebarOpen(!sidebarOpen)}
+            aria-label="Toggle Sidebar"
+          >
+            ☰
+          </button>
+          
+          <div className="global-search-container">
+            <span className="search-icon">🔍</span>
+            <input 
+              type="text" 
+              placeholder="Search lessons, videos, resources, modules..." 
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="global-search-input"
+            />
+            {searchQuery && (
+              <div className="search-results-dropdown glass-card">
+                {getFilteredSearchItems().length > 0 ? (
+                  getFilteredSearchItems().map((res, i) => (
+                    <div 
+                      key={i} 
+                      className="search-result-item" 
+                      onClick={() => {
+                        if (res.item) {
+                          handlePlayVideo(res.item);
+                        } else if (res.action) {
+                          res.action();
+                        }
+                        setSearchQuery('');
+                      }}
+                    >
+                      <span className="res-icon">{res.icon}</span>
+                      <span className="res-title">{res.title}</span>
+                      <span className="res-type">{res.type}</span>
+                    </div>
+                  ))
+                ) : (
+                  <div className="no-search-results">No matches found</div>
+                )}
+              </div>
+            )}
+          </div>
+
+          <div className="header-user-profile">
+            <span className="streak-badge">🔥 {Math.max(realTimeStats?.streak?.current || 0, getLocalStorageStreak())} Days</span>
+            <div className="user-avatar-rect" onClick={() => setActiveSection('profile')}>
+              {user?.name?.charAt(0) || 'S'}
+            </div>
+          </div>
+        </header>
+
+        {/* Dashboard Content Pages */}
+        <main className="main-content-scroll">
           {activeSection === 'overview' && (
-            <div className="animate-in">
-              
-              {/* Enhanced Welcome Header with Glassmorphism */}
-              <div className="welcome-header-modern">
-                <div className="welcome-glass-card">
-                  <div className="welcome-content">
-                    <div className="greeting-section">
-                      <h1 className="welcome-title-modern">
-                        {getPersonalizedGreeting()}, <span className="user-name">{user?.name}</span>! 
-                        <span className="greeting-emoji">{getGreetingEmoji()}</span>
-                      </h1>
-                      <div className="typing-container">
-                        <TypingAnimation 
-                          texts={getDynamicMessages(isDataScience())} 
-                          speed={80} 
-                          pauseDuration={3000} 
-                        />
-                      </div>
+            <div className="overview-page animate-in">
+              {/* Hero Banner Section */}
+              <section className="hero-section glass-card">
+                <div className="hero-text-content">
+                  <span className="badge-mono">AETHERIAL ACADEMY</span>
+                  <h1 className="hero-title shimmer-text">
+                    Transform Your Mind. <br />Build Future Architecture.
+                  </h1>
+                  <p className="hero-desc">
+                    Welcome back, <strong className="glow-text">{user?.name}</strong>. You are currently enrolled in <strong>{user?.currentCourse || 'Data Science & AI'}</strong>.
+                  </p>
+                  <div className="hero-actions">
+                    <button className="shimmer-btn primary-btn" onClick={() => setActiveSection('classroom')}>
+                      Resume Learning
+                    </button>
+                  </div>
+                </div>
+                <div className="hero-visual-card">
+                  <div className="metric-ring-large">
+                    <svg viewBox="0 0 100 100">
+                      <circle cx="50" cy="50" r="45" className="ring-bg" />
+                      <circle cx="50" cy="50" r="45" className="ring-fill" strokeDasharray="283" strokeDashoffset={283 - (283 * progressPercent) / 100} />
+                    </svg>
+                    <div className="ring-inner">
+                      <span className="percentage-number">{progressPercent}%</span>
+                      <span className="percentage-label">COMPLETE</span>
                     </div>
-                    
-                    <div className="quick-stats-row">
-                      <div 
-                        className={`stat-pill ${loadingStats ? 'loading' : ''}`}
-                        onClick={() => handleCardClick('progress')}
-                        title="Click to view detailed progress"
-                      >
-                        <div className="stat-icon-modern">📈</div>
-                        <div className="stat-info">
-                          <div className="stat-value-modern">
-                            {loadingStats ? '...' : progressPercent + '%'}
+                  </div>
+                </div>
+              </section>
+
+              {/* Continue Learning & Timeline Columns */}
+              <div className="dashboard-columns-grid">
+                <div className="column-left">
+                  {/* Continue Learning Progress Card */}
+                  <section className="dashboard-widget-section glass-card">
+                    <div className="widget-header">
+                      <span className="widget-icon">⚡</span>
+                      <h2 className="widget-title">Continue Learning</h2>
+                    </div>
+                    <div className="widget-body">
+                      {(() => {
+                        const coursePrefix = getCourseSlug();
+                        const lastPlayed = localStorage.getItem(`${coursePrefix}_lastPlayedVideo`);
+                        const videoToResume = lastPlayed ? JSON.parse(lastPlayed) : (classroomVideos.length > 0 ? classroomVideos[0] : null);
+                        
+                        if (videoToResume) {
+                          const progressRecord = videoWatchHistory.find(r => r.videoId === videoToResume.id);
+                          const progressPercentage = progressRecord ? Math.round(progressRecord.watchProgress) : 0;
+                          
+                          return (
+                            <div className="continue-learning-video-card" onClick={() => handlePlayVideo(videoToResume)}>
+                              <div className="video-card-thumb">
+                                <span className="play-button-overlay">▶</span>
+                              </div>
+                              <div className="video-card-meta">
+                                <span className="lesson-badge-mono">RESUME SESSION</span>
+                                <h3 className="video-card-title">{videoToResume.title}</h3>
+                                <p className="video-card-desc">Instructor: {videoToResume.instructor || 'Staff'}</p>
+                                <div className="progress-bar-thin">
+                                  <div className="progress-bar-fill" style={{ width: `${progressPercentage || 10}%` }} />
+                                </div>
+                                <span style={{ fontSize: '11px', color: 'var(--on-surface-variant)', marginTop: '4px' }}>
+                                  {progressPercentage}% Watched
+                                </span>
+                              </div>
+                            </div>
+                          );
+                        } else {
+                          return <p className="empty-text">No class sessions available yet.</p>;
+                        }
+                      })()}
+                    </div>
+                  </section>
+
+                  {/* Learning Journey / Roadmap Section */}
+                  <section className="dashboard-widget-section glass-card">
+                    <div className="widget-header">
+                      <span className="widget-icon">🛣️</span>
+                      <h2 className="widget-title">Learning Journey</h2>
+                    </div>
+                    <div className="widget-body">
+                      <div className="roadmap-journey">
+                        <div className="roadmap-progress-bar" />
+                        <div className="roadmap-steps">
+                          <div className="roadmap-step completed">
+                            <div className="step-marker">✓</div>
+                            <div className="step-content">
+                              <h4 className="step-title">Foundation & Basics</h4>
+                              <p className="step-desc">Core variables, environments, and setups.</p>
+                            </div>
                           </div>
-                          <div className="stat-label-modern">Progress</div>
-                        </div>
-                      </div>
-                      <div 
-                        className={`stat-pill ${loadingStats ? 'loading' : ''}`}
-                        onClick={() => handleCardClick('videos')}
-                        title="Click to view classroom videos"
-                      >
-                        <div className="stat-icon-modern">🎥</div>
-                        <div className="stat-info">
-                          <div className="stat-value-modern">
-                            {loadingStats ? '...' : classroomVideos.length}
+                          <div className="roadmap-step active">
+                            <div className="step-marker">●</div>
+                            <div className="step-content">
+                              <h4 className="step-title">Intermediate Deep Dive</h4>
+                              <p className="step-desc">Interactive scripts and API pipelines.</p>
+                            </div>
                           </div>
-                          <div className="stat-label-modern">Videos</div>
+                          <div className="roadmap-step locked">
+                            <div className="step-marker">🔒</div>
+                            <div className="step-content">
+                              <h4 className="step-title">Advanced Capstone</h4>
+                              <p className="step-desc">High-performance production integrations.</p>
+                            </div>
+                          </div>
                         </div>
                       </div>
                     </div>
-                    
-                    <div className="action-buttons-row">
-                      <button 
-                        className="action-button primary"
-                        onClick={() => setActiveSection('classroom')}
-                      >
-                        <span className="button-icon">🎥</span>
-                        Continue Learning
-                      </button>
-                      {/* <button 
-                        className="action-button secondary"
-                        onClick={() => setActiveSection('progress')}
-                      >
-                        <span className="button-icon">📊</span>
-                        View Progress
-                      </button> */}
-                    </div>
-                  </div>
-                </div>
-              </div>
-              
-              {/* Modern Animated Gradient Background */}
-              {/* <AnimatedGradientBackground /> */}
-
-              {/* Technology Image Slider */}
-              {/* <ImageSlider setActiveSection={setActiveSection} /> */}
-
-              {/* Modern Stats Dashboard - Commented Out */}
-              {/* 
-              <div className="stats-dashboard-modern">
-                <div className="stats-header">
-                  <h2 className="stats-title">Your Learning Overview</h2>
-                  <p className="stats-subtitle">Track your progress and achievements</p>
-                </div>
-                
-                <div className="stats-grid-modern">
-                  {/* <div className="stat-card-modern">
-                    <div className="stat-ring-container">
-                      <svg className="progress-ring" width="80" height="80">
-                        <circle
-                          className="progress-ring-bg"
-                          cx="40"
-                          cy="40"
-                          r="35"
-                          fill="transparent"
-                          stroke="rgba(255, 255, 255, 0.1)"
-                          strokeWidth="6"
-                        />
-                        <circle
-                          className="progress-ring-fill"
-                          cx="40"
-                          cy="40"
-                          r="35"
-                          fill="transparent"
-                          stroke="url(#gradient1)"
-                          strokeWidth="6"
-                          strokeLinecap="round"
-                          strokeDasharray={`${2 * Math.PI * 35}`}
-                          strokeDashoffset={`${2 * Math.PI * 35 * (1 - Math.min(courseData.modules / 10, 1))}`}
-                          transform="rotate(-90 40 40)"
-                        />
-                        <defs>
-                          <linearGradient id="gradient1" x1="0%" y1="0%" x2="100%" y2="100%">
-                            <stop offset="0%" stopColor="#667eea" />
-                            <stop offset="100%" stopColor="#764ba2" />
-                          </linearGradient>
-                        </defs>
-                      </svg>
-                      <div className="stat-icon-center">📚</div>
-                    </div>
-                    <div className="stat-content">
-                      <div className="stat-value-modern">{courseData.modules}</div>
-                      <div className="stat-label-modern">Total Modules</div>
-                      <div className="stat-progress">70% Complete</div>
-                    </div>
-                  </div> */}
-
-                  {/* <div className="stat-card-modern">
-                    <div className="stat-ring-container">
-                      <svg className="progress-ring" width="80" height="80">
-                        <circle
-                          className="progress-ring-bg"
-                          cx="40"
-                          cy="40"
-                          r="35"
-                          fill="transparent"
-                          stroke="rgba(255, 255, 255, 0.1)"
-                          strokeWidth="6"
-                        />
-                        <circle
-                          className="progress-ring-fill"
-                          cx="40"
-                          cy="40"
-                          r="35"
-                          fill="transparent"
-                          stroke="url(#gradient2)"
-                          strokeWidth="6"
-                          strokeLinecap="round"
-                          strokeDasharray={`${2 * Math.PI * 35}`}
-                          strokeDashoffset={`${2 * Math.PI * 35 * (1 - progressPercent / 100)}`}
-                          transform="rotate(-90 40 40)"
-                        />
-                        <defs>
-                          <linearGradient id="gradient2" x1="0%" y1="0%" x2="100%" y2="100%">
-                            <stop offset="0%" stopColor="#f093fb" />
-                            <stop offset="100%" stopColor="#f5576c" />
-                          </linearGradient>
-                        </defs>
-                      </svg>
-                      <div className="stat-icon-center">📈</div>
-                    </div>
-                    <div className="stat-content">
-                      <div className="stat-value-modern">{progressPercent}%</div>
-                      <div className="stat-label-modern">Course Progress</div>
-                      <div className="stat-progress">{viewedFiles.length} files viewed</div>
-                    </div>
-                  </div> */}
-
-                  {/* <div className="stat-card-modern">
-                    <div className="stat-ring-container">
-                      <svg className="progress-ring" width="80" height="80">
-                        <circle
-                          className="progress-ring-bg"
-                          cx="40"
-                          cy="40"
-                          r="35"
-                          fill="transparent"
-                          stroke="rgba(255, 255, 255, 0.1)"
-                          strokeWidth="6"
-                        />
-                        <circle
-                          className="progress-ring-fill"
-                          cx="40"
-                          cy="40"
-                          r="35"
-                          fill="transparent"
-                          stroke="url(#gradient3)"
-                          strokeWidth="6"
-                          strokeLinecap="round"
-                          strokeDasharray={`${2 * Math.PI * 35}`}
-                          strokeDashoffset={`${2 * Math.PI * 35 * (1 - Math.min(classroomVideos.length / 20, 1))}`}
-                          transform="rotate(-90 40 40)"
-                        />
-                        <defs>
-                          <linearGradient id="gradient3" x1="0%" y1="0%" x2="100%" y2="100%">
-                            <stop offset="0%" stopColor="#4facfe" />
-                            <stop offset="100%" stopColor="#00f2fe" />
-                          </linearGradient>
-                        </defs>
-                      </svg>
-                      <div className="stat-icon-center">🎥</div>
-                    </div>
-                    <div className="stat-content">
-                      <div className="stat-value-modern">{classroomVideos.length}</div>
-                      <div className="stat-label-modern">Class Videos</div>
-                      <div className="stat-progress">{Math.min(classroomVideos.length, 20)} available</div>
-                    </div>
-                  </div> */}
-
-                  {/* <div className="stat-card-modern">
-                    <div className="stat-ring-container">
-                      <svg className="progress-ring" width="80" height="80">
-                        <circle
-                          className="progress-ring-bg"
-                          cx="40"
-                          cy="40"
-                          r="35"
-                          fill="transparent"
-                          stroke="rgba(255, 255, 255, 0.1)"
-                          strokeWidth="6"
-                        />
-                        <circle
-                          className="progress-ring-fill"
-                          cx="40"
-                          cy="40"
-                          r="35"
-                          fill="transparent"
-                          stroke="url(#gradient4)"
-                          strokeWidth="6"
-                          strokeLinecap="round"
-                          strokeDasharray={`${2 * Math.PI * 35}`}
-                          strokeDashoffset={`${2 * Math.PI * 35 * (1 - (realTimeStats?.streak?.current || calculateStreak()) / 30)}`}
-                          transform="rotate(-90 40 40)"
-                        />
-                        <defs>
-                          <linearGradient id="gradient4" x1="0%" y1="0%" x2="100%" y2="100%">
-                            <stop offset="0%" stopColor="#fa709a" />
-                            <stop offset="100%" stopColor="#fee140" />
-                          </linearGradient>
-                        </defs>
-                      </svg>
-                      <div className="stat-icon-center">🔥</div>
-                    </div>
-                    <div className="stat-content">
-                      <div className="stat-value-modern">{loadingStats ? '...' : (realTimeStats?.streak?.current || calculateStreak())}</div>
-                      <div className="stat-label-modern">Day Streak</div>
-                      <div className="stat-progress">Keep it going!</div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-              */}
-
-              {/* Current Course Section */}
-              {/* Commented out - Your Learning Journey section disabled */}
-              {/* <div className="content-section animate-in">
-                <div className="section-header">
-                  <div className="section-title">
-                    <div className="section-icon">🎓</div>
-                    Your Learning Journey
-                  </div>
+                  </section>
                 </div>
 
-                <div className="course-grid">
-                  <div className="course-card">
-                    <div className="course-header">
-                      <div className="course-title">{courseData.title}</div>
-                      <div className="course-meta">
-                        {courseData.modules} modules • {courseData.duration}
+                <div className="column-right">
+                  {/* Today's Learning Stats / Quick Actions */}
+                  <section className="dashboard-widget-section glass-card">
+                    <div className="widget-header">
+                      <span className="widget-icon">📊</span>
+                      <h2 className="widget-title">Today's Achievements</h2>
+                    </div>
+                    <div className="widget-body grid-stats-2">
+                      <div className="dashboard-stat-pill">
+                        <span className="pill-number">{Math.max(realTimeStats?.streak?.current || 0, getLocalStorageStreak())}</span>
+                        <span className="pill-label">Daily Streak</span>
+                      </div>
+                      <div className="dashboard-stat-pill">
+                        <span className="pill-number">{viewedFiles.length}</span>
+                        <span className="pill-label">Files Viewed</span>
+                      </div>
+                      <div className="dashboard-stat-pill">
+                        <span className="pill-number">{videoWatchHistory.filter(r => r.watchProgress > 0).length}</span>
+                        <span className="pill-label">Videos Watched</span>
+                      </div>
+                      <div className="dashboard-stat-pill">
+                        <span className="pill-number">
+                          {(() => {
+                            const videoSeconds = videoWatchHistory.reduce((acc, curr) => acc + (curr.lastWatchedPosition || 0), 0);
+                            const videoHours = videoSeconds / 3600;
+                            const noteFilesCount = viewedFiles.filter(id => id.includes('_notes')).length;
+                            const noteHours = noteFilesCount * 0.25;
+                            const totalHours = videoHours + noteHours;
+                            const baselineHours = (viewedFiles.length * 0.6);
+                            const finalHours = totalHours > 0 ? Math.max(totalHours, baselineHours) : 0;
+                            return finalHours > 0 ? finalHours.toFixed(1) + 'h' : '0.0h';
+                          })()}
+                        </span>
+                        <span className="pill-label">Learning Hours</span>
                       </div>
                     </div>
-                    <div className="course-body">
-                      <div className="course-progress">
-                        <div className="course-stats">
-                          <span>Progress: {progressPercent}%</span>
-                          <span>{viewedFiles.length} of {courseData.totalFiles || '...'} files viewed</span>
-                        </div>
-                        <div className="progress-bar">
-                          <div 
-                            className="progress-fill" 
-                            style={{ width: `${progressPercent}%` }}
-                          ></div>
-                        </div>
-                      </div>
-                      <button 
-                        className="nav-item" 
-                        style={{ width: '100%', justifyContent: 'center', marginTop: '1rem' }}
-                        onClick={() => setActiveSection('courses')}
-                      >
-                        <span className="nav-icon">📖</span>
-                        <span>Continue Learning</span>
-                      </button>
+                  </section>
+
+                  {/* Upcoming Zoom Class Classroom Preview */}
+                  <section className="dashboard-widget-section glass-card">
+                    <div className="widget-header">
+                      <span className="widget-icon">🎥</span>
+                      <h2 className="widget-title">Classroom Preview</h2>
                     </div>
-                  </div>
+                    <div className="widget-body">
+                      {batchInfo ? (
+                        <div className="classroom-preview-card">
+                          <div className="preview-header">
+                            <span className="batch-name-badge">{batchInfo.name}</span>
+                            <span className="pulse-dot">🔴 Live Soon</span>
+                          </div>
+                          <p className="preview-schedule">Schedule: {batchInfo.schedule?.days || 'N/A'} at {batchInfo.schedule?.time || 'N/A'}</p>
+                          <button className="join-session-btn" onClick={() => setActiveSection('classroom')}>
+                            Go to Classroom
+                          </button>
+                        </div>
+                      ) : (
+                        <p className="empty-text">No active batch assigned.</p>
+                      )}
+                    </div>
+                  </section>
                 </div>
-              </div> */}
-
-              
-              {/* Quick Actions */}
-              <div className="content-section animate-in">
-                <div className="section-header">
-                  <div className="section-title">
-                    {/* <div className="section-icon">⚡</div> */}
-                    {/* Quick Actions */}
-                  </div>
-                </div>
-
-                {/* Commented out - Bottom action cards disabled */}
-                {/* <div className="stats-grid">
-                  <button 
-                    className="stat-card"
-                    onClick={() => setActiveSection('liveClasses')}
-                    style={{ cursor: 'pointer' }}
-                  >
-                    <div className="stat-icon">📡</div>
-                    <div className="stat-value">Live</div>
-                    <div className="stat-label">Join Classes</div>
-                  </button>
-                  <button 
-                    className="stat-card"
-                    onClick={() => setActiveSection('classroom')}
-                    style={{ cursor: 'pointer' }}
-                  >
-                    <div className="stat-icon">🎥</div>
-                    <div className="stat-value">Watch</div>
-                    <div className="stat-label">Recordings</div>
-                  </button>
-                  <button 
-                    className="stat-card"
-                    onClick={() => setShowProfileModal(true)}
-                    style={{ cursor: 'pointer' }}
-                  >
-                    <div className="stat-icon">👤</div>
-                    <div className="stat-value">View</div>
-                    <div className="stat-label">Profile</div>
-                  </button>
-                  <button 
-                    className="stat-card"
-                    onClick={() => window.open('https://skystates.com/', '_blank')}
-                    style={{ cursor: 'pointer' }}
-                  >
-                    <div className="stat-icon">🌐</div>
-                    <div className="stat-value">Visit</div>
-                    <div className="stat-label">SkyStates.com</div>
-                  </button>
-                </div> */}
               </div>
             </div>
           )}
 
-          {/* Classroom Section */}
           {activeSection === 'classroom' && (
-            <div className="animate-in">
-              <div className="header">
-                <h1>🎥 Classroom Recordings</h1>
-                <div className="subtitle">
-                  Access your class recordings and learning materials
-                </div>
+            <div className="classroom-page animate-in">
+              <div className="page-header">
+                <h1 className="page-title">🎥 Classroom Recordings</h1>
+                <p className="page-subtitle">Access your batch live sessions, record replays, and download notes.</p>
               </div>
 
               {batchInfo && (
-                <div className="batch-details-banner">
-                  <div className="batch-details-left">
-                    <div className="batch-name">{batchInfo.name}</div>
-                    <div className="batch-meta-row">
-                      <span className="meta-item">Course: {batchInfo.course || 'N/A'}</span>
-                      {batchInfo.teacherName && (
-                        <span className="meta-item">Teacher: {batchInfo.teacherName}</span>
-                      )}
-                    </div>
+                <div className="batch-details-banner glass-card">
+                  <div className="batch-banner-left">
+                    <span className="batch-banner-title">{batchInfo.name}</span>
+                    <span className="batch-banner-meta">Course: {batchInfo.course} | Instructor: {batchInfo.teacherName}</span>
                   </div>
-                  <div className="batch-details-right">
-                    {batchInfo.schedule && (batchInfo.schedule.days || batchInfo.schedule.time) ? (
-                      <>
-                        <div className="timing-label">Batch Timing (EST / CST / PST)</div>
-                        {batchInfo.schedule.days && (
-                          <div className="timing-days">Days: {batchInfo.schedule.days}</div>
-                        )}
-                        <div className="timing-value-multi">
-                          {(() => {
-                            // Safely extract time range
-                            const timeString = batchInfo.schedule?.time;
-                            if (!timeString || typeof timeString !== 'string') {
-                              return (
-                                <>
-                                  <div className="timing-row">
-                                    <span className="timing-zone">EST</span>
-                                    <span className="timing-text">Time not available</span>
-                                  </div>
-                                  <div className="timing-row">
-                                    <span className="timing-zone">CST</span>
-                                    <span className="timing-text">Time not available</span>
-                                  </div>
-                                  <div className="timing-row">
-                                    <span className="timing-zone">PST</span>
-                                    <span className="timing-text">Time not available</span>
-                                  </div>
-                                </>
-                              );
-                            }
-                            
-                            const timeParts = timeString.split(' - ');
-                            const startTime = timeParts[0]?.trim();
-                            const endTime = timeParts[1]?.trim();
-                            
-                            if (!startTime || !endTime) {
-                              return (
-                                <>
-                                  <div className="timing-row">
-                                    <span className="timing-zone">EST</span>
-                                    <span className="timing-text">Invalid time format</span>
-                                  </div>
-                                  <div className="timing-row">
-                                    <span className="timing-zone">CST</span>
-                                    <span className="timing-text">Invalid time format</span>
-                                  </div>
-                                  <div className="timing-row">
-                                    <span className="timing-zone">PST</span>
-                                    <span className="timing-text">Invalid time format</span>
-                                  </div>
-                                </>
-                              );
-                            }
-                            
-                            return (
-                              <>
-                                <div className="timing-row">
-                                  <span className="timing-zone">EST</span>
-                                  <span className="timing-text">
-                                    {convertIstRangeToZone(startTime, endTime, 'EST') || 'Time conversion failed'}
-                                  </span>
-                                </div>
-                                <div className="timing-row">
-                                  <span className="timing-zone">CST</span>
-                                  <span className="timing-text">
-                                    {convertIstRangeToZone(startTime, endTime, 'CST') || 'Time conversion failed'}
-                                  </span>
-                                </div>
-                                <div className="timing-row">
-                                  <span className="timing-zone">PST</span>
-                                  <span className="timing-text">
-                                    {convertIstRangeToZone(startTime, endTime, 'PST') || 'Time conversion failed'}
-                                  </span>
-                                </div>
-                              </>
-                            );
-                          })()}
-                        </div>
-                      </>
-                    ) : (
-                      <>
-                        <div className="timing-label">Batch Timing (EST / CST / PST)</div>
-                        <div className="timing-value">Not set yet</div>
-                      </>
-                    )}
+                  <div className="batch-banner-right">
+                    <span className="schedule-label">Schedules (EST / CST / PST):</span>
+                    <span className="schedule-time">{batchInfo.schedule?.days} @ {batchInfo.schedule?.time}</span>
                   </div>
                 </div>
               )}
 
               {classroomVideos.length > 0 ? (
-                <div className="content-section">
-                  <div className="section-header">
-                    <div className="section-title">
-                      <div className="section-icon">📹</div>
-                      Available Recordings ({classroomVideos.length})
-                    </div>
-                  </div>
-
-                  <div className="cards-grid">
-                    {classroomVideos.map((video, index) => {
-                      const studentBatchId = batchInfo?.id ? String(batchInfo.id) : null;
-                      const videoBatchId = video.batchId ? String(video.batchId) : null;
-                      const canSeeNotes =
-                        !!video.notesAvailable &&
-                        !!video.notesFilePath &&
-                        (!videoBatchId || (studentBatchId && videoBatchId === studentBatchId));
-                      
-                      const isOneToOne = video.isOneToOne || video.videoSource === 'one-to-one';
-                      
-                      // Debug logging for one-to-one videos
-                      if (isOneToOne) {
-                        console.log('🔍 One-to-One Video Debug:', {
-                          title: video.title,
-                          classDate: video.classDate,
-                          classTime: video.classTime,
-                          videoSource: video.videoSource,
-                          isOneToOne: video.isOneToOne
-                        });
-                      }
-
-                      return (
-                      <div 
-                        key={video.id} 
-                        className={`project-card ${isOneToOne ? 'one-to-one-video' : ''}`}
-                        style={{ cursor: 'pointer' }}
-                        onClick={() => setSelectedVideo(video)}
-                      >
-                        {/* Debug: Log video data */}
-                        {console.log('Dashboard video data:', { 
-                          id: video.id, 
-                          title: video.title, 
-                          instructor: video.instructor, 
-                          date: video.date,
-                          createdAt: video.createdAt 
-                        })}
-                        <div className="session-rank-badge">
-                          {index === 0
-                            ? 'Latest Session'
-                            : index === 1
-                              ? '2nd Latest'
-                              : `Session ${index + 1}`}
-                        </div>
-                        
-                        {/* Add one-to-one badge */}
-                        {isOneToOne && (
-                          <div className="video-badge one-to-one-badge">
-                            👥 One-to-One
-                          </div>
+                <div className="videos-grid-layout">
+                  {classroomVideos.map((video, idx) => (
+                    <div 
+                      key={video.id} 
+                      className="video-recording-card glass-card"
+                      onClick={() => handlePlayVideo(video)}
+                    >
+                      <div className="video-card-thumbnail-wrapper">
+                        {video.youtubeVideoId ? (
+                          <img 
+                            src={`https://img.youtube.com/vi/${video.youtubeVideoId}/mqdefault.jpg`} 
+                            alt={video.title} 
+                            className="video-thumbnail-img"
+                          />
+                        ) : (
+                          <div className="video-thumbnail-fallback">🎥</div>
                         )}
-                        {/* Video Thumbnail */}
-                        <div style={{ 
-                          position: 'relative',
-                          borderRadius: '12px',
-                          overflow: 'hidden',
-                          marginBottom: '15px',
-                          height: '180px',
-                          backgroundColor: '#f7fafc'
-                        }}>
-                          {((video.videoSource === 'youtube-url' && videoThumbnails[video.id]) || (video.videoSource === 'one-to-one' && video.youtubeVideoId)) ? (
-                            <img 
-                              src={video.videoSource === 'youtube-url' ? videoThumbnails[video.id] : `https://img.youtube.com/vi/${video.youtubeVideoId}/mqdefault.jpg`}
-                              alt={video.title}
-                              style={{
-                                width: '100%',
-                                height: '100%',
-                                objectFit: 'cover',
-                                borderRadius: '12px'
-                              }}
-                              onError={(e) => {
-                                // Fallback to placeholder if thumbnail fails
-                                e.target.style.display = 'none';
-                                e.target.nextSibling.style.display = 'flex';
-                              }}
-                            />
-                          ) : null}
-                          
-                          {/* Fallback placeholder */}
-                          <div style={{
-                            display: ((video.videoSource === 'youtube-url' && videoThumbnails[video.id]) || (video.videoSource === 'one-to-one' && video.youtubeVideoId)) ? 'none' : 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            height: '100%',
-                            background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                            color: 'white',
-                            fontSize: '48px'
-                          }}>
-                            {video.videoSource === 'youtube-url' ? '📺' : 
-                             video.videoSource === 'youtube' ? '📺' : 
-                             video.videoSource === 'one-to-one' ? '👥' : '🎥'}
-                          </div>
-                          
-                          {/* Duration badge */}
-                          {videoDurations[video.id] && videoDurations[video.id] !== 'Duration not available' && (
-                            <div style={{
-                              position: 'absolute',
-                              bottom: '8px',
-                              right: '8px',
-                              backgroundColor: 'rgba(0, 0, 0, 0.8)',
-                              color: 'white',
-                              padding: '2px 6px',
-                              borderRadius: '4px',
-                              fontSize: '12px',
-                              fontWeight: 'bold'
-                            }}>
-                              {videoDurations[video.id]}
-                            </div>
-                          )}
-                        </div>
-                        
-                        <h3 style={{ 
-                          fontSize: '18px', 
-                          fontWeight: '600', 
-                          margin: '0 0 12px 0', 
-                          color: '#000000',
-                          lineHeight: '1.4'
-                        }}>
-                          {video.title}
-                        </h3>
-                        
-                        <div style={{ 
-                          color: '#718096', 
-                          fontSize: '14px', 
-                          marginBottom: '15px',
-                          lineHeight: '1.5'
-                        }}>
-                          <div style={{ marginBottom: '8px' }}>
-                            <strong>👨‍🏫 Teacher:</strong> {batchInfo?.teacherName || video.teacherName || video.instructor || getTeacherName(video.batchId) || 'Not assigned'}
-                          </div>
-                          {videoDurations[video.id] && videoDurations[video.id] !== 'Duration not available' && (
-                            <div style={{ marginBottom: '8px' }}>
-                              <strong>⏱️ Duration:</strong> {videoDurations[video.id]}
-                            </div>
-                          )}
-                          <div style={{ marginBottom: '8px' }}>
-                            <strong>📅 Class Date:</strong> {isOneToOne ? (video.classDate ? formatClassDate(video.classDate) : (video.date ? formatClassDate(video.date) : 'Not specified')) : formatDateForComponent(video.date || video.createdAt)}
-                          </div>
-                          {/* Commented out Class Schedule as requested */}
-                          {/* {isOneToOne && (video.classDate || video.classTime || video.date) && (
-                            <div style={{ marginBottom: '8px' }}>
-                              <strong>⏰ Class Schedule:</strong> {formatClassDate(video.classDate || video.date)} 
-                              {(video.classDate || video.date) && video.classTime && ' at '}
-                              {video.classTime && `${video.classTime}`}
-                            </div>
-                          )} */}
-                          {canSeeNotes && (
-                            <div className="enhanced-notes-download">
-                              <button
-                                type="button"
-                                className="btn-download-notes"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleDownloadNotes(video);
-                                }}
-                                title={`Download ${video.notesFileName || 'notes'} for ${video.title}`}
-                              >
-                                <span className="btn-icon">{getFileTypeIcon(video.notesFileName || video.notesFilePath)}</span>
-                                <span className="btn-text">
-                                  Download Notes
-                                  {video.notesFileName && (
-                                    <span className="filename"> ({video.notesFileName})</span>
-                                  )}
-                                </span>
-                                <span className="btn-arrow">⬇</span>
-                              </button>
-                            </div>
-                          )}
-                        </div>
-                        
-                        <div className="card-actions">
+                        <span className="session-number-badge">Session {idx + 1}</span>
+                      </div>
+                      <div className="video-card-details">
+                        <h3 className="video-title">{video.title}</h3>
+                        <p className="video-meta-text">👤 {video.instructor || 'Staff'} • 📅 {formatDateForComponent(video.date || video.createdAt)}</p>
+                        {video.notesAvailable && video.notesFilePath && (
                           <button 
-                            className="btn-edit"
-                            style={{ 
-                              background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                              border: 'none',
-                              color: 'white',
-                              padding: '12px 20px',
-                              borderRadius: '8px',
-                              cursor: 'pointer',
-                              fontSize: '14px',
-                              fontWeight: '500',
-                              width: '100%',
-                              transition: 'all 0.3s ease'
-                            }}
+                            className="download-notes-action-btn"
                             onClick={(e) => {
                               e.stopPropagation();
-                              setSelectedVideo(video);
+                              handleDownloadNotes(video);
                             }}
                           >
-                            ▶️ Watch Video
+                            📥 Download Lecture Notes
                           </button>
-                        </div>
+                        )}
                       </div>
-                    );
-                  })}
-                  </div>
+                    </div>
+                  ))}
                 </div>
               ) : (
-                <div className="content-section">
-                  <div className="empty-state">
-                    <div className="empty-state-icon">📹</div>
-                    <div className="empty-state-title">No Recordings Available</div>
-                    <div className="empty-state-text">
-                      Class recordings will appear here within 24 hours after each live session.
-                    </div>
-                  </div>
+                <div className="empty-state-container glass-card">
+                  <span className="empty-icon">📺</span>
+                  <h3>No Recordings Yet</h3>
+                  <p>Your class replays will be posted here automatically within 24 hours.</p>
                 </div>
               )}
-
-              <div className="content-section">
-                <div className="section-header">
-                  <div className="section-title">
-                    <div className="section-icon">📢</div>
-                    Important Information
-                  </div>
-                </div>
-                <div style={{ 
-                  padding: '1.5rem', 
-                  background: 'rgba(102, 126, 234, 0.1)', 
-                  borderRadius: '12px',
-                  border: '1px solid rgba(102, 126, 234, 0.2)'
-                }}>
-                  <p style={{ margin: 0, color: '#4a5568' }}>
-                    📌 New class recordings are added within 24 hours after each live session. 
-                    Click on any recording to start watching. Videos are available for all enrolled students.
-                  </p>
-                </div>
-              </div>
             </div>
           )}
 
-          {/* Live Classes Section */}
-          {activeSection === 'liveClasses' && (
-            <div className="animate-in">
-              <div className="header">
-                <h1>📡 Live Classes</h1>
-                <div className="subtitle">
-                  Join upcoming live sessions and interact with instructors
-                </div>
-              </div>
-
-              <div className="content-section">
-                <div className="section-header">
-                  <div className="section-title">
-                    <div className="section-icon">📅</div>
-                    Upcoming Sessions
-                  </div>
-                </div>
-
-                {lessons && lessons.filter(l => l.classLink).length > 0 ? (
-                  <div className="video-grid">
-                    {lessons.filter(l => l.classLink).slice(0, 6).map((lesson) => (
-                      <div key={lesson.id} className="video-card">
-                        <div className="video-thumbnail">📡</div>
-                        <div className="video-info">
-                          <div className="video-title">{lesson.title}</div>
-                          <div className="video-meta">
-                            <div className="video-meta-row">
-                              <span>⏱️ {lesson.duration || 'TBD'}</span>
-                              <span className="learning-badge warning">Live</span>
-                            </div>
-                            <div className="video-meta-row">
-                              <span>🔴 Click to join</span>
-                            </div>
-                          </div>
-                          <div className="learning-actions">
-                            <a 
-                              href={lesson.classLink} 
-                              target="_blank" 
-                              rel="noopener noreferrer"
-                              className="action-btn"
-                              style={{ textDecoration: 'none', marginTop: '1rem' }}
-                            >
-                              <span>🔴</span>
-                              <span>Join Class</span>
-                            </a>
-                          </div>
-                        </div>
+          {activeSection === 'assessments' && (
+            <div className="classroom-section animate-in">
+              <h2 className="section-title">✏️ Dynamic Assessments</h2>
+              <p className="section-subtitle">Test your knowledge with AI-driven, secure quizzes and exams.</p>
+              
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '24px', marginTop: '24px' }}>
+                {studentAssessments.map(ass => (
+                  <div key={ass._id} style={{ background: '#1e293b', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '16px', padding: '24px', color: 'white', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+                    <div>
+                      <span style={{ fontSize: '0.8rem', background: 'rgba(79, 70, 229, 0.2)', color: '#818cf8', padding: '4px 10px', borderRadius: '9999px', fontWeight: 'bold' }}>
+                        {ass.difficulty.toUpperCase()}
+                      </span>
+                      <h3 style={{ fontSize: '1.25rem', marginTop: '12px', marginBottom: '8px' }}>{ass.title}</h3>
+                      <p style={{ fontSize: '0.9rem', color: '#94a3b8', margin: '0 0 20px 0' }}>{ass.description}</p>
+                      
+                      <div style={{ fontSize: '0.85rem', color: '#cbd5e1', display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '20px' }}>
+                        <div>⏱️ <strong>Duration:</strong> {ass.duration} minutes</div>
+                        <div>❓ <strong>Questions:</strong> {ass.questions?.length || 0}</div>
+                        <div>🎯 <strong>Passing Score:</strong> {ass.passingMarks}%</div>
                       </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="empty-state">
-                    <div className="empty-state-icon">📡</div>
-                    <div className="empty-state-title">No Live Classes Scheduled</div>
-                    <div className="empty-state-text">
-                      Check back later for upcoming live sessions with your instructors.
                     </div>
+                    
+                    <button 
+                      onClick={() => navigate(`/student/assessment/${ass._id}`)}
+                      className="btn-primary" 
+                      style={{ width: '100%', padding: '12px' }}
+                    >
+                      Start Assessment
+                    </button>
                   </div>
+                ))}
+                {studentAssessments.length === 0 && (
+                  <p style={{ color: '#94a3b8', gridColumn: '1/-1', textAlign: 'center', padding: '40px' }}>
+                    No assessments published for you at this time.
+                  </p>
                 )}
               </div>
             </div>
           )}
-          {activeSection === 'progress' && (
-            <div className="animate-in">
-              <div className="header">
-                <h1>📊 Learning Progress</h1>
-                <div className="subtitle">
-                  Track your learning journey and achievements
-                </div>
-              </div>
 
-              <div className="content-section">
-                <div className="section-header">
-                  <div className="section-title">
-                    <div className="section-icon">📈</div>
-                    Overall Progress
-                  </div>
-                </div>
-
-                <div className="stats-grid">
-                  <div className="stat-card">
-                    <div className="stat-icon">📚</div>
-                    <div className="stat-value">{progressPercent}%</div>
-                    <div className="stat-label">Course Completion</div>
-                  </div>
-                  <div className="stat-card">
-                    <div className="stat-icon">📁</div>
-                    <div className="stat-value">{viewedFiles.length}</div>
-                    <div className="stat-label">Files Viewed</div>
-                  </div>
-                  <div className="stat-card">
-                    <div className="stat-icon">🎥</div>
-                    <div className="stat-value">{classroomVideos.length}</div>
-                    <div className="stat-label">Videos Available</div>
-                  </div>
-                  <div className="stat-card">
-                    <div className="stat-icon">🏆</div>
-                    <div className="stat-value">{Math.floor(progressPercent / 25)}</div>
-                    <div className="stat-label">Achievements</div>
-                  </div>
-                </div>
-
-                <div style={{ marginTop: '2rem' }}>
-                  <div className="progress-stats">
-                    <span>Course Progress</span>
-                    <span>{progressPercent}%</span>
-                  </div>
-                  <div className="progress-bar" style={{ height: '20px' }}>
-                    <div 
-                      className="progress-fill" 
-                      style={{ width: `${progressPercent}%` }}
-                    ></div>
-                  </div>
-                  <div style={{ textAlign: 'center', marginTop: '1rem' }}>
-                    <span className="learning-badge success">
-                      {progressPercent === 100 ? '🎉 Course Completed!' : `Keep going! ${100 - progressPercent}% to go`}
-                    </span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-          
-          {activeSection === 'analytics' && (
-            <div className="animate-in">
-              <StudentAnalyticsDashboard />
-            </div>
-          )}
-          
           {activeSection === 'profile' && (
-            <div className="animate-in">
+            <div className="profile-page animate-in">
               <StudentProfile 
                 user={user} 
                 onProfileUpdate={(updatedUser) => {
-                  // Update the user state in localStorage
                   localStorage.setItem('user', JSON.stringify(updatedUser));
-                  
-                  // If email changed, show message about potential re-login
-                  if (user.email !== updatedUser.email) {
-                    alert('Email updated! You may need to login again with your new email address.');
-                  }
-                  
-                  // Update the user prop by triggering a re-render
-                  // In a real app, you'd use a state management system
                   window.location.reload();
                 }}
               />
             </div>
           )}
-        </div>
-      </main>
+        </main>
+      </div>
 
-      {/* Video Player Modal */}
+      {/* Floating AI Assistant Trigger Placeholder */}
+      <button className="floating-ai-assistant-btn" title="AI Assistant (Interface Placeholder)" onClick={() => showToast('AI assistant UI ready! Logic implementation pending.', 'info')}>
+        ✨ AI
+      </button>
+
+      {/* Video Player Modal Overlay */}
       {selectedVideo && (
         <CustomVideoPlayer
           video={selectedVideo}
@@ -2975,7 +2631,6 @@ const Dashboard = ({ user, onLogout }) => {
         />
       )}
       
-      {/* Toast Container */}
       <ToastContainer />
     </div>
   );
