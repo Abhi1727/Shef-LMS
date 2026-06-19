@@ -1,4 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
+import axios from 'axios';
+import { ToastContainer, showToast } from './Toast';
 import './CustomVideoPlayer.css';
 
 // YouTube IFrame API loader
@@ -11,20 +13,19 @@ const loadYouTubeAPI = () => {
       resolve();
       return;
     }
-    
+
     if (!youtubeAPILoading) {
       youtubeAPILoading = true;
       const tag = document.createElement('script');
       tag.src = 'https://www.youtube.com/iframe_api';
       const firstScriptTag = document.getElementsByTagName('script')[0];
       firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
-      
+
       window.onYouTubeIframeAPIReady = () => {
         youtubeAPIReady = true;
         resolve();
       };
     } else {
-      // Wait for API to be ready
       const checkReady = () => {
         if (youtubeAPIReady) {
           resolve();
@@ -52,61 +53,189 @@ const CustomVideoPlayer = ({ video, onClose, resumePosition = 0, onProgressUpdat
   const [youtubePlayer, setYoutubePlayer] = useState(null);
   const [playerReady, setPlayerReady] = useState(false);
   const [hasStartedPlaying, setHasStartedPlaying] = useState(false);
-  
+
+  // Sidebar interaction states
+  const [showSidebar, setShowSidebar] = useState(true);
+  const [sidebarTab, setSidebarTab] = useState('notes'); // 'qa', 'notes', 'bookmarks'
+  const [qaThreads, setQaThreads] = useState([]);
+  const [newMessage, setNewMessage] = useState('');
+  const [notes, setNotes] = useState([]);
+  const [newNoteText, setNewNoteText] = useState('');
+  const [bookmarks, setBookmarks] = useState([]);
+  const [bookmarkTopic, setBookmarkTopic] = useState('');
+  const [bookmarkNotes, setBookmarkNotes] = useState('');
+
   const videoRef = useRef(null);
   const youtubeContainerRef = useRef(null);
   const containerRef = useRef(null);
   const controlsTimeoutRef = useRef(null);
   const videoViewLoggedRef = useRef(false);
 
-  // Enhanced video source detection
   const detectVideoSource = (video) => {
-    if (video.videoSource) {
-      return video.videoSource;
-    }
-    
-    // Auto-detect based on URL patterns
+    if (video.videoSource) return video.videoSource;
     if (video.youtubeVideoUrl) {
-      if (video.youtubeVideoUrl.includes('youtu.be/')) {
-        return 'youtube-url';
-      } else if (video.youtubeVideoUrl.includes('youtube.com/watch')) {
-        return 'youtube';
-      }
+      if (video.youtubeVideoUrl.includes('youtu.be/')) return 'youtube-url';
+      if (video.youtubeVideoUrl.includes('youtube.com/watch')) return 'youtube';
     }
-    
     if (video.videoUrl) {
-      if (video.videoUrl.includes('youtu.be/')) {
-        return 'youtube-url';
-      } else if (video.videoUrl.includes('youtube.com/watch')) {
-        return 'youtube';
-      } else if (video.videoUrl.includes('youtube.com/embed')) {
-        return 'youtube';
-      }
+      if (video.videoUrl.includes('youtu.be/')) return 'youtube-url';
+      if (video.videoUrl.includes('youtube.com/watch')) return 'youtube';
+      if (video.videoUrl.includes('youtube.com/embed')) return 'youtube';
     }
-    
-    // Default to firebase for non-YouTube videos
     return 'firebase';
   };
 
-  // Convert YouTube URL to embed URL
   const convertToEmbedUrl = (url) => {
     if (!url) return null;
-    
-    // Extract video ID from various YouTube URL formats
     const regex = /(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([^&\n?#]+)/;
     const match = url.match(regex);
     const videoId = match ? match[1] : null;
-    
     return videoId ? `https://www.youtube.com/embed/${videoId}` : null;
   };
 
-  // Determine video source and initialize player
+  // Fetch Q&A, Notes, and Bookmarks on load
+  useEffect(() => {
+    if (video.id) {
+      fetchQaThreads();
+      fetchNotes();
+      fetchBookmarks();
+    }
+  }, [video]);
+
+  const fetchQaThreads = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      const res = await axios.get(`/api/classroom-interaction/qa/${video.id}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      setQaThreads(res.data);
+    } catch (err) {
+      console.error('Failed to load QA threads', err);
+    }
+  };
+
+  const fetchNotes = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      const res = await axios.get(`/api/classroom-interaction/notes/${video.id}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      setNotes(res.data);
+    } catch (err) {
+      console.error('Failed to load notes', err);
+    }
+  };
+
+  const fetchBookmarks = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      const res = await axios.get('/api/classroom-interaction/bookmarks', {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      setBookmarks(res.data);
+    } catch (err) {
+      console.error('Failed to load bookmarks', err);
+    }
+  };
+
+  const handlePostMessage = async (e) => {
+    e.preventDefault();
+    if (!newMessage.trim()) return;
+    try {
+      const token = localStorage.getItem('token');
+      const activeThread = qaThreads[0]; // Simple single thread per student/lesson
+      await axios.post('/api/classroom-interaction/qa', {
+        classroomId: video.id,
+        text: newMessage,
+        threadId: activeThread ? activeThread._id : null
+      }, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      setNewMessage('');
+      fetchQaThreads();
+      showToast('Message sent to teacher!', 'success');
+    } catch (err) {
+      showToast('Failed to post query', 'error');
+    }
+  };
+
+  const handleSaveNote = async () => {
+    if (!newNoteText.trim()) return;
+    try {
+      const token = localStorage.getItem('token');
+      await axios.post('/api/classroom-interaction/notes', {
+        classroomId: video.id,
+        noteText: newNoteText,
+        videoTimestamp: Math.round(currentTime)
+      }, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      setNewNoteText('');
+      fetchNotes();
+      showToast('Private note saved!', 'success');
+    } catch (err) {
+      showToast('Failed to save note', 'error');
+    }
+  };
+
+  const handleDeleteNote = async (noteId) => {
+    try {
+      const token = localStorage.getItem('token');
+      await axios.delete(`/api/classroom-interaction/notes/${noteId}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      fetchNotes();
+      showToast('Note deleted', 'success');
+    } catch (err) {
+      showToast('Failed to delete note', 'error');
+    }
+  };
+
+  const handleSaveBookmark = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      await axios.post('/api/classroom-interaction/bookmarks', {
+        classroomId: video.id,
+        topicName: bookmarkTopic,
+        notes: bookmarkNotes
+      }, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      setBookmarkTopic('');
+      setBookmarkNotes('');
+      fetchBookmarks();
+      showToast('Lecture bookmarked!', 'success');
+    } catch (err) {
+      showToast(err.response?.data?.message || 'Failed to add bookmark', 'error');
+    }
+  };
+
+  const handleRemoveBookmark = async (bookmarkId) => {
+    try {
+      const token = localStorage.getItem('token');
+      await axios.delete(`/api/classroom-interaction/bookmarks/${bookmarkId}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      fetchBookmarks();
+      showToast('Bookmark removed', 'success');
+    } catch (err) {
+      showToast('Failed to remove bookmark', 'error');
+    }
+  };
+
+  const seekToTime = (seconds) => {
+    if (youtubePlayer && playerReady) {
+      youtubePlayer.seekTo(seconds, true);
+    } else if (videoRef.current) {
+      videoRef.current.currentTime = seconds;
+    }
+    setCurrentTime(seconds);
+  };
+
+  // Video Initializer
   useEffect(() => {
     const videoSource = detectVideoSource(video);
-    console.log('🎯 CustomVideoPlayer detected video source:', videoSource, video);
-    
     if (videoSource === 'youtube-url') {
-      // Handle youtu.be URLs
       const embedUrl = video.youtubeEmbedUrl || convertToEmbedUrl(video.youtubeVideoUrl || video.videoUrl);
       if (embedUrl) {
         setYoutubeVideoUrl(embedUrl);
@@ -123,37 +252,30 @@ const CustomVideoPlayer = ({ video, onClose, resumePosition = 0, onProgressUpdat
         try {
           const token = localStorage.getItem('token');
           const response = await fetch(`${process.env.REACT_APP_API_URL || 'http://localhost:5000'}/api/classroom/play/${video.id}`, {
-            headers: {
-              'Authorization': `Bearer ${token}`
-            }
+            headers: { 'Authorization': `Bearer ${token}` }
           });
-          
           if (response.ok) {
             const data = await response.json();
             setFirebaseVideoUrl(data.signedUrl);
-            console.log('🔥 Firebase Storage URL loaded:', data.signedUrl.substring(0, 100) + '...');
           } else {
             throw new Error('Failed to fetch video URL');
           }
         } catch (error) {
-          console.error('❌ Error fetching Firebase video URL:', error);
           setError('Failed to load video. Access denied or video not found.');
           setIsLoading(false);
         }
       };
-      
       fetchFirebaseUrl();
     } else if (video.videoUrl && video.videoUrl.includes('youtube.com/embed')) {
-      // Handle legacy YouTube embed URLs
       setYoutubeVideoUrl(video.videoUrl);
       initializeYouTubePlayer(video.videoUrl);
     } else {
-      setError('Unsupported video source or missing video information');
+      setError('Unsupported video source');
       setIsLoading(false);
     }
   }, [video]);
 
-  // Log video view to activity when user first starts playing (once per video)
+  // Log video view
   useEffect(() => {
     if (hasStartedPlaying && video?.id && !videoViewLoggedRef.current) {
       videoViewLoggedRef.current = true;
@@ -165,261 +287,116 @@ const CustomVideoPlayer = ({ video, onClose, resumePosition = 0, onProgressUpdat
           'Authorization': `Bearer ${localStorage.getItem('token')}`
         },
         body: JSON.stringify({ videoId: video.id })
-      }).catch(() => {});
+      }).catch(() => { });
     }
   }, [hasStartedPlaying, video?.id]);
 
-  // Initialize YouTube player
   const initializeYouTubePlayer = async (embedUrl) => {
     try {
       await loadYouTubeAPI();
-      
-      // Extract video ID from embed URL
       const videoId = embedUrl.match(/\/embed\/([^?]+)/)?.[1];
-      if (!videoId) {
-        throw new Error('Invalid YouTube video ID');
-      }
+      if (!videoId) throw new Error('Invalid YouTube video ID');
 
-      // Wait for container to be available
       if (!youtubeContainerRef.current) {
         setTimeout(() => initializeYouTubePlayer(embedUrl), 100);
         return;
       }
 
-      // Create YouTube player
       new window.YT.Player(youtubeContainerRef.current, {
         videoId: videoId,
         playerVars: {
           autoplay: 0,
-          controls: 0, // Hide YouTube controls
-          disablekb: 1, // Disable keyboard controls
+          controls: 0,
+          disablekb: 1,
           enablejsapi: 1,
-          iv_load_policy: 3, // Hide annotations
-          modestbranding: 1, // Hide YouTube logo
-          rel: 0, // Hide related videos
+          iv_load_policy: 3,
+          modestbranding: 1,
+          rel: 0,
           showinfo: 0,
-          start: Math.floor(resumePosition) // Start from resume position
+          start: Math.floor(resumePosition)
         },
         events: {
           onReady: (event) => {
-            console.log('📺 YouTube player ready');
             setYoutubePlayer(event.target);
             setPlayerReady(true);
             setIsLoading(false);
-            
-            // Set initial volume
             event.target.setVolume(volume * 100);
-            
-            // Get video duration immediately
             const videoDuration = event.target.getDuration();
             setDuration(videoDuration);
-            console.log('📺 Video duration:', videoDuration);
-            
-            // Set initial position if resume position is provided
             if (resumePosition > 0 && resumePosition < videoDuration) {
               event.target.seekTo(resumePosition);
-              console.log('📺 Resumed from position:', resumePosition);
             }
           },
           onStateChange: (event) => {
-            // Update playing state based on YouTube player states
             if (event.data === window.YT.PlayerState.PLAYING) {
               setIsPlaying(true);
-              if (!hasStartedPlaying) {
-                setHasStartedPlaying(true);
-                console.log('📺 Video started playing');
-              }
+              if (!hasStartedPlaying) setHasStartedPlaying(true);
             } else if (event.data === window.YT.PlayerState.PAUSED) {
               setIsPlaying(false);
             } else if (event.data === window.YT.PlayerState.ENDED) {
               setIsPlaying(false);
-              if (onProgressUpdate) {
-                onProgressUpdate(video.id, 100, duration);
-              }
-            } else if (event.data === window.YT.PlayerState.BUFFERING) {
-              // Keep playing state during buffering
-              setIsPlaying(true);
-            } else if (event.data === window.YT.PlayerState.CUED) {
-              // Video is cued but not playing
-              setIsPlaying(false);
-            }
-          },
-          onTimeUpdate: (event) => {
-            const currentVideoTime = event.target.getCurrentTime();
-            setCurrentTime(currentVideoTime);
-            
-            // Update progress periodically
-            if (onProgressUpdate && hasStartedPlaying && currentVideoTime > 0) {
-              const progress = (currentVideoTime / duration) * 100;
-              // Update progress every 5 seconds or 5% progress
-              if (Math.floor(currentVideoTime) % 5 === 0 || Math.floor(progress) % 5 === 0) {
-                onProgressUpdate(video.id, progress, currentVideoTime);
-              }
+              if (onProgressUpdate) onProgressUpdate(video.id, 100, duration);
             }
           }
         }
       });
     } catch (error) {
-      console.error('Error initializing YouTube player:', error);
       setError('Failed to load video player');
       setIsLoading(false);
     }
   };
 
-  // Auto-hide controls after 3 seconds
-  useEffect(() => {
-    const resetControlsTimeout = () => {
-      if (controlsTimeoutRef.current) {
-        clearTimeout(controlsTimeoutRef.current);
-      }
-      controlsTimeoutRef.current = setTimeout(() => {
-        if (isPlaying) {
-          setShowControls(false);
-        }
-      }, 3000);
-    };
-
-    if (isPlaying) {
-      resetControlsTimeout();
-    }
-
-    return () => {
-      if (controlsTimeoutRef.current) {
-        clearTimeout(controlsTimeoutRef.current);
-      }
-    };
-  }, [isPlaying]);
-
-  // Time tracking for both YouTube and Firebase videos
+  // Time progress interval
   useEffect(() => {
     let interval;
-
-    // Always track time when player is ready, regardless of playing state
     if ((youtubePlayer && playerReady) || videoRef.current) {
       interval = setInterval(() => {
         if (youtubePlayer && playerReady) {
-          // YouTube video time tracking
-          const currentTime = youtubePlayer.getCurrentTime();
-          const videoDuration = youtubePlayer.getDuration();
-          setCurrentTime(currentTime);
-          setDuration(videoDuration);
+          const ct = youtubePlayer.getCurrentTime();
+          const dur = youtubePlayer.getDuration();
+          setCurrentTime(ct);
+          setDuration(dur);
         } else if (videoRef.current) {
-          // Firebase video time tracking
           setCurrentTime(videoRef.current.currentTime);
           setDuration(videoRef.current.duration);
         }
-      }, 100); // Update every 100ms for smooth progress bar
+      }, 100);
     }
-
-    return () => {
-      if (interval) {
-        clearInterval(interval);
-      }
-    };
+    return () => clearInterval(interval);
   }, [youtubePlayer, playerReady, firebaseVideoUrl]);
 
-  // Show controls on mouse movement
-  const handleMouseMove = () => {
-    setShowControls(true);
-    if (isPlaying) {
-      if (controlsTimeoutRef.current) {
-        clearTimeout(controlsTimeoutRef.current);
-      }
-      controlsTimeoutRef.current = setTimeout(() => {
-        setShowControls(false);
-      }, 3000);
-    }
-  };
+  const handlePlay = () => { setIsPlaying(true); setHasStartedPlaying(true); };
+  const handlePause = () => { setIsPlaying(false); };
+  const handleEnded = () => { setIsPlaying(false); setCurrentTime(0); };
+  const handleError = () => { setIsLoading(false); setError('Error serving video.'); };
 
-  // Video event handlers
-  const handleLoadedData = () => {
-    setIsLoading(false);
-    if (videoRef.current) {
-      setDuration(videoRef.current.duration);
-    }
-  };
-
-  const handleTimeUpdate = () => {
-    if (videoRef.current) {
-      setCurrentTime(videoRef.current.currentTime);
-    }
-  };
-
-  const handlePlay = () => {
-    setIsPlaying(true);
-    setHasStartedPlaying(true);
-  };
-
-  const handlePause = () => {
-    setIsPlaying(false);
-  };
-
-  const handleEnded = () => {
-    setIsPlaying(false);
-    setCurrentTime(0);
-  };
-
-  const handleError = () => {
-    setIsLoading(false);
-    setError('Failed to load video. The video might be private or not accessible.');
-  };
-
-  // Control functions
   const togglePlay = () => {
     if (youtubePlayer && playerReady) {
-      // YouTube player controls
-      if (isPlaying) {
-        youtubePlayer.pauseVideo();
-      } else {
-        youtubePlayer.playVideo();
-      }
+      if (isPlaying) youtubePlayer.pauseVideo();
+      else youtubePlayer.playVideo();
     } else if (videoRef.current) {
-      // Firebase video controls
-      if (isPlaying) {
-        videoRef.current.pause();
-      } else {
-        videoRef.current.play();
-      }
+      if (isPlaying) videoRef.current.pause();
+      else videoRef.current.play();
     }
   };
 
   const handleSeek = (e) => {
     const seekTime = parseFloat(e.target.value);
-    setCurrentTime(seekTime);
-    
-    if (youtubePlayer && playerReady) {
-      // YouTube player seek
-      youtubePlayer.seekTo(seekTime, true);
-    } else if (videoRef.current) {
-      // Firebase video seek
-      videoRef.current.currentTime = seekTime;
-    }
+    seekToTime(seekTime);
   };
 
   const handleVolumeChange = (e) => {
     const newVolume = parseFloat(e.target.value);
     setVolume(newVolume);
-    
-    if (youtubePlayer && playerReady) {
-      // YouTube player volume (0-100)
-      youtubePlayer.setVolume(newVolume * 100);
-    } else if (videoRef.current) {
-      // Firebase video volume (0-1)
-      videoRef.current.volume = newVolume;
-    }
+    if (youtubePlayer && playerReady) youtubePlayer.setVolume(newVolume * 100);
+    else if (videoRef.current) videoRef.current.volume = newVolume;
   };
 
   const handleSpeedChange = (e) => {
     const newSpeed = parseFloat(e.target.value);
     setPlaybackSpeed(newSpeed);
-    
-    if (youtubePlayer && playerReady) {
-      // YouTube player playback speed
-      youtubePlayer.setPlaybackRate(newSpeed);
-    } else if (videoRef.current) {
-      // Firebase video playback speed
-      videoRef.current.playbackRate = newSpeed;
-    }
+    if (youtubePlayer && playerReady) youtubePlayer.setPlaybackRate(newSpeed);
+    else if (videoRef.current) videoRef.current.playbackRate = newSpeed;
   };
 
   const handleFullscreen = () => {
@@ -439,123 +416,284 @@ const CustomVideoPlayer = ({ video, onClose, resumePosition = 0, onProgressUpdat
   };
 
   return (
-    <div 
+    <div
       ref={containerRef}
       className="custom-video-player"
-      onMouseMove={handleMouseMove}
+      style={{ display: 'flex', flexDirection: 'row', width: '100vw', height: '100vh', background: '#0f172a' }}
+      onMouseMove={() => setShowControls(true)}
       onMouseLeave={() => isPlaying && setShowControls(false)}
     >
-      {/* Header */}
-      <div className="video-header">
-        <button className="close-btn" onClick={onClose}>
-          ✕
-        </button>
-      </div>
+      <ToastContainer />
 
-      {/* Video Container */}
-      <div className="video-container">
-        {isLoading && (
-          <div className="loading-overlay">
-            <div className="loading-spinner"></div>
-            <p>Loading video...</p>
-          </div>
-        )}
-        
-        {error && (
-          <div className="error-overlay">
-            <div className="error-icon">⚠️</div>
-            <p>{error}</p>
-          </div>
-        )}
+      {/* Left Column: Video Container */}
+      <div style={{ flex: showSidebar ? 3 : 1, display: 'flex', flexDirection: 'column', position: 'relative', height: '100%', overflow: 'hidden' }}>
+        <div className="video-header">
+          <button className="close-btn" onClick={onClose}>✕</button>
+        </div>
 
-        {/* Firebase Storage Video Player */}
-        {firebaseVideoUrl && (
-          <video
-            ref={videoRef}
-            className="firebase-video-player"
-            controls
-            playsInline
-            preload="metadata"
-            onLoadedData={handleLoadedData}
-            onTimeUpdate={handleTimeUpdate}
-            onPlay={handlePlay}
-            onPause={handlePause}
-            onEnded={handleEnded}
-            onError={handleError}
-            key={firebaseVideoUrl}
-          >
-            <source src={firebaseVideoUrl} type="video/mp4" />
-            Your browser does not support the video tag.
-          </video>
-        )}
-
-        {/* YouTube Video Player */}
-        {youtubeVideoUrl && (
-          <div 
-            ref={youtubeContainerRef}
-            className="youtube-video-player"
-            style={{
-              width: '100%',
-              height: '100%',
-              backgroundColor: '#000'
-            }}
-          />
-        )}
-
-        {/* Custom Controls */}
-        <div className={`video-controls ${showControls ? 'visible' : 'hidden'}`}>
-          <div className="controls-row">
-            <button className="control-btn" onClick={togglePlay}>
-              {isPlaying ? '⏸️' : '▶️'}
-            </button>
-            
-            <div className="time-container">
-              <span className="current-time">{formatTime(currentTime)}</span>
-              <input
-                type="range"
-                className="seek-bar"
-                min="0"
-                max={duration || 0}
-                value={currentTime}
-                onChange={handleSeek}
-              />
-              <span className="total-time">{formatTime(duration)}</span>
+        <div className="video-container" style={{ height: 'calc(100% - 80px)' }}>
+          {isLoading && (
+            <div className="loading-overlay">
+              <div className="loading-spinner"></div>
+              <p>Loading lecture...</p>
             </div>
-            
-            <div className="right-controls">
-              <div className="volume-control">
-                <span>🔊</span>
+          )}
+
+          {error && (
+            <div className="error-overlay">
+              <p>{error}</p>
+            </div>
+          )}
+
+          {firebaseVideoUrl && (
+            <video
+              ref={videoRef}
+              className="firebase-video-player"
+              controls
+              playsInline
+              preload="metadata"
+              onLoadedData={() => { setIsLoading(false); if (videoRef.current) setDuration(videoRef.current.duration); }}
+              onPlay={handlePlay}
+              onPause={handlePause}
+              onEnded={handleEnded}
+              onError={handleError}
+              key={firebaseVideoUrl}
+            >
+              <source src={firebaseVideoUrl} type="video/mp4" />
+            </video>
+          )}
+
+          {youtubeVideoUrl && (
+            <div
+              ref={youtubeContainerRef}
+              className="youtube-video-player"
+              style={{ width: '100%', height: '100%', backgroundColor: '#000' }}
+            />
+          )}
+
+          <div className={`video-controls ${showControls ? 'visible' : 'hidden'}`}>
+            <div className="controls-row">
+              <button className="control-btn" onClick={togglePlay}>
+                {isPlaying ? '⏸️' : '▶️'}
+              </button>
+
+              <div className="time-container">
+                <span className="current-time">{formatTime(currentTime)}</span>
                 <input
                   type="range"
-                  className="volume-slider"
+                  className="seek-bar"
                   min="0"
-                  max="1"
-                  step="0.1"
-                  value={volume}
-                  onChange={handleVolumeChange}
+                  max={duration || 0}
+                  value={currentTime}
+                  onChange={handleSeek}
                 />
+                <span className="total-time">{formatTime(duration)}</span>
               </div>
-              
-              <select
-                value={playbackSpeed}
-                onChange={handleSpeedChange}
-                className="speed-control"
-              >
-                <option value="0.5">0.5x</option>
-                <option value="0.75">0.75x</option>
-                <option value="1">1x</option>
-                <option value="1.25">1.25x</option>
-                <option value="1.5">1.5x</option>
-                <option value="2">2x</option>
-              </select>
-              
-              <button className="control-btn" onClick={handleFullscreen}>
-                {isFullscreen ? '🗗' : '🗖'}
-              </button>
+
+              <div className="right-controls">
+                <button
+                  className="control-btn"
+                  onClick={() => setShowSidebar(!showSidebar)}
+                  title="Toggle Workspace Sidebar"
+                >
+                  {showSidebar ? '📖 Close Notes' : '📖 Open Notes & QA'}
+                </button>
+
+                <div className="volume-control">
+                  <span>🔊</span>
+                  <input
+                    type="range"
+                    className="volume-slider"
+                    min="0"
+                    max="1"
+                    step="0.1"
+                    value={volume}
+                    onChange={handleVolumeChange}
+                  />
+                </div>
+
+                <select value={playbackSpeed} onChange={handleSpeedChange} className="speed-control">
+                  <option value="0.5">0.5x</option>
+                  <option value="1">1x</option>
+                  <option value="1.5">1.5x</option>
+                  <option value="2">2x</option>
+                </select>
+
+                <button className="control-btn" onClick={handleFullscreen}>
+                  {isFullscreen ? '🗗' : '🗖'}
+                </button>
+              </div>
             </div>
           </div>
         </div>
       </div>
+
+      {/* Right Column: Interaction Workspace */}
+      {showSidebar && (
+        <div style={{ flex: 1, minWidth: '320px', background: '#1e293b', borderLeft: '1px solid rgba(255,255,255,0.05)', display: 'flex', flexDirection: 'column', height: '100%', color: 'white', fontFamily: 'sans-serif' }}>
+          {/* Tabs Bar */}
+          <div style={{ display: 'flex', borderBottom: '1px solid rgba(255,255,255,0.1)', background: '#0f172a' }}>
+            <button
+              onClick={() => setSidebarTab('notes')}
+              style={{ flex: 1, padding: '16px', background: sidebarTab === 'notes' ? '#1e293b' : 'none', border: 'none', color: 'white', fontWeight: 'bold', cursor: 'pointer' }}
+            >
+              ✏️ Notes
+            </button>
+            <button
+              onClick={() => setSidebarTab('qa')}
+              style={{ flex: 1, padding: '16px', background: sidebarTab === 'qa' ? '#1e293b' : 'none', border: 'none', color: 'white', fontWeight: 'bold', cursor: 'pointer' }}
+            >
+              💬 Q&A
+            </button>
+            <button
+              onClick={() => setSidebarTab('bookmarks')}
+              style={{ flex: 1, padding: '16px', background: sidebarTab === 'bookmarks' ? '#1e293b' : 'none', border: 'none', color: 'white', fontWeight: 'bold', cursor: 'pointer' }}
+            >
+              🔖 Bookmarks
+            </button>
+          </div>
+
+          {/* Tab Content Panel */}
+          <div style={{ flex: 1, overflowY: 'auto', padding: '20px', display: 'flex', flexDirection: 'column' }}>
+
+            {/* NOTES TAB */}
+            {sidebarTab === 'notes' && (
+              <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+                <h4 style={{ margin: '0 0 12px 0' }}>Private Lesson Notes</h4>
+                <div style={{ marginBottom: '16px' }}>
+                  <textarea
+                    rows="3"
+                    placeholder="Type note content... automatically timestamped."
+                    value={newNoteText}
+                    onChange={(e) => setNewNoteText(e.target.value)}
+                    style={{ width: '100%', padding: '10px', background: '#0f172a', border: '1px solid rgba(255,255,255,0.1)', color: 'white', borderRadius: '8px', resize: 'none' }}
+                  />
+                  <button
+                    onClick={handleSaveNote}
+                    style={{ width: '100%', marginTop: '8px', padding: '10px', background: '#4f46e5', border: 'none', borderRadius: '8px', color: 'white', fontWeight: 'bold', cursor: 'pointer' }}
+                  >
+                    Save Note at {formatTime(currentTime)}
+                  </button>
+                </div>
+
+                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  {notes.map(note => (
+                    <div key={note._id} style={{ background: '#0f172a', padding: '12px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.05)' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
+                        <span
+                          onClick={() => seekToTime(note.videoTimestamp)}
+                          style={{ color: '#818cf8', fontWeight: 'bold', cursor: 'pointer', textDecoration: 'underline' }}
+                        >
+                          ⏱️ {formatTime(note.videoTimestamp)}
+                        </span>
+                        <button
+                          onClick={() => handleDeleteNote(note._id)}
+                          style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '0.85rem' }}
+                        >
+                          Delete
+                        </button>
+                      </div>
+                      <p style={{ margin: 0, fontSize: '0.9rem', color: '#cbd5e1', lineHeight: '1.4' }}>{note.noteText}</p>
+                    </div>
+                  ))}
+                  {notes.length === 0 && <p style={{ color: '#94a3b8', fontSize: '0.85rem', textAlign: 'center', marginTop: '20px' }}>No notes taken for this lesson yet.</p>}
+                </div>
+              </div>
+            )}
+
+            {/* QA TAB */}
+            {sidebarTab === 'qa' && (
+              <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+                <h4 style={{ margin: '0 0 4px 0' }}>Private Q&A Thread</h4>
+                <p style={{ fontSize: '0.8rem', color: '#94a3b8', margin: '0 0 16px 0' }}>Your questions are sent directly to the instructor. Student-to-student chat is disabled.</p>
+
+                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '16px', maxHeight: 'calc(100vh - 340px)', overflowY: 'auto' }}>
+                  {qaThreads[0]?.messages.map((msg, i) => {
+                    const isSelf = msg.senderId === localStorage.getItem('user') ? JSON.parse(localStorage.getItem('user')).id : false;
+                    return (
+                      <div key={i} style={{ alignSelf: msg.role === 'student' ? 'flex-end' : 'flex-start', background: msg.role === 'student' ? '#4f46e5' : '#334155', padding: '10px 14px', borderRadius: '12px', maxWidth: '85%' }}>
+                        <div style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.7)', marginBottom: '4px', fontWeight: 'bold' }}>{msg.senderName} ({msg.role.toUpperCase()})</div>
+                        <div style={{ fontSize: '0.9rem', lineHeight: '1.4' }}>{msg.text}</div>
+                      </div>
+                    );
+                  })}
+                  {(!qaThreads.length || !qaThreads[0]?.messages.length) && (
+                    <p style={{ color: '#94a3b8', fontSize: '0.85rem', textAlign: 'center', marginTop: '20px' }}>Have questions about this lecture? Type below to ask your teacher.</p>
+                  )}
+                </div>
+
+                <form onSubmit={handlePostMessage} style={{ display: 'flex', gap: '8px' }}>
+                  <input
+                    type="text"
+                    placeholder="Ask a question..."
+                    value={newMessage}
+                    onChange={(e) => setNewMessage(e.target.value)}
+                    style={{ flex: 1, padding: '10px', background: '#0f172a', border: '1px solid rgba(255,255,255,0.1)', color: 'white', borderRadius: '8px' }}
+                  />
+                  <button type="submit" style={{ padding: '10px 16px', background: '#4f46e5', border: 'none', borderRadius: '8px', color: 'white', fontWeight: 'bold', cursor: 'pointer' }}>
+                    Send
+                  </button>
+                </form>
+              </div>
+            )}
+
+            {/* BOOKMARKS TAB */}
+            {sidebarTab === 'bookmarks' && (
+              <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+                <h4 style={{ margin: '0 0 12px 0' }}>Bookmark / Revision Queue</h4>
+
+                <div style={{ background: '#0f172a', padding: '16px', borderRadius: '8px', marginBottom: '16px', border: '1px solid rgba(255,255,255,0.05)' }}>
+                  <div style={{ marginBottom: '10px' }}>
+                    <label style={{ fontSize: '0.8rem', color: '#94a3b8', display: 'block', marginBottom: '4px' }}>Topic Name</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. JWT Interceptors"
+                      value={bookmarkTopic}
+                      onChange={(e) => setBookmarkTopic(e.target.value)}
+                      style={{ width: '100%', padding: '8px', background: '#1e293b', border: '1px solid rgba(255,255,255,0.1)', color: 'white', borderRadius: '6px' }}
+                    />
+                  </div>
+                  <div style={{ marginBottom: '12px' }}>
+                    <label style={{ fontSize: '0.8rem', color: '#94a3b8', display: 'block', marginBottom: '4px' }}>Revision Notes</label>
+                    <textarea
+                      rows="2"
+                      placeholder="Add quick revision points..."
+                      value={bookmarkNotes}
+                      onChange={(e) => setBookmarkNotes(e.target.value)}
+                      style={{ width: '100%', padding: '8px', background: '#1e293b', border: '1px solid rgba(255,255,255,0.1)', color: 'white', borderRadius: '6px', resize: 'none' }}
+                    />
+                  </div>
+                  <button
+                    onClick={handleSaveBookmark}
+                    style={{ width: '100%', padding: '10px', background: '#10b981', border: 'none', borderRadius: '6px', color: 'white', fontWeight: 'bold', cursor: 'pointer' }}
+                  >
+                    Add to Revision Queue
+                  </button>
+                </div>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  {bookmarks.filter(b => b.classroomId?._id === video.id || b.classroomId === video.id).map(bookmark => (
+                    <div key={bookmark._id} style={{ background: '#0f172a', padding: '12px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.05)' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
+                        <strong style={{ color: '#10b981' }}>📌 {bookmark.topicName || 'Bookmarked Session'}</strong>
+                        <button
+                          onClick={() => handleRemoveBookmark(bookmark._id)}
+                          style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '0.8rem' }}
+                        >
+                          Remove
+                        </button>
+                      </div>
+                      {bookmark.notes && <p style={{ margin: 0, fontSize: '0.85rem', color: '#cbd5e1' }}>{bookmark.notes}</p>}
+                    </div>
+                  ))}
+                  {bookmarks.length === 0 && <p style={{ color: '#94a3b8', fontSize: '0.85rem', textAlign: 'center', marginTop: '20px' }}>Not bookmarked yet.</p>}
+                </div>
+              </div>
+            )}
+
+          </div>
+        </div>
+      )}
     </div>
   );
 };

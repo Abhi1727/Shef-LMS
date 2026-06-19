@@ -160,6 +160,7 @@ app.use('/api/student', require('./routes/student'));
 app.use('/api/activity', require('./routes/activity'));
 app.use('/api/resources', require('./routes/resources'));
 app.use('/api/assessment-studio', require('./routes/assessmentStudio'));
+app.use('/api/classroom-interaction', require('./routes/classroomInteraction'));
 
 // Fallback endpoint for direct file access
 app.get('/api/uploads/notes/:filename', (req, res) => {
