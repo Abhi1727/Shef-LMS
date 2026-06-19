@@ -1254,19 +1254,19 @@ const Dashboard = ({ user, onLogout }) => {
           // For one-to-one vs regular video, prioritize by date
           if (a.isOneToOne && !b.isOneToOne) {
             const dateA = a.classDate ? new Date(a.classDate.split('-').reverse().join('-')) : new Date(a.date || a.addedAt || 0);
-            const dateB = new Date(b.createdAt || b.date || 0);
+            const dateB = new Date(b.date || b.createdAt || b.addedAt || 0);
             return dateB - dateA; // Descending order (newest first)
           }
           
           if (!a.isOneToOne && b.isOneToOne) {
-            const dateA = new Date(a.createdAt || a.date || 0);
+            const dateA = new Date(a.date || a.createdAt || a.addedAt || 0);
             const dateB = b.classDate ? new Date(b.classDate.split('-').reverse().join('-')) : new Date(b.date || b.addedAt || 0);
             return dateB - dateA; // Descending order (newest first)
           }
           
-          // For regular videos, sort by creation date (newest first)
-          const dateA = new Date(a.createdAt || a.date || 0);
-          const dateB = new Date(b.createdAt || b.date || 0);
+          // For regular videos, sort by class date (newest first), falling back to creation date
+          const dateA = new Date(a.date || a.createdAt || a.addedAt || 0);
+          const dateB = new Date(b.date || b.createdAt || b.addedAt || 0);
           return dateB - dateA; // Newest first (descending order)
         });
 

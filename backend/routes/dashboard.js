@@ -109,10 +109,10 @@ router.get('/classroom', async (req, res) => {
       return false;
     });
 
-    // Sort videos by creation date (newest first)
+    // Sort videos by class date (newest first), falling back to creation date
     const sortedVideos = filteredVideos.sort((a, b) => {
-      const dateA = new Date(a.createdAt || a.date || 0);
-      const dateB = new Date(b.createdAt || b.date || 0);
+      const dateA = new Date(a.date || a.createdAt || 0);
+      const dateB = new Date(b.date || b.createdAt || 0);
       return dateB - dateA; // Newest first (descending order)
     });
 
