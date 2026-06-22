@@ -66,8 +66,20 @@ const StudentSearch = memo(({ searchEmail, setSearchEmail, clearSearch, onAddStu
   );
 });
 
-// Batch filter component with search and course filter buttons
-const BatchFilter = memo(({ batchSearch, setBatchSearch, batchCourseFilter, setBatchCourseFilter, filteredCount, totalCount, openModal, teachers, batchTeacherFilter, setBatchTeacherFilter }) => {
+// Batch filter component with search and course filter buttons, now supporting teacher filter on course hover
+const BatchFilter = memo(({ 
+  batchSearch, 
+  setBatchSearch, 
+  batchCourseFilter, 
+  setBatchCourseFilter, 
+  batchTeacherFilter,
+  setBatchTeacherFilter,
+  teachers,
+  batches,
+  filteredCount, 
+  totalCount, 
+  openModal 
+}) => {
   const [hoveredCourse, setHoveredCourse] = useState(null);
 
   const handleSearchChange = useCallback((e) => {
@@ -76,12 +88,13 @@ const BatchFilter = memo(({ batchSearch, setBatchSearch, batchCourseFilter, setB
 
   const handleCourseFilterChange = useCallback((course) => {
     setBatchCourseFilter(course);
-  }, [setBatchCourseFilter]);
+    if (setBatchTeacherFilter) setBatchTeacherFilter('all');
+  }, [setBatchCourseFilter, setBatchTeacherFilter]);
 
   const clearFilters = useCallback(() => {
     setBatchSearch('');
     setBatchCourseFilter('all');
-    setBatchTeacherFilter('all');
+    if (setBatchTeacherFilter) setBatchTeacherFilter('all');
     // Clear localStorage
     try {
       localStorage.removeItem('admin_batch_search');
@@ -101,50 +114,57 @@ const BatchFilter = memo(({ batchSearch, setBatchSearch, batchCourseFilter, setB
     { value: 'one-to-one', label: 'One-to-One', icon: '👤' }
   ];
 
-  const getCourseTeachers = useCallback((courseValue) => {
-    if (courseValue === 'all') {
-      return teachers || [];
-    }
+  const hasActiveFilters = batchSearch.trim() || batchCourseFilter !== 'all' || (batchTeacherFilter && batchTeacherFilter !== 'all');
+
+  const getTeachersForCourse = useCallback((courseValue) => {
+    if (!courseValue || courseValue === 'all') return [];
     
-    const matchesCourse = (teacherCourse, filterCourseValue) => {
-      if (!teacherCourse || !filterCourseValue) return false;
-      const course = teacherCourse.toLowerCase().trim();
-      const filterValue = filterCourseValue.toLowerCase().trim();
-      
-      if (filterValue === 'all') return true;
-      
-      if (filterValue === 'cyber security') {
-        return course.includes('cyber') || course.includes('security');
-      } else if (filterValue === 'data science') {
-        return course.includes('data') || course.includes('science');
-      } else if (filterValue === 'devops & ai') {
-        return course.includes('devops') && (course.includes('ai') || course.toLowerCase().includes('ai'));
-      } else if (filterValue === 'devops & cloud') {
-        return course.includes('devops') && (course.includes('cloud') || course.includes('cloud'));
-      } else if (filterValue === 'one-to-one') {
-        return course.includes('one') || course.includes('1') || course.includes('single');
-      }
-      
-      return course === filterValue;
-    };
+    // 1. Match by domain/assignedCourses fields
+    const matchedTeachers = (teachers || []).filter(t => {
+      const checkMatch = (courseName) => {
+        if (!courseName) return false;
+        const c = courseName.toLowerCase();
+        const val = courseValue.toLowerCase();
+        if (val === 'cyber security') return c.includes('cyber') || c.includes('security');
+        if (val === 'data science') return c.includes('data') || c.includes('science');
+        if (val === 'devops & ai') return c.includes('devops') && c.includes('ai');
+        if (val === 'devops & cloud') return c.includes('devops') && c.includes('cloud');
+        if (val === 'one-to-one') return c.includes('one') || c.includes('1') || c.includes('single');
+        return c.includes(val);
+      };
 
-    return (teachers || []).filter(teacher => {
-      if (teacher.assignedCourses && teacher.assignedCourses.length > 0) {
-        return teacher.assignedCourses.some(c => matchesCourse(c, courseValue));
-      }
-      return matchesCourse(teacher.domain, courseValue);
+      if (t.domain && checkMatch(t.domain)) return true;
+      if (t.assignedCourses && t.assignedCourses.some(c => checkMatch(c))) return true;
+      return false;
     });
-  }, [teachers]);
 
-  const hasActiveFilters = batchSearch.trim() || batchCourseFilter !== 'all' || batchTeacherFilter !== 'all';
+    // 2. Fallback: match by actual active/existing batches
+    const activeTeacherNamesInBatches = (batches || []).filter(b => {
+      const c = (b.course || '').toLowerCase();
+      const val = courseValue.toLowerCase();
+      if (val === 'cyber security') return c.includes('cyber') || c.includes('security');
+      if (val === 'data science') return c.includes('data') || c.includes('science');
+      if (val === 'devops & ai') return c.includes('devops') && c.includes('ai');
+      if (val === 'devops & cloud') return c.includes('devops') && c.includes('cloud');
+      if (val === 'one-to-one') return c.includes('one') || c.includes('1') || c.includes('single');
+      return c.includes(val);
+    }).map(b => b.teacherName).filter(Boolean);
+
+    // Merge lists by name to ensure completeness
+    const allMatched = [...matchedTeachers];
+    (teachers || []).forEach(t => {
+      if (activeTeacherNamesInBatches.some(name => name.toLowerCase() === t.name.toLowerCase())) {
+        if (!allMatched.some(m => m.id === t.id || m._id === t._id || m.name.toLowerCase() === t.name.toLowerCase())) {
+          allMatched.push(t);
+        }
+      }
+    });
+
+    return allMatched;
+  }, [teachers, batches]);
 
   return (
     <div className="batch-filter-section">
-      {/* <div className="batch-filter-header">
-        <h3>Filter Batches</h3>
-        <p className="batch-filter-subtitle">Search by batch name, student name, email, or filter by course type.</p>
-      </div> */}
-      
       <div className="batch-filter-controls">
         <div className="batch-filter-row">
           <div className="batch-search-area">
@@ -158,7 +178,14 @@ const BatchFilter = memo(({ batchSearch, setBatchSearch, batchCourseFilter, setB
             <div className="batch-filter-results">
               Showing <span className="result-count">{filteredCount}</span> of <span className="total-count">{totalCount}</span> batches
               {hasActiveFilters && (
-                <span className="filter-indicator"> (filters applied)</span>
+                <span className="filter-indicator">
+                  {' '}
+                  (
+                  {batchCourseFilter !== 'all' && `Course: ${courseOptions.find(o => o.value === batchCourseFilter)?.label || batchCourseFilter}`}
+                  {batchTeacherFilter && batchTeacherFilter !== 'all' && `${batchCourseFilter !== 'all' ? ' | ' : ''}Teacher: ${batchTeacherFilter}`}
+                  {batchSearch.trim() && `${(batchCourseFilter !== 'all' || (batchTeacherFilter && batchTeacherFilter !== 'all')) ? ' | ' : ''}Search: "${batchSearch}"`}
+                  {' applied'})
+                </span>
               )}
             </div>
           </div>
@@ -166,64 +193,45 @@ const BatchFilter = memo(({ batchSearch, setBatchSearch, batchCourseFilter, setB
         
         <div className="batch-filter-row">
           <div className="batch-course-filters">
-            {courseOptions.map(option => {
-              const activeTeachers = getCourseTeachers(option.value);
-              const isSelected = batchCourseFilter === option.value;
-              
-              return (
-                <div
-                  key={option.value}
-                  className="batch-course-btn-wrapper"
-                  onMouseEnter={() => setHoveredCourse(option.value)}
-                  onMouseLeave={() => setHoveredCourse(null)}
+            {courseOptions.map(option => (
+              <div 
+                key={option.value}
+                className="course-filter-wrapper"
+                onMouseEnter={() => setHoveredCourse(option.value)}
+                onMouseLeave={() => setHoveredCourse(null)}
+              >
+                <button
+                  onClick={() => handleCourseFilterChange(option.value)}
+                  className={`batch-course-btn ${batchCourseFilter === option.value ? 'active' : ''}`}
                 >
-                  <button
-                    onClick={() => {
-                      handleCourseFilterChange(option.value);
-                      setBatchTeacherFilter('all');
-                    }}
-                    className={`batch-course-btn ${isSelected ? 'active' : ''}`}
-                  >
-                    <span className="btn-icon">{option.icon}</span>
-                    <span className="btn-label">
-                      {option.label}
-                      {isSelected && batchTeacherFilter !== 'all' && (
-                        <span className="selected-teacher-indicator">
-                          : {teachers.find(t => (t.id || t._id) === batchTeacherFilter)?.name || 'Teacher'}
-                        </span>
-                      )}
-                    </span>
-                  </button>
-                  
-                  {hoveredCourse === option.value && (
-                    <div className="teachers-dropdown">
-                      <div className="dropdown-header">Filter by Teacher</div>
-                      {activeTeachers.length > 0 ? (
-                        activeTeachers.map(teacher => {
-                          const teacherId = teacher.id || teacher._id;
-                          const isTeacherActive = batchTeacherFilter === teacherId && isSelected;
-                          return (
-                            <button
-                              key={teacherId}
-                              onClick={() => {
-                                handleCourseFilterChange(option.value);
-                                setBatchTeacherFilter(teacherId);
-                                setHoveredCourse(null);
-                              }}
-                              className={`dropdown-item ${isTeacherActive ? 'active' : ''}`}
-                            >
-                              👨‍🏫 {teacher.name}
-                            </button>
-                          );
-                        })
-                      ) : (
-                        <div className="dropdown-no-teachers">No teachers assigned</div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
+                  <span className="btn-icon">{option.icon}</span>
+                  <span className="btn-label">{option.label}</span>
+                </button>
+                
+                {hoveredCourse === option.value && option.value !== 'all' && (
+                  <div className="teacher-dropdown">
+                    <div className="dropdown-header">Respected Teachers</div>
+                    {getTeachersForCourse(option.value).length > 0 ? (
+                      getTeachersForCourse(option.value).map(teacher => (
+                        <div
+                          key={teacher.id || teacher._id || teacher.name}
+                          onClick={() => {
+                            setBatchCourseFilter(option.value);
+                            if (setBatchTeacherFilter) setBatchTeacherFilter(teacher.name);
+                            setHoveredCourse(null);
+                          }}
+                          className={`teacher-dropdown-item ${batchTeacherFilter === teacher.name ? 'selected' : ''}`}
+                        >
+                          👤 {teacher.name}
+                        </div>
+                      ))
+                    ) : (
+                      <div className="dropdown-empty">No teachers assigned</div>
+                    )}
+                  </div>
+                )}
+              </div>
+            ))}
             <button onClick={() => openModal('batch')} className="btn-add batch-filter-add-btn">
               ➕ Add Batch
             </button>
@@ -719,16 +727,10 @@ const AdminDashboard = ({ user, onLogout }) => {
     }
 
     // Apply teacher filter
-    if (batchTeacherFilter !== 'all') {
-      const selectedTeacher = teachers.find(t => (t.id || t._id) === batchTeacherFilter);
-      const selectedTeacherName = selectedTeacher ? (selectedTeacher.name || '').toLowerCase().trim() : '';
-
+    if (batchTeacherFilter && batchTeacherFilter !== 'all') {
       filtered = filtered.filter(batch => {
-        const batchTeacherId = batch.teacherId;
-        const batchTeacherName = (batch.teacherName || '').toLowerCase().trim();
-
-        return batchTeacherId === batchTeacherFilter || 
-               (selectedTeacherName && batchTeacherName === selectedTeacherName);
+        return (batch.teacherName || '').toLowerCase() === batchTeacherFilter.toLowerCase() ||
+               (batch.teacherId || '') === batchTeacherFilter;
       });
       console.log('After teacher filter:', filtered.length, 'batches remaining');
     }
@@ -777,7 +779,7 @@ const AdminDashboard = ({ user, onLogout }) => {
     
     console.log('Final filtered count:', filtered.length);
     return filtered;
-  }, [batches, batchCourseFilter, batchTeacherFilter, batchSearch, students, teachers]);
+  }, [batches, batchCourseFilter, batchTeacherFilter, batchSearch, students]);
 
   // Optimized individual data loading functions
   const loadStudents = useCallback(async (forceRefresh = false) => {
@@ -3364,6 +3366,10 @@ const AdminDashboard = ({ user, onLogout }) => {
                 setBatchSearch={setBatchSearchWithPersistence}
                 batchCourseFilter={batchCourseFilter}
                 setBatchCourseFilter={setBatchCourseFilterWithPersistence}
+                batchTeacherFilter={batchTeacherFilter}
+                setBatchTeacherFilter={setBatchTeacherFilterWithPersistence}
+                teachers={teachers}
+                batches={batches}
                 filteredCount={filteredBatches.length}
                 totalCount={(batches || []).length}
                 openModal={openModal}
@@ -3421,9 +3427,9 @@ const AdminDashboard = ({ user, onLogout }) => {
                     })}
                   </tbody>
                 </table>
-                {filteredBatches.length === 0 && (
+                 {filteredBatches.length === 0 && (
                   <p className="no-data">
-                    {batchSearch.trim() || batchCourseFilter !== 'all' 
+                    {batchSearch.trim() || batchCourseFilter !== 'all' || batchTeacherFilter !== 'all'
                       ? 'No batches found matching your filters. Try adjusting your search or filters.' 
                       : 'No batches found. Create your first batch!'}
                   </p>
