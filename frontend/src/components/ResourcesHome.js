@@ -251,11 +251,44 @@ export default function ResourcesHome({ user, onLogout }) {
                         <div 
                             key={idx}
                             onClick={() => setSelectedCategory(cat.slug)}
-                            className="res-glass-card res-category-card"
-                            style={{ border: selectedCategory === cat.slug ? '1px solid var(--res-accent-primary)' : '1px solid var(--res-glass-border)' }}
+                            className={`res-glass-card res-category-card ${selectedCategory === cat.slug ? 'active' : ''}`}
+                            style={{ 
+                                border: selectedCategory === cat.slug ? '1px solid var(--res-accent-primary)' : '1px solid var(--res-glass-border)',
+                                display: 'flex',
+                                flexDirection: 'column',
+                                alignItems: 'flex-start',
+                                justifyContent: 'space-between',
+                                minHeight: '110px'
+                            }}
                         >
-                            <span className="res-category-icon">{cat.icon || '📘'}</span>
-                            <span style={{ fontSize: '13px', fontWeight: '600' }}>{cat.name}</span>
+                            <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+                                <span className="res-category-icon">{cat.icon || '📘'}</span>
+                                <span style={{ fontSize: '13px', fontWeight: '600', color: '#F0F6FC' }}>{cat.name}</span>
+                            </div>
+                            {cat.driveFolderUrl && (
+                                <a 
+                                    href={cat.driveFolderUrl} 
+                                    target="_blank" 
+                                    rel="noreferrer"
+                                    onClick={(e) => e.stopPropagation()}
+                                    className="res-drive-link"
+                                    style={{ 
+                                        fontSize: '11px', 
+                                        color: 'var(--res-accent-secondary)', 
+                                        textDecoration: 'none', 
+                                        display: 'inline-flex', 
+                                        alignItems: 'center', 
+                                        gap: '4px',
+                                        marginTop: '12px',
+                                        padding: '4px 8px',
+                                        borderRadius: '4px',
+                                        background: 'rgba(255, 255, 255, 0.03)',
+                                        border: '1px solid rgba(255, 255, 255, 0.05)'
+                                    }}
+                                >
+                                    📂 Drive Materials &rarr;
+                                </a>
+                            )}
                         </div>
                     ))}
             </div>
@@ -301,7 +334,7 @@ export default function ResourcesHome({ user, onLogout }) {
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid var(--res-border-subtle)', paddingTop: '12px', marginTop: '10px' }}>
                                 <span style={{ fontSize: '11px', color: '#484F58' }}>{item.estimatedMinutes} min &bull; {item.views} views</span>
                                 <a 
-                                    href={item.content?.colabUrl || item.content?.videoUrl || '#'} 
+                                    href={item.content?.externalUrl || item.content?.colabUrl || item.content?.videoUrl || '#'} 
                                     target="_blank" 
                                     rel="noreferrer"
                                     onClick={async () => {

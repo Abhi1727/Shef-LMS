@@ -10,6 +10,7 @@ const resourceCategorySchema = new mongoose.Schema({
         required: true 
     },
     icon: { type: String, default: 'book' }, // Icon identifier string
+    driveFolderUrl: { type: String }, // Link to Google Drive folder for this category/module
     displayOrder: { type: Number, default: 0 },
     visibility: { type: String, enum: ['published', 'hidden'], default: 'published' },
     createdAt: { type: Date, default: Date.now }
