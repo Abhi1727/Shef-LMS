@@ -85,12 +85,18 @@ function App() {
     // Initialize cache management utilities
     initializeCacheManagement();
     
-    // Cleanup token monitoring on unmount
     return () => {
       tokenService.stopTokenValidation();
     };
   }, []);
 
+  useEffect(() => {
+    if (isAuthenticated && user?.role === 'student') {
+      document.body.classList.add('dark-mode');
+    } else {
+      document.body.classList.remove('dark-mode');
+    }
+  }, [user, isAuthenticated]);
   const initializeCacheManagement = () => {
   try {
     // Setup automatic cache clearing on navigation and auth changes

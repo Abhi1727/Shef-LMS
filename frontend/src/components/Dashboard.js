@@ -833,21 +833,16 @@ const Dashboard = ({ user, onLogout }) => {
 
   // Dark mode toggle
   const toggleDarkMode = () => {
-    const newDarkMode = !darkMode;
-    setDarkMode(newDarkMode);
-    localStorage.setItem('darkMode', newDarkMode);
+    // Keep dark mode always active for students
+    setDarkMode(true);
+    localStorage.setItem('darkMode', 'true');
   };
 
   // Load dark mode preference on mount
   useEffect(() => {
-    const stored = localStorage.getItem('darkMode');
-    if (stored === null) {
-      // Always set light mode for students
-      setDarkMode(false);
-      localStorage.setItem('darkMode', 'false');
-    } else {
-      setDarkMode(stored === 'true');
-    }
+    // Always set dark mode for students
+    setDarkMode(true);
+    localStorage.setItem('darkMode', 'true');
   }, []);
 
   useEffect(() => {
