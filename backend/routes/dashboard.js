@@ -109,10 +109,20 @@ router.get('/classroom', async (req, res) => {
       return false;
     });
 
-    // Sort videos by creation date (newest first)
+    // Sort videos by class date (newest first)
     const sortedVideos = filteredVideos.sort((a, b) => {
-      const dateA = new Date(a.createdAt || a.date || 0);
-      const dateB = new Date(b.createdAt || b.date || 0);
+      const getVideoDate = (v) => {
+        if (v.isOneToOne && v.classDate) {
+          try {
+            return new Date(v.classDate.split('-').reverse().join('-'));
+          } catch (e) {
+            // fallback
+          }
+        }
+        return new Date(v.date || v.createdAt || v.addedAt || 0);
+      };
+      const dateA = getVideoDate(a);
+      const dateB = getVideoDate(b);
       return dateB - dateA; // Newest first (descending order)
     });
 

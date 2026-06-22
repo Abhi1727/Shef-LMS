@@ -1954,7 +1954,7 @@ const BatchDetailsPage = () => {
 
   return (
     <>
-    <div className="teacher-batch-details-page">
+    <div className="teacher-batch-details-page admin-batch-details-page">
       
       {/* Compact Header - Optimized Space Utilization */}
       <div className="batch-header compact">

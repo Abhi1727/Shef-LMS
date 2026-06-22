@@ -1090,34 +1090,21 @@ const Dashboard = ({ user, onLogout }) => {
             ? raw.videos
             : [];
 
-        // Additional sorting on frontend to ensure correct ordering
+        // Additional sorting on frontend to ensure correct ordering (newest class date first)
         const sortedVideos = videos.sort((a, b) => {
-          // For one-to-one videos, sort by class date (newest first)
-          if (a.isOneToOne && b.isOneToOne) {
-            // Use classDate if available, otherwise fall back to date or addedAt
-            // Handle dd-mm-yyyy format for classDate
-            const dateA = a.classDate ? new Date(a.classDate.split('-').reverse().join('-')) : new Date(a.date || a.addedAt || 0);
-            const dateB = b.classDate ? new Date(b.classDate.split('-').reverse().join('-')) : new Date(b.date || b.addedAt || 0);
-            return dateB - dateA; // Descending order (newest class date first)
-          }
-          
-          // For one-to-one vs regular video, prioritize by date
-          if (a.isOneToOne && !b.isOneToOne) {
-            const dateA = a.classDate ? new Date(a.classDate.split('-').reverse().join('-')) : new Date(a.date || a.addedAt || 0);
-            const dateB = new Date(b.createdAt || b.date || 0);
-            return dateB - dateA; // Descending order (newest first)
-          }
-          
-          if (!a.isOneToOne && b.isOneToOne) {
-            const dateA = new Date(a.createdAt || a.date || 0);
-            const dateB = b.classDate ? new Date(b.classDate.split('-').reverse().join('-')) : new Date(b.date || b.addedAt || 0);
-            return dateB - dateA; // Descending order (newest first)
-          }
-          
-          // For regular videos, sort by creation date (newest first)
-          const dateA = new Date(a.createdAt || a.date || 0);
-          const dateB = new Date(b.createdAt || b.date || 0);
-          return dateB - dateA; // Newest first (descending order)
+          const getVideoDate = (v) => {
+            if (v.isOneToOne && v.classDate) {
+              try {
+                return new Date(v.classDate.split('-').reverse().join('-'));
+              } catch (e) {
+                // fallback
+              }
+            }
+            return new Date(v.date || v.createdAt || v.addedAt || 0);
+          };
+          const dateA = getVideoDate(a);
+          const dateB = getVideoDate(b);
+          return dateB - dateA;
         });
 
         // Hide support/utility Zoom rooms from students (e.g. personal meeting rooms)
