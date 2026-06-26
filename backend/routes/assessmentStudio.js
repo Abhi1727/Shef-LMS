@@ -3,8 +3,12 @@ const router = express.Router();
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
+const { PDFParse } = require('pdf-parse');
 const auth = require('../middleware/auth');
 const { roleAuth } = require('../middleware/roleAuth');
+const Batch = require('../models/Batch');
+const OneToOneBatch = require('../models/OneToOneBatch');
+const User = require('../models/User');
 const { 
   KnowledgeSource, 
   KnowledgeChunk, 
@@ -70,8 +74,6 @@ router.post('/upload', [auth, roleAuth('teacher', 'admin')], upload.single('docu
     });
     await newSource.save();
 
-    // Perform background extraction simulation
-    // We will parse the text if it is txt/md, otherwise generate detailed content
     let extractedText = `Document Title: ${title}\nDescription: ${description}\n\n`;
     if (newSource.fileFormat === '.txt' || newSource.fileFormat === '.md') {
       try {
@@ -79,6 +81,20 @@ router.post('/upload', [auth, roleAuth('teacher', 'admin')], upload.single('docu
         extractedText += fileContent;
       } catch (err) {
         console.error('Failed to read text file', err);
+      }
+    } else if (newSource.fileFormat === '.pdf') {
+      try {
+        const buffer = fs.readFileSync(req.file.path);
+        const parser = new PDFParse({ data: buffer });
+        const parsed = await parser.getText();
+        if (parsed && parsed.text) {
+          extractedText += parsed.text;
+        } else {
+          extractedText += `Extracted content from PDF document: ${req.file.originalname}. Contains topics related to ${title}.`;
+        }
+      } catch (err) {
+        console.error('Failed to read PDF file', err);
+        extractedText += `Fallback text content from PDF document: ${title}`;
       }
     } else {
       extractedText += `Simulated extracted text content from document ${req.file.originalname}. Contains complex concepts, codes, definitions and structures.`;
@@ -343,8 +359,27 @@ router.post('/assessments', [auth, roleAuth('teacher', 'admin')], async (req, re
       expiryDate,
       questions, // array of approved question IDs, or rules
       batchId,
+      batchType, // 'Batch' or 'OneToOneBatch'
       status
     } = req.body;
+
+    const resolvedBatchType = batchType || 'Batch';
+
+    if (batchId) {
+      if (req.user.role === 'teacher') {
+        if (resolvedBatchType === 'Batch') {
+          const batch = await Batch.findById(batchId);
+          if (!batch || String(batch.teacherId) !== String(req.user.id)) {
+            return res.status(403).json({ message: 'Access denied: You are not assigned as the teacher for this cohort batch.' });
+          }
+        } else if (resolvedBatchType === 'OneToOneBatch') {
+          const batch = await OneToOneBatch.findById(batchId);
+          if (!batch || String(batch.teacherId) !== String(req.user.id)) {
+            return res.status(403).json({ message: 'Access denied: You are not assigned as the teacher for this 1:1 batch.' });
+          }
+        }
+      }
+    }
 
     // Create a new assessment
     const newAssessment = new Assessment({
@@ -362,6 +397,7 @@ router.post('/assessments', [auth, roleAuth('teacher', 'admin')], async (req, re
       questions,
       createdBy: req.user.id,
       batchId,
+      batchType: resolvedBatchType,
       status: status || 'published'
     });
 
@@ -381,7 +417,26 @@ router.get('/assessments', auth, async (req, res) => {
     const query = {};
     if (req.user.role === 'student') {
       query.status = 'published';
-      // Optionally filter by student's batchId
+      const studentId = req.user.id;
+      const user = await User.findById(studentId);
+      const batchIds = [];
+      if (user) {
+        if (user.batchId) batchIds.push(user.batchId);
+        if (user.oneToOneBatchId) batchIds.push(user.oneToOneBatchId);
+      }
+
+      const cohortBatches = await Batch.find({ students: studentId }).select('_id');
+      const oneToOneBatches = await OneToOneBatch.find({ studentId: studentId }).select('_id');
+      cohortBatches.forEach(b => {
+        if (!batchIds.includes(String(b._id))) batchIds.push(String(b._id));
+      });
+      oneToOneBatches.forEach(b => {
+        if (!batchIds.includes(String(b._id))) batchIds.push(String(b._id));
+      });
+
+      query.batchId = { $in: batchIds };
+    } else if (req.user.role === 'teacher') {
+      query.createdBy = req.user.id;
     }
     const assessments = await Assessment.find(query)
       .populate('questions')
@@ -451,11 +506,22 @@ router.post('/attempts/start', auth, async (req, res) => {
 // @access  Private (Student)
 router.post('/attempts/autosave', auth, async (req, res) => {
   try {
-    const { attemptId, answers } = req.body;
-    await AssessmentAttempt.findByIdAndUpdate(attemptId, {
+    const { attemptId, answers, tabSwitchCount, focusLossCount, cheatingLog } = req.body;
+    const updateObj = {
       answers: answers,
       updatedAt: Date.now()
-    });
+    };
+    if (tabSwitchCount !== undefined) updateObj.tabSwitchCount = tabSwitchCount;
+    if (focusLossCount !== undefined) updateObj.focusLossCount = focusLossCount;
+
+    if (cheatingLog) {
+      await AssessmentAttempt.findByIdAndUpdate(attemptId, {
+        $set: updateObj,
+        $push: { cheatingLogs: cheatingLog }
+      });
+    } else {
+      await AssessmentAttempt.findByIdAndUpdate(attemptId, updateObj);
+    }
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ message: 'Error auto-saving attempt' });
@@ -467,7 +533,7 @@ router.post('/attempts/autosave', auth, async (req, res) => {
 // @access  Private (Student)
 router.post('/attempts/submit', auth, async (req, res) => {
   try {
-    const { attemptId, answers } = req.body;
+    const { attemptId, answers, tabSwitchCount, focusLossCount, cheatingLogs } = req.body;
 
     const attempt = await AssessmentAttempt.findById(attemptId);
     if (!attempt) {
@@ -477,6 +543,12 @@ router.post('/attempts/submit', auth, async (req, res) => {
     const assessment = await Assessment.findById(attempt.assessmentId).populate('questions');
     if (!assessment) {
       return res.status(404).json({ message: 'Assessment not found' });
+    }
+
+    if (tabSwitchCount !== undefined) attempt.tabSwitchCount = tabSwitchCount;
+    if (focusLossCount !== undefined) attempt.focusLossCount = focusLossCount;
+    if (cheatingLogs && Array.isArray(cheatingLogs)) {
+      attempt.cheatingLogs = cheatingLogs;
     }
 
     let finalScore = 0;
@@ -589,6 +661,20 @@ router.get('/attempts/:id/results', auth, async (req, res) => {
   }
 });
 
+// @route   GET /api/assessment-studio/attempts
+// @desc    Get all attempts for the logged in student
+// @access  Private (Student)
+router.get('/attempts', auth, async (req, res) => {
+  try {
+    const attempts = await AssessmentAttempt.find({ studentId: req.user.id })
+      .populate('assessmentId')
+      .sort({ startedAt: -1 });
+    res.json(attempts);
+  } catch (err) {
+    res.status(500).json({ message: 'Error retrieving attempts' });
+  }
+});
+
 // @route   GET /api/assessment-studio/analytics
 // @desc    Get dashboard analytics
 // @access  Private (Teacher & Admin)
@@ -612,6 +698,218 @@ router.get('/analytics', [auth, roleAuth('teacher', 'admin')], async (req, res) 
     });
   } catch (err) {
     res.status(500).json({ message: 'Error retrieving analytics' });
+  }
+});
+
+// @route   POST /api/assessment-studio/generate-preview
+// @desc    Generate quiz questions preview from topic description or PDF
+// @access  Private (Teacher & Admin)
+router.post('/generate-preview', [auth, roleAuth('teacher', 'admin'), upload.single('document')], async (req, res) => {
+  try {
+    const { topic, difficulty, numQuestions, questionType } = req.body;
+    let textToAnalyze = topic || '';
+
+    // If PDF file is uploaded, extract text from it
+    if (req.file) {
+      const fileFormat = path.extname(req.file.originalname).toLowerCase();
+      if (fileFormat === '.txt' || fileFormat === '.md') {
+        textToAnalyze = fs.readFileSync(req.file.path, 'utf8');
+      } else if (fileFormat === '.pdf') {
+        try {
+          const buffer = fs.readFileSync(req.file.path);
+          const parser = new PDFParse({ data: buffer });
+          const parsed = await parser.getText();
+          if (parsed && parsed.text) {
+            textToAnalyze = parsed.text;
+          } else {
+            textToAnalyze = `Uploaded PDF named ${req.file.originalname}`;
+          }
+        } catch (err) {
+          console.error('Failed to read PDF file', err);
+          textToAnalyze = `Uploaded PDF named ${req.file.originalname}`;
+        }
+      }
+    }
+
+    if (!textToAnalyze.trim()) {
+      return res.status(400).json({ message: 'No topic prompt or PDF document supplied.' });
+    }
+
+    const resolvedNum = Number(numQuestions) || 5;
+    const resolvedType = questionType || 'mix';
+    const apiKey = process.env.GEMINI_API_KEY;
+    let questions = [];
+
+    if (apiKey) {
+      try {
+        const axios = require('axios');
+        const prompt = `Generate exactly ${resolvedNum} quiz questions based on this source text or topic description: "${textToAnalyze.slice(0, 8000)}".
+Target difficulty: ${difficulty || 'medium'}.
+You MUST generate ${resolvedType === 'mix' ? 'a mix of question types (mcq, true-false, fill-blank, coding)' : `only questions of type: "${resolvedType}"`}.
+Ensure all mcq and true-false questions have non-empty options array.
+The response must be a JSON array matching the required JSON schema.`;
+
+        const geminiRes = await axios.post(
+          `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
+          {
+            contents: [{ parts: [{ text: prompt }] }],
+            generationConfig: {
+              responseMimeType: "application/json",
+              responseSchema: {
+                type: "ARRAY",
+                items: {
+                  type: "OBJECT",
+                  properties: {
+                    type: { type: "STRING", enum: ["mcq", "true-false", "fill-blank", "coding"] },
+                    questionText: { type: "STRING" },
+                    options: { type: "ARRAY", items: { type: "STRING" } },
+                    correctAnswer: { type: "STRING" },
+                    explanation: { type: "STRING" },
+                    difficulty: { type: "STRING", enum: ["easy", "medium", "hard"] },
+                    topic: { type: "STRING" }
+                  },
+                  required: ["type", "questionText", "correctAnswer", "difficulty"]
+                }
+              }
+            }
+          }
+        );
+
+        const rawJsonText = geminiRes.data.candidates[0].content.parts[0].text;
+        questions = JSON.parse(rawJsonText);
+      } catch (geminiErr) {
+        console.error('Gemini API call failed, falling back to mock questions:', geminiErr.message);
+      }
+    }
+
+    // Fallback if Gemini key is missing or API failed
+    if (!questions || questions.length === 0) {
+      const fallbackTemplates = [
+        {
+          type: 'mcq',
+          questionText: `Which of the following best describes the core concept in: "${textToAnalyze.slice(0, 60)}..."?`,
+          options: ['Option A: Primary mechanism', 'Option B: Secondary alternative', 'Option C: Iterative optimizer', 'Option D: None of the above'],
+          correctAnswer: 'Option A: Primary mechanism',
+          explanation: 'Based on standard course materials, the primary mechanism handles the core execution logic.',
+          difficulty: difficulty || 'medium',
+          topic: 'General Topic'
+        },
+        {
+          type: 'true-false',
+          questionText: `True or False: The text indicates that optimizing parameters directly improves results.`,
+          options: ['True', 'False'],
+          correctAnswer: 'True',
+          explanation: 'Parameter optimization reduces error rates and stabilizes convergence.',
+          difficulty: difficulty || 'medium',
+          topic: 'General Topic'
+        },
+        {
+          type: 'fill-blank',
+          questionText: `In standard terms, the key terminology described is ____________.`,
+          options: [],
+          correctAnswer: 'Optimization',
+          explanation: 'Optimization is the standard term used to define this process.',
+          difficulty: difficulty || 'medium',
+          topic: 'General Topic'
+        },
+        {
+          type: 'coding',
+          questionText: `// Write a simple helper function to process key elements:\nfunction processData(input) {\n  // Enter code here\n}`,
+          options: [],
+          correctAnswer: `function processData(input) {\n  return input ? input.trim().toLowerCase() : "";\n}`,
+          explanation: 'Standard code solution to sanitize the input data.',
+          difficulty: difficulty || 'medium',
+          topic: 'General Topic'
+        }
+      ];
+
+      let selectedTemplates = fallbackTemplates;
+      if (resolvedType !== 'mix') {
+        selectedTemplates = fallbackTemplates.filter(t => t.type === resolvedType);
+        if (selectedTemplates.length === 0) selectedTemplates = fallbackTemplates;
+      }
+
+      while (questions.length < resolvedNum) {
+        const template = selectedTemplates[questions.length % selectedTemplates.length];
+        questions.push({
+          ...template,
+          questionText: `${template.questionText} (Q${questions.length + 1})`
+        });
+      }
+    }
+
+    res.json({ questions });
+  } catch (err) {
+    console.error('Error generating preview:', err);
+    res.status(500).json({ message: 'Error generating quiz preview.' });
+  }
+});
+
+// @route   POST /api/assessment-studio/publish-quick-quiz
+// @desc    Approve questions and publish assessment directly to batch
+// @access  Private (Teacher & Admin)
+router.post('/publish-quick-quiz', [auth, roleAuth('teacher', 'admin')], async (req, res) => {
+  try {
+    const { title, description, duration, difficulty, passingMarks, batchId, batchType, questions } = req.body;
+
+    if (!questions || !questions.length) {
+      return res.status(400).json({ message: 'No questions provided to publish.' });
+    }
+
+    const resolvedBatchType = batchType || 'Batch';
+
+    // Verify batch authorization
+    if (batchId && req.user.role === 'teacher') {
+      if (resolvedBatchType === 'Batch') {
+        const batch = await Batch.findById(batchId);
+        if (!batch || String(batch.teacherId) !== String(req.user.id)) {
+          return res.status(403).json({ message: 'Access denied: You are not assigned as the teacher for this cohort batch.' });
+        }
+      } else if (resolvedBatchType === 'OneToOneBatch') {
+        const batch = await OneToOneBatch.findById(batchId);
+        if (!batch || String(batch.teacherId) !== String(req.user.id)) {
+          return res.status(403).json({ message: 'Access denied: You are not assigned as the teacher for this 1:1 batch.' });
+        }
+      }
+    }
+
+    // Save questions as approved
+    const questionIds = [];
+    for (const qData of questions) {
+      const q = new Question({
+        type: qData.type,
+        questionText: qData.questionText,
+        options: qData.options || [],
+        correctAnswer: qData.correctAnswer,
+        explanation: qData.explanation || '',
+        difficulty: qData.difficulty || difficulty || 'medium',
+        topic: qData.topic || 'General',
+        status: 'approved',
+        createdBy: req.user.id
+      });
+      await q.save();
+      questionIds.push(q._id);
+    }
+
+    // Create the Assessment
+    const newAssessment = new Assessment({
+      title: title || 'Quick AI Generated Quiz',
+      description: description || 'Generated automatically by Shef-LMS AI.',
+      duration: Number(duration) || 30,
+      difficulty: difficulty || 'mixed',
+      passingMarks: Number(passingMarks) || 40,
+      questions: questionIds,
+      createdBy: req.user.id,
+      batchId,
+      batchType: resolvedBatchType,
+      status: 'published'
+    });
+
+    await newAssessment.save();
+    res.status(201).json({ message: 'Quiz published successfully!', assessment: newAssessment });
+  } catch (err) {
+    console.error('Error publishing quick quiz:', err);
+    res.status(500).json({ message: 'Failed to publish quick quiz.' });
   }
 });
 

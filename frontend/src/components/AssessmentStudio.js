@@ -4,12 +4,31 @@ import { ToastContainer, showToast } from './Toast';
 import './AssessmentStudio.css';
 
 const AssessmentStudio = ({ user }) => {
-  const [activeTab, setActiveTab] = useState('dashboard');
+  const [activeTab, setActiveTab] = useState('wizard');
   const [sources, setSources] = useState([]);
   const [pendingQuestions, setPendingQuestions] = useState([]);
   const [questionBank, setQuestionBank] = useState([]);
   const [assessments, setAssessments] = useState([]);
   const [analytics, setAnalytics] = useState(null);
+
+  // Quick AI Quiz Generator Wizard states
+  const [wizardForm, setWizardForm] = useState({
+    title: '',
+    description: '',
+    duration: 30,
+    difficulty: 'medium',
+    passingMarks: 40,
+    batchId: '',
+    batchType: 'Batch',
+    topic: '',
+    usePdf: false,
+    file: null,
+    numQuestions: 5,
+    questionType: 'mix'
+  });
+  const [previewQuestions, setPreviewQuestions] = useState([]);
+  const [wizardStep, setWizardStep] = useState(1); // 1 = setup, 2 = preview/edit
+  const [generating, setGenerating] = useState(false);
 
   // Upload state
   const [uploadProgress, setUploadProgress] = useState(0);
@@ -36,8 +55,133 @@ const AssessmentStudio = ({ user }) => {
     shuffleOptions: true,
     retakeAllowed: true,
     questions: [], // IDs
-    batchId: ''
+    batchId: '',
+    batchType: 'Batch'
   });
+
+  const [batches, setBatches] = useState([]);
+
+  const handleWizardInputChange = (field, value) => {
+    setWizardForm(prev => ({ ...prev, [field]: value }));
+  };
+
+  const handleGeneratePreview = async (e) => {
+    e.preventDefault();
+    if (!wizardForm.batchId) {
+      showToast('Please select a target batch first.', 'error');
+      return;
+    }
+    if (!wizardForm.usePdf && !wizardForm.topic.trim()) {
+      showToast('Please enter a topic prompt or upload a PDF document.', 'error');
+      return;
+    }
+    if (wizardForm.usePdf && !wizardForm.file) {
+      showToast('Please upload a PDF document.', 'error');
+      return;
+    }
+
+    setGenerating(true);
+    const formData = new FormData();
+    formData.append('topic', wizardForm.topic);
+    formData.append('difficulty', wizardForm.difficulty);
+    formData.append('numQuestions', wizardForm.numQuestions || 5);
+    formData.append('questionType', wizardForm.questionType || 'mix');
+    if (wizardForm.usePdf && wizardForm.file) {
+      formData.append('document', wizardForm.file);
+    }
+
+    try {
+      const token = localStorage.getItem('token');
+      const res = await axios.post('/api/assessment-studio/generate-preview', formData, {
+        headers: { 
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'multipart/form-data'
+        }
+      });
+      setPreviewQuestions(res.data.questions || []);
+      setWizardStep(2);
+      showToast('Quiz questions preview generated successfully!', 'success');
+    } catch (err) {
+      console.error(err);
+      showToast(err.response?.data?.message || 'Failed to generate quiz preview.', 'error');
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  const handlePreviewQuestionChange = (index, field, value) => {
+    setPreviewQuestions(prev => {
+      const updated = [...prev];
+      updated[index] = { ...updated[index], [field]: value };
+      return updated;
+    });
+  };
+
+  const handlePreviewOptionChange = (qIndex, optIndex, value) => {
+    setPreviewQuestions(prev => {
+      const updated = [...prev];
+      const options = [...(updated[qIndex].options || [])];
+      options[optIndex] = value;
+      updated[qIndex] = { ...updated[qIndex], options };
+      return updated;
+    });
+  };
+
+  const handleDeletePreviewQuestion = (index) => {
+    setPreviewQuestions(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const handleAddPreviewQuestion = () => {
+    setPreviewQuestions(prev => [
+      ...prev,
+      {
+        type: 'mcq',
+        questionText: 'New Question Text',
+        options: ['Option 1', 'Option 2', 'Option 3', 'Option 4'],
+        correctAnswer: 'Option 1',
+        explanation: '',
+        difficulty: wizardForm.difficulty,
+        topic: 'General'
+      }
+    ]);
+  };
+
+  const handlePublishWizardQuiz = async () => {
+    if (!previewQuestions.length) {
+      showToast('Cannot publish a quiz with 0 questions.', 'error');
+      return;
+    }
+    setGenerating(true);
+    try {
+      const token = localStorage.getItem('token');
+      const payload = {
+        title: wizardForm.title || `${wizardForm.topic || 'AI'} Quiz`,
+        description: wizardForm.description || 'AI Generated Quiz',
+        duration: Number(wizardForm.duration),
+        difficulty: wizardForm.difficulty,
+        passingMarks: Number(wizardForm.passingMarks),
+        batchId: wizardForm.batchId,
+        batchType: wizardForm.batchType,
+        questions: previewQuestions
+      };
+
+      await axios.post('/api/assessment-studio/publish-quick-quiz', payload, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+
+      showToast('Quiz published and assigned to batch successfully!', 'success');
+      setWizardStep(1);
+      setPreviewQuestions([]);
+      setWizardForm(prev => ({ ...prev, topic: '', file: null }));
+      setActiveTab('assessments');
+      fetchAssessments();
+    } catch (err) {
+      console.error(err);
+      showToast('Failed to publish quiz.', 'error');
+    } finally {
+      setGenerating(false);
+    }
+  };
 
   // Question Bank Filter states
   const [filters, setFilters] = useState({
@@ -54,7 +198,37 @@ const AssessmentStudio = ({ user }) => {
     fetchQuestionBank();
     fetchAssessments();
     fetchAnalytics();
+    fetchBatches();
   }, []);
+
+  const fetchBatches = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      // Fetch Cohort Batches
+      const cohortsUrl = user.role === 'teacher' ? '/api/teacher/batches' : '/api/batches';
+      const cohortsRes = await axios.get(cohortsUrl, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const fetchedCohorts = (cohortsRes.data.batches || []).map(b => ({ ...b, type: 'Batch' }));
+
+      // Fetch 1:1 Batches
+      let fetchedO2O = [];
+      try {
+        const o2oUrl = user.role === 'admin' ? '/api/one-to-one-batches' : '/api/one-to-one-batches';
+        const o2oRes = await axios.get(o2oUrl, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        const list = Array.isArray(o2oRes.data) ? o2oRes.data : (o2oRes.data.batches || o2oRes.data.data || []);
+        fetchedO2O = list.map(b => ({ ...b, type: 'OneToOneBatch' }));
+      } catch (err) {
+        console.warn('Failed to fetch one-to-one batches, ignoring.', err);
+      }
+
+      setBatches([...fetchedCohorts, ...fetchedO2O]);
+    } catch (err) {
+      console.error('Error fetching batches', err);
+    }
+  };
 
   const fetchSources = async () => {
     try {
@@ -229,7 +403,8 @@ const AssessmentStudio = ({ user }) => {
         shuffleOptions: true,
         retakeAllowed: true,
         questions: [],
-        batchId: ''
+        batchId: '',
+        batchType: 'Batch'
       });
       fetchAssessments();
     } catch (err) {
@@ -269,6 +444,9 @@ const AssessmentStudio = ({ user }) => {
       </div>
 
       <nav className="studio-tabs">
+        <button className={`tab-btn ${activeTab === 'wizard' ? 'active' : ''}`} onClick={() => setActiveTab('wizard')}>
+          ✨ AI Quiz Generator
+        </button>
         <button className={`tab-btn ${activeTab === 'dashboard' ? 'active' : ''}`} onClick={() => setActiveTab('dashboard')}>
           📊 Dashboard
         </button>
@@ -285,6 +463,300 @@ const AssessmentStudio = ({ user }) => {
           📄 Assessments
         </button>
       </nav>
+
+      {/* AI QUIZ GENERATOR WIZARD TAB */}
+      {activeTab === 'wizard' && (
+        <div style={{ background: 'white', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '36px' }}>
+          {generating && (
+            <div className="modal-overlay" style={{ zIndex: 9999 }}>
+              <div style={{ background: 'white', padding: '30px', borderRadius: '12px', textAlign: 'center', boxShadow: '0 4px 20px rgba(0,0,0,0.1)' }}>
+                <div className="loader" style={{ margin: '0 auto 16px auto' }}></div>
+                <h4>Generating your Premium AI Quiz...</h4>
+                <p style={{ color: '#64748b', margin: 0 }}>Gemini is scanning the content and generating structural questions.</p>
+              </div>
+            </div>
+          )}
+
+          {wizardStep === 1 ? (
+            <div>
+              <h2 style={{ margin: '0 0 10px 0', color: '#0f172a' }}>✨ Automated AI Quiz Wizard</h2>
+              <p style={{ color: '#64748b', marginBottom: '24px' }}>Configure basic quiz details, select batch, and prompt Gemini or upload a PDF to generate a preview before publishing.</p>
+              
+              <form onSubmit={handleGeneratePreview} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px' }}>
+                  <div>
+                    <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '8px' }}>Assign Batch / Cohort *</label>
+                    <select
+                      required
+                      value={wizardForm.batchId ? `${wizardForm.batchId}:${wizardForm.batchType}` : ''}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        if (!val) {
+                          handleWizardInputChange('batchId', '');
+                          handleWizardInputChange('batchType', 'Batch');
+                        } else {
+                          const [id, type] = val.split(':');
+                          handleWizardInputChange('batchId', id);
+                          handleWizardInputChange('batchType', type);
+                        }
+                      }}
+                      style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid #e2e8f0', fontSize: '0.95rem' }}
+                    >
+                      <option value="">-- Select a Batch --</option>
+                      {batches.map(b => (
+                        <option key={b.id || b._id} value={`${b.id || b._id}:${b.type}`}>
+                          {b.type === 'Batch' ? '💼' : '🤝'} {b.course} - {b.name || b.studentName} ({b.type === 'Batch' ? 'Cohort' : '1:1'})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '8px' }}>Quiz Title *</label>
+                    <input 
+                      type="text"
+                      required
+                      placeholder="e.g. Python Fundamentals Evaluation"
+                      value={wizardForm.title}
+                      onChange={(e) => handleWizardInputChange('title', e.target.value)}
+                      style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid #e2e8f0', fontSize: '0.95rem' }}
+                    />
+                  </div>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '16px' }}>
+                  <div>
+                    <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '8px' }}>Difficulty Level</label>
+                    <select
+                      value={wizardForm.difficulty}
+                      onChange={(e) => handleWizardInputChange('difficulty', e.target.value)}
+                      style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid #e2e8f0', fontSize: '0.95rem' }}
+                    >
+                      <option value="easy">Easy</option>
+                      <option value="medium">Medium</option>
+                      <option value="hard">Hard</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '8px' }}>Duration (Mins)</label>
+                    <input 
+                      type="number"
+                      value={wizardForm.duration}
+                      onChange={(e) => handleWizardInputChange('duration', Number(e.target.value))}
+                      style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid #e2e8f0', fontSize: '0.95rem' }}
+                    />
+                  </div>
+
+                  <div>
+                    <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '8px' }}>Passing Score (%)</label>
+                    <input 
+                      type="number"
+                      value={wizardForm.passingMarks}
+                      onChange={(e) => handleWizardInputChange('passingMarks', Number(e.target.value))}
+                      style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid #e2e8f0', fontSize: '0.95rem' }}
+                    />
+                  </div>
+
+                  <div>
+                    <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '8px' }}>No. of Questions</label>
+                    <select
+                      value={wizardForm.numQuestions || 5}
+                      onChange={(e) => handleWizardInputChange('numQuestions', Number(e.target.value))}
+                      style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid #e2e8f0', fontSize: '0.95rem' }}
+                    >
+                      <option value={5}>5 Questions</option>
+                      <option value={10}>10 Questions</option>
+                      <option value={15}>15 Questions</option>
+                      <option value={20}>20 Questions</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '8px' }}>Question Type</label>
+                    <select
+                      value={wizardForm.questionType || 'mix'}
+                      onChange={(e) => handleWizardInputChange('questionType', e.target.value)}
+                      style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid #e2e8f0', fontSize: '0.95rem' }}
+                    >
+                      <option value="mix">Mix (All types)</option>
+                      <option value="mcq">Multiple Choice Only</option>
+                      <option value="true-false">True / False Only</option>
+                      <option value="fill-blank">Fill in Blank Only</option>
+                      <option value="coding">Coding Challenge Only</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '8px' }}>Quiz Description</label>
+                  <textarea 
+                    rows="2"
+                    placeholder="Short description for students explaining the scope and objectives."
+                    value={wizardForm.description}
+                    onChange={(e) => handleWizardInputChange('description', e.target.value)}
+                    style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid #e2e8f0', fontSize: '0.95rem' }}
+                  />
+                </div>
+
+                <div style={{ background: '#f8fafc', padding: '24px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
+                  <label style={{ fontWeight: 'bold', display: 'block', marginBottom: '12px' }}>Knowledge Source Selector</label>
+                  <div style={{ display: 'flex', gap: '20px', marginBottom: '20px' }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontWeight: '600' }}>
+                      <input 
+                        type="radio" 
+                        name="sourceType" 
+                        checked={!wizardForm.usePdf} 
+                        onChange={() => handleWizardInputChange('usePdf', false)}
+                      />
+                      ✍️ Topic Prompt (AI generates from scratch)
+                    </label>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontWeight: '600' }}>
+                      <input 
+                        type="radio" 
+                        name="sourceType" 
+                        checked={wizardForm.usePdf} 
+                        onChange={() => handleWizardInputChange('usePdf', true)}
+                      />
+                      📁 PDF Document Upload
+                    </label>
+                  </div>
+
+                  {!wizardForm.usePdf ? (
+                    <div>
+                      <label style={{ display: 'block', marginBottom: '6px', fontSize: '0.9rem', color: '#475569' }}>Enter the Topic or Prompt for AI Generation</label>
+                      <input 
+                        type="text"
+                        placeholder="e.g. SQL Joins, Aggregate Functions, and Having clauses in database design"
+                        value={wizardForm.topic}
+                        onChange={(e) => handleWizardInputChange('topic', e.target.value)}
+                        style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid #e2e8f0', fontSize: '0.95rem' }}
+                      />
+                    </div>
+                  ) : (
+                    <div>
+                      <label style={{ display: 'block', marginBottom: '6px', fontSize: '0.9rem', color: '#475569' }}>Select PDF File</label>
+                      <input 
+                        type="file"
+                        accept=".pdf"
+                        onChange={(e) => handleWizardInputChange('file', e.target.files[0])}
+                        style={{ width: '100%', padding: '10px', background: 'white', border: '1px solid #e2e8f0', borderRadius: '8px' }}
+                      />
+                      {wizardForm.file && (
+                        <p style={{ margin: '8px 0 0 0', fontSize: '0.85rem', color: '#059669', fontWeight: 'bold' }}>✓ Selected: {wizardForm.file.name}</p>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '12px' }}>
+                  <button type="submit" className="btn-primary" style={{ padding: '12px 30px', fontSize: '1rem' }}>
+                    ✨ Generate Quiz Preview
+                  </button>
+                </div>
+              </form>
+            </div>
+          ) : (
+            <div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', borderBottom: '1px solid #e2e8f0', paddingBottom: '16px' }}>
+                <div>
+                  <h3 style={{ margin: 0, color: '#0f172a' }}>👀 Preview Generated Quiz Questions</h3>
+                  <p style={{ color: '#64748b', margin: '4px 0 0 0' }}>Review and edit generated questions before publishing.</p>
+                </div>
+                <div style={{ display: 'flex', gap: '10px' }}>
+                  <button className="btn-secondary" onClick={() => setWizardStep(1)}>
+                    ← Back
+                  </button>
+                  <button className="btn-secondary" style={{ color: '#4f46e5', borderColor: '#4f46e5' }} onClick={handleAddPreviewQuestion}>
+                    ➕ Add Question
+                  </button>
+                  <button className="btn-primary" style={{ background: '#10b981' }} onClick={handlePublishWizardQuiz}>
+                    🚀 Publish & Assign Quiz
+                  </button>
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                {previewQuestions.map((q, idx) => (
+                  <div key={idx} style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '24px', position: 'relative' }}>
+                    <button 
+                      onClick={() => handleDeletePreviewQuestion(idx)}
+                      style={{ position: 'absolute', right: '20px', top: '20px', background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '1.2rem' }}
+                      title="Delete Question"
+                    >
+                      🗑️
+                    </button>
+
+                    <div style={{ display: 'flex', gap: '10px', marginBottom: '16px' }}>
+                      <span className="badge badge-medium">{q.type.toUpperCase()}</span>
+                      <span className={`badge badge-${q.difficulty || 'medium'}`}>{q.difficulty?.toUpperCase()}</span>
+                      <span style={{ fontSize: '0.85rem', color: '#64748b', alignSelf: 'center' }}>Topic: {q.topic || 'General'}</span>
+                    </div>
+
+                    <div style={{ marginBottom: '16px' }}>
+                      <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '6px', fontSize: '0.9rem' }}>Question Text</label>
+                      <textarea
+                        rows="2"
+                        value={q.questionText}
+                        onChange={(e) => handlePreviewQuestionChange(idx, 'questionText', e.target.value)}
+                        style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #cbd5e1' }}
+                      />
+                    </div>
+
+                    {(q.type === 'mcq' || q.type === 'true-false') && q.options && (
+                      <div style={{ marginBottom: '16px' }}>
+                        <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '6px', fontSize: '0.9rem' }}>Options</label>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                          {q.options.map((opt, oIdx) => (
+                            <input
+                              key={oIdx}
+                              type="text"
+                              value={opt}
+                              onChange={(e) => handlePreviewOptionChange(idx, oIdx, e.target.value)}
+                              style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #cbd5e1' }}
+                            />
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
+                      <div>
+                        <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '6px', fontSize: '0.9rem' }}>Correct Answer</label>
+                        <input
+                          type="text"
+                          value={q.correctAnswer}
+                          onChange={(e) => handlePreviewQuestionChange(idx, 'correctAnswer', e.target.value)}
+                          style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #cbd5e1' }}
+                        />
+                      </div>
+
+                      <div>
+                        <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '6px', fontSize: '0.9rem' }}>Explanation</label>
+                        <input
+                          type="text"
+                          value={q.explanation || ''}
+                          onChange={(e) => handlePreviewQuestionChange(idx, 'explanation', e.target.value)}
+                          style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #cbd5e1' }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: '24px', borderTop: '1px solid #e2e8f0', paddingTop: '16px' }}>
+                <button className="btn-secondary" onClick={() => setWizardStep(1)}>
+                  ← Back
+                </button>
+                <button className="btn-primary" style={{ background: '#10b981', padding: '12px 30px' }} onClick={handlePublishWizardQuiz}>
+                  🚀 Publish & Assign Quiz
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* DASHBOARD TAB */}
       {activeTab === 'dashboard' && (
@@ -587,7 +1059,7 @@ const AssessmentStudio = ({ user }) => {
                 <p style={{ fontSize: '0.9rem', color: '#64748b', margin: '0 0 16px 0' }}>{ass.description || 'No description provided.'}</p>
                 <div style={{ fontSize: '0.85rem', color: '#475569', display: 'flex', flexDirection: 'column', gap: '6px' }}>
                   <div>⏱️ <strong>Duration:</strong> {ass.duration} minutes</div>
-                  <div>❓ <strong>Questions:</strong> {ass.questions.length}</div>
+                  <div>❓ <strong>Questions:</strong> {ass.questions ? ass.questions.length : 0}</div>
                   <div>🎯 <strong>Passing Marks:</strong> {ass.passingMarks}%</div>
                 </div>
               </div>
@@ -705,6 +1177,31 @@ const AssessmentStudio = ({ user }) => {
                   onChange={(e) => setBuilderForm({ ...builderForm, description: e.target.value })}
                   style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #e2e8f0' }}
                 />
+              </div>
+
+              <div>
+                <label style={{ fontWeight: 'bold', display: 'block', marginBottom: '6px' }}>Assign Batch / Cohort</label>
+                <select
+                  required
+                  value={builderForm.batchId ? `${builderForm.batchId}:${builderForm.batchType}` : ''}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    if (!val) {
+                      setBuilderForm(prev => ({ ...prev, batchId: '', batchType: 'Batch' }));
+                    } else {
+                      const [id, type] = val.split(':');
+                      setBuilderForm(prev => ({ ...prev, batchId: id, batchType: type }));
+                    }
+                  }}
+                  style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #e2e8f0' }}
+                >
+                  <option value="">-- Select a batch --</option>
+                  {batches.map(b => (
+                    <option key={b.id || b._id} value={`${b.id || b._id}:${b.type}`}>
+                      {b.type === 'Batch' ? '💼' : '🤝'} {b.course} - {b.name || b.studentName} ({b.type === 'Batch' ? 'Cohort' : '1:1'})
+                    </option>
+                  ))}
+                </select>
               </div>
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '16px' }}>

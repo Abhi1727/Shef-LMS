@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import ToolkitExplorer from './ToolkitExplorer';
 import './resources.css';
 
 export default function ResourcesHome({ user, onLogout }) {
+    const navigate = useNavigate();
     const [loading, setLoading] = useState(true);
     const [resourcesEnabled, setResourcesEnabled] = useState(false);
     const [message, setMessage] = useState('');
@@ -11,6 +13,8 @@ export default function ResourcesHome({ user, onLogout }) {
     const [activeUniverse, setActiveUniverse] = useState('data-science-ai'); // data-science-ai or cyber-security
     const [categories, setCategories] = useState([]);
     const [resources, setResources] = useState([]);
+    const [assessments, setAssessments] = useState([]);
+    const [attempts, setAttempts] = useState([]);
     
     // UI States
     const [searchTerm, setSearchTerm] = useState('');
@@ -47,8 +51,24 @@ export default function ResourcesHome({ user, onLogout }) {
         }
     };
 
+    const fetchAssessmentsAndAttempts = async () => {
+        try {
+            const resAss = await axios.get('/api/assessment-studio/assessments', {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            const resAtt = await axios.get('/api/assessment-studio/attempts', {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            setAssessments(resAss.data || []);
+            setAttempts(resAtt.data || []);
+        } catch (err) {
+            console.error('Error fetching student assessment data:', err);
+        }
+    };
+
     useEffect(() => {
         fetchResources();
+        fetchAssessmentsAndAttempts();
     }, []);
 
     // Filter resources dynamically
@@ -157,7 +177,7 @@ export default function ResourcesHome({ user, onLogout }) {
                 </div>
             </div>
 
-            {/* Quick Stats Bar */}
+            {/* Quick Stats Bar - Commented out for now
             <div className="res-glass-card res-stats-bar" style={{ transform: 'none' }}>
                 <div className="res-stat-item">
                     <span className="res-stat-number">{resources.filter(r => r.course === activeUniverse || r.course === 'both').length}</span>
@@ -178,8 +198,9 @@ export default function ResourcesHome({ user, onLogout }) {
                     <span className="res-stat-label">Learning Views</span>
                 </div>
             </div>
+            */}
 
-            {/* Featured Section Grid */}
+            {/* Featured Section Grid - Commented out for now
             <div className="res-asymmetric-grid">
                 <div className="res-glass-card res-large-featured">
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
@@ -217,8 +238,9 @@ export default function ResourcesHome({ user, onLogout }) {
                     </div>
                 </div>
             </div>
+            */}
 
-            {/* Search Command Palette Trigger */}
+            {/* Search Command Palette Trigger - Commented out for now
             <div 
                 className="res-glass-card" 
                 onClick={() => setShowSearchModal(true)}
@@ -232,6 +254,7 @@ export default function ResourcesHome({ user, onLogout }) {
                     Press <kbd style={{ fontFamily: 'monospace' }}>Ctrl + K</kbd>
                 </div>
             </div>
+            */}
 
             {/* Browse by Category */}
             <h3 style={{ fontSize: '18px', fontWeight: '600', marginBottom: '15px', color: '#F0F6FC' }}>Browse by Category</h3>
@@ -293,66 +316,139 @@ export default function ResourcesHome({ user, onLogout }) {
                     ))}
             </div>
 
-            {/* Quick Access Tags */}
-            <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', paddingBottom: '10px', marginBottom: '30px' }}>
-                <span 
-                    onClick={() => setSelectedTag('All')} 
-                    className={`res-tag-pill ${selectedTag === 'All' ? 'active' : ''}`}
-                >
-                    #all-tags
-                </span>
-                {allTags.map((tag, idx) => (
-                    <span 
-                        key={idx}
-                        onClick={() => setSelectedTag(tag)}
-                        className={`res-tag-pill ${selectedTag === tag ? 'active' : ''}`}
-                    >
-                        #{tag}
-                    </span>
-                ))}
-            </div>
-
-            {/* Filtered Resources List */}
-            <h3 style={{ fontSize: '18px', fontWeight: '600', marginBottom: '15px', color: '#F0F6FC' }}>Targeted Resources</h3>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '20px', marginBottom: '40px' }}>
-                {filteredResources.length === 0 ? (
-                    <div className="res-glass-card" style={{ gridColumn: '1 / -1', textAlign: 'center', padding: '40px', color: '#8B949E' }}>
-                        No resources assigned to your batch match the selected filters.
-                    </div>
-                ) : (
-                    filteredResources.map((item, idx) => (
-                        <div key={idx} className="res-glass-card" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between', minHeight: '200px' }}>
+            {/* Active Category Drive materials banner */}
+            {selectedCategory !== 'All' && categories.find(c => c.slug === selectedCategory) && (
+                (() => {
+                    const activeCatObj = categories.find(c => c.slug === selectedCategory);
+                    return (
+                        <div className="res-glass-card" style={{ 
+                            padding: '24px', 
+                            marginBottom: '30px', 
+                            marginTop: '20px',
+                            background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.15) 0%, rgba(129, 140, 248, 0.05) 100%)', 
+                            border: '1px solid rgba(99, 102, 241, 0.3)', 
+                            display: 'flex', 
+                            justifyContent: 'space-between', 
+                            alignItems: 'center',
+                            gap: '20px',
+                            flexWrap: 'wrap'
+                        }}>
                             <div>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
-                                    <span style={{ fontSize: '10px', background: 'var(--res-bg-quaternary)', color: 'var(--res-accent-secondary)', padding: '2px 8px', borderRadius: '4px', textTransform: 'uppercase', fontWeight: '600' }}>{item.resourceType}</span>
-                                    <span style={{ fontSize: '11px', color: item.difficulty === 'beginner' ? '#10B981' : item.difficulty === 'intermediate' ? '#F59E0B' : '#EF4444' }}>{item.difficulty}</span>
-                                </div>
-                                <h4 style={{ fontSize: '15px', fontWeight: '600', margin: '0 0 8px 0', color: '#F0F6FC' }}>{item.title}</h4>
-                                <p style={{ fontSize: '12px', color: '#8B949E', margin: '0 0 15px 0', lineHeight: '1.5' }}>{item.description}</p>
+                                <h4 style={{ fontSize: '18px', fontWeight: '700', margin: '0 0 6px 0', color: '#F0F6FC' }}>
+                                    {activeCatObj.name} Notes & Materials
+                                </h4>
+                                <p style={{ fontSize: '13px', color: '#8B949E', margin: 0, lineHeight: '1.5' }}>
+                                    {activeCatObj.description || 'Access official handouts, lecture slides, datasets, and reference materials.'}
+                                </p>
                             </div>
-                            
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid var(--res-border-subtle)', paddingTop: '12px', marginTop: '10px' }}>
-                                <span style={{ fontSize: '11px', color: '#484F58' }}>{item.estimatedMinutes} min &bull; {item.views} views</span>
+                            {activeCatObj.driveFolderUrl ? (
                                 <a 
-                                    href={item.content?.externalUrl || item.content?.colabUrl || item.content?.videoUrl || '#'} 
+                                    href={activeCatObj.driveFolderUrl} 
                                     target="_blank" 
                                     rel="noreferrer"
-                                    onClick={async () => {
-                                        try {
-                                            await axios.get(`/api/resources/${item.slug}`, {
-                                                headers: { 'Authorization': `Bearer ${token}` }
-                                            });
-                                        } catch(e){}
+                                    style={{ 
+                                        background: 'var(--res-accent-primary)',
+                                        color: '#FFF',
+                                        padding: '12px 24px',
+                                        borderRadius: '8px',
+                                        textDecoration: 'none',
+                                        fontSize: '14px',
+                                        fontWeight: '700',
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: '8px',
+                                        boxShadow: '0 4px 14px rgba(99, 102, 241, 0.35)',
+                                        transition: 'all 0.2s ease'
                                     }}
-                                    style={{ fontSize: '12px', color: 'var(--res-accent-primary)', textDecoration: 'none', fontWeight: '600' }}
                                 >
-                                    Launch &rarr;
+                                    📂 Open Google Drive Notes &rarr;
                                 </a>
-                            </div>
+                            ) : (
+                                <span style={{ fontSize: '13px', color: '#8B949E', fontStyle: 'italic' }}>
+                                    No drive link added yet
+                                </span>
+                            )}
                         </div>
-                    ))
-                )}
-            </div>
+                    );
+                })()
+            )}
+
+            {/* Assigned Quizzes Section */}
+            {assessments.length > 0 && (
+                <div style={{ marginTop: '40px', marginBottom: '40px' }}>
+                    <h3 style={{ fontSize: '20px', fontWeight: '700', marginBottom: '15px', color: '#F0F6FC', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        ✍️ Assigned Quizzes & Assessments <span style={{ fontSize: '11px', background: 'rgba(99, 102, 241, 0.2)', border: '1px solid rgba(99, 102, 241, 0.4)', padding: '2px 8px', borderRadius: '12px', color: '#818CF8' }}>CARRY POINTS</span>
+                    </h3>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '20px' }}>
+                        {assessments.map(ass => {
+                            const attempt = attempts.find(att => att.assessmentId?._id === ass._id || att.assessmentId === ass._id);
+                            const totalPoints = ass.questions?.reduce((sum, q) => sum + (q.marks || 1), 0) || 0;
+                            
+                            let statusText = 'Not Started';
+                            let statusColor = '#8B949E';
+                            let actionButton = null;
+
+                            if (attempt) {
+                                if (attempt.status === 'completed') {
+                                    statusText = `Completed (${attempt.score}/${attempt.maxScore} pts - ${attempt.percentage}%)`;
+                                    statusColor = '#10B981';
+                                    actionButton = (
+                                        <button 
+                                            onClick={() => navigate(`/student/assessment/results/${attempt._id}`)}
+                                            style={{ background: 'rgba(16, 185, 129, 0.1)', border: '1px solid #10B981', color: '#10B981', padding: '8px 16px', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold' }}
+                                        >
+                                            View Results 📊
+                                        </button>
+                                    );
+                                } else if (attempt.status === 'in-progress') {
+                                    statusText = 'In Progress';
+                                    statusColor = '#F59E0B';
+                                    actionButton = (
+                                        <button 
+                                            onClick={() => navigate(`/student/assessment/${ass._id}`)}
+                                            style={{ background: '#F59E0B', border: 'none', color: '#FFF', padding: '8px 16px', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold' }}
+                                        >
+                                            Resume ⏱️
+                                        </button>
+                                    );
+                                }
+                            } else {
+                                actionButton = (
+                                    <button 
+                                        onClick={() => navigate(`/student/assessment/${ass._id}`)}
+                                        style={{ background: '#6366F1', border: 'none', color: '#FFF', padding: '8px 16px', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold' }}
+                                    >
+                                        Start Quiz 🚀
+                                    </button>
+                                );
+                            }
+
+                            return (
+                                <div key={ass._id} className="res-glass-card" style={{ padding: '24px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', minHeight: '190px' }}>
+                                    <div>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                                            <span style={{ fontSize: '11px', color: statusColor, fontWeight: 'bold', textTransform: 'uppercase' }}>
+                                                ● {statusText}
+                                            </span>
+                                            <span style={{ fontSize: '11px', background: 'rgba(255, 255, 255, 0.05)', padding: '2px 6px', borderRadius: '4px', color: '#8B949E' }}>
+                                                ⏱️ {ass.duration} min
+                                            </span>
+                                        </div>
+                                        <h4 style={{ fontSize: '16px', fontWeight: '700', margin: '0 0 6px 0', color: '#F0F6FC' }}>{ass.title}</h4>
+                                        <p style={{ fontSize: '12px', color: '#8B949E', margin: '0 0 16px 0', lineHeight: '1.4' }}>{ass.description || 'No description provided.'}</p>
+                                    </div>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: '12px', marginTop: 'auto' }}>
+                                        <span style={{ fontSize: '12px', color: '#818CF8', fontWeight: '600' }}>
+                                            🎯 Total Points: {totalPoints}
+                                        </span>
+                                        {actionButton}
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
+                </div>
+            )}
 
             {/* Embedded interactive tool boards/explorers */}
             <ToolkitExplorer 

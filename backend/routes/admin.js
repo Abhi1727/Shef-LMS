@@ -1677,7 +1677,7 @@ router.get('/batches/:courseId', async (req, res) => {
 // @desc    Create a new batch
 router.post('/batches', async (req, res) => {
     try {
-        const { name, course, startDate, endDate, teacherId, teacherName, status } = req.body;
+        const { name, course, startDate, endDate, teacherId, teacherName, status, resourceUniverse } = req.body;
         
         // Validate required fields
         if (!name || !course || !teacherId) {
@@ -1691,7 +1691,8 @@ router.post('/batches', async (req, res) => {
           endDate: endDate || null,
           teacherId,
           teacherName: teacherName || '',
-          status: status || 'active'
+          status: status || 'active',
+          resourceUniverse: resourceUniverse || 'data-science-ai'
         };
 
         const batch = new Batch(batchData);
@@ -1713,7 +1714,7 @@ router.post('/batches', async (req, res) => {
 // @desc    Update a batch (general fields)
 router.put('/batches/:id', async (req, res) => {
     try {
-        const { name, course, startDate, endDate, teacherId, teacherName, status } = req.body;
+        const { name, course, startDate, endDate, teacherId, teacherName, status, resourcesEnabled, resourceUniverse } = req.body;
         
         const updateData = {
           name,
@@ -1724,6 +1725,13 @@ router.put('/batches/:id', async (req, res) => {
           teacherName: teacherName || '',
           status: status || 'active'
         };
+
+        if (typeof resourcesEnabled !== 'undefined') {
+          updateData.resourcesEnabled = resourcesEnabled;
+        }
+        if (resourceUniverse) {
+          updateData.resourceUniverse = resourceUniverse;
+        }
 
         const updated = await Batch.findByIdAndUpdate(req.params.id, updateData, { new: true }).exec();
 

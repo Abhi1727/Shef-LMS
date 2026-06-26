@@ -68,7 +68,8 @@ const assessmentSchema = new mongoose.Schema({
   expiryDate: { type: Date },
   questions: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Question' }],
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-  batchId: { type: mongoose.Schema.Types.ObjectId, ref: 'Batch' }, // Link to a batch/classroom
+  batchId: { type: mongoose.Schema.Types.ObjectId, refPath: 'batchType' }, // Link to a batch/classroom
+  batchType: { type: String, enum: ['Batch', 'OneToOneBatch'], default: 'Batch' },
   status: { type: String, enum: ['draft', 'published', 'archived'], default: 'draft' },
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now }
@@ -92,6 +93,12 @@ const assessmentAttemptSchema = new mongoose.Schema({
   strengths: [{ type: String }],
   weakAreas: [{ type: String }],
   learningSuggestions: [{ type: String }],
+  tabSwitchCount: { type: Number, default: 0 },
+  focusLossCount: { type: Number, default: 0 },
+  cheatingLogs: [{
+    timestamp: { type: Date, default: Date.now },
+    event: { type: String }
+  }],
   startedAt: { type: Date, default: Date.now },
   completedAt: { type: Date }
 });

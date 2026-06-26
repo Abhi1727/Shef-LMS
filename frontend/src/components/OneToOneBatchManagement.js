@@ -1068,16 +1068,52 @@ const OneToOneBatchManagement = () => {
                   <h2 style={{ fontSize: '20px', fontWeight: '600', margin: 0 }}>📚 Resources Center Management (1:1)</h2>
                   <p style={{ fontSize: '12px', color: '#8B949E', margin: '4px 0 0 0' }}>Configure student access and assign specific handouts/tools to this cohort.</p>
                 </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', background: '#111827', padding: '10px 20px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.05)' }}>
-                  <span style={{ fontSize: '13px', fontWeight: '500' }}>Resources Activated:</span>
-                  <label className="res-toggle-switch">
-                    <input 
-                      type="checkbox" 
-                      checked={batchResourcesEnabled}
-                      onChange={handleToggleResourcesEnabled}
-                    />
-                    <span className="res-toggle-slider"></span>
-                  </label>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <span style={{ fontSize: '13px', fontWeight: '500', color: '#8B949E' }}>Showcase Universe:</span>
+                    <select
+                      value={batch?.resourceUniverse || 'data-science-ai'}
+                      onChange={async (e) => {
+                        const newUniverse = e.target.value;
+                        try {
+                          const token = localStorage.getItem('token');
+                          const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
+                          const response = await fetch(`${apiUrl}/api/one-to-one-batches/${batchId}`, {
+                            method: 'PUT',
+                            headers: {
+                              'Content-Type': 'application/json',
+                              'Authorization': `Bearer ${token}`
+                            },
+                            body: JSON.stringify({ resourceUniverse: newUniverse })
+                          });
+                          if (response.ok) {
+                            setBatch(prev => ({ ...prev, resourceUniverse: newUniverse }));
+                            showToast(`Resources Showcase Universe set to ${newUniverse === 'data-science-ai' ? 'Data Science' : newUniverse === 'cyber-security' ? 'Cyber Security' : 'Both'}`, 'success');
+                          } else {
+                            showToast('Failed to update showcase universe', 'error');
+                          }
+                        } catch (err) {
+                          console.error('Error updating resource universe:', err);
+                        }
+                      }}
+                      style={{ background: '#111827', border: '1px solid rgba(255,255,255,0.1)', color: '#F0F6FC', padding: '6px 12px', borderRadius: '6px', fontSize: '12px', outline: 'none', cursor: 'pointer' }}
+                    >
+                      <option value="data-science-ai">Data Science & AI</option>
+                      <option value="cyber-security">Cyber Security</option>
+                      <option value="both">Both (Dual Universe)</option>
+                    </select>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px', background: '#111827', padding: '10px 20px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.05)' }}>
+                    <span style={{ fontSize: '13px', fontWeight: '500' }}>Resources Activated:</span>
+                    <label className="res-toggle-switch">
+                      <input 
+                        type="checkbox" 
+                        checked={batchResourcesEnabled}
+                        onChange={handleToggleResourcesEnabled}
+                      />
+                      <span className="res-toggle-slider"></span>
+                    </label>
+                  </div>
                 </div>
               </div>
 

@@ -1541,7 +1541,7 @@ const Dashboard = ({ user, onLogout }) => {
     modules_detail: [
       {
         id: 1,
-        name: 'Module 1: Introduction to Computer Programming',
+        name: 'Module 1. Python for Data Science',
         duration: '3 weeks',
         lessons: 15,
         progress: 0,
@@ -1560,27 +1560,8 @@ const Dashboard = ({ user, onLogout }) => {
       },
       {
         id: 2,
-        name: 'Module 2: Statistics for Data Science',
-        duration: '4 weeks',
-        lessons: 18,
-        progress: 0,
-        chapters: [
-          {
-            id: 1,
-            title: 'Descriptive Statistics',
-            lessons: ['Mean, Median, Mode', 'Variance and Standard Deviation', 'Data Distribution']
-          },
-          {
-            id: 2,
-            title: 'Inferential Statistics',
-            lessons: ['Hypothesis Testing', 'Confidence Intervals', 'P-values and Significance']
-          }
-        ]
-      },
-      {
-        id: 3,
-        name: 'Module 3: Data Analysis with Python',
-        duration: '4 weeks',
+        name: 'Module 2. Data Science Libraries',
+        duration: '3 weeks',
         lessons: 16,
         progress: 0,
         chapters: [
@@ -1597,8 +1578,8 @@ const Dashboard = ({ user, onLogout }) => {
         ]
       },
       {
-        id: 4,
-        name: 'Module 4: Data Visualization',
+        id: 3,
+        name: 'Module 3. Exploratory Data Analysis (EDA)',
         duration: '3 weeks',
         lessons: 14,
         progress: 0,
@@ -1616,8 +1597,8 @@ const Dashboard = ({ user, onLogout }) => {
         ]
       },
       {
-        id: 5,
-        name: 'Module 5: SQL and Database Management',
+        id: 4,
+        name: 'Module 4. SQL for Data Science',
         duration: '3 weeks',
         lessons: 12,
         progress: 0,
@@ -1635,97 +1616,116 @@ const Dashboard = ({ user, onLogout }) => {
         ]
       },
       {
+        id: 5,
+        name: 'Module 5. Business Intelligence (PowerBI & Tableau)',
+        duration: '3 weeks',
+        lessons: 12,
+        progress: 0,
+        chapters: [
+          {
+            id: 1,
+            title: 'Tableau Fundamentals',
+            lessons: ['Worksheets and Dashboards', 'Calculations', 'Filters and Actions']
+          },
+          {
+            id: 2,
+            title: 'Power BI Reports',
+            lessons: ['Data Modeling', 'DAX Formulas', 'Interactive Power BI Dashboards']
+          }
+        ]
+      },
+      {
         id: 6,
-        name: 'Module 6: Machine Learning Fundamentals',
+        name: 'Module 6. Statistics & Probability for Data Science',
+        duration: '3 weeks',
+        lessons: 15,
+        progress: 0,
+        chapters: [
+          {
+            id: 1,
+            title: 'Probability & Distributions',
+            lessons: ['Probability Theory Basics', 'Descriptive Summary Stats', 'Probability Distributions']
+          },
+          {
+            id: 2,
+            title: 'Statistical Foundations',
+            lessons: ['Statistical Inference', 'Sampling Techniques', 'Hypothesis Foundations']
+          }
+        ]
+      },
+      {
+        id: 7,
+        name: 'Module 7. Advanced Statistics for Data Science',
+        duration: '3 weeks',
+        lessons: 15,
+        progress: 0,
+        chapters: [
+          {
+            id: 1,
+            title: 'Hypothesis Testing & Confidence Intervals',
+            lessons: ['Confidence Intervals & Margin', 'Hypothesis Testing (Z-test/T-test)', 'A/B Testing & Experiment Design']
+          },
+          {
+            id: 2,
+            title: 'Business Applications',
+            lessons: ['Core Business Metrics & KPIs', 'Web Analytics & Data Sources', 'Automated Workflows']
+          }
+        ]
+      },
+      {
+        id: 8,
+        name: 'Module 8. Machine Learning & it\'s Classification',
         duration: '5 weeks',
         lessons: 20,
         progress: 0,
         chapters: [
           {
             id: 1,
-            title: 'Supervised Learning',
-            lessons: ['Linear Regression', 'Logistic Regression', 'Decision Trees']
+            title: 'Supervised Learning Regression',
+            lessons: ['Linear Regression', 'Logistic Regression', 'Model Regularization']
           },
           {
             id: 2,
-            title: 'Unsupervised Learning',
-            lessons: ['K-Means Clustering', 'Hierarchical Clustering', 'PCA and Dimensionality Reduction']
+            title: 'Decision Trees & Ensembles',
+            lessons: ['Decision Trees & Ensembles', 'Random Forests & Boosting', 'Model Validation & Tuning']
           }
         ]
       },
       {
-        id: 7,
-        name: 'Module 7: Advanced Machine Learning',
-        duration: '4 weeks',
-        lessons: 16,
-        progress: 0,
-        chapters: [
-          {
-            id: 1,
-            title: 'Ensemble Methods',
-            lessons: ['Random Forests', 'Gradient Boosting', 'XGBoost and LightGBM']
-          },
-          {
-            id: 2,
-            title: 'Model Optimization',
-            lessons: ['Hyperparameter Tuning', 'Cross-Validation', 'Feature Engineering']
-          }
-        ]
-      },
-      {
-        id: 8,
-        name: 'Module 8: Deep Learning',
+        id: 9,
+        name: 'Module 9. Model Optimization & Deep Learning',
         duration: '5 weeks',
         lessons: 18,
         progress: 0,
         chapters: [
           {
             id: 1,
-            title: 'Neural Networks',
+            title: 'Neural Networks & Deep Learning',
             lessons: ['Perceptrons and MLPs', 'Activation Functions', 'Backpropagation']
           },
           {
             id: 2,
-            title: 'Deep Learning Frameworks',
-            lessons: ['TensorFlow Basics', 'Keras API', 'PyTorch Introduction']
-          }
-        ]
-      },
-      {
-        id: 9,
-        name: 'Module 9: Natural Language Processing',
-        duration: '4 weeks',
-        lessons: 14,
-        progress: 0,
-        chapters: [
-          {
-            id: 1,
-            title: 'Text Processing',
-            lessons: ['Tokenization', 'TF-IDF', 'Word Embeddings']
-          },
-          {
-            id: 2,
-            title: 'NLP Models',
-            lessons: ['Sentiment Analysis', 'Named Entity Recognition', 'Transformers and BERT']
+            title: 'Sequence Models & Vision',
+            lessons: ['Time Series & Sequence Models', 'Computer Vision (CNNs)', 'Optimization Optimizers']
           }
         ]
       },
       {
         id: 10,
-        name: 'Module 10: MLOps and Deployment',
-        duration: '3 weeks',
-        lessons: 14,
+        name: 'Module 10. GenAI & MLOps',
+        duration: '4 weeks',
+        lessons: 16,
         progress: 0,
         chapters: [
           {
             id: 1,
-            title: 'Model Deployment',
-            lessons: ['Flask and FastAPI', 'Docker Containerization', 'Cloud Deployment']
+            title: 'Natural Language Processing & GenAI',
+            lessons: ['NLP & Word Embeddings', 'Attention Transformers & GPT APIs', 'Prompting and Vector DBs']
           },
           {
             id: 2,
-            title: 'MLOps Best Practices',
-            lessons: ['Model Monitoring', 'CI/CD for ML', 'A/B Testing']
+            title: 'ML Lifecycle & MLOps',
+            lessons: ['ML Lifecycle & MLOps', 'Docker Containerization', 'Cloud Deployment & CI/CD']
           }
         ]
       }

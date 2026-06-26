@@ -1,8 +1,14 @@
 import React, { useState, useEffect, useRef } from 'react';
 
-export default function KMeansClusterTheater() {
-    const [k, setK] = useState(3);
-    const [initMethod, setInitMethod] = useState('kmeans++');
+export default function KMeansClusterTheater({ initialK = 3, initialMethod = 'kmeans++' }) {
+    const [k, setK] = useState(initialK);
+    const [initMethod, setInitMethod] = useState(initialMethod);
+
+    useEffect(() => {
+        setK(initialK);
+        setInitMethod(initialMethod);
+    }, [initialK, initialMethod]);
+
     const [points, setPoints] = useState([]);
     const [centroids, setCentroids] = useState([]);
     const [assignments, setAssignments] = useState([]);

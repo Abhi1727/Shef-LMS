@@ -25,6 +25,7 @@ const oneToOneBatchSchema = new mongoose.Schema({
     }],
     schedule: { type: mongoose.Schema.Types.Mixed },
     resourcesEnabled: { type: Boolean, default: false },
+    resourceUniverse: { type: String, default: 'data-science-ai', enum: ['data-science-ai', 'cyber-security', 'both'] },
     notes: { type: String },
     progress: { type: Number, default: 0 },
     createdAt: { type: Date, default: Date.now },

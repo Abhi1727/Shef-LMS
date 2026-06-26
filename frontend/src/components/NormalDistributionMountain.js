@@ -1,10 +1,16 @@
 import React, { useState, useEffect, useRef } from 'react';
 
-export default function NormalDistributionMountain() {
-    const [mean, setMean] = useState(0);
-    const [stdDev, setStdDev] = useState(1);
-    const [zScore, setZScore] = useState(1);
+export default function NormalDistributionMountain({ initialMean = 0, initialStd = 1, initialZ = 1 }) {
+    const [mean, setMean] = useState(initialMean);
+    const [stdDev, setStdDev] = useState(initialStd);
+    const [zScore, setZScore] = useState(initialZ);
     const canvasRef = useRef(null);
+
+    useEffect(() => {
+        setMean(initialMean);
+        setStdDev(initialStd);
+        setZScore(initialZ);
+    }, [initialMean, initialStd, initialZ]);
 
     const canvasWidth = 360;
     const canvasHeight = 240;

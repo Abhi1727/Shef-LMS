@@ -1,101 +1,243 @@
 import React, { useState, useEffect } from 'react';
 
 const PRESETS = {
-    simple: {
+    basics: {
         code: [
-            "# Simple Assignment & Math",
-            "x = 5",
-            "y = 10",
-            "z = x + y",
-            "print(z)"
+            "# Python Basics",
+            "name = 'Alice'",
+            "age = 22",
+            "print('Hello ' + name)"
         ],
         steps: [
             { line: 0, memory: {}, stack: ["<module>"], stdout: "" },
-            { line: 1, memory: { x: 5 }, stack: ["<module>"], stdout: "" },
-            { line: 2, memory: { x: 5, y: 10 }, stack: ["<module>"], stdout: "" },
-            { line: 3, memory: { x: 5, y: 10, z: 15 }, stack: ["<module>"], stdout: "" },
-            { line: 4, memory: { x: 5, y: 10, z: 15 }, stack: ["<module>"], stdout: "15" }
+            { line: 1, memory: { name: "Alice" }, stack: ["<module>"], stdout: "" },
+            { line: 2, memory: { name: "Alice", age: 22 }, stack: ["<module>"], stdout: "" },
+            { line: 3, memory: { name: "Alice", age: 22 }, stack: ["<module>"], stdout: "Hello Alice" }
         ]
     },
-    condition: {
+    datatypes: {
         code: [
-            "age = 20",
-            "if age >= 18:",
-            "    status = 'Adult'",
-            "else:",
-            "    status = 'Minor'",
+            "# Data Types",
+            "is_valid = True",
+            "score = 95.5",
+            "items = [1, 2]",
+            "print(type(score))"
+        ],
+        steps: [
+            { line: 0, memory: {}, stack: ["<module>"], stdout: "" },
+            { line: 1, memory: { is_valid: true }, stack: ["<module>"], stdout: "" },
+            { line: 2, memory: { is_valid: true, score: 95.5 }, stack: ["<module>"], stdout: "" },
+            { line: 3, memory: { is_valid: true, score: 95.5, items: "[1, 2]" }, stack: ["<module>"], stdout: "" },
+            { line: 4, memory: { is_valid: true, score: 95.5, items: "[1, 2]" }, stack: ["<module>"], stdout: "<class 'float'>" }
+        ]
+    },
+    slicing: {
+        code: [
+            "# Indexing & Slicing",
+            "text = 'Python'",
+            "first = text[0]",
+            "sub = text[2:5]",
+            "print(sub)"
+        ],
+        steps: [
+            { line: 0, memory: {}, stack: ["<module>"], stdout: "" },
+            { line: 1, memory: { text: "Python" }, stack: ["<module>"], stdout: "" },
+            { line: 2, memory: { text: "Python", first: "P" }, stack: ["<module>"], stdout: "" },
+            { line: 3, memory: { text: "Python", first: "P", sub: "tho" }, stack: ["<module>"], stdout: "" },
+            { line: 4, memory: { text: "Python", first: "P", sub: "tho" }, stack: ["<module>"], stdout: "tho" }
+        ]
+    },
+    operators: {
+        code: [
+            "# Operators",
+            "val = 15 % 4",
+            "is_greater = val > 2",
+            "status = is_greater or False",
             "print(status)"
         ],
         steps: [
-            { line: 0, memory: { age: 20 }, stack: ["<module>"], stdout: "" },
-            { line: 1, memory: { age: 20 }, stack: ["<module>"], stdout: "" },
-            { line: 2, memory: { age: 20, status: "Adult" }, stack: ["<module>"], stdout: "" },
-            { line: 5, memory: { age: 20, status: "Adult" }, stack: ["<module>"], stdout: "Adult" }
+            { line: 0, memory: {}, stack: ["<module>"], stdout: "" },
+            { line: 1, memory: { val: 3 }, stack: ["<module>"], stdout: "" },
+            { line: 2, memory: { val: 3, is_greater: true }, stack: ["<module>"], stdout: "" },
+            { line: 3, memory: { val: 3, is_greater: true, status: true }, stack: ["<module>"], stdout: "" },
+            { line: 4, memory: { val: 3, is_greater: true, status: true }, stack: ["<module>"], stdout: "True" }
         ]
     },
-    loop: {
+    methods: {
         code: [
-            "total = 0",
-            "for i in range(3):",
-            "    total += i",
-            "print(total)"
+            "# Functions & Methods",
+            "words = 'hello'",
+            "upper_words = words.upper()",
+            "word_len = len(words)",
+            "print(upper_words)"
         ],
         steps: [
-            { line: 0, memory: { total: 0 }, stack: ["<module>"], stdout: "" },
-            { line: 1, memory: { total: 0, i: 0 }, stack: ["<module>"], stdout: "" },
-            { line: 2, memory: { total: 0, i: 0 }, stack: ["<module>"], stdout: "" },
-            { line: 1, memory: { total: 0, i: 1 }, stack: ["<module>"], stdout: "" },
-            { line: 2, memory: { total: 1, i: 1 }, stack: ["<module>"], stdout: "" },
-            { line: 1, memory: { total: 1, i: 2 }, stack: ["<module>"], stdout: "" },
-            { line: 2, memory: { total: 3, i: 2 }, stack: ["<module>"], stdout: "" },
-            { line: 3, memory: { total: 3, i: 2 }, stack: ["<module>"], stdout: "3" }
+            { line: 0, memory: {}, stack: ["<module>"], stdout: "" },
+            { line: 1, memory: { words: "hello" }, stack: ["<module>"], stdout: "" },
+            { line: 2, memory: { words: "hello", upper_words: "HELLO" }, stack: ["<module>"], stdout: "" },
+            { line: 3, memory: { words: "hello", upper_words: "HELLO", word_len: 5 }, stack: ["<module>"], stdout: "" },
+            { line: 4, memory: { words: "hello", upper_words: "HELLO", word_len: 5 }, stack: ["<module>"], stdout: "HELLO" }
         ]
     },
-    nested: {
+    conditionals: {
         code: [
-            "def add(a, b):",
-            "    val = a + b",
-            "    return val",
+            "# Conditional Statements",
+            "x = 12",
+            "if x < 10:",
+            "    res = 'small'",
+            "elif x < 20:",
+            "    res = 'medium'",
+            "else:",
+            "    res = 'large'",
+            "print(res)"
+        ],
+        steps: [
+            { line: 0, memory: {}, stack: ["<module>"], stdout: "" },
+            { line: 1, memory: { x: 12 }, stack: ["<module>"], stdout: "" },
+            { line: 2, memory: { x: 12 }, stack: ["<module>"], stdout: "" },
+            { line: 4, memory: { x: 12 }, stack: ["<module>"], stdout: "" },
+            { line: 5, memory: { x: 12, res: "medium" }, stack: ["<module>"], stdout: "" },
+            { line: 8, memory: { x: 12, res: "medium" }, stack: ["<module>"], stdout: "medium" }
+        ]
+    },
+    loops: {
+        code: [
+            "# Loops & Iterators",
+            "nums = [10, 20]",
+            "sum_val = 0",
+            "for n in nums:",
+            "    sum_val += n",
+            "print(sum_val)"
+        ],
+        steps: [
+            { line: 0, memory: {}, stack: ["<module>"], stdout: "" },
+            { line: 1, memory: { nums: "[10, 20]" }, stack: ["<module>"], stdout: "" },
+            { line: 2, memory: { nums: "[10, 20]", sum_val: 0 }, stack: ["<module>"], stdout: "" },
+            { line: 3, memory: { nums: "[10, 20]", sum_val: 0, n: 10 }, stack: ["<module>"], stdout: "" },
+            { line: 4, memory: { nums: "[10, 20]", sum_val: 10, n: 10 }, stack: ["<module>"], stdout: "" },
+            { line: 3, memory: { nums: "[10, 20]", sum_val: 10, n: 20 }, stack: ["<module>"], stdout: "" },
+            { line: 4, memory: { nums: "[10, 20]", sum_val: 30, n: 20 }, stack: ["<module>"], stdout: "" },
+            { line: 5, memory: { nums: "[10, 20]", sum_val: 30, n: 20 }, stack: ["<module>"], stdout: "30" }
+        ]
+    },
+    cond_loops: {
+        code: [
+            "# Conditional Looping",
+            "count = 0",
+            "for i in [1, 2, 3]:",
+            "    if i % 2 == 0:",
+            "        count += 1",
+            "print(count)"
+        ],
+        steps: [
+            { line: 0, memory: {}, stack: ["<module>"], stdout: "" },
+            { line: 1, memory: { count: 0 }, stack: ["<module>"], stdout: "" },
+            { line: 2, memory: { count: 0, i: 1 }, stack: ["<module>"], stdout: "" },
+            { line: 3, memory: { count: 0, i: 1 }, stack: ["<module>"], stdout: "" },
+            { line: 2, memory: { count: 0, i: 2 }, stack: ["<module>"], stdout: "" },
+            { line: 3, memory: { count: 0, i: 2 }, stack: ["<module>"], stdout: "" },
+            { line: 4, memory: { count: 1, i: 2 }, stack: ["<module>"], stdout: "" },
+            { line: 2, memory: { count: 1, i: 3 }, stack: ["<module>"], stdout: "" },
+            { line: 3, memory: { count: 1, i: 3 }, stack: ["<module>"], stdout: "" },
+            { line: 5, memory: { count: 1, i: 3 }, stack: ["<module>"], stdout: "1" }
+        ]
+    },
+    custom_funcs: {
+        code: [
+            "# Custom Functions",
+            "def square(num):",
+            "    result = num * num",
+            "    return result",
             "",
-            "x = 10",
-            "ans = add(x, 20)",
-            "print(ans)"
+            "val = square(4)",
+            "print(val)"
         ],
         steps: [
-            { line: 0, memory: { add: "<function>" }, stack: ["<module>"], stdout: "" },
-            { line: 4, memory: { add: "<function>", x: 10 }, stack: ["<module>"], stdout: "" },
-            { line: 5, memory: { add: "<function>", x: 10 }, stack: ["<module>", "add(10, 20)"], localMemory: { a: 10, b: 20 }, stdout: "" },
-            { line: 1, memory: { add: "<function>", x: 10 }, stack: ["<module>", "add(10, 20)"], localMemory: { a: 10, b: 20, val: 30 }, stdout: "" },
-            { line: 2, memory: { add: "<function>", x: 10 }, stack: ["<module>"], returnVal: 30, stdout: "" },
-            { line: 5, memory: { add: "<function>", x: 10, ans: 30 }, stack: ["<module>"], stdout: "" },
-            { line: 6, memory: { add: "<function>", x: 10, ans: 30 }, stack: ["<module>"], stdout: "30" }
+            { line: 0, memory: {}, stack: ["<module>"], stdout: "" },
+            { line: 1, memory: { square: "<function>" }, stack: ["<module>"], stdout: "" },
+            { line: 5, memory: { square: "<function>" }, stack: ["<module>", "square(4)"], localMemory: { num: 4 }, stdout: "" },
+            { line: 2, memory: { square: "<function>" }, stack: ["<module>", "square(4)"], localMemory: { num: 4, result: 16 }, stdout: "" },
+            { line: 3, memory: { square: "<function>" }, stack: ["<module>"], returnVal: 16, stdout: "" },
+            { line: 5, memory: { square: "<function>", val: 16 }, stack: ["<module>"], stdout: "" },
+            { line: 6, memory: { square: "<function>", val: 16 }, stack: ["<module>"], stdout: "16" }
+        ]
+    },
+    adv_loops: {
+        code: [
+            "# Advance Looping",
+            "items = [50, 60]",
+            "for idx, val in enumerate(items):",
+            "    if idx == 1:",
+            "        break",
+            "    print(val)"
+        ],
+        steps: [
+            { line: 0, memory: {}, stack: ["<module>"], stdout: "" },
+            { line: 1, memory: { items: "[50, 60]" }, stack: ["<module>"], stdout: "" },
+            { line: 2, memory: { items: "[50, 60]", idx: 0, val: 50 }, stack: ["<module>"], stdout: "" },
+            { line: 3, memory: { items: "[50, 60]", idx: 0, val: 50 }, stack: ["<module>"], stdout: "" },
+            { line: 5, memory: { items: "[50, 60]", idx: 0, val: 50 }, stack: ["<module>"], stdout: "50" },
+            { line: 2, memory: { items: "[50, 60]", idx: 1, val: 60 }, stack: ["<module>"], stdout: "50" },
+            { line: 3, memory: { items: "[50, 60]", idx: 1, val: 60 }, stack: ["<module>"], stdout: "50" },
+            { line: 4, memory: { items: "[50, 60]", idx: 1, val: 60 }, stack: ["<module>"], stdout: "50" }
         ]
     },
     oops: {
         code: [
-            "class Dog:",
+            "# Python OOPs",
+            "class Student:",
             "    def __init__(self, name):",
             "        self.name = name",
             "",
-            "d = Dog('Buddy')",
-            "print(d.name)"
+            "std = Student('John')",
+            "print(std.name)"
         ],
         steps: [
-            { line: 0, memory: { Dog: "<class>" }, stack: ["<module>"], stdout: "" },
-            { line: 4, memory: { Dog: "<class>" }, stack: ["<module>", "Dog.__init__"], localMemory: { self: "<Dog instance>", name: "Buddy" }, stdout: "" },
-            { line: 1, memory: { Dog: "<class>" }, stack: ["<module>", "Dog.__init__"], localMemory: { self: "<Dog instance name='Buddy'>", name: "Buddy" }, stdout: "" },
-            { line: 2, memory: { Dog: "<class>" }, stack: ["<module>", "Dog.__init__"], localMemory: { self: "<Dog instance name='Buddy'>", name: "Buddy" }, stdout: "" },
-            { line: 4, memory: { Dog: "<class>", d: "<Dog instance name='Buddy'>" }, stack: ["<module>"], stdout: "" },
-            { line: 5, memory: { Dog: "<class>", d: "<Dog instance name='Buddy'>" }, stack: ["<module>"], stdout: "Buddy" }
+            { line: 0, memory: {}, stack: ["<module>"], stdout: "" },
+            { line: 1, memory: { Student: "<class>" }, stack: ["<module>"], stdout: "" },
+            { line: 5, memory: { Student: "<class>" }, stack: ["<module>", "Student.__init__"], localMemory: { self: "<Student instance>", name: "John" }, stdout: "" },
+            { line: 2, memory: { Student: "<class>" }, stack: ["<module>", "Student.__init__"], localMemory: { self: "<Student instance name='John'>", name: "John" }, stdout: "" },
+            { line: 3, memory: { Student: "<class>" }, stack: ["<module>", "Student.__init__"], localMemory: { self: "<Student instance name='John'>", name: "John" }, stdout: "" },
+            { line: 5, memory: { Student: "<class>", std: "<Student instance name='John'>" }, stack: ["<module>"], stdout: "" },
+            { line: 6, memory: { Student: "<class>", std: "<Student instance name='John'>" }, stack: ["<module>"], stdout: "John" }
+        ]
+    },
+    exceptions: {
+        code: [
+            "# Exceptional Handling",
+            "try:",
+            "    x = 10 / 0",
+            "except ZeroDivisionError:",
+            "    x = -1",
+            "finally:",
+            "    print(x)"
+        ],
+        steps: [
+            { line: 0, memory: {}, stack: ["<module>"], stdout: "" },
+            { line: 1, memory: {}, stack: ["<module>"], stdout: "" },
+            { line: 2, memory: {}, stack: ["<module>"], stdout: "" },
+            { line: 3, memory: {}, stack: ["<module>"], stdout: "" },
+            { line: 4, memory: { x: -1 }, stack: ["<module>"], stdout: "" },
+            { line: 5, memory: { x: -1 }, stack: ["<module>"], stdout: "" },
+            { line: 6, memory: { x: -1 }, stack: ["<module>"], stdout: "-1" }
         ]
     }
 };
 
-export default function PythonFlowAnimator() {
-    const [preset, setPreset] = useState("simple");
+export default function PythonFlowAnimator({ initialPreset, onChangePreset }) {
+    const [localPreset, setLocalPreset] = useState("basics");
+    const preset = initialPreset || localPreset;
+    const setPreset = onChangePreset || setLocalPreset;
+
     const [stepIndex, setStepIndex] = useState(0);
     const [isPlaying, setIsPlaying] = useState(false);
     const [speed, setSpeed] = useState(1500); // ms
+
+    // Reset step index if preset changes
+    useEffect(() => {
+        setStepIndex(0);
+        setIsPlaying(false);
+    }, [preset]);
 
     const currentPreset = PRESETS[preset];
     const currentStep = currentPreset.steps[stepIndex] || { line: 0, memory: {}, stack: ["<module>"], stdout: "" };
@@ -217,11 +359,18 @@ export default function PythonFlowAnimator() {
                         onChange={(e) => { setPreset(e.target.value); setStepIndex(0); setIsPlaying(false); }}
                         style={{ background: '#111827', border: '1px solid rgba(255,255,255,0.08)', color: '#F0F6FC', padding: '8px', borderRadius: '6px', fontSize: '13px' }}
                     >
-                        <option value="simple">Simple Assignment & Variables</option>
-                        <option value="condition">Conditional Statements (if/else)</option>
-                        <option value="loop">Loops (for total accumulator)</option>
-                        <option value="nested">Function Stack Frame Depth</option>
-                        <option value="oops">OOP Class & Instance objects</option>
+                        <option value="basics">1. Python Basics & Variables</option>
+                        <option value="datatypes">2. Variable Types & Classes</option>
+                        <option value="slicing">3. Indexing & String Slicing</option>
+                        <option value="operators">4. Mathematical & Logical Operators</option>
+                        <option value="methods">5. Built-in Functions & Methods</option>
+                        <option value="conditionals">6. Conditional Statements (if/elif/else)</option>
+                        <option value="loops">7. Loops & Collection Iterators</option>
+                        <option value="cond_loops">8. Loops with Conditional Logic</option>
+                        <option value="custom_funcs">9. Defining Custom Functions</option>
+                        <option value="adv_loops">10. Advanced Loop Control (break/enumerate)</option>
+                        <option value="oops">11. OOP Class & Constructor Methods</option>
+                        <option value="exceptions">12. Exceptional Handling (try/except)</option>
                     </select>
                 </div>
 

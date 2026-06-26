@@ -20,6 +20,7 @@ const batchSchema = new mongoose.Schema({
     }],
     schedule: { type: mongoose.Schema.Types.Mixed }, // e.g. { days: 'Mon,Wed,Fri' or [], time: '10:00 AM - 11:00 AM IST' }
     resourcesEnabled: { type: Boolean, default: false },
+    resourceUniverse: { type: String, default: 'data-science-ai', enum: ['data-science-ai', 'cyber-security', 'both'] },
     notesFile: {
         fileName: { type: String },
         filePath: { type: String },

@@ -100,6 +100,23 @@ router.get('/', auth, async (req, res) => {
             }
         }
 
+        // Apply batch-level overrides if specified by the admin
+        if (!bypassCheck) {
+            if (batchId) {
+                const batch = await Batch.findById(batchId);
+                if (batch && batch.resourceUniverse) {
+                    activeUniverse = batch.resourceUniverse;
+                    isDualUniverse = (batch.resourceUniverse === 'both');
+                }
+            } else if (oneToOneBatchId) {
+                const o2oBatch = await OneToOneBatch.findById(oneToOneBatchId);
+                if (o2oBatch && o2oBatch.resourceUniverse) {
+                    activeUniverse = o2oBatch.resourceUniverse;
+                    isDualUniverse = (o2oBatch.resourceUniverse === 'both');
+                }
+            }
+        }
+
         // Build resources query
         let resourceQuery = { status: 'published' };
         
@@ -372,18 +389,16 @@ router.post('/seed/all', auth, async (req, res) => {
         // 1. Seed Categories
         const categoriesData = [
             // Data Science & AI Modules
-            { name: 'MODULE 1: Python Fundamentals', slug: 'python-fundamentals', description: 'Core Python syntax, loops, functions, variables, OOPs, and stack execution', course: 'data-science-ai', displayOrder: 1, icon: '🐍', driveFolderUrl: 'https://drive.google.com/drive/folders/1iarmcAP5aJeYKvFq6KgR2Lcgk_kxpqNT?usp=drive_link' },
-            { name: 'MODULE 2: Statistics & Mathematics', slug: 'statistics-mathematics', description: 'Descriptive/inferential statistics, normal distribution, z-scores, hypothesis testing', course: 'data-science-ai', displayOrder: 2, icon: '📊', driveFolderUrl: 'https://drive.google.com/drive/folders/1yAqYLlA86XJuAthC_WaBdSXI8smDLiO-?usp=drive_link' },
-            { name: 'MODULE 3: Data Analysis', slug: 'data-analysis', description: 'Scientific computing and tables using NumPy, Pandas, Matplotlib, and Seaborn', course: 'data-science-ai', displayOrder: 3, icon: '📈', driveFolderUrl: 'https://drive.google.com/drive/folders/15Hht1GDHAjiHhzh1CJGmifBtT6_A44u4?usp=drive_link' },
-            { name: 'MODULE 4: Machine Learning — Supervised', slug: 'supervised-learning', description: 'Regression, classification, decision boundaries, SVMs, and Ensemble Trees', course: 'data-science-ai', displayOrder: 4, icon: '🤖', driveFolderUrl: 'https://drive.google.com/drive/folders/1hKbAINd8ME8IYLUEEsy9nkWn12u_effP?usp=drive_link' },
-            { name: 'MODULE 5: Machine Learning — Unsupervised', slug: 'unsupervised-learning', description: 'Clustering convergence (K-Means, hierarchical) and dimensionality reduction (PCA)', course: 'data-science-ai', displayOrder: 5, icon: '🧬', driveFolderUrl: 'https://drive.google.com/drive/folders/1Obi_FPfMX6ZizuSHTJUE6sTvh6gXaNzb?usp=drive_link' },
-            { name: 'MODULE 6: Deep Learning & AI', slug: 'deep-learning-ai', description: 'Artificial Neural Networks, backpropagation, CNN maps, and unrolled sequences', course: 'data-science-ai', displayOrder: 6, icon: '🧠', driveFolderUrl: 'https://drive.google.com/drive/folders/1JgiKs3PeoNQ11_GrtWbjOjH15LokQ1qS?usp=drive_link' },
-            { name: 'MODULE 7: MySQL', slug: 'mysql', description: 'Relational database architecture, schemas, and complex JOIN operations', course: 'data-science-ai', displayOrder: 7, icon: '🐬', driveFolderUrl: 'https://drive.google.com/drive/folders/1YmAKfcVz0BhSly21OPaphQPJBthERUPE?usp=drive_link' },
-            { name: 'MODULE 8: Tableau', slug: 'tableau', description: 'BI visualization worksheets, dashboards, and navigation flows', course: 'data-science-ai', displayOrder: 8, icon: '🎨', driveFolderUrl: 'https://drive.google.com/drive/folders/1W8MeeNOC4f4cAsYU9kxiL6s_7jU1hSoO?usp=drive_link' },
-            { name: 'MODULE 9: Power BI & Google Data Studio', slug: 'power-bi', description: 'Cross-highlighting report building and interactive slicing controls', course: 'data-science-ai', displayOrder: 9, icon: '📊', driveFolderUrl: 'https://drive.google.com/drive/folders/1SRKkuzNoLw4ScXY-R4jR_MQ8o0DgbjMn?usp=drive_link' },
-            { name: 'MODULE 10: Data Engineering', slug: 'data-engineering', description: 'ETL pipelines, data lakes, warehouses, Airflow DAGs, and storage', course: 'data-science-ai', displayOrder: 10, icon: '⚙️', driveFolderUrl: 'https://drive.google.com/drive/folders/1br64KjS7uU-HUDAazbT35YFDnaqDlbMF?usp=drive_link' },
-            { name: 'MODULE 11: NLP with MLOps', slug: 'nlp-mlops', description: 'Attention transformers, tokenizers, MLflow tracking, and Docker deployment', course: 'data-science-ai', displayOrder: 11, icon: '☁️' },
-            { name: 'MODULE 12: AI Strategy', slug: 'ai-strategy', description: 'A/B testing, deployment ROI, compliance, security, and LLM governance', course: 'data-science-ai', displayOrder: 12, icon: '🎯' },
+            { name: 'Module 1. Python for Data Science', slug: 'python-fundamentals', description: 'Core Python syntax, loops, functions, variables, OOPs, and stack execution', course: 'data-science-ai', displayOrder: 1, icon: '🐍', driveFolderUrl: 'https://drive.google.com/drive/folders/1iarmcAP5aJeYKvFq6KgR2Lcgk_kxpqNT?usp=drive_link' },
+            { name: 'Module 2. Data Science Libraries', slug: 'data-analysis', description: 'Scientific computing and tables using NumPy, Pandas, Matplotlib, and Seaborn', course: 'data-science-ai', displayOrder: 2, icon: '📈', driveFolderUrl: 'https://drive.google.com/drive/folders/1yAqYLlA86XJuAthC_WaBdSXI8smDLiO-?usp=drive_link' },
+            { name: 'Module 3. Exploratory Data Analysis (EDA)', slug: 'eda-data', description: 'Exploratory Data Analysis, variable profiles, and visualization tips', course: 'data-science-ai', displayOrder: 3, icon: '🔍', driveFolderUrl: 'https://drive.google.com/drive/folders/15Hht1GDHAjiHhzh1CJGmifBtT6_A44u4?usp=drive_link' },
+            { name: 'Module 4. SQL for Data Science', slug: 'mysql', description: 'Relational database architecture, schemas, and complex JOIN operations', course: 'data-science-ai', displayOrder: 4, icon: '🐬', driveFolderUrl: 'https://drive.google.com/drive/folders/1hKbAINd8ME8IYLUEEsy9nkWn12u_effP?usp=drive_link' },
+            { name: 'Module 5. Business Intelligence (PowerBI & Tableau)', slug: 'bi-tools', description: 'BI visualization worksheets, dashboards, and navigation flows', course: 'data-science-ai', displayOrder: 5, icon: '📊', driveFolderUrl: 'https://drive.google.com/drive/folders/1Obi_FPfMX6ZizuSHTJUE6sTvh6gXaNzb?usp=drive_link' },
+            { name: 'Module 6. Statistics & Probability for Data Science', slug: 'statistics-mathematics', description: 'Descriptive/inferential statistics, normal distribution, z-scores, hypothesis testing', course: 'data-science-ai', displayOrder: 6, icon: '📊', driveFolderUrl: 'https://drive.google.com/drive/folders/1JgiKs3PeoNQ11_GrtWbjOjH15LokQ1qS?usp=drive_link' },
+            { name: 'Module 7. Advanced Statistics for Data Science', slug: 'advanced-statistics', description: 'Advanced confidence intervals, hypothesis tests, and business metrics', course: 'data-science-ai', displayOrder: 7, icon: '🎯', driveFolderUrl: 'https://drive.google.com/drive/folders/1YmAKfcVz0BhSly21OPaphQPJBthERUPE?usp=drive_link' },
+            { name: 'Module 8. Machine Learning & it\'s Classification', slug: 'supervised-learning', description: 'Regression, classification, decision boundaries, SVMs, and Ensemble Trees', course: 'data-science-ai', displayOrder: 8, icon: '🤖', driveFolderUrl: 'https://drive.google.com/drive/folders/1W8MeeNOC4f4cAsYU9kxiL6s_7jU1hSoO?usp=drive_link' },
+            { name: 'Module 9. Model Optimization & Deep Learning', slug: 'deep-learning-ai', description: 'Artificial Neural Networks, backpropagation, CNN maps, and unrolled sequences', course: 'data-science-ai', displayOrder: 9, icon: '🧠', driveFolderUrl: 'https://drive.google.com/drive/folders/1SRKkuzNoLw4ScXY-R4jR_MQ8o0DgbjMn?usp=drive_link' },
+            { name: 'Module 10. GenAI & MLOps', slug: 'nlp-mlops', description: 'Attention transformers, tokenizers, MLflow tracking, and Docker deployment', course: 'data-science-ai', displayOrder: 10, icon: '☁️', driveFolderUrl: 'https://drive.google.com/drive/folders/1br64KjS7uU-HUDAazbT35YFDnaqDlbMF?usp=drive_link' },
             
             // Cyber Security Phases
             { name: 'Reconnaissance & OSINT', slug: 'reconnaissance-osint', description: 'Information gathering and footprints', course: 'cyber-security', displayOrder: 1, icon: '🔍' },
