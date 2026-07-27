@@ -2247,9 +2247,7 @@ const Dashboard = ({ user, onLogout }) => {
 
           <div className="header-user-profile">
             <span className="streak-badge">🔥 {Math.max(realTimeStats?.streak?.current || 0, getLocalStorageStreak())} Days</span>
-            <div className="user-avatar-rect" onClick={() => setActiveSection('profile')}>
-              {user?.name?.charAt(0) || 'S'}
-            </div>
+            <AccountMenu user={user} onLogout={onLogout} />
           </div>
         </header>
 
