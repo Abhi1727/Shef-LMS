@@ -218,6 +218,11 @@ const AdminDashboard = ({ user, onLogout }) => {
   const [reportPeriod, setReportPeriod] = useState('7days');
   const [customDateRange, setCustomDateRange] = useState({ start: '', end: '' });
   const [reportData, setReportData] = useState(null);
+
+  // Teacher details modal
+  const [showTeacherDetailsModal, setShowTeacherDetailsModal] = useState(false);
+  const [selectedTeacherDetails, setSelectedTeacherDetails] = useState(null);
+  const [activeTeacherTab, setActiveTeacherTab] = useState('profile');
   
   // Activity Chart states
   const [chartData, setChartData] = useState([]);
@@ -378,6 +383,39 @@ const AdminDashboard = ({ user, onLogout }) => {
     setSearchEmail('');
     setStudentPage(1);
   }, []);
+
+  const openTeacherDetails = useCallback((teacherOrRef) => {
+    if (!teacherOrRef) return;
+
+    const refId = String(
+      teacherOrRef.id || teacherOrRef._id || teacherOrRef.teacherId || ''
+    ).trim();
+    const refName = String(
+      teacherOrRef.name || teacherOrRef.teacherName || ''
+    ).trim().toLowerCase();
+
+    const matched =
+      (teachers || []).find((t) => String(t.id || t._id) === refId) ||
+      (teachers || []).find((t) => (t.name || '').trim().toLowerCase() === refName) ||
+      null;
+
+    const teacher = matched || {
+      id: refId || undefined,
+      name: teacherOrRef.name || teacherOrRef.teacherName || 'Unknown teacher',
+      email: teacherOrRef.email || 'N/A',
+      phone: teacherOrRef.phone || 'N/A',
+      domain: teacherOrRef.domain || 'N/A',
+      assignedCourses: teacherOrRef.assignedCourses || [],
+      experience: teacherOrRef.experience || 'N/A',
+      status: teacherOrRef.status || 'unknown',
+      age: teacherOrRef.age,
+      address: teacherOrRef.address
+    };
+
+    setSelectedTeacherDetails(teacher);
+    setActiveTeacherTab('profile');
+    setShowTeacherDetailsModal(true);
+  }, [teachers]);
 
   const handleBatchClick = useCallback((batch) => {
     const batchId = batch.id || batch._id;
@@ -546,6 +584,45 @@ const AdminDashboard = ({ user, onLogout }) => {
     const course = (batch.course || '').toLowerCase();
     return course.includes('one-to-one') || course === 'one to one';
   }, []);
+
+  const teacherAssignedBatches = useMemo(() => {
+    if (!selectedTeacherDetails) return { regular: [], oneToOne: [] };
+    const teacherId = String(selectedTeacherDetails.id || selectedTeacherDetails._id || '');
+    const teacherName = (selectedTeacherDetails.name || '').trim().toLowerCase();
+
+    const matchesTeacher = (batch) => {
+      const batchTeacherId = String(batch.teacherId || '');
+      const batchTeacherName = (batch.teacherName || '').trim().toLowerCase();
+      if (teacherId && batchTeacherId && batchTeacherId === teacherId) return true;
+      if (teacherName && batchTeacherName && batchTeacherName === teacherName) return true;
+      return false;
+    };
+
+    const withCounts = (list) =>
+      list.map((batch) => {
+        const batchId = String(batch.id || batch._id || '');
+        const studentCount = (students || []).filter(
+          (s) => s.role === 'student' && String(s.batchId || '') === batchId
+        ).length;
+        return { ...batch, studentCount };
+      });
+
+    const regular = withCounts((batches || []).filter((b) => !isOneToOneBatch(b) && matchesTeacher(b)));
+    const oneToOne = withCounts([
+      ...(batches || []).filter((b) => isOneToOneBatch(b) && matchesTeacher(b)),
+      ...(oneToOneBatches || []).filter((b) => matchesTeacher(b))
+    ]);
+
+    const seen = new Set();
+    const uniqueOneToOne = oneToOne.filter((b) => {
+      const id = String(b.id || b._id || '');
+      if (!id || seen.has(id)) return false;
+      seen.add(id);
+      return true;
+    });
+
+    return { regular, oneToOne: uniqueOneToOne };
+  }, [selectedTeacherDetails, batches, oneToOneBatches, students, isOneToOneBatch]);
 
   // Filter teachers by selected course for batch modal (all teachers for 1:1)
   const getFilteredTeachers = useCallback(() => {
@@ -3262,7 +3339,16 @@ const AdminDashboard = ({ user, onLogout }) => {
                   <tbody>
                     {(teachers || []).map(teacher => (
                       <tr key={teacher.id}>
-                        <td>{teacher.name}</td>
+                        <td>
+                          <button
+                            type="button"
+                            onClick={() => openTeacherDetails(teacher)}
+                            className="btn-link"
+                            title="View Teacher Details"
+                          >
+                            {teacher.name}
+                          </button>
+                        </td>
                         <td>{teacher.email}</td>
                         <td>{teacher.age || 'N/A'}</td>
                         <td>
@@ -3354,7 +3440,20 @@ const AdminDashboard = ({ user, onLogout }) => {
                           </td>
                           <td>{batch.course}</td>
                           <td>{batch.startDate || 'N/A'}</td>
-                          <td>{batch.teacherName || 'N/A'}</td>
+                          <td>
+                            {batch.teacherName || batch.teacherId ? (
+                              <button
+                                type="button"
+                                onClick={() => openTeacherDetails(batch)}
+                                className="btn-link"
+                                title="View Teacher Details"
+                              >
+                                {batch.teacherName || 'View teacher'}
+                              </button>
+                            ) : (
+                              'N/A'
+                            )}
+                          </td>
                           <td>{actualStudentCount}</td>
                           <td>
                             <span className={`status-badge ${batch.status}`}>
@@ -3751,7 +3850,20 @@ const AdminDashboard = ({ user, onLogout }) => {
                             </button>
                           </td>
                           <td>{batch.programLabel || batch.course}</td>
-                          <td>{batch.teacherName || 'N/A'}</td>
+                          <td>
+                            {batch.teacherName || batch.teacherId ? (
+                              <button
+                                type="button"
+                                onClick={() => openTeacherDetails(batch)}
+                                className="btn-link"
+                                title="View Teacher Details"
+                              >
+                                {batch.teacherName || 'View teacher'}
+                              </button>
+                            ) : (
+                              'N/A'
+                            )}
+                          </td>
                           <td>{actualStudentCount}</td>
                           <td>
                             <span className={`status-badge ${batch.status}`}>
@@ -5658,7 +5770,18 @@ const AdminDashboard = ({ user, onLogout }) => {
                 </div>
                 <div className="detail-item">
                   <label>Teacher:</label>
-                  <span>{selectedBatch?.teacherName || 'N/A'}</span>
+                  {selectedBatch?.teacherName || selectedBatch?.teacherId ? (
+                    <button
+                      type="button"
+                      className="btn-link"
+                      onClick={() => openTeacherDetails(selectedBatch)}
+                      title="View Teacher Details"
+                    >
+                      {selectedBatch?.teacherName || 'View teacher'}
+                    </button>
+                  ) : (
+                    <span>N/A</span>
+                  )}
                 </div>
                 <div className="detail-item">
                   <label>Start Date:</label>
@@ -6570,6 +6693,258 @@ const AdminDashboard = ({ user, onLogout }) => {
                       <small>Generate analytics to see platform insights</small>
                     </div>
                   )}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* Teacher Details Modal */}
+      {showTeacherDetailsModal && selectedTeacherDetails && createPortal(
+        <div className="fullscreen-modal-overlay" onClick={() => setShowTeacherDetailsModal(false)}>
+          <div className="fullscreen-modal teacher-details-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="fullscreen-modal-header">
+              <div className="student-header-info">
+                <div className="student-avatar">
+                  <span className="avatar-text">
+                    {selectedTeacherDetails?.name?.charAt(0).toUpperCase() || 'T'}
+                  </span>
+                </div>
+                <div className="student-basic-info">
+                  <h2>{selectedTeacherDetails?.name || 'Teacher'}</h2>
+                  <p className="student-email">{selectedTeacherDetails?.email || 'N/A'}</p>
+                  <div className="student-badges">
+                    <span className={`badge ${selectedTeacherDetails?.status || 'active'}`}>
+                      {selectedTeacherDetails?.status || 'Active'}
+                    </span>
+                    <span className="badge">
+                      {(selectedTeacherDetails?.assignedCourses && selectedTeacherDetails.assignedCourses[0])
+                        || selectedTeacherDetails?.domain
+                        || 'No course'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+              <div className="header-tab-buttons">
+                <button
+                  type="button"
+                  className={`header-tab-btn ${activeTeacherTab === 'profile' ? 'active' : ''}`}
+                  onClick={() => setActiveTeacherTab('profile')}
+                >
+                  Profile
+                </button>
+                <button
+                  type="button"
+                  className={`header-tab-btn ${activeTeacherTab === 'batches' ? 'active' : ''}`}
+                  onClick={() => setActiveTeacherTab('batches')}
+                >
+                  Batches ({teacherAssignedBatches.regular.length + teacherAssignedBatches.oneToOne.length})
+                </button>
+              </div>
+              <div className="modal-header-actions">
+                {selectedTeacherDetails?.id || selectedTeacherDetails?._id ? (
+                  <button
+                    type="button"
+                    className="btn-edit-profile"
+                    onClick={() => {
+                      setShowTeacherDetailsModal(false);
+                      openModal('teacher', selectedTeacherDetails);
+                    }}
+                  >
+                    Edit Teacher
+                  </button>
+                ) : null}
+                <button
+                  type="button"
+                  className="modal-close-fullscreen"
+                  onClick={() => setShowTeacherDetailsModal(false)}
+                >
+                  ×
+                </button>
+              </div>
+            </div>
+
+            <div className="fullscreen-modal-content">
+              {activeTeacherTab === 'profile' && (
+                <div className="profile-tab-content">
+                  <div className="profile-dense-grid">
+                    <div className="profile-card profile-card-personal">
+                      <h3>Personal Information</h3>
+                      <div className="profile-details compact-details">
+                        <div className="detail-item">
+                          <label>Full Name</label>
+                          <span>{selectedTeacherDetails?.name || 'N/A'}</span>
+                        </div>
+                        <div className="detail-item">
+                          <label>Email</label>
+                          <span className="truncate-value">{selectedTeacherDetails?.email || 'N/A'}</span>
+                        </div>
+                        <div className="detail-item">
+                          <label>Phone</label>
+                          <span>{selectedTeacherDetails?.phone || 'N/A'}</span>
+                        </div>
+                        <div className="detail-item">
+                          <label>Age</label>
+                          <span>{selectedTeacherDetails?.age || 'N/A'}</span>
+                        </div>
+                        <div className="detail-item wide-detail">
+                          <label>Address</label>
+                          <span>{selectedTeacherDetails?.address || 'N/A'}</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="profile-card">
+                      <h3>Teaching Profile</h3>
+                      <div className="profile-details compact-details">
+                        <div className="detail-item">
+                          <label>Domain</label>
+                          <span>{selectedTeacherDetails?.domain || 'N/A'}</span>
+                        </div>
+                        <div className="detail-item">
+                          <label>Experience</label>
+                          <span>{selectedTeacherDetails?.experience || 'N/A'}</span>
+                        </div>
+                        <div className="detail-item">
+                          <label>Status</label>
+                          <span className={`status-badge ${selectedTeacherDetails?.status || 'inactive'}`}>
+                            {selectedTeacherDetails?.status || 'N/A'}
+                          </span>
+                        </div>
+                        <div className="detail-item">
+                          <label>Teacher ID</label>
+                          <span className="truncate-value">
+                            {selectedTeacherDetails?.id || selectedTeacherDetails?._id || 'N/A'}
+                          </span>
+                        </div>
+                        <div className="detail-item wide-detail">
+                          <label>Assigned Courses</label>
+                          <span>
+                            {(selectedTeacherDetails?.assignedCourses || []).length > 0
+                              ? selectedTeacherDetails.assignedCourses.join(', ')
+                              : (selectedTeacherDetails?.domain || 'N/A')}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="profile-card">
+                      <h3>Assignment Summary</h3>
+                      <div className="profile-details compact-details">
+                        <div className="detail-item">
+                          <label>Regular Batches</label>
+                          <span>{teacherAssignedBatches.regular.length}</span>
+                        </div>
+                        <div className="detail-item">
+                          <label>One-to-One Batches</label>
+                          <span>{teacherAssignedBatches.oneToOne.length}</span>
+                        </div>
+                        <div className="detail-item">
+                          <label>Total Students</label>
+                          <span>
+                            {[...teacherAssignedBatches.regular, ...teacherAssignedBatches.oneToOne]
+                              .reduce((sum, b) => sum + (b.studentCount || 0), 0)}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {activeTeacherTab === 'batches' && (
+                <div className="profile-tab-content teacher-batches-tab">
+                  <div className="profile-card" style={{ marginBottom: '20px' }}>
+                    <h3>Regular Batches</h3>
+                    {teacherAssignedBatches.regular.length === 0 ? (
+                      <p className="no-data">No regular batches assigned.</p>
+                    ) : (
+                      <div className="data-table-container">
+                        <table className="data-table">
+                          <thead>
+                            <tr>
+                              <th>Batch</th>
+                              <th>Course</th>
+                              <th>Students</th>
+                              <th>Status</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {teacherAssignedBatches.regular.map((batch) => (
+                              <tr key={batch.id || batch._id}>
+                                <td>
+                                  <button
+                                    type="button"
+                                    className="btn-link"
+                                    onClick={() => {
+                                      setShowTeacherDetailsModal(false);
+                                      handleBatchClick(batch);
+                                    }}
+                                  >
+                                    {batch.name}
+                                  </button>
+                                </td>
+                                <td>{batch.course || 'N/A'}</td>
+                                <td>{batch.studentCount}</td>
+                                <td>
+                                  <span className={`status-badge ${batch.status || 'active'}`}>
+                                    {batch.status || 'N/A'}
+                                  </span>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="profile-card">
+                    <h3>One-to-One Batches</h3>
+                    {teacherAssignedBatches.oneToOne.length === 0 ? (
+                      <p className="no-data">No one-to-one batches assigned.</p>
+                    ) : (
+                      <div className="data-table-container">
+                        <table className="data-table">
+                          <thead>
+                            <tr>
+                              <th>Batch</th>
+                              <th>Program</th>
+                              <th>Students</th>
+                              <th>Status</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {teacherAssignedBatches.oneToOne.map((batch) => (
+                              <tr key={batch.id || batch._id}>
+                                <td>
+                                  <button
+                                    type="button"
+                                    className="btn-link"
+                                    onClick={() => {
+                                      setShowTeacherDetailsModal(false);
+                                      handleBatchClick(batch);
+                                    }}
+                                  >
+                                    {batch.name}
+                                  </button>
+                                </td>
+                                <td>{batch.programLabel || batch.course || 'N/A'}</td>
+                                <td>{batch.studentCount}</td>
+                                <td>
+                                  <span className={`status-badge ${batch.status || 'active'}`}>
+                                    {batch.status || 'N/A'}
+                                  </span>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
             </div>
