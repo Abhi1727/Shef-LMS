@@ -11,7 +11,7 @@ async function createAdminAccount() {
 
     const ADMIN_EMAIL = 'support@skystates.us';
     const ADMIN_NAME = 'Upendra';
-    const ADMIN_PASSWORD = 'SuperAdmin@123';
+    const ADMIN_PASSWORD = 'Modi@123';
 
     // Prefer canonical admin email; also migrate legacy admin@sheflms.com
     let existingAdmin =
