@@ -206,7 +206,7 @@
   font-size: 22px;
   font-weight: 700;
   margin: 0;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: linear-gradient(135deg, #0b3d4a 0%, #147a7a 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
@@ -240,7 +240,7 @@
   width: 36px;
   height: 36px;
   border-radius: 50%;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: linear-gradient(135deg, #0b3d4a 0%, #147a7a 100%);
   color: white;
   display: flex;
   align-items: center;
@@ -309,7 +309,7 @@
 }
 
 .nav-btn-h.active {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: linear-gradient(135deg, #0b3d4a 0%, #147a7a 100%);
   color: white;
   border-color: transparent;
   box-shadow: 0 2px 8px rgba(102, 126, 234, 0.4);
@@ -784,7 +784,7 @@
 
 .admin-sidebar .sidebar-header {
   padding: 24px 20px;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: linear-gradient(135deg, #0b3d4a 0%, #147a7a 100%);
   color: white;
   display: flex;
   justify-content: space-between;
@@ -897,7 +897,7 @@
 
 .btn-join {
   display: inline-block;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: linear-gradient(135deg, #0b3d4a 0%, #147a7a 100%);
   color: white;
   padding: 8px 12px;
   border-radius: 8px;
@@ -940,7 +940,7 @@
 .admin-top-header h1 {
   font-size: 28px;
   font-weight: 700;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: linear-gradient(135deg, #0b3d4a 0%, #147a7a 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
@@ -990,7 +990,7 @@
   width: 45px;
   height: 45px;
   border-radius: 50%;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: linear-gradient(135deg, #0b3d4a 0%, #147a7a 100%);
   color: white;
   display: flex;
   align-items: center;
@@ -1015,7 +1015,7 @@
   margin-right: 18px;
   border-radius: 12px;
   border: none;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: linear-gradient(135deg, #0b3d4a 0%, #147a7a 100%);
   color: white;
   font-size: 22px;
   cursor: pointer;
@@ -1085,7 +1085,7 @@
 }
 
 .stat-card {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: linear-gradient(135deg, #0b3d4a 0%, #147a7a 100%);
   border-radius: 16px;
   padding: 28px;
   display: flex;
@@ -1157,7 +1157,7 @@
 
 .action-btn {
   padding: 16px 24px;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: linear-gradient(135deg, #0b3d4a 0%, #147a7a 100%);
   border: none;
   border-radius: 12px;
   color: white;
@@ -1710,7 +1710,7 @@
 }
 
 .data-table thead {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: linear-gradient(135deg, #0b3d4a 0%, #147a7a 100%);
   color: white;
 }
 
@@ -1904,7 +1904,7 @@
 }
 
 .rows-per-page-button.active {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: linear-gradient(135deg, #0b3d4a 0%, #147a7a 100%);
   color: white;
   border-color: transparent;
   box-shadow: 0 2px 6px rgba(102, 126, 234, 0.4);
@@ -1950,7 +1950,7 @@
 }
 
 .page-number.active {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: linear-gradient(135deg, #0b3d4a 0%, #147a7a 100%);
   color: white;
   border-color: transparent;
   box-shadow: 0 2px 6px rgba(102, 126, 234, 0.3);
@@ -2182,7 +2182,7 @@
   width: 70px;
   height: 70px;
   border-radius: 50%;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: linear-gradient(135deg, #0b3d4a 0%, #147a7a 100%);
   color: white;
   display: flex;
   align-items: center;
@@ -2971,7 +2971,7 @@ body.modal-open {
 .bar {
   width: 100%;
   max-width: 50px;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: linear-gradient(135deg, #0b3d4a 0%, #147a7a 100%);
   border-radius: 6px 6px 0 0;
   transition: all 0.3s ease;
   position: relative;
@@ -3049,7 +3049,7 @@ body.modal-open {
 
 .progress-fill-analytics {
   height: 100%;
-  background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+  background: linear-gradient(90deg, #0b3d4a 0%, #147a7a 100%);
   border-radius: 10px;
   transition: width 1s ease;
 }
@@ -3360,7 +3360,7 @@ body.modal-open {
   padding: 12px 20px;
   border: none;
   border-radius: 6px;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: linear-gradient(135deg, #0b3d4a 0%, #147a7a 100%);
   color: white;
   font-weight: 600;
   cursor: pointer;
@@ -3688,7 +3688,7 @@ body.modal-open {
 
 /* Modal Header */
 .fullscreen-modal-header {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: linear-gradient(135deg, #0b3d4a 0%, #147a7a 100%);
   color: white;
   padding: 10px 20px;
   display: flex;

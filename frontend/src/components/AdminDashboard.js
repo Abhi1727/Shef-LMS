@@ -4,14 +4,15 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { adminAnalyticsService, adminAnalyticsUtils } from '../services/adminAnalyticsService';
 import { COLLECTIONS } from '../services/firebaseService';
 import { ToastContainer, showToast } from './Toast';
-import fallbackData from '../data/fallbackData';
+import { getApiBaseUrl } from '../utils/apiBase';
 import { YouTubeUtils } from '../utils/youtubeUtils';
 import { formatDateForComponent } from '../utils/dateUtils';
 import StudentsActivity from './StudentsActivity';
-import OneToOneCourseSelection from './OneToOneCourseSelection';
 import ActivityTimelineChart from './charts/ActivityTimelineChart';
 import { processActivityData, exportToCSV } from '../utils/activityDataProcessor';
 import AssessmentStudio from './AssessmentStudio';
+import ChangePasswordPanel from './ChangePasswordPanel';
+import AccountMenu from './AccountMenu';
 import './Dashboard.css';
 import './AdminDashboard.css';
 import './AdminAnalytics.css';
@@ -67,35 +68,35 @@ const StudentSearch = memo(({ searchEmail, setSearchEmail, clearSearch, onAddStu
 });
 
 // Batch filter component with search and course filter buttons, now supporting teacher filter on course hover
-const BatchFilter = memo(({ 
-  batchSearch, 
-  setBatchSearch, 
-  batchCourseFilter, 
-  setBatchCourseFilter, 
+const BATCH_PROGRAM_OPTIONS = [
+  { value: 'all', label: 'All programs' },
+  { value: 'data science', label: 'Data Science' },
+  { value: 'cyber security', label: 'Cyber Security' },
+  { value: 'cybersecurity & ai', label: 'Cybersecurity & AI' },
+  { value: 'devops & ai', label: 'DevOps & AI' },
+  { value: 'devops & cloud', label: 'DevOps & Cloud' }
+];
+
+const BatchFilter = memo(({
+  batchSearch,
+  setBatchSearch,
+  batchCourseFilter,
+  setBatchCourseFilter,
   batchTeacherFilter,
   setBatchTeacherFilter,
-  teachers,
-  batches,
-  filteredCount, 
-  totalCount, 
-  openModal 
+  teacherOptions = [],
+  filteredCount,
+  totalCount,
+  openModal
 }) => {
-  const [hoveredCourse, setHoveredCourse] = useState(null);
-
   const handleSearchChange = useCallback((e) => {
     setBatchSearch(e.target.value);
   }, [setBatchSearch]);
-
-  const handleCourseFilterChange = useCallback((course) => {
-    setBatchCourseFilter(course);
-    if (setBatchTeacherFilter) setBatchTeacherFilter('all');
-  }, [setBatchCourseFilter, setBatchTeacherFilter]);
 
   const clearFilters = useCallback(() => {
     setBatchSearch('');
     setBatchCourseFilter('all');
     if (setBatchTeacherFilter) setBatchTeacherFilter('all');
-    // Clear localStorage
     try {
       localStorage.removeItem('admin_batch_search');
       localStorage.removeItem('admin_batch_course_filter');
@@ -105,68 +106,15 @@ const BatchFilter = memo(({
     }
   }, [setBatchSearch, setBatchCourseFilter, setBatchTeacherFilter]);
 
-  const courseOptions = [
-    { value: 'all', label: 'All Courses', icon: '📚' },
-    { value: 'data science', label: 'Data Science', icon: '📊' },
-    { value: 'cyber security', label: 'Cyber Security', icon: '🔒' },
-    { value: 'devops & ai', label: 'DevOps & AI', icon: '🚀' },
-    { value: 'devops & cloud', label: 'DevOps & Cloud', icon: '☁️' },
-    { value: 'one-to-one', label: 'One-to-One', icon: '👤' }
-  ];
-
-  const hasActiveFilters = batchSearch.trim() || batchCourseFilter !== 'all' || (batchTeacherFilter && batchTeacherFilter !== 'all');
-
-  const getTeachersForCourse = useCallback((courseValue) => {
-    if (!courseValue || courseValue === 'all') return [];
-    
-    // 1. Match by domain/assignedCourses fields
-    const matchedTeachers = (teachers || []).filter(t => {
-      const checkMatch = (courseName) => {
-        if (!courseName) return false;
-        const c = courseName.toLowerCase();
-        const val = courseValue.toLowerCase();
-        if (val === 'cyber security') return c.includes('cyber') || c.includes('security');
-        if (val === 'data science') return c.includes('data') || c.includes('science');
-        if (val === 'devops & ai') return c.includes('devops') && c.includes('ai');
-        if (val === 'devops & cloud') return c.includes('devops') && c.includes('cloud');
-        if (val === 'one-to-one') return c.includes('one') || c.includes('1') || c.includes('single');
-        return c.includes(val);
-      };
-
-      if (t.domain && checkMatch(t.domain)) return true;
-      if (t.assignedCourses && t.assignedCourses.some(c => checkMatch(c))) return true;
-      return false;
-    });
-
-    // 2. Fallback: match by actual active/existing batches
-    const activeTeacherNamesInBatches = (batches || []).filter(b => {
-      const c = (b.course || '').toLowerCase();
-      const val = courseValue.toLowerCase();
-      if (val === 'cyber security') return c.includes('cyber') || c.includes('security');
-      if (val === 'data science') return c.includes('data') || c.includes('science');
-      if (val === 'devops & ai') return c.includes('devops') && c.includes('ai');
-      if (val === 'devops & cloud') return c.includes('devops') && c.includes('cloud');
-      if (val === 'one-to-one') return c.includes('one') || c.includes('1') || c.includes('single');
-      return c.includes(val);
-    }).map(b => b.teacherName).filter(Boolean);
-
-    // Merge lists by name to ensure completeness
-    const allMatched = [...matchedTeachers];
-    (teachers || []).forEach(t => {
-      if (activeTeacherNamesInBatches.some(name => name.toLowerCase() === t.name.toLowerCase())) {
-        if (!allMatched.some(m => m.id === t.id || m._id === t._id || m.name.toLowerCase() === t.name.toLowerCase())) {
-          allMatched.push(t);
-        }
-      }
-    });
-
-    return allMatched;
-  }, [teachers, batches]);
+  const hasActiveFilters =
+    batchSearch.trim() ||
+    batchCourseFilter !== 'all' ||
+    (batchTeacherFilter && batchTeacherFilter !== 'all');
 
   return (
     <div className="batch-filter-section">
       <div className="batch-filter-controls">
-        <div className="batch-filter-row">
+        <div className="batch-filter-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
           <div className="batch-search-area">
             <input
               type="search"
@@ -177,74 +125,58 @@ const BatchFilter = memo(({
             />
             <div className="batch-filter-results">
               Showing <span className="result-count">{filteredCount}</span> of <span className="total-count">{totalCount}</span> batches
-              {hasActiveFilters && (
-                <span className="filter-indicator">
-                  {' '}
-                  (
-                  {batchCourseFilter !== 'all' && `Course: ${courseOptions.find(o => o.value === batchCourseFilter)?.label || batchCourseFilter}`}
-                  {batchTeacherFilter && batchTeacherFilter !== 'all' && `${batchCourseFilter !== 'all' ? ' | ' : ''}Teacher: ${batchTeacherFilter}`}
-                  {batchSearch.trim() && `${(batchCourseFilter !== 'all' || (batchTeacherFilter && batchTeacherFilter !== 'all')) ? ' | ' : ''}Search: "${batchSearch}"`}
-                  {' applied'})
-                </span>
-              )}
             </div>
           </div>
+          <button onClick={() => openModal('batch')} className="btn-add batch-filter-add-btn">
+            + Add Batch
+          </button>
         </div>
-        
-        <div className="batch-filter-row">
-          <div className="batch-course-filters">
-            {courseOptions.map(option => (
-              <div 
-                key={option.value}
-                className="course-filter-wrapper"
-                onMouseEnter={() => setHoveredCourse(option.value)}
-                onMouseLeave={() => setHoveredCourse(null)}
+
+        <div className="batch-filter-row" style={{ marginTop: '12px' }}>
+          <div className="batch-course-filters" style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center' }}>
+            {BATCH_PROGRAM_OPTIONS.map((opt) => (
+              <button
+                key={opt.value}
+                type="button"
+                className={`batch-course-btn ${batchCourseFilter === opt.value ? 'active' : ''}`}
+                onClick={() => setBatchCourseFilter(opt.value)}
               >
-                <button
-                  onClick={() => handleCourseFilterChange(option.value)}
-                  className={`batch-course-btn ${batchCourseFilter === option.value ? 'active' : ''}`}
-                >
-                  <span className="btn-icon">{option.icon}</span>
-                  <span className="btn-label">{option.label}</span>
-                </button>
-                
-                {hoveredCourse === option.value && option.value !== 'all' && (
-                  <div className="teacher-dropdown">
-                    <div className="dropdown-header">Respected Teachers</div>
-                    {getTeachersForCourse(option.value).length > 0 ? (
-                      getTeachersForCourse(option.value).map(teacher => (
-                        <div
-                          key={teacher.id || teacher._id || teacher.name}
-                          onClick={() => {
-                            setBatchCourseFilter(option.value);
-                            if (setBatchTeacherFilter) setBatchTeacherFilter(teacher.name);
-                            setHoveredCourse(null);
-                          }}
-                          className={`teacher-dropdown-item ${batchTeacherFilter === teacher.name ? 'selected' : ''}`}
-                        >
-                          👤 {teacher.name}
-                        </div>
-                      ))
-                    ) : (
-                      <div className="dropdown-empty">No teachers assigned</div>
-                    )}
-                  </div>
-                )}
-              </div>
+                {opt.label}
+              </button>
             ))}
-            <button onClick={() => openModal('batch')} className="btn-add batch-filter-add-btn">
-              ➕ Add Batch
-            </button>
           </div>
         </div>
-        
-        <div className="batch-filter-actions">
-          {hasActiveFilters && (
-            <button onClick={clearFilters} className="batch-clear-filters">
-              ✖️ Clear
+
+        <div className="batch-filter-row" style={{ marginTop: '10px' }}>
+          <div className="batch-course-filters" style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center' }}>
+            <span style={{ fontSize: '0.8rem', fontWeight: 650, color: '#5a6d76', marginRight: '4px' }}>Teachers:</span>
+            <button
+              type="button"
+              className={`batch-course-btn ${!batchTeacherFilter || batchTeacherFilter === 'all' ? 'active' : ''}`}
+              onClick={() => setBatchTeacherFilter('all')}
+            >
+              All teachers
             </button>
-          )}
+            {teacherOptions.map((name) => (
+              <button
+                key={name}
+                type="button"
+                className={`batch-course-btn ${batchTeacherFilter === name ? 'active' : ''}`}
+                onClick={() => setBatchTeacherFilter(name)}
+              >
+                {name}
+              </button>
+            ))}
+          </div>
         </div>
+
+        {hasActiveFilters && (
+          <div className="batch-filter-actions" style={{ marginTop: '10px' }}>
+            <button onClick={clearFilters} className="batch-clear-filters" type="button">
+              Clear filters
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -253,7 +185,7 @@ const BatchFilter = memo(({
 const AdminDashboard = ({ user, onLogout }) => {
   const navigate = useNavigate();
   const location = useLocation();
-  const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
+  const apiUrl = getApiBaseUrl();
   const [activeSection, setActiveSection] = useState('overview');
   const [loading, setLoading] = useState(true);
   
@@ -391,6 +323,8 @@ const AdminDashboard = ({ user, onLogout }) => {
       return 'all';
     }
   });
+  const [oneToOneTeacherFilter, setOneToOneTeacherFilter] = useState('all');
+  const [oneToOneProgramFilter, setOneToOneProgramFilter] = useState('all');
 
   // Enhanced setter functions with localStorage persistence
   const setBatchSearchWithPersistence = useCallback((value) => {
@@ -517,8 +451,6 @@ const AdminDashboard = ({ user, onLogout }) => {
   const [selectedBatch, setSelectedBatch] = useState(null);
   const [batchView, setBatchView] = useState(''); // 'videos' or 'students'
   const [studentsPerPage, setStudentsPerPage] = useState(15);
-  const [moreOpen, setMoreOpen] = useState(false);
-  const moreRef = React.useRef(null);
 
   const clearSearch = useCallback(() => {
     setSearchEmail('');
@@ -541,14 +473,6 @@ const AdminDashboard = ({ user, onLogout }) => {
       document.body.classList.remove('modal-open');
     };
   }, [showModal]);
-
-  useEffect(() => {
-    const handleClickOutside = (e) => {
-      if (moreRef.current && !moreRef.current.contains(e.target)) setMoreOpen(false);
-    };
-    document.addEventListener('click', handleClickOutside);
-    return () => document.removeEventListener('click', handleClickOutside);
-  }, []);
   const [saving, setSaving] = useState(false);
   const [uploadedFile, setUploadedFile] = useState(null);
 
@@ -583,20 +507,61 @@ const AdminDashboard = ({ user, onLogout }) => {
     }));
   }, []);
 
-  // Filter teachers by selected course for batch modal
+  const PROGRAM_OPTIONS = [
+    'Data Science & AI',
+    'Cyber Security & Ethical Hacking',
+    'Cybersecurity & AI',
+    'DevOps & AI',
+    'DevOps & Cloud'
+  ];
+
+  const matchesProgramFilter = useCallback((courseName, filterValue) => {
+    if (!filterValue || filterValue === 'all') return true;
+    const c = (courseName || '').toLowerCase();
+    const val = filterValue.toLowerCase();
+
+    const isCyberAi =
+      c.includes('cybersecurity & ai') ||
+      c.includes('cyber security & ai') ||
+      (((c.includes('cyber') || c.includes('security')) && c.includes('ai')) &&
+        !c.includes('ethical') &&
+        !c.includes('hacking'));
+
+    if (val === 'cybersecurity & ai') return isCyberAi;
+    if (val === 'cyber security') {
+      return (
+        (c.includes('cyber') || c.includes('security') || c.includes('ethical') || c.includes('hacking')) &&
+        !isCyberAi
+      );
+    }
+    if (val === 'data science') return c.includes('data') || c.includes('science');
+    if (val === 'devops & ai') return c.includes('devops') && c.includes('ai');
+    if (val === 'devops & cloud') return c.includes('devops') && c.includes('cloud');
+    return c.includes(val);
+  }, []);
+
+  const isOneToOneBatch = useCallback((batch) => {
+    if (!batch) return false;
+    if (batch.batchType === 'one-to-one') return true;
+    const course = (batch.course || '').toLowerCase();
+    return course.includes('one-to-one') || course === 'one to one';
+  }, []);
+
+  // Filter teachers by selected course for batch modal (all teachers for 1:1)
   const getFilteredTeachers = useCallback(() => {
-    if (modalType !== 'batch' || !formData.course) {
+    if (modalType !== 'batch') {
+      return teachers;
+    }
+    if (formData.batchType === 'one-to-one' || !formData.course || formData.course === '__custom__') {
       return teachers;
     }
     return (teachers || []).filter(teacher => {
-      // Check if teacher is assigned to the selected course
       if (teacher.assignedCourses && teacher.assignedCourses.length > 0) {
         return teacher.assignedCourses.includes(formData.course);
       }
-      // Fallback to domain for backward compatibility
       return teacher.domain === formData.course;
     });
-  }, [modalType, formData.course, teachers]);
+  }, [modalType, formData.course, formData.batchType, teachers]);
 
   useEffect(() => {
     loadAllData();
@@ -688,51 +653,24 @@ const AdminDashboard = ({ user, onLogout }) => {
   const studentEndIndex = studentStartIndex + studentsPerPage;
   const paginatedStudents = filteredStudents.slice(studentStartIndex, studentEndIndex);
 
-  // Derived filtered data for batches section
+  // Derived filtered data for batches section (regular batches only)
   const filteredBatches = useMemo(() => {
-    let filtered = batches || [];
-    
-    // Debug logging
-    console.log('Batch Filter Debug:', {
-      totalBatches: batches?.length || 0,
-      courseFilter: batchCourseFilter,
-      teacherFilter: batchTeacherFilter,
-      searchTerm: batchSearch,
-      sampleBatches: (batches || []).slice(0, 3).map(b => ({ name: b.name, course: b.course }))
-    });
+    let filtered = (batches || []).filter(batch => !isOneToOneBatch(batch));
     
     // Apply course filter
     if (batchCourseFilter !== 'all') {
-      filtered = filtered.filter(batch => {
-        const course = (batch.course || '').toLowerCase().trim();
-        const filterValue = batchCourseFilter.toLowerCase().trim();
-        
-        // Handle different course name variations
-        if (filterValue === 'cyber security') {
-          return course.includes('cyber') || course.includes('security');
-        } else if (filterValue === 'data science') {
-          return course.includes('data') || course.includes('science');
-        } else if (filterValue === 'devops & ai') {
-          return course.includes('devops') && (course.includes('ai') || course.toLowerCase().includes('ai'));
-        } else if (filterValue === 'devops & cloud') {
-          return course.includes('devops') && (course.includes('cloud') || course.includes('cloud'));
-        } else if (filterValue === 'one-to-one') {
-          return course.includes('one') || course.includes('1') || course.includes('single');
-        }
-        
-        return course === filterValue;
-      });
-      
-      console.log('After course filter:', filtered.length, 'batches remaining');
+      filtered = filtered.filter(batch =>
+        matchesProgramFilter(batch.course || batch.programLabel, batchCourseFilter)
+      );
     }
 
     // Apply teacher filter
     if (batchTeacherFilter && batchTeacherFilter !== 'all') {
+      const selected = batchTeacherFilter.trim().toLowerCase();
       filtered = filtered.filter(batch => {
-        return (batch.teacherName || '').toLowerCase() === batchTeacherFilter.toLowerCase() ||
-               (batch.teacherId || '') === batchTeacherFilter;
+        const teacherName = (batch.teacherName || '').trim().toLowerCase();
+        return teacherName === selected || String(batch.teacherId || '') === batchTeacherFilter;
       });
-      console.log('After teacher filter:', filtered.length, 'batches remaining');
     }
     
     // Apply search filter
@@ -751,7 +689,7 @@ const AdminDashboard = ({ user, onLogout }) => {
         const studentNames = batchStudents.map(s => (s.name || '').toLowerCase()).join(' ');
         const studentEmails = batchStudents.map(s => (s.email || '').toLowerCase()).join(' ');
         
-        const matches = (
+        return (
           batchName.includes(searchTerm) ||
           course.includes(searchTerm) ||
           teacherName.includes(searchTerm) ||
@@ -759,31 +697,59 @@ const AdminDashboard = ({ user, onLogout }) => {
           studentNames.includes(searchTerm) ||
           studentEmails.includes(searchTerm)
         );
-        
-        if (!matches && batchName.includes(searchTerm.substring(0, 3))) {
-          console.log('Batch failed search:', {
-            batch: batch.name,
-            course: batch.course,
-            searchTerm,
-            batchName,
-            teacherName,
-            studentNames: studentNames.substring(0, 100)
-          });
-        }
-        
-        return matches;
       });
-      
-      console.log('After search filter:', filtered.length, 'batches remaining');
     }
     
-    console.log('Final filtered count:', filtered.length);
     return filtered;
-  }, [batches, batchCourseFilter, batchTeacherFilter, batchSearch, students]);
+  }, [batches, batchCourseFilter, batchTeacherFilter, batchSearch, students, isOneToOneBatch, matchesProgramFilter]);
+
+  const oneToOneTeacherOptions = useMemo(() => {
+    const names = new Map();
+    (batches || []).filter(isOneToOneBatch).forEach((batch) => {
+      const name = (batch.teacherName || '').trim();
+      if (name) names.set(name.toLowerCase(), name);
+    });
+    // Only teachers who already have one-to-one batches (avoid empty filter chips)
+    return Array.from(names.values()).sort((a, b) => a.localeCompare(b));
+  }, [batches, isOneToOneBatch]);
+
+  const regularBatchTeacherOptions = useMemo(() => {
+    const names = new Map();
+    (batches || []).filter((batch) => !isOneToOneBatch(batch)).forEach((batch) => {
+      const name = (batch.teacherName || '').trim();
+      if (name) names.set(name.toLowerCase(), name);
+    });
+    return Array.from(names.values()).sort((a, b) => a.localeCompare(b));
+  }, [batches, isOneToOneBatch]);
+
+  const filteredOneToOneBatches = useMemo(() => {
+    let filtered = (batches || []).filter(batch => isOneToOneBatch(batch));
+
+    if (oneToOneProgramFilter !== 'all') {
+      filtered = filtered.filter(batch =>
+        matchesProgramFilter(batch.programLabel || batch.course, oneToOneProgramFilter)
+      );
+    }
+
+    if (oneToOneTeacherFilter !== 'all') {
+      const selected = oneToOneTeacherFilter.trim().toLowerCase();
+      filtered = filtered.filter(batch => {
+        const teacherName = (batch.teacherName || '').trim().toLowerCase();
+        const teacherId = String(batch.teacherId || '');
+        return teacherName === selected || teacherId === oneToOneTeacherFilter;
+      });
+    }
+
+    return filtered;
+  }, [batches, isOneToOneBatch, oneToOneTeacherFilter, oneToOneProgramFilter, matchesProgramFilter]);
+
+  const regularBatchTotal = useMemo(
+    () => (batches || []).filter(batch => !isOneToOneBatch(batch)).length,
+    [batches, isOneToOneBatch]
+  );
 
   // Optimized individual data loading functions
   const loadStudents = useCallback(async (forceRefresh = false) => {
-    const isLocalhost = window.location.hostname === 'localhost';
     const cachedData = getCachedData('students');
     if (cachedData && !forceRefresh) {
       setStudents(cachedData);
@@ -795,7 +761,7 @@ const AdminDashboard = ({ user, onLogout }) => {
     let timeoutId = setTimeout(() => controller.abort(), 10000);
     try {
       const token = localStorage.getItem('token');
-      const apiUrl = isLocalhost ? 'http://localhost:5000' : '';
+      const apiUrl = getApiBaseUrl();
       const response = await fetch(`${apiUrl}/api/admin/users`, {
         headers: { 'Authorization': `Bearer ${token}` },
         signal: controller.signal
@@ -851,7 +817,7 @@ const AdminDashboard = ({ user, onLogout }) => {
     setDataLoading(prev => ({ ...prev, teachers: true }));
     try {
       const token = localStorage.getItem('token');
-      const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
+      const apiUrl = getApiBaseUrl();
       const response = await fetch(`${apiUrl}/api/admin/teachers`, { 
         headers: { 'Authorization': `Bearer ${token}` } 
       });
@@ -861,20 +827,14 @@ const AdminDashboard = ({ user, onLogout }) => {
         setTeachers(data);
         setCachedData('teachers', data);
         return data;
-      } else {
-        // Use fallback data when API fails
-        console.log('Using fallback teacher data');
-        setTeachers(fallbackData.teachers);
-        setCachedData('teachers', fallbackData.teachers);
-        return fallbackData.teachers;
       }
+      console.error('Failed to load teachers:', response.status);
+      setTeachers([]);
+      return [];
     } catch (error) {
       console.error('Error loading teachers:', error);
-      // Use fallback data when error occurs
-      console.log('Using fallback teacher data due to error');
-      setTeachers(fallbackData.teachers);
-      setCachedData('teachers', fallbackData.teachers);
-      return fallbackData.teachers;
+      setTeachers([]);
+      return [];
     } finally {
       setDataLoading(prev => ({ ...prev, teachers: false }));
     }
@@ -890,7 +850,7 @@ const AdminDashboard = ({ user, onLogout }) => {
     setDataLoading(prev => ({ ...prev, courses: true }));
     try {
       const token = localStorage.getItem('token');
-      const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
+      const apiUrl = getApiBaseUrl();
       const response = await fetch(`${apiUrl}/api/admin/courses`, { 
         headers: { 'Authorization': `Bearer ${token}` } 
       });
@@ -900,20 +860,14 @@ const AdminDashboard = ({ user, onLogout }) => {
         setCourses(data);
         setCachedData('courses', data);
         return data;
-      } else {
-        // Use fallback data when API fails
-        console.log('Using fallback course data');
-        setCourses(fallbackData.courses);
-        setCachedData('courses', fallbackData.courses);
-        return fallbackData.courses;
       }
+      console.error('Failed to load courses:', response.status);
+      setCourses([]);
+      return [];
     } catch (error) {
       console.error('Error loading courses:', error);
-      // Use fallback data when error occurs
-      console.log('Using fallback course data due to error');
-      setCourses(fallbackData.courses);
-      setCachedData('courses', fallbackData.courses);
-      return fallbackData.courses;
+      setCourses([]);
+      return [];
     } finally {
       setDataLoading(prev => ({ ...prev, courses: false }));
     }
@@ -931,7 +885,7 @@ const AdminDashboard = ({ user, onLogout }) => {
     setDataLoading(prev => ({ ...prev, batches: true }));
     try {
       const token = localStorage.getItem('token');
-      const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
+      const apiUrl = getApiBaseUrl();
       
       // Load regular batches
       const response = await fetch(`${apiUrl}/api/admin/batches`, { 
@@ -948,18 +902,15 @@ const AdminDashboard = ({ user, onLogout }) => {
         loadOneToOneBatches(forceRefresh);
         
         return normalized;
-      } else {
-        console.log('Using fallback batch data');
-        setBatches(fallbackData.batches);
-        setCachedData('batches', fallbackData.batches);
-        return fallbackData.batches;
       }
+      console.error('Failed to load batches:', response.status);
+      setBatches([]);
+      loadOneToOneBatches(forceRefresh);
+      return [];
     } catch (error) {
       console.error('Error loading batches:', error);
-      console.log('Using fallback batch data due to error');
-      setBatches(fallbackData.batches);
-      setCachedData('batches', fallbackData.batches);
-      return fallbackData.batches;
+      setBatches([]);
+      return [];
     } finally {
       setDataLoading(prev => ({ ...prev, batches: false }));
     }
@@ -974,7 +925,7 @@ const AdminDashboard = ({ user, onLogout }) => {
 
     try {
       const token = localStorage.getItem('token');
-      const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
+      const apiUrl = getApiBaseUrl();
       
       // Load one-to-one batches
       const response = await fetch(`${apiUrl}/api/admin/one-to-one-batches`, { 
@@ -1013,7 +964,7 @@ const AdminDashboard = ({ user, onLogout }) => {
     setDataLoading(prev => ({ ...prev, modules: true }));
     try {
       const token = localStorage.getItem('token');
-      const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
+      const apiUrl = getApiBaseUrl();
       const response = await fetch(`${apiUrl}/api/admin/modules`, { 
         headers: { 'Authorization': `Bearer ${token}` } 
       });
@@ -1046,7 +997,7 @@ const AdminDashboard = ({ user, onLogout }) => {
     setDataLoading(prev => ({ ...prev, lessons: true }));
     try {
       const token = localStorage.getItem('token');
-      const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
+      const apiUrl = getApiBaseUrl();
       const response = await fetch(`${apiUrl}/api/admin/lessons`, { 
         headers: { 'Authorization': `Bearer ${token}` } 
       });
@@ -1079,7 +1030,7 @@ const AdminDashboard = ({ user, onLogout }) => {
     setDataLoading(prev => ({ ...prev, classroom: true }));
     try {
       const token = localStorage.getItem('token');
-      const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
+      const apiUrl = getApiBaseUrl();
       const response = await fetch(`${apiUrl}/api/admin/classroom`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
@@ -1112,7 +1063,7 @@ const AdminDashboard = ({ user, onLogout }) => {
     setDataLoading(prev => ({ ...prev, mentors: true }));
     try {
       const token = localStorage.getItem('token');
-      const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
+      const apiUrl = getApiBaseUrl();
       const response = await fetch(`${apiUrl}/api/admin/mentors`, { 
         headers: { 'Authorization': `Bearer ${token}` } 
       });
@@ -1145,7 +1096,7 @@ const AdminDashboard = ({ user, onLogout }) => {
     setDataLoading(prev => ({ ...prev, projects: true }));
     try {
       const token = localStorage.getItem('token');
-      const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
+      const apiUrl = getApiBaseUrl();
       const response = await fetch(`${apiUrl}/api/admin/projects`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
@@ -1178,7 +1129,7 @@ const AdminDashboard = ({ user, onLogout }) => {
     setDataLoading(prev => ({ ...prev, assessments: true }));
     try {
       const token = localStorage.getItem('token');
-      const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
+      const apiUrl = getApiBaseUrl();
       const response = await fetch(`${apiUrl}/api/admin/assessments`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
@@ -1211,7 +1162,7 @@ const AdminDashboard = ({ user, onLogout }) => {
     setDataLoading(prev => ({ ...prev, jobs: true }));
     try {
       const token = localStorage.getItem('token');
-      const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
+      const apiUrl = getApiBaseUrl();
       const response = await fetch(`${apiUrl}/api/admin/jobs`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
@@ -1244,7 +1195,7 @@ const AdminDashboard = ({ user, onLogout }) => {
     setDataLoading(prev => ({ ...prev, liveClasses: true }));
     try {
       const token = localStorage.getItem('token');
-      const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
+      const apiUrl = getApiBaseUrl();
       const response = await fetch(`${apiUrl}/api/admin/liveClasses`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
@@ -1271,7 +1222,7 @@ const AdminDashboard = ({ user, onLogout }) => {
     setDataLoading(prev => ({ ...prev, activity: true }));
     try {
       const token = localStorage.getItem('token');
-      const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
+      const apiUrl = getApiBaseUrl();
       const response = await fetch(`${apiUrl}/api/admin/activity?limit=200`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
@@ -1484,7 +1435,7 @@ const AdminDashboard = ({ user, onLogout }) => {
 
     try {
       const token = localStorage.getItem('token');
-      const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
+      const apiUrl = getApiBaseUrl();
       const response = await fetch(`${apiUrl}/api/admin/batches/${courseId}`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
@@ -1626,7 +1577,7 @@ const AdminDashboard = ({ user, onLogout }) => {
       student: { name: '', email: '', password: '', course: '', batchId: '', status: 'active', role: 'student', phone: '', address: '' },
       teacher: { name: '', email: '', password: '', age: '', domain: '', assignedCourses: [], experience: '', status: 'active', role: 'teacher', phone: '', address: '' },
       course: { title: '', description: '', duration: '', modules: 0, status: 'active', instructor: '', price: '' },
-      batch: { name: '', course: '', startDate: '', teacherId: '', status: 'active' },
+      batch: { name: '', course: '', startDate: '', teacherId: '', teacherName: '', status: 'active', batchType: 'regular', programLabel: '', customProgram: false },
       module: { name: '', courseId: '', batchId: '', duration: '', contentType: 'link', content: '', externalLink: '', fileUrl: '', fileName: '', fileSize: 0 },
   lesson: { title: '', moduleId: '', content: '', duration: '', videoUrl: '', classLink: '', order: 1, resources: '' },
       project: { title: '', description: '', difficulty: 'Intermediate', duration: '', skills: [], requirements: '', deliverables: '' },
@@ -1656,7 +1607,7 @@ const AdminDashboard = ({ user, onLogout }) => {
           try {
             // Check if email already exists via API
             const token = localStorage.getItem('token');
-            const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
+            const apiUrl = getApiBaseUrl();
             const usersResponse = await fetch(`${apiUrl}/api/admin/users`, {
               headers: { 'Authorization': `Bearer ${token}` }
             });
@@ -1721,7 +1672,7 @@ const AdminDashboard = ({ user, onLogout }) => {
           // User should use password reset feature
           
           const token = localStorage.getItem('token');
-          const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
+          const apiUrl = getApiBaseUrl();
           const updateResponse = await fetch(`${apiUrl}/api/admin/users/${editingItem.id}`, {
             method: 'PUT',
             headers: {
@@ -1753,7 +1704,7 @@ const AdminDashboard = ({ user, onLogout }) => {
           try {
             // Check if email already exists via API
             const token = localStorage.getItem('token');
-            const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
+            const apiUrl = getApiBaseUrl();
             const teachersResponse = await fetch(`${apiUrl}/api/admin/teachers`, {
               headers: { 'Authorization': `Bearer ${token}` }
             });
@@ -1836,7 +1787,7 @@ const AdminDashboard = ({ user, onLogout }) => {
           // User should use password reset feature
 
           const token = localStorage.getItem('token');
-          const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
+          const apiUrl = getApiBaseUrl();
           const updateResponse = await fetch(`${apiUrl}/api/admin/teachers/${editingItem.id}`, {
             method: 'PUT',
             headers: {
@@ -1989,10 +1940,18 @@ const AdminDashboard = ({ user, onLogout }) => {
           return;
         }
       } else if (modalType === 'batch') {
-        if (!formData.name || !formData.course || !formData.teacherId) {
-          showToast('Please fill in all required fields (Batch Name, Course, Teacher)', 'warning');
+        const resolvedCourse = formData.customProgram
+          ? (formData.programLabel || '').trim()
+          : (formData.course || '').trim();
+        if (!formData.name || !resolvedCourse || !formData.teacherId) {
+          showToast('Please fill in all required fields (Batch Name, Program, Teacher)', 'warning');
           return;
         }
+        formData.course = resolvedCourse;
+        formData.batchType = formData.batchType === 'one-to-one' ? 'one-to-one' : 'regular';
+        formData.programLabel = formData.batchType === 'one-to-one'
+          ? (formData.programLabel || resolvedCourse)
+          : (formData.programLabel || '');
       } else if (modalType === 'module') {
         if (!formData.name || !formData.courseId) {
           showToast('Please fill in all required fields (Name, Course)', 'warning');
@@ -2008,7 +1967,7 @@ const AdminDashboard = ({ user, onLogout }) => {
         // Handle module creation (external links only)
         try {
           const token = localStorage.getItem('token');
-          const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
+          const apiUrl = getApiBaseUrl();
           
           const moduleData = {
             name: formData.name,
@@ -2149,7 +2108,7 @@ const AdminDashboard = ({ user, onLogout }) => {
       if (modalType === 'classroom') {
         try {
           const token = localStorage.getItem('token');
-          const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
+          const apiUrl = getApiBaseUrl();
           
           // Validate YouTube URL is provided
           if (!formData.youtubeVideoUrl) {
@@ -2241,7 +2200,7 @@ const AdminDashboard = ({ user, onLogout }) => {
       const collection = collectionMap[modalType];
 
       const token = localStorage.getItem('token');
-      const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
+      const apiUrl = getApiBaseUrl();
       let result;
 
       if (editingItem?.id) {
@@ -2362,7 +2321,7 @@ const AdminDashboard = ({ user, onLogout }) => {
       }
 
       const token = localStorage.getItem('token');
-      const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
+      const apiUrl = getApiBaseUrl();
       const userId = editingItem.id || editingItem._id;
 
       // Debug logging for userId and URL construction
@@ -2479,7 +2438,7 @@ const AdminDashboard = ({ user, onLogout }) => {
     if (window.confirm('Are you sure you want to delete this item?')) {
       try {
         const token = localStorage.getItem('token');
-        const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
+        const apiUrl = getApiBaseUrl();
         
         // Map collection names to API endpoints
         const collectionMap = {
@@ -2682,7 +2641,7 @@ const AdminDashboard = ({ user, onLogout }) => {
       const studentId = selectedStudentDetails?.id || selectedStudentDetails?._id;
       
       const params = new URLSearchParams({
-        download: 'csv'
+        export: 'csv'
       });
 
       if (activityFilter.action) params.append('action', activityFilter.action);
@@ -2828,10 +2787,12 @@ const AdminDashboard = ({ user, onLogout }) => {
     }
   }, [analyticsPeriod, customDateRange]);
 
-  // Fetch analytics when period changes
+  // Fetch analytics when period changes and analytics section is open
   useEffect(() => {
-    fetchAnalyticsData();
-  }, [fetchAnalyticsData]);
+    if (activeSection === 'analytics') {
+      fetchAnalyticsData();
+    }
+  }, [fetchAnalyticsData, activeSection]);
 
   const handleDownloadReport = useCallback(() => {
     if (!reportData) return;
@@ -2953,88 +2914,71 @@ const AdminDashboard = ({ user, onLogout }) => {
     );
   }
 
-  const moreSections = ['teachers', 'modules', 'projects', 'assessments', 'jobs', 'mentors', 'content', 'activity', 'assessment-studio'];
-  const isMoreActive = moreSections.includes(activeSection);
-  const moreItems = [
-    { id: 'teachers', label: 'Teachers', icon: '👨‍🏫' },
-    { id: 'assessment-studio', label: 'Assessment Studio', icon: '🧠' },
-    { id: 'modules', label: 'Modules', icon: '📖' },
-    { id: 'projects', label: 'Projects', icon: '📁' },
-    { id: 'assessments', label: 'Assessments', icon: '✏️' },
-    { id: 'jobs', label: 'Jobs', icon: '💼' },
-    { id: 'mentors', label: 'Mentors', icon: '👨‍🏫' },
-    { id: 'content', label: 'Content', icon: '📢' },
-    { id: 'activity', label: 'Activity Log', icon: '📋' }
+  const adminNavItems = [
+    { id: 'overview', label: 'Overview' },
+    { id: 'students', label: 'Students' },
+    { id: 'studentsActivity', label: 'Activity' },
+    { id: 'batches', label: 'Batches' },
+    { id: 'oneToOne', label: 'One-to-One' },
+    { id: 'classroom', label: 'Classroom' },
+    { id: 'teachers', label: 'Teachers' },
+    { id: 'assessment-studio', label: 'Assessment Studio' },
+    { id: 'modules', label: 'Modules' },
+    { id: 'projects', label: 'Projects' },
+    { id: 'assessments', label: 'Assessments' },
+    { id: 'jobs', label: 'Jobs' },
+    { id: 'mentors', label: 'Mentors' },
+    { id: 'content', label: 'Content' },
+    { id: 'activity', label: 'Activity Log' },
+    { id: 'account', label: 'My Account' }
   ];
 
   return (
-    <div className="admin-dashboard admin-dashboard-horizontal">
-      {/* Top Header with Horizontal Nav */}
-      <header className="admin-top-header admin-header-full">
-        <div className="header-row-1">
-          <div className="header-brand">
-            <h1 className="page-title">LMS Admin</h1>
+    <div className="admin-dashboard admin-dashboard-horizontal ss-shell">
+      <header className="ss-shell-header">
+        <div className="ss-shell-header__row">
+          <div className="ss-shell-brand">
+            <h1 className="ss-shell-brand__name">Sky States LMS</h1>
+            <p className="ss-shell-brand__role">Administrator</p>
           </div>
-          <div className="header-actions">
-            <button 
+          <div className="ss-shell-actions">
+            <button
+              type="button"
+              className="ss-shell-btn"
               onClick={() => {
                 clearCache();
                 showToast('Cache cleared successfully!', 'success');
                 refreshData();
               }}
-              className="btn-secondary btn-header"
             >
-              🗑️ Clear Cache
+              Clear cache
             </button>
-            <button 
+            <button
+              type="button"
+              className="ss-shell-btn ss-shell-btn--primary"
               onClick={() => refreshData()}
-              className="btn-primary btn-header"
               disabled={loading}
             >
-              🔄 Refresh
+              Refresh
             </button>
-            <div className="user-menu">
-              <span className="user-name">{user?.name}</span>
-              <div className="user-avatar">{user?.name?.charAt(0)}</div>
-              <button className="logout-btn-header" onClick={onLogout} title="Logout">
-                🚪 Logout
-              </button>
-            </div>
+            <AccountMenu
+              user={user}
+              onLogout={onLogout}
+              onOpenAccount={() => setActiveSection('account')}
+            />
           </div>
         </div>
-        {/* Horizontal Nav Bar - Primary + More dropdown */}
-        <nav className="admin-horizontal-nav">
-          <div className="horizontal-nav-inner">
-            <button className={`nav-btn-h ${activeSection === 'overview' ? 'active' : ''}`} onClick={() => setActiveSection('overview')}>📊 Overview</button>
-            <button className={`nav-btn-h ${activeSection === 'students' ? 'active' : ''}`} onClick={() => setActiveSection('students')}>👥 Students</button>
-            <button className={`nav-btn-h ${activeSection === 'studentsActivity' ? 'active' : ''}`} onClick={() => setActiveSection('studentsActivity')}>📊 Activity</button>
-            <button className={`nav-btn-h ${activeSection === 'batches' ? 'active' : ''}`} onClick={() => setActiveSection('batches')}>📚 Batches</button>
-            {/* <button className={`nav-btn-h ${activeSection === 'oneToOne' ? 'active' : ''}`} onClick={() => setActiveSection('oneToOne')}>👤 One to One</button> */}
-            <button className={`nav-btn-h ${activeSection === 'classroom' ? 'active' : ''}`} onClick={() => setActiveSection('classroom')}>🎥 Classroom</button>
-            <div className="nav-more-wrapper" ref={moreRef}>
-              <button
-                className={`nav-btn-h nav-btn-more ${isMoreActive ? 'active' : ''} ${moreOpen ? 'open' : ''}`}
-                onClick={(e) => { e.stopPropagation(); setMoreOpen(!moreOpen); }}
-              >
-                <span>More</span>
-                <span className="more-chevron">▾</span>
-              </button>
-              {moreOpen && (
-                <div className="nav-more-dropdown">
-                  {moreItems.map(({ id, label, icon }) => (
-                    <button
-                      key={id}
-                      className={`nav-more-item ${activeSection === id ? 'active' : ''}`}
-                      onClick={() => { setActiveSection(id); setMoreOpen(false); }}
-                    >
-                      <span>{icon}</span>
-                      <span>{label}</span>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
+        <nav className="ss-shell-nav" aria-label="Admin">
+          {adminNavItems.map(({ id, label }) => (
+            <button
+              key={id}
+              type="button"
+              className={`ss-shell-nav__btn ${activeSection === id ? 'is-active' : ''}`}
+              onClick={() => setActiveSection(id)}
+            >
+              {label}
+            </button>
+          ))}
         </nav>
       </header>
 
@@ -3368,10 +3312,9 @@ const AdminDashboard = ({ user, onLogout }) => {
                 setBatchCourseFilter={setBatchCourseFilterWithPersistence}
                 batchTeacherFilter={batchTeacherFilter}
                 setBatchTeacherFilter={setBatchTeacherFilterWithPersistence}
-                teachers={teachers}
-                batches={batches}
+                teacherOptions={regularBatchTeacherOptions}
                 filteredCount={filteredBatches.length}
-                totalCount={(batches || []).length}
+                totalCount={regularBatchTotal}
                 openModal={openModal}
                 teachers={teachers}
                 batchTeacherFilter={batchTeacherFilter}
@@ -3703,14 +3646,136 @@ const AdminDashboard = ({ user, onLogout }) => {
             </div>
           )}
 
-          {/* One to One Section */}
+          {/* One to One Section — unified Batch with batchType one-to-one */}
           {activeSection === 'oneToOne' && (
             <div className="admin-section">
-              <div className="section-header">
-                <h2>One to One Batches</h2>
-                <p className="section-description">Manage private one-to-one batches for individual students</p>
+              <div className="section-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '12px' }}>
+                <div>
+                  <h2 style={{ margin: 0 }}>One-to-One Batches</h2>
+                  <p className="section-description" style={{ margin: '4px 0 0', color: '#5a6d76' }}>
+                    Private batches sharing the same classroom and trainer flow as regular batches
+                  </p>
+                </div>
+                <button
+                  onClick={() => {
+                    setModalType('batch');
+                    setEditingItem(null);
+                    setFormData({
+                      ...getDefaultFormData('batch'),
+                      batchType: 'one-to-one',
+                      customProgram: false
+                    });
+                    setShowModal(true);
+                  }}
+                  className="btn-add"
+                >
+                  + Create One-to-One
+                </button>
               </div>
-              <OneToOneCourseSelection />
+
+              <div className="batch-filter-section" style={{ marginBottom: '16px' }}>
+                <div className="batch-filter-row">
+                  <div className="batch-course-filters" style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center' }}>
+                    <button
+                      type="button"
+                      className={`batch-course-btn ${oneToOneProgramFilter === 'all' ? 'active' : ''}`}
+                      onClick={() => setOneToOneProgramFilter('all')}
+                    >
+                      All programs
+                    </button>
+                    {BATCH_PROGRAM_OPTIONS.filter((opt) => opt.value !== 'all').map((opt) => (
+                      <button
+                        key={opt.value}
+                        type="button"
+                        className={`batch-course-btn ${oneToOneProgramFilter === opt.value ? 'active' : ''}`}
+                        onClick={() => setOneToOneProgramFilter(opt.value)}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div className="batch-filter-row" style={{ marginTop: '10px' }}>
+                  <div className="batch-course-filters" style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center' }}>
+                    <span style={{ fontSize: '0.8rem', fontWeight: 650, color: '#5a6d76', marginRight: '4px' }}>Teachers:</span>
+                    <button
+                      type="button"
+                      className={`batch-course-btn ${oneToOneTeacherFilter === 'all' ? 'active' : ''}`}
+                      onClick={() => setOneToOneTeacherFilter('all')}
+                    >
+                      All teachers
+                    </button>
+                    {oneToOneTeacherOptions.map((name) => (
+                      <button
+                        key={name}
+                        type="button"
+                        className={`batch-course-btn ${oneToOneTeacherFilter === name ? 'active' : ''}`}
+                        onClick={() => setOneToOneTeacherFilter(name)}
+                      >
+                        {name}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <p style={{ margin: '10px 0 0', fontSize: '0.85rem', color: '#5a6d76' }}>
+                  Showing {filteredOneToOneBatches.length} one-to-one batch{filteredOneToOneBatches.length === 1 ? '' : 'es'}
+                </p>
+              </div>
+
+              <div className="data-table-container">
+                <table className="data-table">
+                  <thead>
+                    <tr>
+                      <th>Batch Name</th>
+                      <th>Program</th>
+                      <th>Trainer</th>
+                      <th>Students</th>
+                      <th>Status</th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredOneToOneBatches.map(batch => {
+                      const actualStudentCount = (students || []).filter(student =>
+                        student.role === 'student' && student.batchId === (batch.id || batch._id)
+                      ).length;
+                      return (
+                        <tr key={batch.id || batch._id}>
+                          <td>
+                            <button
+                              onClick={() => handleBatchClick(batch)}
+                              className="btn-link"
+                              title="View Batch Details"
+                            >
+                              {batch.name}
+                            </button>
+                          </td>
+                          <td>{batch.programLabel || batch.course}</td>
+                          <td>{batch.teacherName || 'N/A'}</td>
+                          <td>{actualStudentCount}</td>
+                          <td>
+                            <span className={`status-badge ${batch.status}`}>
+                              {batch.status}
+                            </span>
+                          </td>
+                          <td>
+                            <button onClick={() => openModal('batch', {
+                              ...batch,
+                              batchType: 'one-to-one',
+                              customProgram: !PROGRAM_OPTIONS.includes(batch.course),
+                              programLabel: batch.programLabel || batch.course
+                            })} className="btn-edit">Edit</button>
+                            <button onClick={() => handleDelete('batches', batch.id || batch._id)} className="btn-delete">Delete</button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+                {filteredOneToOneBatches.length === 0 && (
+                  <p className="no-data">No one-to-one batches match these filters.</p>
+                )}
+              </div>
             </div>
           )}
 
@@ -4093,225 +4158,123 @@ const AdminDashboard = ({ user, onLogout }) => {
             </div>
           )}
 
-          {/* Analytics Section */}
+
+          {activeSection === 'account' && (
+            <div className="admin-section">
+              <h1 className="ss-page-title">My account</h1>
+              <p className="ss-page-sub">
+                Signed in as <strong>{user?.email}</strong> ({user?.role}).
+                Change your password with an email verification code.
+              </p>
+              <div className="ss-panel" style={{ maxWidth: 520 }}>
+                <p><strong>Name:</strong> {user?.name || '—'}</p>
+                <p><strong>Email:</strong> {user?.email || '—'}</p>
+                <p><strong>Role:</strong> {user?.role || 'admin'}</p>
+                <ChangePasswordPanel mode="change" defaultEmail={user?.email || ''} />
+              </div>
+            </div>
+          )}
+
+          {/* Analytics Section — real API data only */}
           {activeSection === 'analytics' && (
             <div className="admin-section">
-              <h2>Analytics & Reports</h2>
-              
-              <div className="analytics-summary">
-                <div className="summary-card">
-                  <div className="summary-icon" style={{background: '#e3f2fd'}}>📊</div>
-                  <div className="summary-content">
-                    <h4>Total Students</h4>
-                    <p className="summary-number">{students.length}</p>
-                    <span className="summary-change positive">+12% this month</span>
-                  </div>
-                </div>
-                
-                <div className="summary-card">
-                  <div className="summary-icon" style={{background: '#f3e5f5'}}>📚</div>
-                  <div className="summary-content">
-                    <h4>Active Courses</h4>
-                    <p className="summary-number">{courses.length}</p>
-                    <span className="summary-change neutral">{modules.length} modules</span>
-                  </div>
-                </div>
-                
-                <div className="summary-card">
-                  <div className="summary-icon" style={{background: '#e8f5e9'}}>💼</div>
-                  <div className="summary-content">
-                    <h4>Job Opportunities</h4>
-                    <p className="summary-number">{(jobs || []).filter(j => j.status === 'active').length}</p>
-                    <span className="summary-change positive">+5 new jobs</span>
-                  </div>
-                </div>
-                
-                <div className="summary-card">
-                  <div className="summary-icon" style={{background: '#fff3e0'}}>🎯</div>
-                  <div className="summary-content">
-                    <h4>Completion Rate</h4>
-                    <p className="summary-number">87%</p>
-                    <span className="summary-change positive">+3% from last month</span>
-                  </div>
-                </div>
-              </div>
-
-              <div className="analytics-grid">
-                <div className="analytics-card">
-                  <h3>📈 Student Enrollment Trend</h3>
-                  <div className="bar-chart">
-                    <div className="chart-bars">
-                      <div className="bar-group">
-                        <div className="bar" style={{height: '60%'}}></div>
-                        <span className="bar-label">Jan</span>
-                      </div>
-                      <div className="bar-group">
-                        <div className="bar" style={{height: '75%'}}></div>
-                        <span className="bar-label">Feb</span>
-                      </div>
-                      <div className="bar-group">
-                        <div className="bar" style={{height: '85%'}}></div>
-                        <span className="bar-label">Mar</span>
-                      </div>
-                      <div className="bar-group">
-                        <div className="bar" style={{height: '70%'}}></div>
-                        <span className="bar-label">Apr</span>
-                      </div>
-                      <div className="bar-group">
-                        <div className="bar" style={{height: '90%'}}></div>
-                        <span className="bar-label">May</span>
-                      </div>
-                      <div className="bar-group">
-                        <div className="bar" style={{height: '100%'}}></div>
-                        <span className="bar-label">Jun</span>
-                      </div>
-                    </div>
-                    <div className="chart-stats">
-                      <p>Total Enrollments: <strong>{students.length}</strong></p>
-                      <p>Average per Month: <strong>{Math.round(students.length / 6)}</strong></p>
-                    </div>
-                  </div>
-                </div>
-                
-                <div className="analytics-card">
-                  <h3>📚 Course Distribution</h3>
-                  <div className="progress-list">
-                    {(courses || []).slice(0, 5).map((course, idx) => (
-                      <div key={course.id} className="progress-item">
-                        <div className="progress-info">
-                          <span className="progress-name">{course.title || `Course ${idx + 1}`}</span>
-                          <span className="progress-value">{Math.round(Math.random() * 40 + 60)}%</span>
-                        </div>
-                        <div className="progress-bar-analytics">
-                          <div className="progress-fill-analytics" style={{width: `${Math.round(Math.random() * 40 + 60)}%`}}></div>
-                        </div>
-                      </div>
-                    ))}
-                    {courses.length === 0 && <p className="no-data">No courses available</p>}
-                  </div>
-                </div>
-                
-                <div className="analytics-card">
-                  <h3>💼 Job Placement Stats</h3>
-                  <div className="pie-chart-wrapper">
-                    <div className="pie-chart">
-                      <div className="pie-segment" style={{
-                        background: `conic-gradient(
-                          #667eea 0deg 252deg,
-                          #48bb78 252deg 324deg,
-                          #f59e0b 324deg 360deg
-                        )`
-                      }}></div>
-                      <div className="pie-center">
-                        <div className="pie-percentage">87%</div>
-                        <div className="pie-label">Placed</div>
-                      </div>
-                    </div>
-                    <div className="pie-legend">
-                      <div className="legend-item">
-                        <span className="legend-color" style={{background: '#667eea'}}></span>
-                        <span>Placed (70%)</span>
-                      </div>
-                      <div className="legend-item">
-                        <span className="legend-color" style={{background: '#48bb78'}}></span>
-                        <span>Interviewing (20%)</span>
-                      </div>
-                      <div className="legend-item">
-                        <span className="legend-color" style={{background: '#f59e0b'}}></span>
-                        <span>Searching (10%)</span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-                
-                <div className="analytics-card">
-                  <h3>👥 User Engagement</h3>
-                  <div className="line-chart">
-                    <div className="chart-area">
-                      <svg viewBox="0 0 300 150" className="line-svg">
-                        <polyline
-                          points="0,120 50,100 100,80 150,90 200,60 250,40 300,30"
-                          fill="none"
-                          stroke="#667eea"
-                          strokeWidth="3"
-                        />
-                        <polyline
-                          points="0,120 50,100 100,80 150,90 200,60 250,40 300,30"
-                          fill="url(#gradient)"
-                          opacity="0.2"
-                        />
-                        <defs>
-                          <linearGradient id="gradient" x1="0%" y1="0%" x2="0%" y2="100%">
-                            <stop offset="0%" stopColor="#667eea" />
-                            <stop offset="100%" stopColor="#667eea" stopOpacity="0" />
-                          </linearGradient>
-                        </defs>
-                      </svg>
-                    </div>
-                    <div className="chart-stats">
-                      <p>Daily Active Users: <strong>245</strong></p>
-                      <p>Peak Hours: <strong>2PM - 6PM</strong></p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="reports-section">
-                <h3>📄 Generate Reports</h3>
-                <div className="report-buttons">
-                  <button className="btn-report" onClick={() => showToast('Generating Student Progress Report...', 'info')}>
-                    <span className="report-icon">📊</span>
-                    <span className="report-text">
-                      <strong>Student Progress Report</strong>
-                      <small>Detailed progress of all students</small>
-                    </span>
-                  </button>
-                  <button className="btn-report" onClick={() => showToast('Generating Course Completion Report...', 'info')}>
-                    <span className="report-icon">✅</span>
-                    <span className="report-text">
-                      <strong>Course Completion Report</strong>
-                      <small>Completion rates and analytics</small>
-                    </span>
-                  </button>
-                  <button className="btn-report" onClick={() => showToast('Generating Revenue Report...', 'info')}>
-                    <span className="report-icon">💰</span>
-                    <span className="report-text">
-                      <strong>Revenue Report</strong>
-                      <small>Financial summary and trends</small>
-                    </span>
-                  </button>
-                  <button className="btn-report" onClick={() => showToast('Generating Monthly Analytics...', 'info')}>
-                    <span className="report-icon">📈</span>
-                    <span className="report-text">
-                      <strong>Monthly Analytics</strong>
-                      <small>Comprehensive monthly overview</small>
-                    </span>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
+                <h2>Analytics & Reports</h2>
+                <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                  <select
+                    value={analyticsPeriod}
+                    onChange={(e) => setAnalyticsPeriod(e.target.value)}
+                    className="form-control"
+                    style={{ minWidth: '140px' }}
+                  >
+                    <option value="7days">Last 7 days</option>
+                    <option value="30days">Last 30 days</option>
+                    <option value="90days">Last 90 days</option>
+                  </select>
+                  <button type="button" className="btn-secondary" onClick={fetchAnalyticsData}>
+                    Refresh
                   </button>
                 </div>
               </div>
 
-              {/* Commented out - Key Insights section disabled */}
-              {/* <div className="insights-section">
-                <h3>💡 Key Insights</h3>
-                <div className="insights-grid">
-                  <div className="insight-card">
-                    <span className="insight-icon">🎯</span>
-                    <p>Top performing course: <strong>Cyber Security & Ethical Hacking</strong></p>
+              {analyticsLoading && <p>Loading analytics…</p>}
+              {analyticsError && <p style={{ color: '#b91c1c' }}>{analyticsError}</p>}
+
+              {!analyticsLoading && !analyticsError && analyticsData && (
+                <>
+                  <div className="analytics-summary">
+                    <div className="summary-card">
+                      <div className="summary-content">
+                        <h4>Students</h4>
+                        <p className="summary-number">{analyticsData.overview?.totalStudents ?? students.length}</p>
+                        <span className="summary-change neutral">
+                          Active in period: {analyticsData.overview?.activeStudents ?? 0}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="summary-card">
+                      <div className="summary-content">
+                        <h4>Teachers</h4>
+                        <p className="summary-number">{analyticsData.overview?.totalTeachers ?? teachers.length}</p>
+                        <span className="summary-change neutral">
+                          Active in period: {analyticsData.overview?.activeTeachers ?? 0}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="summary-card">
+                      <div className="summary-content">
+                        <h4>Batches</h4>
+                        <p className="summary-number">{analyticsData.overview?.totalBatches ?? batches.length}</p>
+                        <span className="summary-change neutral">Platform cohorts</span>
+                      </div>
+                    </div>
+                    <div className="summary-card">
+                      <div className="summary-content">
+                        <h4>Activities</h4>
+                        <p className="summary-number">{analyticsData.overview?.totalActivities ?? 0}</p>
+                        <span className="summary-change neutral">
+                          Engagement: {analyticsData.overview?.studentEngagementRate ?? 0}%
+                        </span>
+                      </div>
+                    </div>
                   </div>
-                  <div className="insight-card">
-                    <span className="insight-icon">⏰</span>
-                    <p>Average completion time: <strong>4.5 months</strong></p>
+
+                  <div className="analytics-grid">
+                    <div className="analytics-card">
+                      <h3>Activity breakdown</h3>
+                      <div className="progress-list">
+                        {(analyticsData.activityBreakdown || []).length === 0 && (
+                          <p className="no-data">No activity in this period</p>
+                        )}
+                        {(analyticsData.activityBreakdown || []).slice(0, 8).map((item) => (
+                          <div key={item.action} className="progress-item">
+                            <div className="progress-info">
+                              <span className="progress-name">{item.action}</span>
+                              <span className="progress-value">{item.count}</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="analytics-card">
+                      <h3>Top courses by video views</h3>
+                      <div className="progress-list">
+                        {(analyticsData.courseAnalytics || []).length === 0 && (
+                          <p className="no-data">No video views in this period</p>
+                        )}
+                        {(analyticsData.courseAnalytics || []).slice(0, 5).map((course) => (
+                          <div key={course.courseName} className="progress-item">
+                            <div className="progress-info">
+                              <span className="progress-name">{course.courseName}</span>
+                              <span className="progress-value">{course.totalViews} views</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
                   </div>
-                  <div className="insight-card">
-                    <span className="insight-icon">🌟</span>
-                    <p>Student satisfaction rate: <strong>94%</strong></p>
-                  </div>
-                  <div className="insight-card">
-                    <span className="insight-icon">📚</span>
-                    <p>Most popular module: <strong>Penetration Testing</strong></p>
-                  </div>
-                </div>
-              </div> */}
+                </>
+              )}
             </div>
           )}
 
@@ -4404,6 +4367,7 @@ const AdminDashboard = ({ user, onLogout }) => {
                     <option value="">Select Course *</option>
                     <option value="Data Science & AI">Data Science & AI</option>
                     <option value="Cyber Security & Ethical Hacking">Cyber Security & Ethical Hacking</option>
+                    <option value="Cybersecurity & AI">Cybersecurity & AI</option>
                     <option value="DevOps & AI">DevOps & AI</option>
                     <option value="DevOps & Cloud">DevOps & Cloud</option>
                     <option value="One-to-One">One-to-One</option>
@@ -4596,6 +4560,7 @@ const AdminDashboard = ({ user, onLogout }) => {
                       {[
                         { value: 'Data Science & AI', label: 'Data Science & AI' },
                         { value: 'Cyber Security & Ethical Hacking', label: 'Cyber Security & Ethical Hacking' },
+                        { value: 'Cybersecurity & AI', label: 'Cybersecurity & AI' },
                         { value: 'DevOps & AI', label: 'DevOps & AI' },
                         { value: 'DevOps & Cloud', label: 'DevOps & Cloud' },
                         { value: 'One-to-One', label: 'One-to-One' }
@@ -4781,34 +4746,89 @@ const AdminDashboard = ({ user, onLogout }) => {
 
               {modalType === 'batch' && (
                 <>
+                  <div style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
+                    <button
+                      type="button"
+                      className={`btn-secondary ${formData.batchType !== 'one-to-one' ? 'active' : ''}`}
+                      onClick={() => {
+                        handleInputChange('batchType', 'regular');
+                        handleInputChange('customProgram', false);
+                      }}
+                      style={{
+                        flex: 1,
+                        border: formData.batchType !== 'one-to-one' ? '2px solid #147a7a' : '1px solid #d5dee3',
+                        background: formData.batchType !== 'one-to-one' ? 'rgba(20,122,122,0.1)' : '#fff',
+                        color: '#102a33',
+                        padding: '10px',
+                        borderRadius: '8px',
+                        cursor: 'pointer',
+                        fontWeight: 600
+                      }}
+                    >
+                      Regular batch
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleInputChange('batchType', 'one-to-one')}
+                      style={{
+                        flex: 1,
+                        border: formData.batchType === 'one-to-one' ? '2px solid #147a7a' : '1px solid #d5dee3',
+                        background: formData.batchType === 'one-to-one' ? 'rgba(20,122,122,0.1)' : '#fff',
+                        color: '#102a33',
+                        padding: '10px',
+                        borderRadius: '8px',
+                        cursor: 'pointer',
+                        fontWeight: 600
+                      }}
+                    >
+                      One-to-One
+                    </button>
+                  </div>
                   <input
                     type="text"
                     placeholder="Batch Name *"
                     value={formData.name || ''}
                     onChange={(e) => handleInputChange('name', e.target.value)}
                     required
-                    readOnly={false}
-                    onFocus={(e) => e.target.removeAttribute('readonly')}
-                    onBlur={(e) => e.target.setAttribute('readonly', true)}
                   />
                   <select
-                    value={formData.course || ''}
+                    value={formData.customProgram ? '__custom__' : (formData.course || '')}
                     onChange={(e) => {
-                      const course = e.target.value;
-                      handleInputChange('course', course);
-                      // Clear teacher selection when course changes
-                      handleInputChange('teacherId', '');
-                      handleInputChange('teacherName', '');
+                      const value = e.target.value;
+                      if (value === '__custom__') {
+                        handleInputChange('customProgram', true);
+                        handleInputChange('course', '');
+                        handleInputChange('programLabel', formData.programLabel || '');
+                      } else {
+                        handleInputChange('customProgram', false);
+                        handleInputChange('course', value);
+                        handleInputChange('programLabel', value);
+                        handleInputChange('teacherId', '');
+                        handleInputChange('teacherName', '');
+                      }
                     }}
                     required
                   >
-                    <option value="">Select Course *</option>
-                    <option value="Data Science & AI">Data Science & AI</option>
-                    <option value="Cyber Security & Ethical Hacking">Cyber Security & Ethical Hacking</option>
-                    <option value="DevOps & AI">DevOps & AI</option>
-                    <option value="DevOps & Cloud">DevOps & Cloud</option>
-                    <option value="One-to-One">One-to-One</option>
+                    <option value="">Select Program *</option>
+                    {PROGRAM_OPTIONS.map(p => (
+                      <option key={p} value={p}>{p}</option>
+                    ))}
+                    {formData.batchType === 'one-to-one' && (
+                      <option value="__custom__">Custom program</option>
+                    )}
                   </select>
+                  {formData.customProgram && formData.batchType === 'one-to-one' && (
+                    <input
+                      type="text"
+                      placeholder="Custom program label *"
+                      value={formData.programLabel || ''}
+                      onChange={(e) => {
+                        handleInputChange('programLabel', e.target.value);
+                        handleInputChange('course', e.target.value);
+                      }}
+                      required
+                    />
+                  )}
                   <input
                     type="date"
                     placeholder="Start Date"
@@ -4826,7 +4846,9 @@ const AdminDashboard = ({ user, onLogout }) => {
                     required
                   >
                     <option value="">
-                      {formData.course ? `Select Teacher for ${formData.course} *` : 'Select Course First *'}
+                      {formData.batchType === 'one-to-one' || formData.course
+                        ? 'Select Trainer *'
+                        : 'Select Program First *'}
                     </option>
                     {getFilteredTeachers().map(teacher => (
                       <option key={teacher.id} value={teacher.id}>
@@ -4866,6 +4888,7 @@ const AdminDashboard = ({ user, onLogout }) => {
                     <option value="">Select Course *</option>
                     <option value="Data Science & AI">Data Science & AI</option>
                     <option value="Cyber Security & Ethical Hacking">Cyber Security & Ethical Hacking</option>
+                    <option value="Cybersecurity & AI">Cybersecurity & AI</option>
                     <option value="DevOps & AI">DevOps & AI</option>
                     <option value="DevOps & Cloud">DevOps & Cloud</option>
                     <option value="One-to-One">One-to-One</option>
@@ -5282,6 +5305,7 @@ const AdminDashboard = ({ user, onLogout }) => {
                     <option value="">Select Domain *</option>
                     <option value="Data Science & AI">Data Science & AI</option>
                     <option value="Cyber Security & Ethical Hacking">Cyber Security & Ethical Hacking</option>
+                    <option value="Cybersecurity & AI">Cybersecurity & AI</option>
                     <option value="DevOps & AI">DevOps & AI</option>
                     <option value="DevOps & Cloud">DevOps & Cloud</option>
                     <option value="One-to-One">One-to-One</option>
@@ -5424,6 +5448,7 @@ const AdminDashboard = ({ user, onLogout }) => {
                     <option value="">Select Course *</option>
                     <option value="Data Science & AI">Data Science & AI</option>
                     <option value="Cyber Security & Ethical Hacking">Cyber Security & Ethical Hacking</option>
+                    <option value="Cybersecurity & AI">Cybersecurity & AI</option>
                     <option value="DevOps & AI">DevOps & AI</option>
                     <option value="DevOps & Cloud">DevOps & Cloud</option>
                     <option value="One-to-One">One-to-One</option>
@@ -5507,6 +5532,7 @@ const AdminDashboard = ({ user, onLogout }) => {
                     <option value="">Select Course *</option>
                     <option value="Data Science & AI">Data Science & AI</option>
                     <option value="Cyber Security & Ethical Hacking">Cyber Security & Ethical Hacking</option>
+                    <option value="Cybersecurity & AI">Cybersecurity & AI</option>
                     <option value="DevOps & AI">DevOps & AI</option>
                     <option value="DevOps & Cloud">DevOps & Cloud</option>
                     <option value="One-to-One">One-to-One</option>
@@ -6014,6 +6040,9 @@ const AdminDashboard = ({ user, onLogout }) => {
                                 <option value="">Select Course</option>
                                 <option value="Data Science & AI">Data Science & AI</option>
                                 <option value="Cyber Security & Ethical Hacking">Cyber Security & Ethical Hacking</option>
+                                <option value="Cybersecurity & AI">Cybersecurity & AI</option>
+                                <option value="DevOps & AI">DevOps & AI</option>
+                                <option value="DevOps & Cloud">DevOps & Cloud</option>
                                 <option value="One-to-One">One-to-One</option>
                               </select>
                             </div>

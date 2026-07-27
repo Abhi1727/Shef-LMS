@@ -70,7 +70,10 @@ router.get('/:id/notes', async (req, res) => {
     
     // Verify token
     const jwt = require('jsonwebtoken');
-    const jwtSecret = process.env.JWT_SECRET || 'dev_only_fallback';
+    const jwtSecret = process.env.JWT_SECRET || (process.env.NODE_ENV === 'production' ? null : 'dev_only_fallback');
+    if (!jwtSecret) {
+      return res.status(500).json({ message: 'Server auth misconfigured' });
+    }
     
     try {
       const decoded = jwt.verify(token, jwtSecret);
@@ -513,7 +516,10 @@ router.get('/notes/:id', async (req, res) => {
     
     // Verify token
     const jwt = require('jsonwebtoken');
-    const jwtSecret = process.env.JWT_SECRET || 'dev_only_fallback';
+    const jwtSecret = process.env.JWT_SECRET || (process.env.NODE_ENV === 'production' ? null : 'dev_only_fallback');
+    if (!jwtSecret) {
+      return res.status(500).json({ message: 'Server auth misconfigured' });
+    }
     
     try {
       const decoded = jwt.verify(token, jwtSecret);

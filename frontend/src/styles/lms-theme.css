@@ -1,0 +1,782 @@
+/* Sky States LMS shared design system — matches login brand language */
+:root {
+  --lms-ink: #102a33;
+  --lms-deep: #0b3d4a;
+  --lms-accent: #147a7a;
+  --lms-accent-hover: #0f6363;
+  --lms-accent-soft: rgba(20, 122, 122, 0.1);
+  --lms-surface: #f4f6f7;
+  --lms-panel: #ffffff;
+  --lms-text: #15252c;
+  --lms-muted: #5a6d76;
+  --lms-border: #d5dee3;
+  --lms-danger: #9b2c2c;
+  --lms-danger-bg: #fdecec;
+  --lms-radius: 12px;
+  --lms-font: 'Manrope', 'Segoe UI', sans-serif;
+  --lms-display: 'Fraunces', Georgia, 'Times New Roman', serif;
+}
+
+body {
+  font-family: var(--lms-font);
+  background: var(--lms-surface);
+  color: var(--lms-text);
+}
+
+/* ========== Shared shell ========== */
+.admin-dashboard,
+.dashboard {
+  min-height: 100vh;
+  background:
+    radial-gradient(900px 420px at 100% 0%, rgba(20, 122, 122, 0.07), transparent 55%),
+    var(--lms-surface) !important;
+  font-family: var(--lms-font);
+}
+
+.edu-3d-container,
+.edu-3d-element {
+  display: none !important;
+}
+
+.mobile-menu-toggle {
+  display: none !important;
+}
+
+/* ========== Admin chrome ========== */
+.admin-dashboard-horizontal .admin-top-header.admin-header-full {
+  background: var(--lms-panel) !important;
+  border-bottom: 1px solid var(--lms-border);
+  box-shadow: 0 8px 24px rgba(16, 42, 51, 0.04);
+  position: sticky;
+  top: 0;
+  z-index: 200;
+}
+
+.admin-header-full .header-row-1 {
+  padding: 14px 28px !important;
+  background: linear-gradient(180deg, #ffffff 0%, #f7fafb 100%);
+}
+
+.admin-header-full .header-brand .page-title,
+.admin-top-header .page-title,
+.admin-top-header h1 {
+  font-family: var(--lms-display) !important;
+  font-size: 1.45rem !important;
+  font-weight: 700 !important;
+  letter-spacing: -0.03em !important;
+  color: var(--lms-ink) !important;
+  background: none !important;
+  -webkit-text-fill-color: var(--lms-ink) !important;
+  background-clip: border-box !important;
+}
+
+.admin-header-full .header-brand .page-title::after {
+  content: none;
+}
+
+.admin-header-full .header-brand {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.admin-header-full .header-brand .lms-role-label {
+  margin: 0;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--lms-muted);
+}
+
+.admin-header-full .user-name {
+  color: var(--lms-text) !important;
+}
+
+.admin-header-full .user-avatar {
+  background: var(--lms-deep) !important;
+  box-shadow: none !important;
+}
+
+.admin-header-full .btn-header.btn-primary,
+.admin-dashboard .btn-primary.btn-header {
+  background: var(--lms-accent) !important;
+  border: none !important;
+  color: #fff !important;
+  border-radius: 10px !important;
+  box-shadow: none !important;
+}
+
+.admin-header-full .btn-header.btn-secondary,
+.admin-dashboard .btn-secondary.btn-header {
+  background: #fff !important;
+  border: 1px solid var(--lms-border) !important;
+  color: var(--lms-deep) !important;
+  border-radius: 10px !important;
+}
+
+.logout-btn-header {
+  background: var(--lms-danger-bg) !important;
+  color: var(--lms-danger) !important;
+  border: 1px solid rgba(155, 44, 44, 0.2) !important;
+  border-radius: 10px !important;
+}
+
+.logout-btn-header:hover {
+  background: var(--lms-danger) !important;
+  color: #fff !important;
+}
+
+.admin-horizontal-nav {
+  background: #fff !important;
+  border-top: 1px solid var(--lms-border) !important;
+  padding: 0 20px !important;
+}
+
+.horizontal-nav-inner {
+  gap: 8px !important;
+  padding: 10px 0 !important;
+}
+
+.nav-btn-h {
+  border: 1px solid transparent !important;
+  background: transparent !important;
+  border-radius: 10px !important;
+  color: var(--lms-muted) !important;
+  font-family: var(--lms-font) !important;
+  font-weight: 600 !important;
+  font-size: 0.9rem !important;
+  padding: 8px 14px !important;
+  box-shadow: none !important;
+}
+
+.nav-btn-h:hover {
+  background: var(--lms-accent-soft) !important;
+  color: var(--lms-deep) !important;
+  border-color: transparent !important;
+}
+
+.nav-btn-h.active {
+  background: var(--lms-accent) !important;
+  color: #fff !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+}
+
+.nav-more-dropdown {
+  border: 1px solid var(--lms-border) !important;
+  border-radius: 12px !important;
+  box-shadow: 0 16px 32px rgba(16, 42, 51, 0.1) !important;
+  overflow: hidden;
+}
+
+.nav-more-item.active {
+  background: var(--lms-accent-soft) !important;
+  color: var(--lms-deep) !important;
+}
+
+.admin-main-content,
+.admin-content {
+  background: transparent !important;
+}
+
+.admin-section > h2 {
+  font-family: var(--lms-display) !important;
+  color: var(--lms-ink) !important;
+  letter-spacing: -0.02em;
+  font-weight: 600 !important;
+}
+
+.admin-dashboard .stat-card,
+.admin-dashboard .overview-card {
+  background: linear-gradient(135deg, #0b3d4a 0%, #147a7a 100%) !important;
+  box-shadow: 0 12px 28px rgba(16, 42, 51, 0.12) !important;
+  border: none !important;
+}
+
+.admin-dashboard .admin-section {
+  text-align: left;
+}
+
+.admin-dashboard .admin-section > h2 {
+  text-align: left !important;
+  margin-bottom: 1.25rem;
+}
+
+.admin-dashboard .btn-primary {
+  background: var(--lms-accent) !important;
+  border-color: var(--lms-accent) !important;
+}
+
+.admin-dashboard .btn-primary:hover:not(:disabled) {
+  background: var(--lms-accent-hover) !important;
+}
+
+/* ========== Teacher chrome ========== */
+.dashboard > .dashboard-header {
+  background: var(--lms-panel) !important;
+  border-bottom: 1px solid var(--lms-border) !important;
+  box-shadow: 0 8px 24px rgba(16, 42, 51, 0.04) !important;
+  padding: 18px 28px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 16px;
+  position: sticky;
+  top: 0;
+  z-index: 200;
+}
+
+.dashboard > .dashboard-header .header-left h1 {
+  font-family: var(--lms-display) !important;
+  font-size: 1.45rem !important;
+  font-weight: 700 !important;
+  letter-spacing: -0.03em !important;
+  color: var(--lms-ink) !important;
+  margin: 0 0 4px !important;
+  background: none !important;
+  -webkit-text-fill-color: var(--lms-ink) !important;
+}
+
+.dashboard > .dashboard-header .header-left p {
+  margin: 0 !important;
+  color: var(--lms-muted) !important;
+  font-size: 0.92rem !important;
+}
+
+.dashboard > .dashboard-header .logout-btn,
+.dashboard .logout-btn {
+  background: var(--lms-danger-bg) !important;
+  color: var(--lms-danger) !important;
+  border: 1px solid rgba(155, 44, 44, 0.2) !important;
+  border-radius: 10px !important;
+  box-shadow: none !important;
+  font-weight: 600 !important;
+}
+
+.dashboard > .dashboard-header .logout-btn:hover,
+.dashboard .logout-btn:hover {
+  background: var(--lms-danger) !important;
+  color: #fff !important;
+  transform: none !important;
+}
+
+.dashboard > .dashboard-nav {
+  background: #fff !important;
+  border-bottom: 1px solid var(--lms-border) !important;
+  padding: 10px 24px !important;
+  display: flex !important;
+  gap: 8px !important;
+  flex-wrap: wrap;
+  position: sticky;
+  top: 72px;
+  z-index: 190;
+}
+
+.dashboard > .dashboard-nav .nav-item {
+  border: 1px solid transparent !important;
+  background: transparent !important;
+  border-radius: 10px !important;
+  color: var(--lms-muted) !important;
+  font-family: var(--lms-font) !important;
+  font-weight: 600 !important;
+  padding: 8px 14px !important;
+  box-shadow: none !important;
+}
+
+.dashboard > .dashboard-nav .nav-item:hover {
+  background: var(--lms-accent-soft) !important;
+  color: var(--lms-deep) !important;
+  transform: none !important;
+}
+
+.dashboard > .dashboard-nav .nav-item.active {
+  background: var(--lms-accent) !important;
+  color: #fff !important;
+  box-shadow: none !important;
+}
+
+.dashboard > .main-content {
+  background: transparent !important;
+  padding: 24px clamp(16px, 3vw, 32px) !important;
+}
+
+.dashboard .dashboard-section > .section-header h2,
+.dashboard .section-header h2 {
+  font-family: var(--lms-display) !important;
+  color: var(--lms-ink) !important;
+}
+
+/* Tone down teacher hero glow/purple */
+.dashboard .hero-overview,
+.dashboard .animated-gradient-background,
+.dashboard .gradient-overlay {
+  background: linear-gradient(135deg, #0b3d4a 0%, #147a7a 100%) !important;
+  box-shadow: none !important;
+  filter: none !important;
+}
+
+.dashboard .animated-gradient-background::before,
+.dashboard .animated-gradient-background::after {
+  display: none !important;
+}
+
+/* ========== Student chrome ========== */
+.dashboard > .top-nav {
+  background: var(--lms-panel) !important;
+  border-bottom: 1px solid var(--lms-border) !important;
+  box-shadow: 0 8px 24px rgba(16, 42, 51, 0.04) !important;
+  padding: 12px 24px !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 20px;
+  position: sticky;
+  top: 0;
+  z-index: 200;
+}
+
+.dashboard > .top-nav .top-nav-header h2 {
+  font-family: var(--lms-display) !important;
+  font-size: 1.35rem !important;
+  font-weight: 700 !important;
+  letter-spacing: -0.03em !important;
+  color: var(--lms-ink) !important;
+  margin: 0 !important;
+}
+
+.dashboard > .top-nav .top-nav-header .subtitle {
+  color: var(--lms-muted) !important;
+  font-size: 0.78rem !important;
+  font-weight: 600 !important;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  margin-top: 2px !important;
+}
+
+.dashboard > .top-nav .top-nav-menu-modern {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  gap: 8px !important;
+}
+
+.dashboard > .top-nav .nav-slider-indicator {
+  background: var(--lms-accent) !important;
+  border-radius: 10px !important;
+  box-shadow: none !important;
+}
+
+.dashboard > .top-nav .nav-item-modern {
+  background: transparent !important;
+  border: 1px solid transparent !important;
+  border-radius: 10px !important;
+  color: var(--lms-muted) !important;
+  box-shadow: none !important;
+  min-height: 42px;
+}
+
+.dashboard > .top-nav .nav-item-modern:hover {
+  background: var(--lms-accent-soft) !important;
+  color: var(--lms-deep) !important;
+  transform: none !important;
+}
+
+.dashboard > .top-nav .nav-item-modern.active {
+  background: transparent !important;
+  color: #fff !important;
+}
+
+.dashboard > .top-nav .nav-item-modern.active .nav-text,
+.dashboard > .top-nav .nav-item-modern.active .nav-icon-modern {
+  color: #fff !important;
+  position: relative;
+  z-index: 1;
+}
+
+.dashboard > .top-nav .nav-badge {
+  background: var(--lms-accent-soft) !important;
+  color: var(--lms-deep) !important;
+  border: none !important;
+  font-weight: 700;
+}
+
+.dashboard > .top-nav .nav-item-modern.active .nav-badge {
+  background: rgba(255, 255, 255, 0.22) !important;
+  color: #fff !important;
+}
+
+.dashboard > .top-nav .nav-item-modern.theme-toggle,
+.dashboard > .top-nav .nav-item-modern.logout-btn-modern {
+  background: #fff !important;
+  border: 1px solid var(--lms-border) !important;
+  color: var(--lms-deep) !important;
+}
+
+.dashboard > .top-nav .nav-item-modern.logout-btn-modern {
+  background: var(--lms-danger-bg) !important;
+  border-color: rgba(155, 44, 44, 0.2) !important;
+  color: var(--lms-danger) !important;
+}
+
+.dashboard > .top-nav .nav-item-modern.logout-btn-modern:hover {
+  background: var(--lms-danger) !important;
+  color: #fff !important;
+}
+
+.dashboard > .top-nav .top-nav-spacer {
+  display: none;
+}
+
+.dashboard .main-content,
+.dashboard .dashboard-content {
+  background: transparent !important;
+}
+
+/* Student welcome block — clean professional */
+.dashboard .welcome-header-modern,
+.dashboard .welcome-glass-card {
+  background: linear-gradient(135deg, #0b3d4a 0%, #147a7a 100%) !important;
+  border: none !important;
+  box-shadow: 0 16px 36px rgba(16, 42, 51, 0.12) !important;
+  border-radius: 16px !important;
+  backdrop-filter: none !important;
+}
+
+.dashboard .welcome-title-modern,
+.dashboard .welcome-glass-card h1,
+.dashboard .welcome-glass-card p,
+.dashboard .greeting-section h1,
+.dashboard .greeting-section p {
+  color: #fff !important;
+  text-shadow: none !important;
+}
+
+.dashboard .welcome-title-modern {
+  font-family: var(--lms-display) !important;
+  letter-spacing: -0.02em;
+}
+
+/* Dark mode: keep student shell readable but on-brand */
+body.dark-mode .dashboard > .top-nav {
+  background: #0f242b !important;
+  border-bottom-color: rgba(255, 255, 255, 0.08) !important;
+}
+
+body.dark-mode .dashboard > .top-nav .top-nav-header h2 {
+  color: #f4f8f9 !important;
+}
+
+body.dark-mode .dashboard > .top-nav .top-nav-header .subtitle {
+  color: #9db0b8 !important;
+}
+
+body.dark-mode .dashboard > .top-nav .nav-item-modern {
+  color: #c5d3d8 !important;
+}
+
+body.dark-mode .dashboard {
+  background: #0c181d !important;
+}
+
+/* Teacher students / privacy UI */
+.section-subtitle {
+  margin: 0.35rem 0 0;
+  color: var(--lms-muted);
+  font-size: 0.92rem;
+  font-weight: 500;
+}
+
+.teacher-students-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 1rem 0 1.25rem;
+  flex-wrap: wrap;
+}
+
+.teacher-students-toolbar .form-input-modern {
+  flex: 1;
+  min-width: 220px;
+  max-width: 420px;
+  height: 44px;
+  border: 1px solid var(--lms-border);
+  border-radius: 10px;
+  padding: 0 0.9rem;
+  font-family: var(--lms-font);
+}
+
+.teacher-students-table-wrap {
+  background: var(--lms-panel);
+  border: 1px solid var(--lms-border);
+  border-radius: 14px;
+  overflow: auto;
+}
+
+.teacher-students-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.92rem;
+}
+
+.teacher-students-table th,
+.teacher-students-table td {
+  padding: 0.85rem 1rem;
+  text-align: left;
+  border-bottom: 1px solid var(--lms-border);
+  white-space: nowrap;
+}
+
+.teacher-students-table th {
+  background: #f7fafb;
+  color: var(--lms-muted);
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.teacher-students-table tr:last-child td {
+  border-bottom: none;
+}
+
+.teacher-student-name {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  font-weight: 600;
+  color: var(--lms-ink);
+}
+
+.teacher-student-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: var(--lms-deep);
+  color: #fff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+.status-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.2rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: capitalize;
+  background: #e8f5f3;
+  color: var(--lms-deep);
+}
+
+.status-chip.inactive,
+.status-chip.suspended {
+  background: var(--lms-danger-bg);
+  color: var(--lms-danger);
+}
+
+.btn-sm {
+  padding: 6px 10px !important;
+  font-size: 0.8rem !important;
+}
+
+.dashboard .upload-section,
+.dashboard .lectures-section {
+  background: var(--lms-panel);
+  border: 1px solid var(--lms-border);
+  border-radius: 14px;
+  padding: 1.25rem 1.35rem;
+  margin-bottom: 1.25rem;
+}
+
+.dashboard .upload-btn,
+.dashboard .watch-btn {
+  background: var(--lms-accent) !important;
+  color: #fff !important;
+  border: none !important;
+  border-radius: 10px !important;
+  padding: 0.7rem 1.1rem !important;
+  font-weight: 700 !important;
+  cursor: pointer;
+}
+
+.dashboard .delete-btn {
+  background: var(--lms-danger-bg) !important;
+  color: var(--lms-danger) !important;
+  border: 1px solid rgba(155, 44, 44, 0.2) !important;
+  border-radius: 10px !important;
+}
+
+.student-progress-section .stat-card {
+  background: linear-gradient(135deg, #0b3d4a 0%, #147a7a 100%) !important;
+  color: #fff !important;
+}
+
+.student-progress-section .stat-label,
+.student-progress-section .stat-value {
+  color: #fff !important;
+}
+
+@media (max-width: 768px) {
+  .admin-header-full .header-row-1,
+  .dashboard > .dashboard-header,
+  .dashboard > .top-nav {
+    padding-left: 14px !important;
+    padding-right: 14px !important;
+  }
+
+  .dashboard > .dashboard-nav {
+    top: auto;
+    position: relative;
+  }
+
+  .dashboard > .top-nav {
+    flex-wrap: wrap;
+  }
+
+  .dashboard > .top-nav .top-nav-spacer {
+    display: none;
+  }
+}
+
+/* ========== Student classroom polish ========== */
+.sky-classroom {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 8px 4px 40px;
+}
+
+.sky-classroom-header h1 {
+  font-family: var(--lms-display);
+  font-size: 1.75rem;
+  color: var(--lms-ink);
+  margin: 0 0 6px;
+  letter-spacing: -0.03em;
+}
+
+.sky-classroom-subtitle {
+  color: var(--lms-muted);
+  margin: 0 0 20px;
+  font-size: 0.95rem;
+}
+
+.sky-batch-banner {
+  overflow: visible !important;
+  align-items: flex-start;
+  gap: 20px;
+}
+
+.sky-batch-banner .batch-details-left,
+.sky-batch-banner .batch-details-right {
+  min-width: 0;
+  overflow: visible;
+}
+
+.sky-batch-banner .batch-name {
+  white-space: normal;
+  overflow: visible;
+  text-overflow: unset;
+  word-break: break-word;
+}
+
+.sky-empty-panel,
+.sky-info-panel {
+  background: var(--lms-panel);
+  border: 1px solid var(--lms-border);
+  border-radius: var(--lms-radius);
+  padding: 28px;
+  text-align: left;
+}
+
+.sky-empty-panel h3,
+.sky-info-panel h3 {
+  font-family: var(--lms-display);
+  margin: 0 0 8px;
+  color: var(--lms-ink);
+}
+
+.sky-empty-panel p,
+.sky-info-panel p {
+  margin: 0;
+  color: var(--lms-muted);
+  line-height: 1.5;
+}
+
+.sky-recording-grid {
+  overflow: visible;
+}
+
+.sky-recording-card {
+  overflow: visible;
+}
+
+.dashboard.dark-mode .sky-classroom-header h1,
+.dashboard.dark-mode .sky-empty-panel h3,
+.dashboard.dark-mode .sky-info-panel h3 {
+  color: #f3f6f7;
+}
+
+.dashboard.dark-mode .sky-classroom-subtitle,
+.dashboard.dark-mode .sky-empty-panel p,
+.dashboard.dark-mode .sky-info-panel p {
+  color: #a7b4bb;
+}
+
+.dashboard.dark-mode .sky-empty-panel,
+.dashboard.dark-mode .sky-info-panel {
+  background: #15252c;
+  border-color: #2a3d46;
+}
+
+/* Teacher/admin batch loading */
+.sky-batch-loading {
+  min-height: 60vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 20px;
+}
+
+.sky-loading-card {
+  background: #fff;
+  border: 1px solid var(--lms-border);
+  border-radius: 12px;
+  padding: 32px;
+  text-align: center;
+  max-width: 420px;
+  width: 100%;
+}
+
+.sky-spinner {
+  width: 28px;
+  height: 28px;
+  border: 2px solid var(--lms-border);
+  border-top-color: var(--lms-accent);
+  border-radius: 50%;
+  margin: 0 auto 14px;
+  animation: sky-spin 0.8s linear infinite;
+}
+
+@keyframes sky-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Teacher batch cards — teal actions */
+.dashboard .batch-card-modern .view-btn,
+.dashboard .batch-actions .view-btn,
+.teacher-batch-details-page .sky-btn-primary {
+  background: var(--lms-accent) !important;
+  color: #fff !important;
+  border-color: var(--lms-accent) !important;
+}
+
+.dashboard .batch-card-modern .delete-btn,
+.dashboard .batch-actions .delete-btn {
+  background: #fff !important;
+  color: var(--lms-danger) !important;
+  border: 1px solid #e8c4c4 !important;
+}

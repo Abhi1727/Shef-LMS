@@ -5,6 +5,7 @@ const { roleAuth } = require('../middleware/roleAuth');
 const bcrypt = require('bcryptjs');
 const User = require('../models/User');
 const Batch = require('../models/Batch');
+const Classroom = require('../models/Classroom');
 const ActivityLog = require('../models/ActivityLog');
 
 // Apply auth and student role check to all student routes
@@ -141,28 +142,26 @@ router.put('/profile', async (req, res) => {
     }
 
     // Prepare update data
-    const updateData = {
-      name: name.trim(),
-      email: normalizedEmail,
-      updatedAt: new Date().toISOString()
-    };
-
-    // Add optional fields if provided
+    userDoc.name = name.trim();
+    userDoc.email = normalizedEmail;
     if (phone !== undefined && phone !== null) {
-      updateData.phone = phone.trim();
+      userDoc.phone = phone.trim();
     }
     if (address !== undefined && address !== null) {
-      updateData.address = address.trim();
+      userDoc.address = address.trim();
     }
+    await userDoc.save();
 
     const responseProfile = {
       id: String(userDoc._id),
-      name: updateData.name,
-      email: updateData.email,
+      name: userDoc.name,
+      email: userDoc.email,
       currentCourse: userDoc.course || userDoc.currentCourse,
       status: userDoc.status,
       role: userDoc.role,
-      updatedAt: updateData.updatedAt
+      phone: userDoc.phone || '',
+      address: userDoc.address || '',
+      updatedAt: new Date().toISOString()
     };
 
     console.log('✅ Student profile updated in database:', responseProfile);
@@ -409,19 +408,9 @@ const calculateLoginStreak = async (userId) => {
   }
 };
 
-// Helper function to calculate video progress
+// Helper function to calculate video progress from batch classroom recordings
 const calculateVideoProgress = async (userId) => {
   try {
-    // Get unique videos watched by this user
-    const videoViews = await ActivityLog.distinct('videoId', {
-      userId: userId,
-      action: 'video_view',
-      videoId: { $exists: true, $ne: null }
-    });
-
-    const watchedCount = videoViews.length;
-    
-    // Get total available videos for student's course
     const userDoc = await User.findOne({
       $or: [
         { _id: userId },
@@ -433,34 +422,32 @@ const calculateVideoProgress = async (userId) => {
       return { total: 0, watched: 0, progressPercentage: 0 };
     }
 
-    // For demo students, return hardcoded values
-    if (userId === 'leonardo_deleon_user_id' || userId === 'abhi_datascience_user_id') {
-      const totalVideos = userId === 'leonardo_deleon_user_id' ? 25 : 30;
-      const demoWatched = userId === 'leonardo_deleon_user_id' ? 13 : 18;
-      return {
-        total: totalVideos,
-        watched: demoWatched,
-        progressPercentage: Math.round((demoWatched / totalVideos) * 100)
-      };
+    const batchId = userDoc.batchId ? String(userDoc.batchId) : null;
+    if (!batchId) {
+      return { total: 0, watched: 0, progressPercentage: 0 };
     }
 
-    // For regular students, estimate based on course
-    // This could be enhanced by storing actual video count per course
-    const course = userDoc.course || userDoc.currentCourse;
-    let totalVideos = 25; // Default estimate
-    
-    if (course && course.toLowerCase().includes('data science')) {
-      totalVideos = 30;
-    } else if (course && course.toLowerCase().includes('cyber')) {
-      totalVideos = 25;
+    const batchVideos = await Classroom.find({ batchId }).select('_id').lean().exec();
+    const totalVideos = batchVideos.length;
+    const videoIds = batchVideos.map((v) => String(v._id));
+
+    if (totalVideos === 0) {
+      return { total: 0, watched: 0, progressPercentage: 0 };
     }
 
-    const progressPercentage = totalVideos > 0 ? Math.round((watchedCount / totalVideos) * 100) : 0;
+    const watchedIds = await ActivityLog.distinct('videoId', {
+      userId: String(userId),
+      action: 'video_view',
+      videoId: { $in: videoIds }
+    });
+
+    const watchedCount = watchedIds.length;
+    const progressPercentage = Math.min(100, Math.round((watchedCount / totalVideos) * 100));
 
     return {
       total: totalVideos,
       watched: watchedCount,
-      progressPercentage: Math.min(progressPercentage, 100)
+      progressPercentage
     };
   } catch (error) {
     console.error('Error calculating video progress:', error);
@@ -488,62 +475,31 @@ router.get('/progress-summary', async (req, res) => {
 
     // Handle demo students
     if (userId === 'leonardo_deleon_user_id' || userId === 'abhi_datascience_user_id') {
-      const isDataScience = userId === 'abhi_datascience_user_id';
-      const demoProgress = {
-        modules: {
-          total: 10,
-          completed: isDataScience ? 3 : 4,
-          inProgress: isDataScience ? 2 : 1
-        },
-        videos: {
-          total: isDataScience ? 30 : 25,
-          watched: isDataScience ? 18 : 13,
-          progressPercentage: isDataScience ? 60 : 52
-        },
-        streak: {
-          current: isDataScience ? 7 : 5,
-          longest: isDataScience ? 15 : 12,
-          lastLoginDate: new Date().toISOString().split('T')[0]
-        },
-        overallProgress: isDataScience ? 60 : 52
-      };
-      return res.json(demoProgress);
+      return res.json({
+        modules: { total: 0, completed: 0, inProgress: 0 },
+        videos: { total: 0, watched: 0, progressPercentage: 0 },
+        streak: { current: 0, longest: 0, lastLoginDate: null },
+        overallProgress: 0,
+        message: 'No batch progress available for demo accounts'
+      });
     }
 
     // Calculate login streak
     const streak = await calculateLoginStreak(userId);
     
-    // Calculate video progress
+    // Calculate video progress from batch recordings
     const videos = await calculateVideoProgress(userId);
-    
-    // Get course information for module count
-    const course = userDoc.course || userDoc.currentCourse;
-    let totalModules = 10; // Default
-    let completedModules = 0;
-    let inProgressModules = 0;
-
-    // Estimate module completion based on video progress
-    if (course && course.toLowerCase().includes('data science')) {
-      totalModules = 10;
-      completedModules = Math.floor((videos.progressPercentage / 100) * totalModules);
-      inProgressModules = Math.min(totalModules - completedModules, 2);
-    } else if (course && course.toLowerCase().includes('cyber')) {
-      totalModules = 10;
-      completedModules = Math.floor((videos.progressPercentage / 100) * totalModules);
-      inProgressModules = Math.min(totalModules - completedModules, 2);
-    }
-
-    const overallProgress = videos.progressPercentage;
 
     const progressSummary = {
       modules: {
-        total: totalModules,
-        completed: completedModules,
-        inProgress: inProgressModules
+        total: 0,
+        completed: 0,
+        inProgress: 0
       },
-      videos: videos,
-      streak: streak,
-      overallProgress: overallProgress
+      videos,
+      streak,
+      overallProgress: videos.progressPercentage,
+      hasBatch: Boolean(userDoc.batchId)
     };
 
     res.json(progressSummary);

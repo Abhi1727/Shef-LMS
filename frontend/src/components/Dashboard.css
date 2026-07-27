@@ -8,9 +8,9 @@
   --touch-target-size: 44px;
   
   /* Premium Color Scheme */
-  --primary-indigo: #4F46E5;
-  --secondary-purple: #7C3AED;
-  --accent-cyan: #06B6D4;
+  --primary-indigo: #0b3d4a;
+  --secondary-purple: #147a7a;
+  --accent-cyan: #2a9d8f;
   --dark-slate: #1E293B;
   --light-snow: #F8FAFC;
   --success-emerald: #10B981;
@@ -19,9 +19,9 @@
   --neutral-slate: #64748B;
   
   /* Legacy variables for backward compatibility */
-  --primary-orange: #4F46E5;
-  --secondary-orange: #7C3AED;
-  --accent-orange: #06B6D4;
+  --primary-orange: #0b3d4a;
+  --secondary-orange: #147a7a;
+  --accent-orange: #2a9d8f;
   --dark-orange: #1E293B;
   --warm-white: #F8FAFC;
   --deep-gray: #1E293B;
@@ -1769,9 +1769,9 @@
   --touch-target-size: 44px;
   
   /* Premium Color Scheme */
-  --primary-indigo: #4F46E5;
-  --secondary-purple: #7C3AED;
-  --accent-cyan: #06B6D4;
+  --primary-indigo: #0b3d4a;
+  --secondary-purple: #147a7a;
+  --accent-cyan: #2a9d8f;
   --dark-slate: #1E293B;
   --light-snow: #F8FAFC;
   --success-emerald: #10B981;
@@ -1780,9 +1780,9 @@
   --neutral-slate: #64748B;
   
   /* Legacy variables for backward compatibility */
-  --primary-orange: #4F46E5;
-  --secondary-orange: #7C3AED;
-  --accent-orange: #06B6D4;
+  --primary-orange: #0b3d4a;
+  --secondary-orange: #147a7a;
+  --accent-orange: #2a9d8f;
   --dark-orange: #1E293B;
   --warm-white: #F8FAFC;
   --deep-gray: #1E293B;
@@ -4367,18 +4367,28 @@ body.dark-mode .nav-item-modern.logout-btn-modern:hover {
   }
   
   .nav-item-modern {
-    padding: 10px 16px;
-    min-width: 80px;
-    font-size: 0.8rem;
+    padding: 10px 12px;
+    min-width: 56px;
+    font-size: 0.75rem;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .nav-icon-modern {
+    display: inline-block;
+    font-size: 1rem;
+    line-height: 1;
   }
   
   .nav-text {
-    display: none;
+    display: inline-block;
+    font-size: 0.65rem;
+    line-height: 1.1;
   }
   
   .nav-item-modern.theme-toggle .theme-text,
   .nav-item-modern.logout-btn-modern .nav-text {
-    display: none;
+    display: inline-block;
   }
 }
 

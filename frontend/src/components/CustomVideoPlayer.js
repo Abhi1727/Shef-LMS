@@ -38,7 +38,7 @@ const loadYouTubeAPI = () => {
   });
 };
 
-const CustomVideoPlayer = ({ video, onClose, resumePosition = 0, onProgressUpdate }) => {
+const CustomVideoPlayer = ({ video, onClose, resumePosition = 0, onProgressUpdate, embedded = false }) => {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -251,8 +251,11 @@ const CustomVideoPlayer = ({ video, onClose, resumePosition = 0, onProgressUpdat
       const fetchFirebaseUrl = async () => {
         try {
           const token = localStorage.getItem('token');
-          const response = await fetch(`${process.env.REACT_APP_API_URL || 'http://localhost:5000'}/api/classroom/play/${video.id}`, {
-            headers: { 'Authorization': `Bearer ${token}` }
+          const { getApiBaseUrl } = await import('../utils/apiBase');
+          const response = await fetch(`${getApiBaseUrl()}/api/classroom/play/${video.id}`, {
+            headers: {
+              'Authorization': `Bearer ${token}`
+            }
           });
           if (response.ok) {
             const data = await response.json();
@@ -346,7 +349,44 @@ const CustomVideoPlayer = ({ video, onClose, resumePosition = 0, onProgressUpdat
     }
   };
 
-  // Time progress interval
+  // Destroy YouTube player on unmount to avoid orphaned iframes / floating players
+  useEffect(() => {
+    return () => {
+      try {
+        if (youtubePlayer && typeof youtubePlayer.destroy === 'function') {
+          youtubePlayer.destroy();
+        }
+      } catch (e) {
+        // ignore cleanup errors
+      }
+    };
+  }, [youtubePlayer]);
+
+  // Auto-hide controls after 3 seconds
+  useEffect(() => {
+    const resetControlsTimeout = () => {
+      if (controlsTimeoutRef.current) {
+        clearTimeout(controlsTimeoutRef.current);
+      }
+      controlsTimeoutRef.current = setTimeout(() => {
+        if (isPlaying) {
+          setShowControls(false);
+        }
+      }, 3000);
+    };
+
+    if (isPlaying) {
+      resetControlsTimeout();
+    }
+
+    return () => {
+      if (controlsTimeoutRef.current) {
+        clearTimeout(controlsTimeoutRef.current);
+      }
+    };
+  }, [isPlaying]);
+
+  // Time tracking for both YouTube and Firebase videos
   useEffect(() => {
     let interval;
     if ((youtubePlayer && playerReady) || videoRef.current) {
@@ -418,9 +458,8 @@ const CustomVideoPlayer = ({ video, onClose, resumePosition = 0, onProgressUpdat
   return (
     <div
       ref={containerRef}
-      className="custom-video-player"
-      style={{ display: 'flex', flexDirection: 'row', width: '100vw', height: '100vh', background: '#0f172a' }}
-      onMouseMove={() => setShowControls(true)}
+      className={`custom-video-player${embedded ? ' custom-video-player--embedded' : ''}`}
+      onMouseMove={handleMouseMove}
       onMouseLeave={() => isPlaying && setShowControls(false)}
     >
       <ToastContainer />

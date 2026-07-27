@@ -2,9 +2,13 @@ const express = require('express');
 const router = express.Router();
 const path = require('path');
 const fs = require('fs');
+const auth = require('../middleware/auth');
 
 // Base path for content on VPS
 const CONTENT_BASE_PATH = path.resolve(process.env.CONTENT_BASE_PATH || '/var/www/shef-lms/content');
+
+// All content listing/download requires authentication
+router.use(auth);
 
 function isPathSafe(requestedPath) {
   const resolved = path.resolve(CONTENT_BASE_PATH, requestedPath);

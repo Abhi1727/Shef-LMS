@@ -4,8 +4,10 @@ const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 const dotenv = require('dotenv');
 const path = require('path');
+const fs = require('fs');
 const { connectMongo } = require('./config/mongo');
 const logger = require('./utils/logger');
+const auth = require('./middleware/auth');
 // const { startRecordingSync } = require('./jobs/syncRecordings');
 const videoProcessor = require('./middleware/videoProcessor');
 const { apiCacheHeaders, staticAssetCache, developmentCacheBust } = require('./middleware/cacheHeaders');
@@ -85,60 +87,14 @@ const authLimiter = rateLimit({
 });
 app.use('/api/auth', authLimiter);
 
-// Serve uploaded files with enhanced cache headers
-app.use('/uploads', developmentCacheBust, staticAssetCache, express.static(path.join(__dirname, 'uploads'), {
+// Serve uploaded files only for authenticated users (token header or ?token=)
+app.use('/uploads', auth, developmentCacheBust, staticAssetCache, express.static(path.join(__dirname, 'uploads'), {
   etag: true,
   lastModified: true,
   setHeaders: (res, filePath) => {
     // Additional headers can be set here if needed
   }
 }));
-
-// Error handling middleware for consistent JSON responses
-app.use((error, req, res, next) => {
-  console.error('Error middleware caught:', {
-    error: error.message,
-    stack: error.stack,
-    url: req.url,
-    method: req.method
-  });
-
-  // Handle multer errors specifically
-  if (error.code === 'LIMIT_FILE_SIZE') {
-    return res.status(413).json({
-      message: 'File too large. Maximum size is 10MB.',
-      code: 'LIMIT_FILE_SIZE'
-    });
-  }
-
-  if (error.code === 'LIMIT_FILE_COUNT') {
-    return res.status(400).json({
-      message: 'Too many files uploaded.',
-      code: 'LIMIT_FILE_COUNT'
-    });
-  }
-
-  if (error.code === 'LIMIT_UNEXPECTED_FILE') {
-    return res.status(400).json({
-      message: 'Unexpected file field.',
-      code: 'LIMIT_UNEXPECTED_FILE'
-    });
-  }
-
-  // Handle file type errors
-  if (error.message && error.message.includes('File type')) {
-    return res.status(415).json({
-      message: error.message,
-      code: 'INVALID_FILE_TYPE'
-    });
-  }
-
-  // Default error response
-  res.status(error.status || 500).json({
-    message: error.message || 'Internal server error',
-    code: error.code || 'INTERNAL_ERROR'
-  });
-});
 
 // Routes
 app.use('/api/auth', require('./routes/auth'));
@@ -162,8 +118,8 @@ app.use('/api/resources', require('./routes/resources'));
 app.use('/api/assessment-studio', require('./routes/assessmentStudio'));
 app.use('/api/classroom-interaction', require('./routes/classroomInteraction'));
 
-// Fallback endpoint for direct file access
-app.get('/api/uploads/notes/:filename', (req, res) => {
+// Fallback endpoint for direct file access (authenticated)
+app.get('/api/uploads/notes/:filename', auth, (req, res) => {
   try {
     const { filename } = req.params;
     const filePath = path.join(__dirname, 'uploads', 'notes', filename);
@@ -207,6 +163,48 @@ app.get('/api', (req, res) => {
 // Test route
 app.get('/', (req, res) => {
   res.json({ message: 'Welcome to SHEF LMS API' });
+});
+
+// Error handling middleware (must be after routes)
+app.use((error, req, res, next) => {
+  logger.error('Error middleware caught', {
+    error: error.message,
+    url: req.url,
+    method: req.method
+  });
+
+  if (error.code === 'LIMIT_FILE_SIZE') {
+    return res.status(413).json({
+      message: 'File too large. Maximum size is 10MB.',
+      code: 'LIMIT_FILE_SIZE'
+    });
+  }
+
+  if (error.code === 'LIMIT_FILE_COUNT') {
+    return res.status(400).json({
+      message: 'Too many files uploaded.',
+      code: 'LIMIT_FILE_COUNT'
+    });
+  }
+
+  if (error.code === 'LIMIT_UNEXPECTED_FILE') {
+    return res.status(400).json({
+      message: 'Unexpected file field.',
+      code: 'LIMIT_UNEXPECTED_FILE'
+    });
+  }
+
+  if (error.message && error.message.includes('File type')) {
+    return res.status(415).json({
+      message: error.message,
+      code: 'INVALID_FILE_TYPE'
+    });
+  }
+
+  res.status(error.status || 500).json({
+    message: error.message || 'Internal server error',
+    code: error.code || 'INTERNAL_ERROR'
+  });
 });
 
 const PORT = process.env.PORT || 5000;

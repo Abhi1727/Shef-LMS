@@ -232,13 +232,13 @@ const StudentsActivity = ({ token: tokenProp }) => {
     
     setUserSearchLoading(true);
     try {
-      const params = new URLSearchParams({ q: query, limit: 10 });
-      const res = await fetch(`${API_BASE}/api/admin/activity/users/search?${params}`, {
+      const params = new URLSearchParams({ email: query, limit: 10 });
+      const res = await fetch(`${API_BASE}/api/admin/users/search?${params}`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       if (!res.ok) throw new Error('Failed to search users');
       const data = await res.json();
-      setUserSearchResults(data.users || []);
+      setUserSearchResults(Array.isArray(data) ? data : (data.users || []));
     } catch (err) {
       console.error('Error searching users:', err);
       setUserSearchResults([]);
@@ -270,15 +270,15 @@ const StudentsActivity = ({ token: tokenProp }) => {
       params.set('limit', userFilters.limit);
       params.set('page', userFilters.page);
       
-      const res = await fetch(`${API_BASE}/api/admin/activity/user/${selectedUser.id}?${params}`, {
+      const res = await fetch(`${API_BASE}/api/admin/activity/${selectedUser.id}?${params}`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       if (!res.ok) throw new Error('Failed to load user activity');
       const data = await res.json();
       setUserActivities(data.activities || []);
       setUserPagination({
-        total: data.total || 0,
-        pages: data.pages || 0
+        total: data.pagination?.total || data.total || 0,
+        pages: data.pagination?.pages || data.pages || 0
       });
     } catch (err) {
       console.error('Error fetching user activities:', err);
@@ -293,12 +293,12 @@ const StudentsActivity = ({ token: tokenProp }) => {
     if (!selectedUser || !token) return;
     
     try {
-      const params = new URLSearchParams({ format });
+      const params = new URLSearchParams({ export: format === 'json' ? 'json' : 'csv' });
       if (userFilters.action) params.set('action', userFilters.action);
       if (userFilters.startDate) params.set('startDate', userFilters.startDate);
       if (userFilters.endDate) params.set('endDate', userFilters.endDate);
       
-      const res = await fetch(`${API_BASE}/api/admin/activity/user/${selectedUser.id}/export?${params}`, {
+      const res = await fetch(`${API_BASE}/api/admin/activity/${selectedUser.id}?${params}`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       

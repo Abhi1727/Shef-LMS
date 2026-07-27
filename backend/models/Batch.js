@@ -2,8 +2,14 @@ const mongoose = require('mongoose');
 
 const batchSchema = new mongoose.Schema({
     name: { type: String, required: true },
-    course: { type: String, required: true }, // Course name as string (e.g. "Data Science & AI", "Cyber Security & Ethical Hacking")
+    course: { type: String, required: true }, // Program: Data Science & AI | Cyber Security & Ethical Hacking | Cybersecurity & AI | DevOps & AI | DevOps & Cloud | custom label
     courseId: { type: mongoose.Schema.Types.ObjectId, ref: 'Course' }, // Optional reference
+    batchType: {
+        type: String,
+        enum: ['regular', 'one-to-one'],
+        default: 'regular'
+    },
+    programLabel: { type: String, default: '' }, // Optional display label for custom 1:1 offerings
     startDate: { type: Date },
     endDate: { type: Date },
     teacherId: { type: String, required: true },

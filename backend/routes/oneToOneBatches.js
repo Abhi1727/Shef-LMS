@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const auth = require('../middleware/auth');
 const oneToOneBatchController = require('../controllers/oneToOneBatchController');
-const { isAdmin } = require('../middleware/roleAuth');
+const { isAdmin, isTeacher } = require('../middleware/roleAuth');
 
 // All routes require auth
 router.use(auth);
@@ -10,8 +10,8 @@ router.use(auth);
 // Specific paths MUST come before /:id to avoid "course" and "unassigned-students" matching as ids
 // @route   GET /api/one-to-one-batches/course/:courseName
 // @desc    Get batches by course
-// @access  Private
-router.get('/course/:courseName', oneToOneBatchController.getBatchesByCourse);
+// @access  Admin/Teacher
+router.get('/course/:courseName', isTeacher, oneToOneBatchController.getBatchesByCourse);
 
 // @route   GET /api/one-to-one-batches/unassigned-students/:course
 // @desc    Get unassigned students for a course (for one-to-one batches)
@@ -25,13 +25,13 @@ router.post('/', isAdmin, oneToOneBatchController.createBatch);
 
 // @route   GET /api/one-to-one-batches
 // @desc    Get all one-to-one batches
-// @access  Private
-router.get('/', oneToOneBatchController.getAllBatches);
+// @access  Admin/Teacher
+router.get('/', isTeacher, oneToOneBatchController.getAllBatches);
 
 // @route   GET /api/one-to-one-batches/:id
 // @desc    Get specific one-to-one batch
-// @access  Private
-router.get('/:id', oneToOneBatchController.getBatchById);
+// @access  Admin/Teacher
+router.get('/:id', isTeacher, oneToOneBatchController.getBatchById);
 
 // @route   PUT /api/one-to-one-batches/:id
 // @desc    Update one-to-one batch

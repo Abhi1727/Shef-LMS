@@ -3,6 +3,7 @@
  * Provides cache-busting, request deduplication, and retry logic
  */
 import cacheManager from './cacheManager.js';
+import { getApiBaseUrl as resolveApiBaseUrl } from './apiBase.js';
 
 class EnhancedApiService {
   constructor() {
@@ -22,10 +23,7 @@ class EnhancedApiService {
    * Get API base URL with localhost detection
    */
   getApiBaseUrl() {
-    if (window.location.hostname === 'localhost') {
-      return 'http://localhost:5000';
-    }
-    return process.env.REACT_APP_API_URL || '';
+    return resolveApiBaseUrl();
   }
 
   /**
@@ -143,7 +141,7 @@ class EnhancedApiService {
         ...options,
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('authToken')}`,
+          'Authorization': `Bearer ${localStorage.getItem('token')}`,
           ...options.headers
         }
       });
@@ -256,7 +254,7 @@ class EnhancedApiService {
   setupAutoInvalidation() {
     // Invalidate cache on user actions
     window.addEventListener('storage', (e) => {
-      if (e.key === 'authToken') {
+      if (e.key === 'token' || e.key === 'authToken') {
         this.clearCache();
         cacheManager.clearAllCaches();
       }

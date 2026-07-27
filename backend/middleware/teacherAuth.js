@@ -35,7 +35,7 @@ module.exports = function(req, res, next) {
 
 // Middleware to check if user is teacher or admin
 module.exports.isTeacherOrAdmin = function(req, res, next) {
-  if (req.user && (req.user.role === 'teacher' || req.user.role === 'admin')) {
+  if (req.user && (req.user.role === 'teacher' || req.user.role === 'mentor' || req.user.role === 'admin')) {
     return next();
   }
   res.status(403).json({ message: 'Access denied. Teacher or Admin role required.' });
@@ -52,9 +52,12 @@ module.exports.isBatchOwnerOrAdmin = async function(req, res, next) {
       return res.status(404).json({ message: 'Batch not found' });
     }
 
-    // Check if user is admin or the teacher of this batch
-    if (req.user.role === 'admin' || 
-        (req.user.role === 'teacher' && String(batch.teacherId) === String(req.user.id))) {
+    // Check if user is admin or the teacher/mentor of this batch
+    const isOwner =
+      req.user.role === 'teacher' || req.user.role === 'mentor'
+        ? String(batch.teacherId) === String(req.user.id)
+        : false;
+    if (req.user.role === 'admin' || isOwner) {
       return next();
     }
 

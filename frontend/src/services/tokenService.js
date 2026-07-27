@@ -89,15 +89,19 @@ class TokenService {
   // Setup axios interceptor for automatic token handling
   setupAxiosInterceptor(onTokenExpired) {
     try {
+      // Avoid stacking duplicate interceptors on re-login
+      if (this.axiosInterceptor !== null) {
+        axios.interceptors.response.eject(this.axiosInterceptor);
+        this.axiosInterceptor = null;
+      }
+
       this.axiosInterceptor = axios.interceptors.response.use(
         (response) => response,
         (error) => {
-          // Comprehensive error checking
           if (!error) {
             return Promise.reject(new Error('Unknown error occurred'));
           }
           
-          // Check if error has a response with 401 status
           if (error.response && error.response.status === 401) {
             const message = error.response.data?.message || 'Session expired';
             onTokenExpired(message);
@@ -108,13 +112,11 @@ class TokenService {
       );
     } catch (setupError) {
       console.error('Error setting up axios interceptor:', setupError);
-      // Don't throw the error to prevent app crash
     }
   }
 
-  // Start periodic token validation
+  // Start periodic token validation (does not touch the axios interceptor)
   startTokenValidation(onTokenExpired, onTokenWarning) {
-    // Clear any existing interval
     this.stopTokenValidation();
 
     const token = this.getToken();
@@ -123,39 +125,40 @@ class TokenService {
       return;
     }
 
-    // Check token every minute
     this.validationInterval = setInterval(() => {
-      const token = this.getToken();
-      if (!token || this.isTokenExpired(token)) {
+      const currentToken = this.getToken();
+      if (!currentToken || this.isTokenExpired(currentToken)) {
         onTokenExpired('Token has expired');
         this.stopTokenValidation();
         return;
       }
 
-      const timeUntilExpiry = this.getTimeUntilExpiry(token);
+      const timeUntilExpiry = this.getTimeUntilExpiry(currentToken);
       
       // Show warning when less than 5 minutes remaining
       if (timeUntilExpiry > 0 && timeUntilExpiry <= 300) {
-        const decoded = this.decodeToken(token);
+        const decoded = this.decodeToken(currentToken);
         onTokenWarning(timeUntilExpiry, new Date(decoded.exp * 1000));
       }
-    }, 60000); // Check every minute
+    }, 60000);
 
-    // Initial check
     if (this.isTokenExpired(token)) {
       onTokenExpired('Token has expired');
       this.stopTokenValidation();
     }
   }
 
-  // Stop token validation
+  // Stop periodic validation only — keep 401 interceptor alive until logout/unmount
   stopTokenValidation() {
     if (this.validationInterval) {
       clearInterval(this.validationInterval);
       this.validationInterval = null;
     }
-    
-    if (this.axiosInterceptor) {
+  }
+
+  // Remove axios interceptor (call on logout / unmount)
+  clearAxiosInterceptor() {
+    if (this.axiosInterceptor !== null) {
       axios.interceptors.response.eject(this.axiosInterceptor);
       this.axiosInterceptor = null;
     }

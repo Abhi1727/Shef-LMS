@@ -1,5 +1,7 @@
 node_modules/
 npm-debug.log
+.env
+.env.*
 .env.example
 .git
 .gitignore
@@ -9,3 +11,8 @@ logs/*.log
 *.log
 .vscode
 .idea
+uploads/
+*.mp4
+test-*.js
+debug-*.js
+fix-*.js

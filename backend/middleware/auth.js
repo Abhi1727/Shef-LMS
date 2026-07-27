@@ -9,7 +9,7 @@ function getJwtSecret() {
 }
 
 module.exports = function(req, res, next) {
-  // Check for token in multiple header formats
+  // Check for token in multiple header formats (and query for media/download links)
   let token = req.header('x-auth-token');
   
   // Also check Authorization header (Bearer token)
@@ -18,6 +18,16 @@ module.exports = function(req, res, next) {
     if (authHeader && authHeader.startsWith('Bearer ')) {
       token = authHeader.substring(7); // Remove 'Bearer ' prefix
     }
+  }
+
+  // Allow ?token= ONLY for file downloads / static uploads (never for general API)
+  const pathForToken = String(req.originalUrl || req.url || '');
+  const allowQueryToken =
+    pathForToken.startsWith('/uploads') ||
+    pathForToken.startsWith('/api/uploads/') ||
+    /\/notes(\/|\?|$)/.test(pathForToken);
+  if (!token && allowQueryToken && req.query && req.query.token) {
+    token = String(req.query.token);
   }
 
   if (!token) {

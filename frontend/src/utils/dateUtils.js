@@ -13,7 +13,20 @@ export function formatDateDisplay(dateInput, options = {}) {
   if (!dateInput) return options.fallback || 'No date';
   
   try {
-    const date = typeof dateInput === 'string' ? new Date(dateInput) : dateInput;
+    let date;
+    if (typeof dateInput === 'string') {
+      // Date-only strings (YYYY-MM-DD) must not be treated as UTC midnight,
+      // or the shown day can shift depending on timezone.
+      const dateOnly = dateInput.trim().match(/^(\d{4})-(\d{2})-(\d{2})$/);
+      if (dateOnly) {
+        const [, y, m, d] = dateOnly;
+        date = new Date(Number(y), Number(m) - 1, Number(d));
+      } else {
+        date = new Date(dateInput);
+      }
+    } else {
+      date = dateInput;
+    }
     
     // Check if date is valid
     if (isNaN(date.getTime())) {
@@ -29,6 +42,10 @@ export function formatDateDisplay(dateInput, options = {}) {
     };
     
     const formatOptions = { ...defaultOptions, ...options };
+    // For calendar date-only values, formatting in local calendar components is enough
+    if (typeof dateInput === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(dateInput.trim())) {
+      delete formatOptions.timeZone;
+    }
     
     return date.toLocaleDateString('en-US', formatOptions);
   } catch (error) {
@@ -45,7 +62,7 @@ export function formatDateDisplay(dateInput, options = {}) {
  */
 export function formatDateForComponent(dateInput) {
   return formatDateDisplay(dateInput, {
-    fallback: 'No date'
+    fallback: ''
   });
 }
 

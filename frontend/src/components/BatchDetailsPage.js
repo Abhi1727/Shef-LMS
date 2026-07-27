@@ -251,6 +251,10 @@ const BatchDetailsPage = () => {
   const [scheduleForm, setScheduleForm] = useState({ days: '', time: '' });
   const [timeRange, setTimeRange] = useState({ start: '', end: '' });
   const [isAdmin, setIsAdmin] = useState(false);
+  const [showSwitchTrainerModal, setShowSwitchTrainerModal] = useState(false);
+  const [availableTeachers, setAvailableTeachers] = useState([]);
+  const [selectedTrainerId, setSelectedTrainerId] = useState('');
+  const [switchingTrainer, setSwitchingTrainer] = useState(false);
   const [addStudentsSearch, setAddStudentsSearch] = useState('');
   const [courses, setCourses] = useState([]);
   const [allBatches, setAllBatches] = useState([]);
@@ -429,6 +433,78 @@ const BatchDetailsPage = () => {
       console.error('Error decoding admin token in BatchDetailsPage:', e);
     }
   }, []);
+
+  const loadAvailableTeachers = useCallback(async () => {
+    try {
+      const token = localStorage.getItem('token');
+      const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
+      const response = await fetch(`${apiUrl}/api/admin/users`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (!response.ok) return;
+      const users = await response.json();
+      const teachers = (Array.isArray(users) ? users : []).filter(u => u.role === 'teacher' && u.status !== 'inactive');
+      setAvailableTeachers(teachers.map(t => ({
+        id: String(t.id || t._id),
+        name: t.name || 'Unnamed'
+      })));
+    } catch (err) {
+      console.error('Failed to load teachers for switch trainer:', err);
+    }
+  }, []);
+
+  const handleSwitchTrainer = async () => {
+    if (!selectedBatch || !selectedTrainerId) {
+      showToast('Please select a trainer', 'warning');
+      return;
+    }
+    const trainer = availableTeachers.find(t => t.id === selectedTrainerId);
+    if (!trainer) {
+      showToast('Selected trainer not found', 'error');
+      return;
+    }
+    setSwitchingTrainer(true);
+    try {
+      const token = localStorage.getItem('token');
+      const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
+      const batchIdForApi = selectedBatch.id || selectedBatch._id;
+      const response = await fetch(`${apiUrl}/api/admin/batches/${batchIdForApi}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          name: selectedBatch.name,
+          course: selectedBatch.course,
+          startDate: selectedBatch.startDate || null,
+          endDate: selectedBatch.endDate || null,
+          teacherId: trainer.id,
+          teacherName: trainer.name,
+          status: selectedBatch.status || 'active',
+          batchType: selectedBatch.batchType || 'regular',
+          programLabel: selectedBatch.programLabel || ''
+        })
+      });
+      const data = await response.json();
+      if (response.ok) {
+        setSelectedBatch(prev => ({
+          ...prev,
+          teacherId: trainer.id,
+          teacherName: trainer.name
+        }));
+        setShowSwitchTrainerModal(false);
+        showToast(`Trainer switched to ${trainer.name}`, 'success');
+      } else {
+        showToast(data.message || 'Failed to switch trainer', 'error');
+      }
+    } catch (err) {
+      console.error('Switch trainer failed:', err);
+      showToast('Failed to switch trainer', 'error');
+    } finally {
+      setSwitchingTrainer(false);
+    }
+  };
 
   // Load courses and batches data for add student form
   const loadCoursesAndBatches = async () => {
@@ -2034,104 +2110,135 @@ const BatchDetailsPage = () => {
 
   return (
     <>
-    <div className="teacher-batch-details-page admin-batch-details-page">
+    <div className="teacher-batch-details-page admin-batch-details-page sky-batch-page">
       
-      {/* Compact Header - Optimized Space Utilization */}
-      <div className="batch-header compact">
-        <div className="compact-header-left">
-          <button onClick={handleBackToAdmin} className="btn-back btn-back-compact">
+      {/* Sky States batch header */}
+      <div className="sky-batch-header">
+        <div className="sky-batch-header-main">
+          <button onClick={handleBackToAdmin} className="sky-batch-back">
             ← Back
           </button>
-          <div className="batch-info-compact">
-            <h1 className="batch-title-compact">{selectedBatch.name}</h1>
-            <div className="batch-meta-compact">
-              <span className="course-badge course-badge-compact">{selectedBatch.course}</span>
-              <span className={`status-badge status-badge-compact ${selectedBatch.status}`}>
+          <div className="sky-batch-title-block">
+            <h1 className="sky-batch-title">{selectedBatch.name}</h1>
+            <div className="sky-batch-meta">
+              <span className="sky-badge sky-badge-program">
+                {selectedBatch.programLabel || selectedBatch.course}
+              </span>
+              {(selectedBatch.batchType === 'one-to-one' || (selectedBatch.course || '').toLowerCase().includes('one-to-one')) && (
+                <span className="sky-badge sky-badge-type">One-to-One</span>
+              )}
+              <span className={`sky-badge sky-badge-status ${selectedBatch.status}`}>
                 {selectedBatch.status}
               </span>
-              <span className="teacher-info-compact">Teacher: {selectedBatch.teacherName || 'N/A'}</span>
-            </div>
-          </div>
-        </div>
-        
-        <div className="compact-header-center">
-          {selectedBatch.schedule && (selectedBatch.schedule.days || selectedBatch.schedule.time) && (
-            <div className="timing-display-compact">
-              <span className="timing-icon">⏰</span>
-              <span className="timing-text">
-                {`${selectedBatch.schedule.days || ''} ${selectedBatch.schedule.time || ''}`.trim()}
+              <span className="sky-batch-trainer">
+                Trainer: <strong>{selectedBatch.teacherName || 'Unassigned'}</strong>
               </span>
             </div>
-          )}
+          </div>
         </div>
-        
-        <div className="compact-header-right">
-          <div className="quick-stats-compact">
-            <div className="stat-item-compact">
-              <span className="stat-icon">📹</span>
-              <span className="stat-value">{batchVideos.length}</span>
+
+        <div className="sky-batch-header-actions">
+          {selectedBatch.schedule && (selectedBatch.schedule.days || selectedBatch.schedule.time) && (
+            <div className="sky-batch-timing-chip">
+              {(selectedBatch.schedule.days || '')}{(selectedBatch.schedule.days && selectedBatch.schedule.time) ? ' · ' : ''}
+              {selectedBatch.schedule.time || ''}
+              {selectedBatch.schedule.time ? ' IST' : ''}
             </div>
-            <div className="stat-item-compact">
-              <span className="stat-icon">👥</span>
-              <span className="stat-value">{batchStudents.length}</span>
-            </div>
-          </div>
-          
-          <div className="header-menu-buttons">
-            <button 
-              className={`menu-item-horizontal ${activeView === 'videos' ? 'active' : ''}`}
-              onClick={() => handleViewChange('videos')}
-            >
-              📹 Videos ({batchVideos.length})
-            </button>
-            <button 
-              className={`menu-item-horizontal ${activeView === 'students' ? 'active' : ''}`}
-              onClick={() => handleViewChange('students')}
-            >
-              👥 Students ({batchStudents.length})
-            </button>
-            <button 
-              className={`menu-item-horizontal ${activeView === 'resources' ? 'active' : ''}`}
-              onClick={() => handleViewChange('resources')}
-            >
-              📚 Resources Center
-            </button>
-            {isAdmin && (
-              <button 
-                className={`menu-item-horizontal ${activeView === 'email' ? 'active' : ''}`}
-                onClick={() => handleViewChange('email')}
-              >
-                📧 Send Email
-              </button>
-            )}
-          </div>
-          
+          )}
           {isAdmin && (
             <button
-              className="btn-edit-timing-compact"
+              type="button"
+              className="sky-btn sky-btn-secondary"
               onClick={() => {
-                const parsedRange = parseIstRangeToTimeInputs(scheduleForm.time);
-                setTimeRange(parsedRange);
-                setShowScheduleModal(true);
+                setSelectedTrainerId(String(selectedBatch.teacherId || ''));
+                loadAvailableTeachers();
+                setShowSwitchTrainerModal(true);
               }}
-              title={selectedBatch.schedule ? 'Edit Timing' : 'Add Timing'}
             >
-              ⏰
+              Switch trainer
             </button>
           )}
         </div>
+      </div>
+
+      <div className="sky-batch-tabs">
+        <button
+          className={`sky-tab ${activeView === 'videos' ? 'active' : ''}`}
+          onClick={() => handleViewChange('videos')}
+        >
+          Videos ({batchVideos.length})
+        </button>
+        <button
+          className={`sky-tab ${activeView === 'students' ? 'active' : ''}`}
+          onClick={() => handleViewChange('students')}
+        >
+          Students ({batchStudents.length})
+        </button>
+        <button
+          className={`sky-tab ${activeView === 'timing' ? 'active' : ''}`}
+          onClick={() => handleViewChange('timing')}
+        >
+          Timing
+        </button>
+        {isAdmin && (
+          <button
+            className={`sky-tab ${activeView === 'email' ? 'active' : ''}`}
+            onClick={() => handleViewChange('email')}
+          >
+            Email
+          </button>
+        )}
+        <button
+          type="button"
+          className={`sky-tab ${activeView === 'resources' ? 'active' : ''}`}
+          onClick={() => handleViewChange('resources')}
+        >
+          Resources
+        </button>
       </div>
 
       
       <div className="batch-content">
         {/* Main Content */}
         <div className="main-content">
+          {activeView === 'timing' && (
+            <div className="sky-timing-panel">
+              <div className="sky-timing-card">
+                <h2>Class schedule</h2>
+                <p className="sky-muted">All times are entered in IST. Students see converted EST / CST / PST / MST.</p>
+                {selectedBatch.schedule && (selectedBatch.schedule.days || selectedBatch.schedule.time) ? (
+                  <div className="sky-timing-values">
+                    <div><span className="sky-muted">Days</span><strong>{selectedBatch.schedule.days || '—'}</strong></div>
+                    <div><span className="sky-muted">Time (IST)</span><strong>{selectedBatch.schedule.time || '—'}</strong></div>
+                  </div>
+                ) : (
+                  <p className="sky-muted">No schedule set yet.</p>
+                )}
+                {isAdmin && (
+                  <button
+                    className="sky-btn sky-btn-primary"
+                    onClick={() => {
+                      const parsedRange = parseIstRangeToTimeInputs(scheduleForm.time || selectedBatch.schedule?.time || '');
+                      setTimeRange(parsedRange);
+                      setScheduleForm({
+                        days: selectedBatch.schedule?.days || scheduleForm.days || '',
+                        time: selectedBatch.schedule?.time || scheduleForm.time || ''
+                      });
+                      setShowScheduleModal(true);
+                    }}
+                  >
+                    Edit timing
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
           {activeView === 'videos' && (
             <div className="videos-view">
               <div className="videos-header">
-                <h2>📹 Videos in {selectedBatch.name}</h2>
+                <h2>Videos in {selectedBatch.name}</h2>
                 <button
-                  className="btn-add"
+                  className="sky-btn sky-btn-primary"
                   onClick={() => {
                     const emptyFormData = { title: '', youtubeVideoUrl: '', description: '', date: '', time: '', notesAvailable: false, notesFile: null };
                     setVideoFormData(emptyFormData);
@@ -2140,7 +2247,7 @@ const BatchDetailsPage = () => {
                     setShowAddVideoModal(true);
                   }}
                 >
-                  ➕ Add Video to Batch
+                  Add Video
                 </button>
               </div>
               {batchVideos.length > 0 ? (
@@ -2200,13 +2307,15 @@ const BatchDetailsPage = () => {
                           <div className="video-title">{video.title}</div>
                           <div className="video-meta">
                             <span className="meta-item">
-                              <span className="label">👨‍🏫 Teacher:</span>
+                              <span className="label">Trainer:</span>
                               <span className="value">{selectedBatch.teacherName || video.instructor}</span>
                             </span>
-                            <span className="meta-item">
-                              <span className="label">📅 Class Date:</span>
-                              <span className="value">{formatDateForComponent(video.date)}</span>
-                            </span>
+                            {(video.classDate || video.date || video.createdAt) && (
+                              <span className="meta-item">
+                                <span className="label">Date:</span>
+                                <span className="value">{formatDateForComponent(video.classDate || video.date || video.createdAt)}</span>
+                              </span>
+                            )}
                           </div>
                         </div>
                         <div className="video-actions">
@@ -2216,10 +2325,10 @@ const BatchDetailsPage = () => {
                                 e.stopPropagation(); // Prevent video play
                                 handleDownloadNotes(video);
                               }}
-                              className="btn-notes"
+                              className="sky-btn sky-btn-ghost"
                               title="Download Notes"
                             >
-                              📄 Notes
+                              Notes
                             </button>
                           )}
                           {isAdmin && (
@@ -2229,10 +2338,10 @@ const BatchDetailsPage = () => {
                                   e.stopPropagation(); // Prevent video play
                                   handleEditVideo(video);
                                 }}
-                                className="btn-edit"
+                                className="sky-btn sky-btn-ghost"
                                 title="Edit Video"
                               >
-                                ✏️ Edit
+                                Edit
                               </button>
                               <button 
                                 onClick={(e) => {
@@ -2241,7 +2350,7 @@ const BatchDetailsPage = () => {
                                   handleDeleteVideo(video);
                                   }
                                 }}
-                                className="btn-delete"
+                                className="sky-btn sky-btn-ghost sky-btn-danger"
                                 title="Remove Video from Batch"
                               >
                                 🗑️ Remove
@@ -3072,6 +3181,44 @@ const BatchDetailsPage = () => {
               onClick={handleSaveSchedule}
             >
               Save Timing
+            </button>
+          </div>
+        </div>
+      </div>,
+      document.body
+    )}
+
+    {showSwitchTrainerModal && createPortal(
+      <div className="modal-overlay" onClick={() => setShowSwitchTrainerModal(false)}>
+        <div className="modal sky-modal" onClick={(e) => e.stopPropagation()}>
+          <div className="modal-header">
+            <h3>Switch trainer</h3>
+            <button className="modal-close" onClick={() => setShowSwitchTrainerModal(false)}>×</button>
+          </div>
+          <div className="modal-content">
+            <p className="modal-subtitle">
+              Current trainer: <strong>{selectedBatch?.teacherName || 'Unassigned'}</strong>
+            </p>
+            <label className="field-label">Select new trainer</label>
+            <select
+              value={selectedTrainerId}
+              onChange={(e) => setSelectedTrainerId(e.target.value)}
+              style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #d5dee3' }}
+            >
+              <option value="">Choose a trainer…</option>
+              {availableTeachers.map(t => (
+                <option key={t.id} value={t.id}>{t.name}</option>
+              ))}
+            </select>
+          </div>
+          <div className="modal-actions">
+            <button className="btn-secondary" onClick={() => setShowSwitchTrainerModal(false)}>Cancel</button>
+            <button
+              className="sky-btn sky-btn-primary"
+              disabled={switchingTrainer || !selectedTrainerId}
+              onClick={handleSwitchTrainer}
+            >
+              {switchingTrainer ? 'Switching…' : 'Confirm switch'}
             </button>
           </div>
         </div>

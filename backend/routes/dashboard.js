@@ -134,18 +134,37 @@ router.get('/classroom', async (req, res) => {
 });
 
 // @route   GET /api/dashboard/stats
-// @desc    Get dashboard statistics
+// @desc    Honest dashboard stats for the current student
 router.get('/stats', async (req, res) => {
   try {
-    const stats = {
-      enrolledCourses: 4,
-      completedCourses: 1,
-      inProgressCourses: 3,
-      totalLearningHours: 128,
-      certificatesEarned: 1,
-      upcomingClasses: 2
-    };
-    res.json(stats);
+    const User = require('../models/User');
+    const Classroom = require('../models/Classroom');
+    const ActivityLog = require('../models/ActivityLog');
+    const userId = req.user?.id;
+    const userDoc = userId
+      ? await User.findById(userId).select('batchId').lean().exec()
+      : null;
+    const batchId = userDoc?.batchId ? String(userDoc.batchId) : null;
+    const totalVideos = batchId ? await Classroom.countDocuments({ batchId }) : 0;
+    const watchedIds = batchId && userId
+      ? await ActivityLog.distinct('videoId', {
+          userId: String(userId),
+          action: 'video_view',
+          videoId: { $exists: true, $ne: null }
+        })
+      : [];
+
+    res.json({
+      enrolledCourses: batchId ? 1 : 0,
+      completedCourses: 0,
+      inProgressCourses: batchId ? 1 : 0,
+      totalLearningHours: null,
+      certificatesEarned: 0,
+      upcomingClasses: 0,
+      totalVideos,
+      watchedVideos: Math.min(watchedIds.length, totalVideos || watchedIds.length),
+      hasBatch: Boolean(batchId)
+    });
   } catch (err) {
     logger.error('Dashboard stats error', { error: err.message });
     res.status(500).send('Server error');
@@ -153,83 +172,30 @@ router.get('/stats', async (req, res) => {
 });
 
 // @route   GET /api/dashboard/activity
-// @desc    Get recent activity
+// @desc    Recent activity for the current student (no fake feed)
 router.get('/activity', async (req, res) => {
   try {
-    const activities = [
-      {
-        id: 1,
-        type: 'course_completed',
-        title: 'Completed Module: Indexing & Slicing',
-        course: 'Data Science & AI',
-        time: '2 hours ago',
-        icon: '✅'
-      },
-      {
-        id: 2,
-        type: 'assignment_submitted',
-        title: 'Submitted Assignment: Data Analysis Project',
-        course: 'Data Science & AI',
-        time: '5 hours ago',
-        icon: '📝'
-      },
-      {
-        id: 3,
-        type: 'class_attended',
-        title: 'Attended Live Class: Network Security Fundamentals',
-        course: 'Cyber Security & Ethical Hacking',
-        time: '1 day ago',
-        icon: '🎓'
-      },
-      {
-        id: 4,
-        type: 'certificate_earned',
-        title: 'Earned Certificate: Security Analysis Basics',
-        course: 'Cyber Security & Ethical Hacking',
-        time: '2 days ago',
-        icon: '🏆'
-      },
-      {
-        id: 5,
-        type: 'course_enrolled',
-        title: 'Started Advanced Machine Learning Module',
-        course: 'Data Science & AI',
-        time: '3 days ago',
-        icon: '📚'
-      },
-      {
-        id: 6,
-        type: 'course_completed',
-        title: 'Completed Module: CI/CD Pipeline Setup',
-        course: 'DevOps & AI',
-        time: '4 hours ago',
-        icon: '✅'
-      },
-      {
-        id: 7,
-        type: 'assignment_submitted',
-        title: 'Submitted Assignment: AI-Powered Deployment Script',
-        course: 'DevOps & AI',
-        time: '6 hours ago',
-        icon: '📝'
-      },
-      {
-        id: 8,
-        type: 'class_attended',
-        title: 'Attended Live Class: Cloud Infrastructure Design',
-        course: 'DevOps & Cloud',
-        time: '1 day ago',
-        icon: '🎓'
-      },
-      {
-        id: 9,
-        type: 'certificate_earned',
-        title: 'Earned Certificate: Kubernetes Mastery',
-        course: 'DevOps & Cloud',
-        time: '2 days ago',
-        icon: '🏆'
-      }
-    ];
+    const ActivityLog = require('../models/ActivityLog');
+    const userId = req.user?.id;
+    if (!userId) {
+      return res.json([]);
+    }
+
+    const logs = await ActivityLog.find({ userId: String(userId) })
+      .sort({ timestamp: -1 })
+      .limit(20)
+      .lean()
+      .exec();
+
+    const activities = logs.map((log) => ({
+      id: String(log._id),
+      type: log.action,
+      title: log.videoTitle || log.action,
+      course: log.course || '',
+      time: log.timestamp ? new Date(log.timestamp).toISOString() : null,
+      icon: log.action === 'video_view' ? '🎥' : '•'
+    }));
+
     res.json(activities);
   } catch (err) {
     logger.error('Dashboard activity error', { error: err.message });

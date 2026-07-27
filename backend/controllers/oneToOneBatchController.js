@@ -80,10 +80,17 @@ class OneToOneBatchController {
     async getAllBatches(req, res) {
         try {
             const batches = await oneToOneBatchRepository.findAll();
-            const formattedBatches = batches.map(batch => ({
-                id: String(batch._id),
-                ...batch
-            }));
+            const hideContact = req.user?.role !== 'admin';
+            const formattedBatches = batches.map(batch => {
+                const formatted = {
+                    id: String(batch._id),
+                    ...batch
+                };
+                if (hideContact) {
+                    delete formatted.studentEmail;
+                }
+                return formatted;
+            });
 
             res.json({
                 success: true,
@@ -111,12 +118,17 @@ class OneToOneBatchController {
                 });
             }
 
+            const formatted = {
+                id: String(batch._id),
+                ...batch
+            };
+            if (req.user?.role !== 'admin') {
+                delete formatted.studentEmail;
+            }
+
             res.json({
                 success: true,
-                batch: {
-                    id: String(batch._id),
-                    ...batch
-                }
+                batch: formatted
             });
         } catch (error) {
             console.error('Error fetching one-to-one batch:', error);

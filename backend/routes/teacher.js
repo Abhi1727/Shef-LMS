@@ -68,19 +68,30 @@ router.get('/batches', async (req, res) => {
       }
     }
     const batches = await Batch.find(query)
-      .populate('students', 'name email enrollmentNumber course status')
+      .populate('students', 'name enrollmentNumber course status batchId')
       .lean()
       .exec();
     const result = batches.map(b => ({
       id: String(b._id),
       ...b,
+      // Never expose student email/phone to teachers
+      students: (b.students || []).map(s => ({
+        id: String(s._id),
+        _id: s._id,
+        name: s.name,
+        enrollmentNumber: s.enrollmentNumber,
+        course: s.course,
+        status: s.status,
+        batchId: s.batchId || String(b._id)
+      })),
       studentsList: (b.students || []).map(s => ({
         id: String(s._id),
         name: s.name,
-        email: s.email,
         enrollmentNumber: s.enrollmentNumber,
         course: s.course,
-        status: s.status
+        status: s.status,
+        batchId: s.batchId || String(b._id),
+        batchName: b.name
       })),
       studentCount: (b.students || []).length
     }));
@@ -121,8 +132,12 @@ router.get('/classroom/:batchId', async (req, res) => {
       youtubeVideoUrl: l.youtubeVideoUrl,
       youtubeEmbedUrl: l.youtubeEmbedUrl,
       videoSource: l.videoSource,
+      // Prefer session/class date over upload timestamp so admin & teacher show the same day
+      date: l.date || null,
+      classDate: l.classDate || l.date || null,
       createdAt: l.createdAt,
-      fileInfo: l.fileInfo
+      fileInfo: l.fileInfo,
+      notesAvailable: !!(l.notesAvailable || l.notesFile)
     }));
     res.json({ courseId: batchId, lectures: list, total: list.length });
   } catch (error) {
@@ -138,8 +153,13 @@ router.get('/batches/:id', async (req, res) => {
   try {
     const batchId = req.params.id;
     const teacherId = String(req.user.id);
+
+    if (!mongoose.Types.ObjectId.isValid(batchId)) {
+      return res.status(400).json({ message: 'Invalid batch id' });
+    }
+
     const batch = await Batch.findById(batchId)
-      .populate('students', 'name email enrollmentNumber course status')
+      .populate('students', 'name enrollmentNumber course status batchId')
       .lean()
       .exec();
     if (!batch || String(batch.teacherId) !== teacherId) {
@@ -148,13 +168,23 @@ router.get('/batches/:id', async (req, res) => {
     const result = {
       id: String(batch._id),
       ...batch,
+      students: (batch.students || []).map(s => ({
+        id: String(s._id),
+        _id: s._id,
+        name: s.name,
+        enrollmentNumber: s.enrollmentNumber,
+        course: s.course,
+        status: s.status,
+        batchId: s.batchId || String(batch._id)
+      })),
       studentsList: (batch.students || []).map(s => ({
         id: String(s._id),
         name: s.name,
-        email: s.email,
         enrollmentNumber: s.enrollmentNumber,
         course: s.course,
-        status: s.status
+        status: s.status,
+        batchId: s.batchId || String(batch._id),
+        batchName: batch.name
       })),
       studentCount: (batch.students || []).length
     };
@@ -543,42 +573,45 @@ router.get('/batches', async (req, res) => {
 });
 
 // @route   GET /api/teacher/students
-// @desc    Get all students in teacher's batches
+// @desc    Get all students in teacher's batches (no email/phone)
 // @access  Teacher only
 router.get('/students', async (req, res) => {
   try {
-    const teacherId = req.user.id;
+    const teacherId = String(req.user.id);
+    const batches = await Batch.find({ teacherId }).lean().exec();
+    const studentIdSet = new Set();
+    const batchNameByStudent = {};
 
-    // Get teacher's batches
-    const batchesSnapshot = await db.collection('batches')
-      .where('teacherId', '==', teacherId)
-      .get();
-
-    const studentIds = new Set();
-    batchesSnapshot.forEach(doc => {
-      const batch = doc.data();
-      if (batch.students) {
-        batch.students.forEach(id => studentIds.add(id));
-      }
+    batches.forEach((batch) => {
+      (batch.students || []).forEach((sid) => {
+        const id = String(sid);
+        studentIdSet.add(id);
+        batchNameByStudent[id] = batch.name;
+      });
     });
 
-    // Get student details
-    const students = [];
-    for (const studentId of studentIds) {
-      const studentDoc = await db.collection('users').doc(studentId).get();
-      if (studentDoc.exists) {
-        const studentData = studentDoc.data();
-        students.push({
-          id: studentDoc.id,
-          name: studentData.name,
-          email: studentData.email,
-          enrollmentNumber: studentData.enrollmentNumber,
-          currentCourse: studentData.currentCourse,
-          batchId: studentData.batchId,
-          status: studentData.status
-        });
-      }
+    const ids = Array.from(studentIdSet);
+    if (ids.length === 0) {
+      return res.json({ success: true, students: [] });
     }
+
+    const users = await User.find({
+      _id: { $in: ids },
+      role: 'student'
+    })
+      .select('name enrollmentNumber course status batchId')
+      .lean()
+      .exec();
+
+    const students = users.map((u) => ({
+      id: String(u._id),
+      name: u.name,
+      enrollmentNumber: u.enrollmentNumber || '',
+      course: u.course || '',
+      status: u.status || 'active',
+      batchId: u.batchId || '',
+      batchName: batchNameByStudent[String(u._id)] || ''
+    }));
 
     res.json({
       success: true,
@@ -586,9 +619,9 @@ router.get('/students', async (req, res) => {
     });
   } catch (error) {
     console.error('Error fetching students:', error);
-    res.status(500).json({ 
-      success: false, 
-      message: 'Failed to fetch students' 
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch students'
     });
   }
 });
@@ -1140,7 +1173,8 @@ router.get('/students/:studentId/progress', async (req, res) => {
     const progressData = progressDoc.exists ? progressDoc.data() : {};
     res.json({
       success: true,
-      student: { id: studentDoc.id, name: studentData.name, email: studentData.email, enrollmentNumber: studentData.enrollmentNumber, currentCourse: studentData.course },
+      // Contact details (email/phone) are never shared with teachers
+      student: { id: studentDoc.id, name: studentData.name, enrollmentNumber: studentData.enrollmentNumber, currentCourse: studentData.course, status: studentData.status },
       progress: { viewedFiles: progressData.viewedFiles || [], completedModules: progressData.completedModules || [], progress: progressData.progress || 0, lastUpdated: progressData.lastUpdated || null, courseSlug: progressData.courseSlug, enrollmentDate: progressData.enrollmentDate }
     });
   } catch (error) {

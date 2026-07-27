@@ -1,6 +1,7 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { detectUserIP } from '../utils/ipDetector';
+import ChangePasswordPanel from './ChangePasswordPanel';
 import './Login.css';
 
 const Login = ({ onLogin }) => {
@@ -15,67 +16,20 @@ const Login = ({ onLogin }) => {
   const [isLocked, setIsLocked] = useState(false);
   const [lockTimeRemaining, setLockTimeRemaining] = useState(0);
   const [showPassword, setShowPassword] = useState(false);
-  const containerRef = useRef(null);
+  const [view, setView] = useState('login'); // login | reset
 
   const { email, password } = formData;
 
-  // Detect IP address when component mounts (for security logging only)
   useEffect(() => {
     const fetchIP = async () => {
       try {
         const data = await detectUserIP();
         setIpData(data);
-      } catch (error) {
-        console.error('Failed to detect IP:', error);
+      } catch (err) {
+        console.error('Failed to detect IP:', err);
       }
     };
     fetchIP();
-  }, []);
-
-  // Cursor-based ambient animation: floating lines/shapes repel from the cursor
-  useEffect(() => {
-    const container = containerRef.current;
-    if (!container) return;
-
-    const handleMouseMove = (e) => {
-      const rect = container.getBoundingClientRect();
-      const x = e.clientX - rect.left;
-      const y = e.clientY - rect.top;
-
-      // Update CSS custom properties for gradient highlight
-      container.style.setProperty('--cursor-x', `${x}px`);
-      container.style.setProperty('--cursor-y', `${y}px`);
-
-      // Repel floating shapes away from the cursor
-      const shapes = container.querySelectorAll('.floating-shape');
-      const maxDist = 220;
-      const maxOffset = 32;
-
-      shapes.forEach((shape) => {
-        const sRect = shape.getBoundingClientRect();
-        const sx = sRect.left + sRect.width / 2 - rect.left;
-        const sy = sRect.top + sRect.height / 2 - rect.top;
-
-        const dx = sx - x;
-        const dy = sy - y;
-        const dist = Math.sqrt(dx * dx + dy * dy) || 1;
-
-        if (dist < maxDist) {
-          const force = (maxDist - dist) / maxDist;
-          const offsetX = (dx / dist) * force * maxOffset;
-          const offsetY = (dy / dist) * force * maxOffset;
-          shape.style.transform = `translate3d(${offsetX}px, ${offsetY}px, 0)`;
-        } else {
-          shape.style.transform = 'translate3d(0, 0, 0)';
-        }
-      });
-    };
-
-    container.addEventListener('mousemove', handleMouseMove);
-
-    return () => {
-      container.removeEventListener('mousemove', handleMouseMove);
-    };
   }, []);
 
   const onChange = (e) => {
@@ -85,54 +39,51 @@ const Login = ({ onLogin }) => {
   const onSubmit = async (e) => {
     e.preventDefault();
     setError('');
-    
-    // Check if account is locked
+
     if (isLocked) {
-      setError(`Account temporarily locked. Please try again in ${Math.ceil(lockTimeRemaining / 60)} minutes.`);
+      setError(
+        `Account temporarily locked. Please try again in ${Math.ceil(lockTimeRemaining / 60)} minutes.`
+      );
       return;
     }
-    
+
     setLoading(true);
 
     try {
-      // Send login data with IP information and security details
       const loginData = {
         ...formData,
         ipAddress: ipData?.ip || 'Unknown',
-        ipDetails: ipData ? {
-          city: ipData.city,
-          country: ipData.country,
-          isp: ipData.isp,
-          timezone: ipData.timezone,
-          latitude: ipData.latitude,
-          longitude: ipData.longitude
-        } : null,
+        ipDetails: ipData
+          ? {
+              city: ipData.city,
+              country: ipData.country,
+              isp: ipData.isp,
+              timezone: ipData.timezone,
+              latitude: ipData.latitude,
+              longitude: ipData.longitude
+            }
+          : null,
         userAgent: navigator.userAgent,
         timestamp: new Date().toISOString(),
         loginAttempts: loginAttempts + 1
       };
 
       const res = await axios.post('/api/auth/login', loginData);
-      
-      // Reset login attempts on successful login
+
       setLoginAttempts(0);
       setIsLocked(false);
-      
       onLogin(res.data.token, res.data.user);
     } catch (err) {
       const errorMessage = err.response?.data?.message || 'Login failed. Please try again.';
       setError(errorMessage);
-      
-      // Increment login attempts on failure
+
       const newAttempts = loginAttempts + 1;
       setLoginAttempts(newAttempts);
-      
-      // Lock account after 5 failed attempts for 15 minutes
+
       if (newAttempts >= 5) {
         setIsLocked(true);
-        setLockTimeRemaining(15 * 60); // 15 minutes in seconds
-        
-        // Start countdown timer
+        setLockTimeRemaining(15 * 60);
+
         const countdownInterval = setInterval(() => {
           setLockTimeRemaining((prev) => {
             if (prev <= 1) {
@@ -151,124 +102,144 @@ const Login = ({ onLogin }) => {
   };
 
   return (
-    <div className="login-container" ref={containerRef}>
-      <div className="tech-grid"></div>
-      <div className="floating-shapes">
-        <span className="floating-shape shape-1"></span>
-        <span className="floating-shape shape-2"></span>
-        <span className="floating-shape shape-3"></span>
-        <span className="floating-shape shape-4"></span>
-        <span className="floating-shape shape-5"></span>
-      </div>
-
-      <div className="login-main">
-        <div className="login-card">
-          <div className="login-header">
-            <div className="logo">
-              <h2>LMS</h2>
-            </div>
-            <h2>Welcome Back! 👋</h2>
-            <p>Sign in to continue your learning journey</p>
+    <div className="lms-login">
+      <section className="lms-login__brand" aria-label="Sky States LMS">
+        <div className="lms-login__brand-media" aria-hidden="true">
+          <img
+            src="/images/login-hero.jpg"
+            alt=""
+            className="lms-login__brand-image"
+          />
+        </div>
+        <div className="lms-login__brand-copy">
+          <p className="lms-login__wordmark">Sky States LMS</p>
+          <div className="lms-login__brand-footer">
+            <h1 className="lms-login__headline">Learning solutions for the evolving organization.</h1>
+            <p className="lms-login__support">
+              Live sessions, classroom recordings, and progress — built for trainers and learners in one place.
+            </p>
           </div>
+        </div>
+      </section>
 
-          <form onSubmit={onSubmit} className="login-form" autoComplete="off">
-            {error && (
-              <div className="error-message">
-                <span>⚠️</span> {error}
-              </div>
-            )}
+      <section className="lms-login__panel">
+        <div className="lms-login__panel-inner">
+          <header className="lms-login__panel-header">
+            <p className="lms-login__panel-brand">Sky States LMS</p>
+            <h2 className="lms-login__panel-title">{view === 'reset' ? 'Reset password' : 'Sign in'}</h2>
+            <p className="lms-login__panel-subtitle">
+              {view === 'reset'
+                ? 'Enter your email to receive a one-time verification code.'
+                : 'Use your institution email to access your dashboard.'}
+            </p>
+          </header>
 
-            {loginAttempts > 0 && loginAttempts < 5 && (
-              <div className="warning-message">
-                <span>🔒</span> Login attempts remaining: {5 - loginAttempts}
-              </div>
-            )}
+          {view === 'reset' ? (
+            <ChangePasswordPanel
+              mode="reset"
+              defaultEmail={email}
+              onCancel={() => setView('login')}
+              onSuccess={() => {}}
+            />
+          ) : (
+            <form onSubmit={onSubmit} className="lms-login__form" autoComplete="off" noValidate>
+              {error && (
+                <div className="lms-login__alert lms-login__alert--error" role="alert">
+                  {error}
+                </div>
+              )}
 
-            <div className="form-group">
-              <label htmlFor="email">Email Address</label>
-              <div className="input-wrapper">
-                <span className="input-icon">📧</span>
+              {loginAttempts > 0 && loginAttempts < 5 && (
+                <div className="lms-login__alert lms-login__alert--warn" role="status">
+                  {5 - loginAttempts} attempt{5 - loginAttempts === 1 ? '' : 's'} remaining before a
+                  temporary lock.
+                </div>
+              )}
+
+              <div className="lms-login__field">
+                <label htmlFor="email">Email</label>
                 <input
                   type="email"
                   id="email"
                   name="email"
                   value={email}
                   onChange={onChange}
-                  placeholder="Enter your email"
-                  autoComplete="off"
+                  placeholder="you@example.com"
+                  autoComplete="username"
                   required
-                  className={loginAttempts > 2 ? 'shake' : ''}
+                  disabled={loading || isLocked}
                 />
               </div>
-            </div>
 
-            <div className="form-group">
-              <label htmlFor="password">Password</label>
-              <div className="input-wrapper">
-                <span className="input-icon">🔐</span>
-                <input
-                  type={showPassword ? 'text' : 'password'}
-                  id="password"
-                  name="password"
-                  value={password}
-                  onChange={onChange}
-                  placeholder="Enter your password"
-                  autoComplete="new-password"
-                  required
-                  className={loginAttempts > 2 ? 'shake' : ''}
-                />
+              <div className="lms-login__field">
+                <label htmlFor="password">Password</label>
+                <div className="lms-login__password">
+                  <input
+                    type={showPassword ? 'text' : 'password'}
+                    id="password"
+                    name="password"
+                    value={password}
+                    onChange={onChange}
+                    placeholder="Enter your password"
+                    autoComplete="current-password"
+                    required
+                    disabled={loading || isLocked}
+                  />
+                  <button
+                    type="button"
+                    className="lms-login__toggle"
+                    onClick={() => setShowPassword((prev) => !prev)}
+                    aria-label={showPassword ? 'Hide password' : 'Show password'}
+                    disabled={loading || isLocked}
+                  >
+                    {showPassword ? 'Hide' : 'Show'}
+                  </button>
+                </div>
+              </div>
+
+              <div style={{ textAlign: 'right', marginTop: '-0.35rem', marginBottom: '0.75rem' }}>
                 <button
                   type="button"
-                  className="toggle-password"
-                  onClick={() => setShowPassword((prev) => !prev)}
-                  aria-label={showPassword ? 'Hide password' : 'Show password'}
+                  onClick={() => setView('reset')}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    color: '#147a7a',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    fontSize: '0.9rem',
+                    padding: 0
+                  }}
                 >
-                  <span className="toggle-password-icon" aria-hidden="true">
-                    {showPassword ? '🙈' : '👁️'}
-                  </span>
+                  Forgot password?
                 </button>
               </div>
-            </div>
 
-            <button
-              type="submit"
-              className={`login-btn ${loading ? 'loading' : ''} ${isLocked ? 'locked' : ''}`}
-              disabled={loading || isLocked}
-            >
-              {loading ? (
-                <>
-                  <span className="spinner"></span>
-                  Signing in...
-                </>
-              ) : isLocked ? (
-                <>
-                  <span>🔒</span>
-                  Account Locked
-                </>
-              ) : (
-                <>
-                  <span>🚀</span>
-                  Sign In
-                </>
-              )}
-            </button>
-          </form>
+              <button
+                type="submit"
+                className="lms-login__submit"
+                disabled={loading || isLocked}
+              >
+                {loading ? (
+                  <span className="lms-login__submit-row">
+                    <span className="lms-login__spinner" aria-hidden="true" />
+                    Signing in…
+                  </span>
+                ) : isLocked ? (
+                  'Account locked'
+                ) : (
+                  'Continue'
+                )}
+              </button>
+            </form>
+          )}
 
-          <div className="login-footer">
-            <p>&copy; 2025 LMS. All rights reserved.</p>
-          </div>
+          <footer className="lms-login__footer">
+            <p>Students, teachers, and administrators use the same secure sign-in.</p>
+            <p className="lms-login__copyright">© {new Date().getFullYear()} Sky States LMS</p>
+          </footer>
         </div>
-
-        <div className="hero-text hero-below">
-          <h1>LMS</h1>
-          <p>Streamlined classes, recorded lectures, and progress in one place.</p>
-          <div className="hero-tags">
-            <span>Secure Login</span>
-            <span>Live Cohorts</span>
-            <span>Video Library</span>
-          </div>
-        </div>
-      </div>
+      </section>
     </div>
   );
 };

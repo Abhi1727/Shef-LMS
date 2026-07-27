@@ -1677,16 +1677,20 @@ router.get('/batches/:courseId', async (req, res) => {
 // @desc    Create a new batch
 router.post('/batches', async (req, res) => {
     try {
-        const { name, course, startDate, endDate, teacherId, teacherName, status, resourceUniverse } = req.body;
+        const { name, course, startDate, endDate, teacherId, teacherName, status, batchType, programLabel, resourceUniverse } = req.body;
         
         // Validate required fields
         if (!name || !course || !teacherId) {
             return res.status(400).json({ message: 'Batch name, course, and teacher are required' });
         }
+
+        const resolvedType = batchType === 'one-to-one' ? 'one-to-one' : 'regular';
         
         const batchData = {
           name,
           course,
+          batchType: resolvedType,
+          programLabel: programLabel || (resolvedType === 'one-to-one' ? course : ''),
           startDate: startDate || null,
           endDate: endDate || null,
           teacherId,
@@ -1714,17 +1718,26 @@ router.post('/batches', async (req, res) => {
 // @desc    Update a batch (general fields)
 router.put('/batches/:id', async (req, res) => {
     try {
-        const { name, course, startDate, endDate, teacherId, teacherName, status, resourcesEnabled, resourceUniverse } = req.body;
-        
-        const updateData = {
-          name,
-          course,
-          startDate: startDate || null,
-          endDate: endDate || null,
-          teacherId,
-          teacherName: teacherName || '',
-          status: status || 'active'
-        };
+        const { name, course, startDate, endDate, teacherId, teacherName, status, batchType, programLabel, resourcesEnabled, resourceUniverse } = req.body;
+
+        const existing = await Batch.findById(req.params.id).lean().exec();
+        if (!existing) {
+          return res.status(404).json({ message: 'Batch not found' });
+        }
+
+        const updateData = {};
+        if (name !== undefined) updateData.name = name;
+        if (course !== undefined) updateData.course = course;
+        if (startDate !== undefined) updateData.startDate = startDate || null;
+        if (endDate !== undefined) updateData.endDate = endDate || null;
+        if (teacherId !== undefined) updateData.teacherId = teacherId;
+        if (teacherName !== undefined) updateData.teacherName = teacherName || '';
+        if (status !== undefined) updateData.status = status || 'active';
+        if (batchType !== undefined) {
+          updateData.batchType = batchType === 'one-to-one' ? 'one-to-one' : 'regular';
+        }
+        if (programLabel !== undefined) updateData.programLabel = programLabel || '';
+        updateData.updatedAt = new Date();
 
         if (typeof resourcesEnabled !== 'undefined') {
           updateData.resourcesEnabled = resourcesEnabled;
@@ -1739,7 +1752,7 @@ router.put('/batches/:id', async (req, res) => {
           success: true,
           message: 'Batch updated successfully',
           id: String(updated?._id || req.params.id),
-          ...updateData
+          ...(updated ? updated.toObject() : updateData)
         });
     } catch (error) {
         console.error('Error updating batch:', error);

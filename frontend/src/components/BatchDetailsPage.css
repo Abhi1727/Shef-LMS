@@ -4694,3 +4694,490 @@ body.modal-open {
     max-height: 300px;
   }
 }
+
+/* ========== Sky States batch detail chrome ========== */
+.sky-batch-page {
+  font-family: var(--lms-font, 'Manrope', sans-serif);
+  background:
+    radial-gradient(900px 420px at 100% 0%, rgba(20, 122, 122, 0.07), transparent 55%),
+    var(--lms-surface, #f4f6f7);
+  min-height: 100vh;
+  color: var(--lms-text, #15252c);
+}
+
+.sky-batch-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 20px;
+  padding: 20px 28px 12px;
+  background: var(--lms-panel, #fff);
+  border-bottom: 1px solid var(--lms-border, #d5dee3);
+}
+
+.sky-batch-header-main {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+  min-width: 0;
+}
+
+.sky-batch-back {
+  border: 1px solid var(--lms-border, #d5dee3);
+  background: #fff;
+  color: var(--lms-ink, #102a33);
+  border-radius: 8px;
+  padding: 8px 12px;
+  cursor: pointer;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.sky-batch-title {
+  font-family: var(--lms-display, 'Fraunces', Georgia, serif);
+  font-size: 1.55rem;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  color: var(--lms-ink, #102a33);
+  margin: 0 0 8px;
+  line-height: 1.2;
+}
+
+.sky-batch-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.sky-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  border: 1px solid var(--lms-border, #d5dee3);
+  background: var(--lms-accent-soft, rgba(20, 122, 122, 0.1));
+  color: var(--lms-deep, #0b3d4a);
+}
+
+.sky-badge-status.active { background: rgba(20, 122, 122, 0.12); color: #0b3d4a; }
+.sky-badge-status.inactive { background: #f0f2f3; color: #5a6d76; }
+.sky-badge-status.completed { background: #e8eef0; color: #102a33; }
+.sky-badge-type { background: #102a33; color: #fff; border-color: #102a33; }
+
+.sky-batch-trainer {
+  color: var(--lms-muted, #5a6d76);
+  font-size: 0.9rem;
+}
+
+.sky-batch-header-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+
+.sky-batch-timing-chip {
+  background: var(--lms-accent-soft, rgba(20, 122, 122, 0.1));
+  color: var(--lms-deep, #0b3d4a);
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.sky-batch-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 0 28px;
+  background: var(--lms-panel, #fff);
+  border-bottom: 1px solid var(--lms-border, #d5dee3);
+  overflow-x: auto;
+}
+
+.sky-tab {
+  border: none;
+  background: transparent;
+  padding: 14px 18px;
+  font-weight: 600;
+  color: var(--lms-muted, #5a6d76);
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  white-space: nowrap;
+}
+
+.sky-tab.active {
+  color: var(--lms-accent, #147a7a);
+  border-bottom-color: var(--lms-accent, #147a7a);
+}
+
+.sky-btn {
+  border-radius: 8px;
+  padding: 9px 14px;
+  font-weight: 600;
+  font-size: 0.875rem;
+  cursor: pointer;
+  border: 1px solid transparent;
+  font-family: inherit;
+}
+
+.sky-btn-primary {
+  background: var(--lms-accent, #147a7a);
+  color: #fff;
+  border-color: var(--lms-accent, #147a7a);
+}
+
+.sky-btn-primary:hover { background: var(--lms-accent-hover, #0f6363); }
+.sky-btn-primary:disabled { opacity: 0.55; cursor: not-allowed; }
+
+.sky-btn-secondary {
+  background: #fff;
+  color: var(--lms-ink, #102a33);
+  border-color: var(--lms-border, #d5dee3);
+}
+
+.sky-btn-ghost {
+  background: transparent;
+  color: var(--lms-deep, #0b3d4a);
+  border-color: var(--lms-border, #d5dee3);
+}
+
+.sky-btn-danger {
+  color: var(--lms-danger, #9b2c2c);
+  border-color: #e8c4c4;
+}
+
+.sky-muted { color: var(--lms-muted, #5a6d76); font-size: 0.9rem; }
+
+.sky-timing-panel { padding: 24px 28px; }
+.sky-timing-card {
+  background: #fff;
+  border: 1px solid var(--lms-border, #d5dee3);
+  border-radius: 12px;
+  padding: 24px;
+  max-width: 560px;
+}
+.sky-timing-card h2 {
+  font-family: var(--lms-display, Fraunces, Georgia, serif);
+  margin: 0 0 8px;
+  color: var(--lms-ink, #102a33);
+}
+.sky-timing-values {
+  display: grid;
+  gap: 12px;
+  margin: 20px 0;
+}
+.sky-timing-values span { display: block; font-size: 0.8rem; margin-bottom: 2px; }
+
+/* Neutralize rainbow action buttons inside sky batch pages */
+.sky-batch-page .btn-notes,
+.sky-batch-page .btn-edit,
+.sky-batch-page .btn-delete,
+.sky-batch-page .view-btn,
+.sky-batch-page .edit-btn,
+.sky-batch-page .notes-btn,
+.sky-batch-page .confirm-upload-btn,
+.sky-batch-page .upload-btn,
+.sky-batch-page .download-btn {
+  background: #fff !important;
+  color: var(--lms-deep, #0b3d4a) !important;
+  border: 1px solid var(--lms-border, #d5dee3) !important;
+  box-shadow: none !important;
+  border-radius: 8px !important;
+}
+
+.sky-batch-page .btn-add,
+.sky-batch-page .videos-header .btn-add {
+  background: var(--lms-accent, #147a7a) !important;
+  color: #fff !important;
+  border: none !important;
+  border-radius: 8px !important;
+}
+
+.sky-batch-page .video-card {
+  border: 1px solid var(--lms-border, #d5dee3);
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: none;
+}
+
+.sky-batch-page .videos-header h2,
+.sky-batch-page .students-header h2 {
+  font-family: var(--lms-display, Fraunces, Georgia, serif);
+  color: var(--lms-ink, #102a33);
+}
+
+@media (max-width: 768px) {
+  .sky-batch-header {
+    flex-direction: column;
+    padding: 16px;
+  }
+  .sky-batch-tabs { padding: 0 16px; }
+}
+
+/* ========== Teacher lectures — professional layout fixes ========== */
+.sky-batch-page.teacher-batch-details-page {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  height: auto;
+  overflow: visible;
+}
+
+.sky-batch-page.teacher-batch-details-page .batch-content,
+.sky-batch-page.teacher-batch-details-page .main-content {
+  height: auto !important;
+  max-height: none !important;
+  overflow: visible !important;
+  flex: 1 1 auto !important;
+}
+
+.sky-batch-page .sky-batch-title {
+  font-family: var(--lms-font, 'Manrope', sans-serif);
+  font-size: 1.35rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+  line-height: 1.25;
+}
+
+.sky-batch-page .sky-batch-title-block {
+  min-width: 0;
+}
+
+.sky-lectures {
+  padding: 20px 28px 40px;
+  gap: 16px;
+}
+
+.sky-lectures-header {
+  align-items: flex-end;
+  margin-bottom: 4px;
+}
+
+.sky-lectures-header h2 {
+  margin: 0 !important;
+  border: none !important;
+  padding: 0 !important;
+  font-family: var(--lms-font, 'Manrope', sans-serif) !important;
+  font-size: 1.25rem !important;
+  font-weight: 700 !important;
+}
+
+.sky-lectures-sub {
+  margin: 4px 0 0;
+}
+
+.sky-lectures-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+
+.sky-lectures .video-search {
+  min-width: 220px;
+  height: 40px;
+  border: 1px solid var(--lms-border, #d5dee3);
+  border-radius: 8px;
+  padding: 0 12px;
+  font-family: inherit;
+  background: #fff;
+}
+
+.sky-batch-notes-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding: 12px 16px;
+  background: #fff;
+  border: 1px solid var(--lms-border, #d5dee3);
+  border-radius: 10px;
+}
+
+.sky-batch-notes-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.sky-batch-notes-copy strong {
+  font-size: 0.9rem;
+  color: var(--lms-ink, #102a33);
+}
+
+.sky-batch-notes-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.sky-lecture-grid.video-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 16px;
+  overflow: visible !important;
+  flex: none !important;
+  min-height: 0;
+}
+
+.sky-lecture-card.video-card {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  max-width: none;
+  cursor: default;
+  overflow: hidden;
+  border: 1px solid var(--lms-border, #d5dee3);
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.sky-batch-page .sky-lecture-card.video-card:hover,
+.teacher-batch-details-page .sky-lecture-card.video-card:hover {
+  transform: none;
+  border-color: #b7c4cb;
+  box-shadow: 0 8px 24px rgba(16, 42, 51, 0.08);
+}
+
+.sky-lecture-thumb {
+  position: relative;
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  padding: 0;
+  border: none;
+  background: #0f1a1f;
+  cursor: pointer;
+  overflow: hidden;
+}
+
+.sky-lecture-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.sky-lecture-placeholder {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 0.85rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  background: linear-gradient(135deg, #102a33, #147a7a);
+}
+
+.sky-lecture-play {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: 1.1rem;
+  background: rgba(15, 26, 31, 0.28);
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.sky-lecture-thumb:hover .sky-lecture-play,
+.sky-lecture-thumb:focus-visible .sky-lecture-play {
+  opacity: 1;
+}
+
+.sky-lecture-body.video-right {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px 14px 16px;
+  min-width: 0;
+}
+
+.sky-lecture-body .video-info {
+  padding: 0;
+}
+
+.sky-lecture-title.video-title {
+  margin: 0 0 8px;
+  max-height: none;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  font-size: 0.95rem;
+  font-weight: 650;
+  line-height: 1.35;
+  color: var(--lms-ink, #102a33);
+  font-family: var(--lms-font, 'Manrope', sans-serif);
+  word-break: break-word;
+  cursor: default;
+}
+
+.sky-lecture-meta.video-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  font-size: 0.8rem;
+  color: var(--lms-muted, #5a6d76);
+}
+
+.sky-lecture-actions.video-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 0;
+  margin-top: auto;
+}
+
+.sky-lecture-actions .sky-btn {
+  padding: 7px 12px;
+  font-size: 0.8rem;
+}
+
+.sky-lectures-empty {
+  text-align: center;
+  padding: 48px 20px;
+  background: #fff;
+  border: 1px dashed var(--lms-border, #d5dee3);
+  border-radius: 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+}
+
+.sky-lectures-empty p {
+  margin: 0;
+  color: var(--lms-muted, #5a6d76);
+}
+
+@media (max-width: 768px) {
+  .sky-lectures {
+    padding: 16px;
+  }
+
+  .sky-lectures-header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .sky-lectures .video-search {
+    width: 100%;
+    min-width: 0;
+  }
+}

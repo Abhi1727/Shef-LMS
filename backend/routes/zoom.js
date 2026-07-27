@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const zoomService = require('../services/zoomService');
 const auth = require('../middleware/auth');
+const { isTeacher } = require('../middleware/roleAuth');
 const { parseZoomTimestamp } = require('../utils/timezoneUtils');
 
 // All Zoom-based features are temporarily disabled while Firebase/Zoom
@@ -69,8 +70,8 @@ router.get('/join/:id', auth, async (req, res) => {
 
 // @route   GET /api/zoom/recordings/:meetingId
 // @desc    Get cloud recordings for a meeting
-// @access  Private
-router.get('/recordings/:meetingId', auth, async (req, res) => {
+// @access  Private (Admin/Teacher)
+router.get('/recordings/:meetingId', isTeacher, async (req, res) => {
   try {
     const result = await zoomService.getRecordings(req.params.meetingId);
 
@@ -87,7 +88,7 @@ router.get('/recordings/:meetingId', auth, async (req, res) => {
 // @route   GET /api/zoom/recordings
 // @desc    Get all cloud recordings (last 30 days by default)
 // @access  Private (Admin/Teacher)
-router.get('/recordings', auth, async (req, res) => {
+router.get('/recordings', isTeacher, async (req, res) => {
   try {
     const { from, to } = req.query;
     const result = await zoomService.listAllRecordings(from, to);

@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const auth = require('../middleware/auth');
+const { isAdmin } = require('../middleware/roleAuth');
 const Course = require('../models/Course');
 
 // @route   GET /api/courses
@@ -56,6 +57,17 @@ router.get('/', async (req, res) => {
         },
         {
           _id: '5',
+          title: 'Cybersecurity & AI',
+          description: 'Apply AI to threat detection, security automation, and modern cyber defense',
+          instructor: 'Alex Rivera',
+          duration: '5 months',
+          modules: 6,
+          progress: 20,
+          enrolled: 312,
+          thumbnail: '🛡️'
+        },
+        {
+          _id: '6',
           title: 'One-to-One',
           description: 'Personalized one-to-one learning with dedicated instructor guidance',
           instructor: 'Various Instructors',
@@ -94,7 +106,8 @@ router.get('/:id', async (req, res) => {
 
 // @route   POST /api/courses
 // @desc    Create a course
-router.post('/', auth, async (req, res) => {
+// @access  Admin only
+router.post('/', isAdmin, async (req, res) => {
   try {
     const courseData = {
       ...req.body,

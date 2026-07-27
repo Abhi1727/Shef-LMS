@@ -12,6 +12,7 @@
   "scripts": {
     "start": "react-scripts start",
     "build": "react-scripts build",
+    "build:dev": "REACT_APP_API_URL=https://dev.learnwithus.sbs REACT_APP_ENVIRONMENT=development REACT_APP_NAME=\"Sky States LMS (Dev)\" react-scripts build",
     "test": "react-scripts test",
     "eject": "react-scripts eject"
   },
@@ -32,7 +33,7 @@
       "last 1 safari version"
     ]
   },
-  "proxy": "http://localhost:5000",
+  "proxy": "http://localhost:5001",
   "devDependencies": {
     "baseline-browser-mapping": "^2.10.17",
     "react-scripts": "^5.0.1"

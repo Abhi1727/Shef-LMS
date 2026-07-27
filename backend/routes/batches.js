@@ -7,6 +7,7 @@ const { isTeacherOrAdmin, isBatchOwnerOrAdmin } = require('../middleware/teacher
 const Batch = require('../models/Batch');
 const User = require('../models/User');
 const Classroom = require('../models/Classroom');
+const { sanitizeStudentsForViewer, sanitizeStudentForViewer } = require('../utils/studentPrivacy');
 
 // @route   POST /api/batches
 // @desc    Create a new batch
@@ -64,12 +65,24 @@ router.post('/', auth, isTeacherOrAdmin, async (req, res) => {
 });
 
 // @route   GET /api/batches
-// @desc    Get all batches
+// @desc    Get batches visible to the current user
 // @access  Private
-router.get('/', async (req, res) => {
+router.get('/', auth, async (req, res) => {
   try {
-    const batchesDocs = await Batch.find({}).lean().exec();
+    let filter = {};
+    const role = req.user?.role;
 
+    if (role === 'admin') {
+      filter = {};
+    } else if (role === 'teacher' || role === 'mentor') {
+      filter = { teacherId: String(req.user.id) };
+    } else if (role === 'student') {
+      filter = { _id: req.user.batchId || null };
+    } else {
+      return res.status(403).json({ success: false, message: 'Access denied' });
+    }
+
+    const batchesDocs = await Batch.find(filter).lean().exec();
     const batches = batchesDocs.map(doc => ({ id: String(doc._id), ...doc }));
     res.json({
       success: true,
@@ -309,20 +322,12 @@ router.delete('/:batchId/videos/:videoId', isAdmin, async (req, res) => {
 
 // @route   GET /api/batches/:id
 // @desc    Get batch details by ID
-// @access  Private (teacher/admin)
+// @access  Private (admin, owning teacher, or enrolled student)
 router.get('/:id', auth, async (req, res) => {
   try {
     const batchId = req.params.id;
-    console.log('Fetching batch with ID:', batchId);
-    console.log('User making request:', req.user);
-    
     const batchDoc = await Batch.findById(batchId).lean().exec();
-    console.log('Batch found:', !!batchDoc);
-    console.log('Batch teacherId:', batchDoc?.teacherId);
-    console.log('Request user ID:', req.user?.id);
-    console.log('Request user role:', req.user?.role);
-    console.log('Ownership check:', req.user?.role === 'admin' || String(batchDoc?.teacherId) === String(req.user?.id));
-    
+
     if (!batchDoc) {
       return res.status(404).json({ 
         success: false, 
@@ -330,14 +335,25 @@ router.get('/:id', auth, async (req, res) => {
       });
     }
 
-    // Temporarily skip ownership check for debugging
-    // if (req.user.role === 'admin' || 
-    //     (req.user.role === 'teacher' && String(batchDoc.teacherId) === String(req.user.id))) {
-    //   return next();
-    // }
+    const role = req.user?.role;
+    const userId = String(req.user?.id || '');
+    const isAdmin = role === 'admin';
+    const isOwnerTeacher =
+      (role === 'teacher' || role === 'mentor') &&
+      String(batchDoc.teacherId) === userId;
+    const isEnrolledStudent =
+      role === 'student' &&
+      (String(req.user?.batchId || '') === String(batchId) ||
+        (batchDoc.students || []).some((s) => String(s) === userId));
+
+    if (!isAdmin && !isOwnerTeacher && !isEnrolledStudent) {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied. You do not have permission to view this batch.'
+      });
+    }
 
     const batch = { id: String(batchDoc._id), ...batchDoc };
-    console.log('Returning batch:', batch);
     res.json({
       success: true,
       batch
@@ -366,18 +382,18 @@ router.get('/:id/students', auth, isBatchOwnerOrAdmin, async (req, res) => {
       });
     }
 
-    // Get students from batch's students array
+    // Get students from batch's students array (never return password hashes)
     const batchStudentIds = batchDoc.students || [];
     const batchStudents = await User.find({
       _id: { $in: batchStudentIds }
-    }).lean().exec();
+    }).select('-password').lean().exec();
 
     // Find orphaned students who have this batchId but aren't in the students array
     const orphanedStudents = await User.find({
       batchId: batchId,
       _id: { $nin: batchStudentIds },
       role: 'student'
-    }).lean().exec();
+    }).select('-password').lean().exec();
 
     // Log orphaned students for debugging
     if (orphanedStudents.length > 0) {
@@ -390,15 +406,13 @@ router.get('/:id/students', auth, isBatchOwnerOrAdmin, async (req, res) => {
       });
     }
 
-    // Merge both sets of students
+    // Merge both sets of students — teachers never receive email/phone
     const allStudents = [...batchStudents, ...orphanedStudents];
+    const viewerRole = req.user?.role;
 
     res.json({
       success: true,
-      students: allStudents.map(student => ({
-        ...student,
-        id: String(student._id)
-      }))
+      students: sanitizeStudentsForViewer(allStudents, viewerRole)
     });
   } catch (error) {
     console.error('Error fetching batch students:', error);
@@ -466,10 +480,7 @@ router.post('/:id/students', auth, isBatchOwnerOrAdmin, async (req, res) => {
     res.json({
       success: true,
       message: 'Student added to batch successfully',
-      student: {
-        ...user.toObject(),
-        id: String(user._id)
-      }
+      student: sanitizeStudentForViewer(user, req.user?.role)
     });
   } catch (error) {
     console.error('Error adding student to batch:', error);

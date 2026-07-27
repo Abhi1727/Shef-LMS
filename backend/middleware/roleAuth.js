@@ -58,8 +58,8 @@ const roleAuth = (...allowedRoles) => {
 
 // Specific role checkers
 const isAdmin = roleAuth('admin');
-const isTeacher = roleAuth('teacher', 'admin');
-const isStudent = roleAuth('student', 'teacher', 'admin');
+const isTeacher = roleAuth('teacher', 'mentor', 'admin');
+const isStudent = roleAuth('student', 'teacher', 'mentor', 'admin');
 
 module.exports = {
   roleAuth,

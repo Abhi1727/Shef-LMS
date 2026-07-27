@@ -1,217 +1,239 @@
 /**
- * Timezone utility functions for handling daylight saving time conversions
- * between IST and US timezones (EST/EDT, CST/CDT, PST/PDT)
+ * Timezone utilities — schedule source of truth is IST (Asia/Kolkata).
+ * Converts to US zones (EST/CST/PST/MST) via Intl where possible.
  */
 
-/**
- * Determines if current date is within daylight saving time period
- * DST in US: Second Sunday in March to First Sunday in November
- * @returns {boolean} True if DST is currently active
- */
-export function isDaylightSavingTime() {
-  const now = new Date();
-  const year = now.getFullYear();
-  
-  // DST starts: Second Sunday in March at 2:00 AM local time
-  const dstStart = new Date(year, 2, 1); // March 1st
-  dstStart.setDate(dstStart.getDate() + (14 - dstStart.getDay()) % 7 + 7);
-  dstStart.setHours(7, 0, 0, 0); // 2:00 AM EST = 7:00 AM UTC
-  
-  // DST ends: First Sunday in November at 2:00 AM local time
-  const dstEnd = new Date(year, 10, 1); // November 1st
-  dstEnd.setDate(dstEnd.getDate() + (7 - dstEnd.getDay()) % 7);
-  dstEnd.setHours(6, 0, 0, 0); // 2:00 AM EST = 6:00 AM UTC
-  
-  return now >= dstStart && now < dstEnd;
-}
+const ZONE_MAP = {
+  IST: 'Asia/Kolkata',
+  EST: 'America/New_York',
+  CST: 'America/Chicago',
+  PST: 'America/Los_Angeles',
+  MST: 'America/Denver'
+};
 
 /**
- * Gets the correct timezone offset for US timezones based on DST
- * @param {string} timezone - 'EST', 'CST', 'PST'
- * @returns {number} Offset in minutes from IST
- */
-export function getUsTimezoneOffset(timezone) {
-  const isDST = isDaylightSavingTime();
-  
-  const offsets = {
-    EST: isDST ? -570 : -630, // EDT: -9h 30m, EST: -10h 30m
-    CST: isDST ? -630 : -690, // CDT: -10h 30m, CST: -11h 30m  
-    PST: isDST ? -750 : -810  // PDT: -12h 30m, PST: -13h 30m
-  };
-  
-  return offsets[timezone] || -630; // Default to CST offset
-}
-
-/**
- * Gets the correct timezone abbreviation based on DST
- * @param {string} timezone - 'EST', 'CST', 'PST'
- * @returns {string} Timezone abbreviation (EST/EDT, CST/CDT, PST/PDT)
- */
-export function getTimezoneAbbreviation(timezone) {
-  const isDST = isDaylightSavingTime();
-  
-  const abbreviations = {
-    EST: isDST ? 'EDT' : 'EST',
-    CST: isDST ? 'CDT' : 'CST',
-    PST: isDST ? 'PDT' : 'PST'
-  };
-  
-  return abbreviations[timezone] || timezone;
-}
-
-/**
- * Safely parses time string into hours and minutes
- * @param {string} timeString - Time string in "HH:MM" or "H:MM" format
- * @returns {object|null} Object with hours and minutes, or null if invalid
+ * Parse a clock time that may be 24h ("14:30") or 12h ("10:00 AM" / "10:00AM").
+ * Strips trailing timezone tokens like IST.
+ * @returns {{ hours: number, minutes: number } | null}
  */
 export function safeParseTime(timeString) {
   if (!timeString || typeof timeString !== 'string') {
     return null;
   }
-  
-  const parts = timeString.trim().split(':');
-  if (parts.length !== 2) {
-    return null;
+
+  let cleaned = timeString.trim()
+    .replace(/\b(IST|EST|EDT|CST|CDT|PST|PDT|MST|MDT)\b/gi, '')
+    .trim();
+
+  const ampmMatch = cleaned.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
+  if (ampmMatch) {
+    let hours = parseInt(ampmMatch[1], 10);
+    const minutes = parseInt(ampmMatch[2], 10);
+    const period = ampmMatch[3].toUpperCase();
+    if (hours < 1 || hours > 12 || minutes < 0 || minutes > 59) return null;
+    if (period === 'PM' && hours !== 12) hours += 12;
+    if (period === 'AM' && hours === 12) hours = 0;
+    return { hours, minutes };
   }
-  
+
+  const parts = cleaned.split(':');
+  if (parts.length < 2) return null;
   const hours = parseInt(parts[0], 10);
-  const minutes = parseInt(parts[1], 10);
-  
-  // Validate ranges
-  if (isNaN(hours) || isNaN(minutes) || 
-      hours < 0 || hours > 23 || 
-      minutes < 0 || minutes > 59) {
+  const minutes = parseInt(String(parts[1]).replace(/\D.*/, ''), 10);
+  if (isNaN(hours) || isNaN(minutes) || hours < 0 || hours > 23 || minutes < 0 || minutes > 59) {
     return null;
   }
-  
   return { hours, minutes };
 }
 
 /**
- * Converts IST time range to US timezone with DST awareness
- * @param {string} istTime - IST time in "HH:MM" format
- * @param {string} timezone - Target timezone ('EST', 'CST', 'PST')
- * @returns {string} Converted time in "HH:MM" format
+ * Split ranges like "10:00 AM - 11:00 AM" or "10:00-11:00".
  */
-export function convertIstToUsTimezone(istTime, timezone) {
-  if (!istTime || !timezone) {
-    console.warn('[TimezoneUtils] convertIstToUsTimezone: Missing input', { istTime, timezone });
-    return '';
+export function parseTimeRange(timeRange) {
+  if (!timeRange || typeof timeRange !== 'string') {
+    return { startTime: '', endTime: '' };
   }
-  
-  // Safely parse IST time
-  const parsedTime = safeParseTime(istTime);
-  if (!parsedTime) {
-    console.warn('[TimezoneUtils] convertIstToUsTimezone: Invalid time format', istTime);
-    return '';
+
+  const normalized = timeRange.replace(/\b(IST|EST|EDT|CST|CDT|PST|PDT|MST|MDT)\b/gi, '').trim();
+  const parts = normalized.split(/\s*-\s*/);
+  if (parts.length < 2) {
+    return { startTime: '', endTime: '' };
   }
-  
-  const { hours, minutes } = parsedTime;
-  const istDate = new Date();
-  istDate.setHours(hours, minutes, 0, 0);
-  
-  // Get offset and apply it
-  const offsetMinutes = getUsTimezoneOffset(timezone);
-  const usDate = new Date(istDate.getTime() + offsetMinutes * 60 * 1000);
-  
-  // Handle date crossing
-  let usHours = usDate.getHours();
-  const usMinutes = usDate.getMinutes();
-  
-  // Format 12-hour time
-  const period = usHours >= 12 ? 'PM' : 'AM';
-  usHours = usHours % 12 || 12;
-  
-  return `${usHours.toString().padStart(2, '0')}:${usMinutes.toString().padStart(2, '0')} ${period}`;
+
+  return {
+    startTime: parts[0].trim(),
+    endTime: parts.slice(1).join('-').trim()
+  };
+}
+
+function format12Hour(hours24, minutes) {
+  const period = hours24 >= 12 ? 'PM' : 'AM';
+  let h = hours24 % 12;
+  if (h === 0) h = 12;
+  return `${String(h).padStart(2, '0')}:${String(minutes).padStart(2, '0')} ${period}`;
 }
 
 /**
- * Converts IST time range to multiple US timezones
- * @param {string} istStartTime - Start time in "HH:MM" format
- * @param {string} istEndTime - End time in "HH:MM" format
- * @returns {Object} Object with converted times for all US timezones
+ * Convert an IST wall-clock time to another IANA zone using today's calendar date in IST.
  */
+export function convertIstToUsTimezone(istTime, timezone) {
+  if (!istTime || !timezone) return '';
+
+  const parsed = safeParseTime(istTime);
+  if (!parsed) return '';
+
+  const iana = ZONE_MAP[timezone] || ZONE_MAP.EST;
+
+  try {
+    const now = new Date();
+    // Build an absolute Instant: interpret hours/minutes as Asia/Kolkata today
+    const istFormatter = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Kolkata',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit'
+    });
+    const parts = Object.fromEntries(
+      istFormatter.formatToParts(now).filter(p => p.type !== 'literal').map(p => [p.type, p.value])
+    );
+    const y = parts.year;
+    const m = parts.month;
+    const d = parts.day;
+    const hh = String(parsed.hours).padStart(2, '0');
+    const mm = String(parsed.minutes).padStart(2, '0');
+
+    // Approximate: IST is UTC+5:30 with no DST
+    const utcMs = Date.parse(`${y}-${m}-${d}T${hh}:${mm}:00+05:30`);
+    if (Number.isNaN(utcMs)) return '';
+
+    const targetFormatter = new Intl.DateTimeFormat('en-US', {
+      timeZone: iana,
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true
+    });
+    return targetFormatter.format(new Date(utcMs)).replace(/\u202f/g, ' ');
+  } catch (err) {
+    console.warn('[TimezoneUtils] convertIstToUsTimezone failed', err);
+    return '';
+  }
+}
+
+export function isDaylightSavingTime(date = new Date()) {
+  try {
+    const jan = new Date(date.getFullYear(), 0, 1);
+    const jul = new Date(date.getFullYear(), 6, 1);
+    const std = Math.max(
+      getZoneOffsetMinutes('America/New_York', jan),
+      getZoneOffsetMinutes('America/New_York', jul)
+    );
+    return getZoneOffsetMinutes('America/New_York', date) < std;
+  } catch {
+    return false;
+  }
+}
+
+function getZoneOffsetMinutes(timeZone, date) {
+  const dtf = new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    timeZoneName: 'shortOffset',
+    hour: '2-digit'
+  });
+  const tzName = dtf.formatToParts(date).find(p => p.type === 'timeZoneName')?.value || '';
+  const match = tzName.match(/GMT([+-]\d{1,2})(?::(\d{2}))?/i);
+  if (!match) return 0;
+  const hours = parseInt(match[1], 10);
+  const mins = parseInt(match[2] || '0', 10);
+  return hours * 60 + Math.sign(hours || 1) * mins;
+}
+
+export function getTimezoneAbbreviation(timezone, date = new Date()) {
+  const iana = ZONE_MAP[timezone];
+  if (!iana) return timezone;
+  try {
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone: iana,
+      timeZoneName: 'short'
+    }).formatToParts(date);
+    return parts.find(p => p.type === 'timeZoneName')?.value || timezone;
+  } catch {
+    return timezone;
+  }
+}
+
+/** Legacy offset helper retained for callers; prefer Intl path above. */
+export function getUsTimezoneOffset(timezone) {
+  const isDST = isDaylightSavingTime();
+  const offsets = {
+    EST: isDST ? -570 : -630,
+    CST: isDST ? -630 : -690,
+    PST: isDST ? -750 : -810,
+    MST: isDST ? -690 : -750
+  };
+  return offsets[timezone] || -630;
+}
+
 export function convertIstRangeToUsTimezones(istStartTime, istEndTime) {
-  const timezones = ['EST', 'CST', 'PST'];
+  const timezones = ['EST', 'CST', 'PST', 'MST'];
   const result = {};
-  
   timezones.forEach(timezone => {
     const abbreviation = getTimezoneAbbreviation(timezone);
     const startTime = convertIstToUsTimezone(istStartTime, timezone);
     const endTime = convertIstToUsTimezone(istEndTime, timezone);
-    
     result[timezone] = {
       abbreviation,
       startTime,
       endTime,
-      range: `${startTime} - ${endTime} ${abbreviation}`
+      range: startTime && endTime ? `${startTime} - ${endTime} ${abbreviation}` : ''
     };
   });
-  
   return result;
 }
 
-/**
- * Formats time with timezone abbreviation for display
- * @param {string} time - Time string
- * @param {string} timezone - Timezone abbreviation
- * @returns {string} Formatted time string
- */
 export function formatTimeWithTimezone(time, timezone) {
   if (!time || !timezone) return time;
   return `${time} ${timezone}`;
 }
 
 /**
- * Converts a time range string to individual start and end times
- * @param {string} timeRange - Time range in "HH:MM - HH:MM" format
- * @returns {Object} Object with startTime and endTime
+ * Convert IST start/end (any common format) to a labeled US zone range string.
  */
-export function parseTimeRange(timeRange) {
-  if (!timeRange || typeof timeRange !== 'string') {
-    return { startTime: '', endTime: '' };
+export function convertIstRangeToZone(startTime, endTime, timezone) {
+  if (!startTime || !endTime || !timezone) return '';
+
+  if (!['EST', 'CST', 'PST', 'MST'].includes(timezone)) return '';
+
+  // Allow callers to pass a full range in startTime alone
+  let start = startTime;
+  let end = endTime;
+  if (!safeParseTime(start) && String(startTime).includes('-')) {
+    const parsed = parseTimeRange(startTime);
+    start = parsed.startTime;
+    end = parsed.endTime || end;
   }
-  
-  const parts = timeRange.split('-');
-  if (parts.length !== 2) {
-    return { startTime: '', endTime: '' };
-  }
-  
-  return {
-    startTime: parts[0].trim(),
-    endTime: parts[1].trim()
-  };
+
+  const convertedStart = convertIstToUsTimezone(start, timezone);
+  const convertedEnd = convertIstToUsTimezone(end, timezone);
+  if (!convertedStart || !convertedEnd) return '';
+
+  const abbreviation = getTimezoneAbbreviation(timezone);
+  return `${convertedStart} - ${convertedEnd} ${abbreviation}`;
 }
 
 /**
- * Legacy function for backward compatibility
- * @param {string} startTime - Start time in "HH:MM" format
- * @param {string} endTime - End time in "HH:MM" format
- * @param {string} timezone - Target timezone ('EST', 'CST', 'PST')
- * @returns {string} Formatted time range
+ * Format an IST time for display (normalizes to 12h).
  */
-export function convertIstRangeToZone(startTime, endTime, timezone) {
-  if (!startTime || !endTime || !timezone) {
-    console.warn('[TimezoneUtils] convertIstRangeToZone: Missing input', { startTime, endTime, timezone });
-    return '';
-  }
-  
-  // Validate timezone parameter
-  if (!['EST', 'CST', 'PST'].includes(timezone)) {
-    console.warn('[TimezoneUtils] convertIstRangeToZone: Invalid timezone', timezone);
-    return '';
-  }
-  
-  const convertedStart = convertIstToUsTimezone(startTime, timezone);
-  const convertedEnd = convertIstToUsTimezone(endTime, timezone);
-  
-  // Check if conversion was successful
-  if (!convertedStart || !convertedEnd) {
-    console.warn('[TimezoneUtils] convertIstRangeToZone: Time conversion failed', { startTime, endTime, timezone, convertedStart, convertedEnd });
-    return '';
-  }
-  
-  const abbreviation = getTimezoneAbbreviation(timezone);
-  
-  return `${convertedStart} - ${convertedEnd} ${abbreviation}`;
+export function formatIstDisplay(timeString) {
+  const parsed = safeParseTime(timeString);
+  if (!parsed) return timeString || '';
+  return `${format12Hour(parsed.hours, parsed.minutes)} IST`;
+}
+
+export function formatIstRangeDisplay(timeRange) {
+  const { startTime, endTime } = parseTimeRange(timeRange);
+  if (!startTime || !endTime) return timeRange || '';
+  const start = safeParseTime(startTime);
+  const end = safeParseTime(endTime);
+  if (!start || !end) return timeRange;
+  return `${format12Hour(start.hours, start.minutes)} - ${format12Hour(end.hours, end.minutes)} IST`;
 }

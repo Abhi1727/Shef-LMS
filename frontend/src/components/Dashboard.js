@@ -7,7 +7,9 @@ import { YouTubeUtils } from '../utils/youtubeUtils';
 import { convertIstRangeToZone } from '../utils/timezoneUtils';
 import { formatDateForComponent } from '../utils/dateUtils';
 import { ToastContainer, showToast } from './Toast';
+import AccountMenu from './AccountMenu';
 import './Dashboard.css';
+import { getApiBaseUrl } from '../utils/apiBase';
 
 // Premium Image Slider Component with Advanced Features
 const ImageSlider = ({ setActiveSection }) => {
@@ -78,7 +80,7 @@ const ImageSlider = ({ setActiveSection }) => {
         
         // Fetch course data from API
         const token = localStorage.getItem('token');
-        const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
+        const apiUrl = getApiBaseUrl();
         
         let courseData = null;
         try {
@@ -570,7 +572,7 @@ const Dashboard = ({ user, onLogout }) => {
   const [activeSection, setActiveSection] = useState('overview');
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [selectedVideo, setSelectedVideo] = useState(null);
-  const [darkMode, setDarkMode] = useState(true);
+  const [darkMode, setDarkMode] = useState(false);
   
   // Course content state
   const [courseContent, setCourseContent] = useState(null);
@@ -602,6 +604,7 @@ const Dashboard = ({ user, onLogout }) => {
   const navButtonRefs = useRef({
     overview: useRef(null),
     classroom: useRef(null),
+    progress: useRef(null),
     analytics: useRef(null),
     profile: useRef(null)
   });
@@ -618,52 +621,46 @@ const Dashboard = ({ user, onLogout }) => {
   const getDynamicMessages = useCallback((courseType) => {
     if (courseType === 'data-science') {
       return [
-        "Ready to master Data Science & AI? 🚀",
-        "Let's explore machine learning today 🤖",
-        "Your data science journey continues! 📊",
-        "Time to build amazing AI models ⚡",
-        "Unlock the power of data analytics 🔓"
+        "Ready to master Data Science & AI?",
+        "Continue your machine learning path today",
+        "Your data science journey continues",
+        "Build stronger models with every session"
       ];
     } else if (courseType === 'cyber-security') {
       return [
-        "Ready to enhance your cybersecurity skills? 🛡️",
-        "Let's explore ethical hacking today 🔍",
-        "Your cybersecurity journey continues! 🔐",
-        "Time to master penetration testing ⚔️",
-        "Become a security expert! 🎯"
+        "Ready to strengthen your cybersecurity skills?",
+        "Continue ethical hacking practice today",
+        "Your cybersecurity journey continues",
+        "Master defensive and offensive techniques"
       ];
     } else if (courseType === 'devops-ai') {
       return [
-        "Ready to master DevOps & AI? 🚀",
-        "Let's build intelligent deployment pipelines today 🤖",
-        "Your DevOps & AI journey continues! ⚙️",
-        "Time to automate with AI and DevOps! ⚡",
-        "Become a DevOps & AI expert! 🎯"
+        "Ready to master DevOps & AI?",
+        "Build smarter deployment pipelines today",
+        "Your DevOps & AI journey continues",
+        "Automate with confidence"
       ];
     } else if (courseType === 'devops-cloud') {
       return [
-        "Ready to master DevOps & Cloud? ☁️",
-        "Let's build scalable cloud infrastructure today 🌩️",
-        "Your DevOps & Cloud journey continues! ⚙️",
-        "Time to deploy to the cloud! ⚡",
-        "Become a cloud DevOps expert! 🎯"
+        "Ready to master DevOps & Cloud?",
+        "Build scalable cloud infrastructure today",
+        "Your DevOps & Cloud journey continues",
+        "Ship reliably to the cloud"
       ];
     } else {
       return [
-        "Ready to start your learning journey? 🚀",
-        "Let's explore new topics today 📚",
-        "Your learning journey continues! 🎯",
-        "Time to master new skills! ⚡",
-        "Become an expert in your field! 🔥"
+        "Ready to continue your learning journey?",
+        "Explore today's classroom materials",
+        "Your learning journey continues",
+        "Keep building new skills",
+        "Become an expert in your field"
       ];
     }
   }, []);
 
   const calculateStreak = useCallback(() => {
-    // This would normally come from user data/progress tracking
-    // For now, return a random streak between 1-30
-    return Math.floor(Math.random() * 30) + 1;
-  }, []);
+    return realTimeStats?.streak?.current || 0;
+  }, [realTimeStats]);
 
   // API integration function to load real-time stats
   const loadRealTimeStats = useCallback(async () => {
@@ -676,8 +673,7 @@ const Dashboard = ({ user, onLogout }) => {
         throw new Error('No authentication token found');
       }
 
-      // Use the same API base URL pattern as other functions in the component
-      const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000/api' : '/api';
+      const apiUrl = getApiBaseUrl() + '/api';
       const response = await fetch(`${apiUrl}/student/progress-summary`, {
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -687,7 +683,6 @@ const Dashboard = ({ user, onLogout }) => {
 
       if (!response.ok) {
         if (response.status === 401) {
-          // Token expired, logout user
           onLogout();
           return;
         }
@@ -696,41 +691,26 @@ const Dashboard = ({ user, onLogout }) => {
 
       const data = await response.json();
       setRealTimeStats(data);
-      console.log('✅ Real-time stats loaded:', data);
+      setProgressPercent(data.overallProgress || 0);
+      setViewedFiles(Array.from({ length: data.videos?.watched || 0 }, (_, i) => `watched-${i}`));
     } catch (error) {
       console.error('❌ Error loading real-time stats:', error);
       setStatsError(error.message);
-      
-      // Use actual real-time data from the component instead of hardcoded values
-      // Use base course data since courseData isn't available yet
-      const isDataScienceCourse = user?.currentCourse?.toLowerCase().includes('data science');
-      const baseModules = isDataScienceCourse ? 10 : 10; // Both courses have 10 modules
-      
-      const actualData = {
-        modules: { 
-          total: baseModules, 
-          completed: Math.floor((progressPercent / 100) * baseModules), 
-          inProgress: Math.min(baseModules - Math.floor((progressPercent / 100) * baseModules), 2)
+      setRealTimeStats({
+        modules: { total: 0, completed: 0, inProgress: 0 },
+        videos: {
+          total: classroomVideos.length,
+          watched: 0,
+          progressPercentage: 0
         },
-        videos: { 
-          total: classroomVideos.length, 
-          watched: viewedFiles.length, 
-          progressPercentage: progressPercent 
-        },
-        streak: { 
-          current: calculateStreak(), 
-          longest: calculateStreak(), // Use same for now 
-          lastLoginDate: new Date().toISOString().split('T')[0] 
-        },
-        overallProgress: progressPercent
-      };
-      
-      setRealTimeStats(actualData);
-      console.log('🔄 Using actual component data:', actualData);
+        streak: { current: 0, longest: 0, lastLoginDate: null },
+        overallProgress: 0
+      });
+      setProgressPercent(0);
     } finally {
       setLoadingStats(false);
     }
-  }, [onLogout]);
+  }, [onLogout, classroomVideos.length]);
 
   // Card click handler
   const handleCardClick = useCallback((cardType) => {
@@ -757,7 +737,7 @@ const Dashboard = ({ user, onLogout }) => {
 
   // Navigation helper functions
   const getNavIndicatorPosition = useCallback(() => {
-    const buttonOrder = ['overview', 'classroom', 'analytics', 'profile'];
+    const buttonOrder = ['overview', 'classroom', 'progress', 'profile'];
     let leftPosition = 0;
     
     for (let i = 0; i < buttonOrder.length; i++) {
@@ -935,41 +915,43 @@ const Dashboard = ({ user, onLogout }) => {
     return 'data-science';
   }, [user?.currentCourse]);
 
-  // Load user's progress from localStorage and initialize if new
+  // Load user's progress from batch video views (server-backed)
   const loadUserProgress = useCallback(async () => {
     try {
-      const coursePrefix = getCourseSlug();
-      const storedHistory = localStorage.getItem(`${coursePrefix}_videoWatchHistory`);
-      const storedViewed = localStorage.getItem(`${coursePrefix}_viewedFiles`);
-      
-      if (storedHistory) {
-        setVideoWatchHistory(JSON.parse(storedHistory));
-      } else {
-        setVideoWatchHistory([]);
-      }
-      
-      if (storedViewed) {
-        setViewedFiles(JSON.parse(storedViewed));
-      } else {
+      const token = localStorage.getItem('token');
+      if (!token) {
         setViewedFiles([]);
+        setVideoWatchHistory([]);
+        setProgressPercent(0);
+        return;
       }
-    } catch (e) {
-      console.error('Error loading user progress from local storage:', e);
+      const response = await fetch(`${getApiBaseUrl()}/api/student/progress-summary`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (!response.ok) {
+        setViewedFiles([]);
+        setVideoWatchHistory([]);
+        return;
+      }
+      const data = await response.json();
+      setProgressPercent(data.overallProgress || 0);
+      setViewedFiles(Array.from({ length: data.videos?.watched || 0 }, (_, i) => `watched-${i}`));
+      setRealTimeStats(data);
+      // Keep local watch history for resume; do not wipe on load
+    } catch (err) {
+      console.error('Error loading progress:', err);
       setViewedFiles([]);
-      setVideoWatchHistory([]);
     }
-  }, [getCourseSlug]);
+  }, []);
 
-  // Update video progress tracking (local + persisted)
+  // Update video progress tracking (local resume + refresh server %)
   const updateVideoProgress = async (videoId, progress, position) => {
     const coursePrefix = getCourseSlug();
     setVideoWatchHistory(prevHistory => {
       const videoHistory = prevHistory || [];
-      const exists = videoHistory.some(record => record.videoId === videoId);
-      let updatedHistory;
-      
-      if (exists) {
-        updatedHistory = videoHistory.map(record => {
+      const existing = videoHistory.find(record => record.videoId === videoId);
+      if (existing) {
+        return videoHistory.map(record => {
           if (record.videoId === videoId) {
             return {
               ...record,
@@ -981,38 +963,17 @@ const Dashboard = ({ user, onLogout }) => {
           }
           return record;
         });
-      } else {
-        updatedHistory = [
-          ...videoHistory,
-          {
-            videoId,
-            watchProgress: progress,
-            lastWatchedPosition: position,
-            lastWatchedAt: new Date().toISOString(),
-            isCompleted: progress >= 95
-          }
-        ];
       }
-      
-      localStorage.setItem(`${coursePrefix}_videoWatchHistory`, JSON.stringify(updatedHistory));
-      
-      // Also mark as viewed file if progress started
-      setViewedFiles(prevViewed => {
-        if (!prevViewed.includes(videoId)) {
-          const updatedViewed = [...prevViewed, videoId];
-          localStorage.setItem(`${coursePrefix}_viewedFiles`, JSON.stringify(updatedViewed));
-          return updatedViewed;
+      return [
+        ...videoHistory,
+        {
+          videoId,
+          watchProgress: progress,
+          lastWatchedPosition: position,
+          lastWatchedAt: new Date().toISOString(),
+          isCompleted: progress >= 95
         }
-        return prevViewed;
-      });
-
-      // Store the exact last played video info to resume it
-      const currentVideo = classroomVideos.find(v => v.id === videoId);
-      if (currentVideo) {
-        localStorage.setItem(`${coursePrefix}_lastPlayedVideo`, JSON.stringify(currentVideo));
-      }
-
-      return updatedHistory;
+      ];
     });
   };
 
@@ -1077,7 +1038,7 @@ const Dashboard = ({ user, onLogout }) => {
   const handleDownloadNotes = async (video) => {
     try {
       const token = localStorage.getItem('token');
-      const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
+      const apiUrl = getApiBaseUrl();
       
       // Create download progress indicator
       const downloadButton = document.querySelector(`[title*="Download ${video.notesFileName || 'notes'} for ${video.title}"]`);
@@ -1201,13 +1162,13 @@ const Dashboard = ({ user, onLogout }) => {
     }
   };
 
-  // Calculate progress percentage
+  // Calculate progress percentage from batch recordings
   const calculateProgress = useCallback(() => {
-    if (!courseContent || !courseContent.totalFiles) return 0;
-    const totalFiles = courseContent.totalFiles;
-    const viewed = viewedFiles.length;
-    return Math.round((viewed / totalFiles) * 100);
-  }, [courseContent, viewedFiles]);
+    const total = realTimeStats?.videos?.total ?? classroomVideos.length;
+    const watched = realTimeStats?.videos?.watched ?? viewedFiles.length;
+    if (!total) return 0;
+    return Math.min(100, Math.round((watched / total) * 100));
+  }, [realTimeStats, classroomVideos.length, viewedFiles.length]);
 
   // Update progress when viewedFiles or courseContent changes
   useEffect(() => {
@@ -1219,7 +1180,7 @@ const Dashboard = ({ user, onLogout }) => {
   const loadClassroomVideos = useCallback(async () => {
     try {
       const token = localStorage.getItem('token');
-      const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
+      const apiUrl = getApiBaseUrl();
 
       const response = await fetch(`${apiUrl}/api/dashboard/classroom`, {
         headers: {
@@ -1281,7 +1242,7 @@ const Dashboard = ({ user, onLogout }) => {
   const loadBatches = useCallback(async () => {
     try {
       const token = localStorage.getItem('token');
-      const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
+      const apiUrl = getApiBaseUrl();
       
       const response = await fetch(`${apiUrl}/api/batches`, {
         headers: {
@@ -1306,7 +1267,7 @@ const Dashboard = ({ user, onLogout }) => {
       const token = localStorage.getItem('token');
       if (!token) return;
 
-      const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
+      const apiUrl = getApiBaseUrl();
       const response = await fetch(`${apiUrl}/api/student/batch-info`, {
         headers: {
           'Authorization': `Bearer ${token}`
@@ -1386,12 +1347,9 @@ const Dashboard = ({ user, onLogout }) => {
       }
     };
 
-    if (user?.currentCourse) {
-      loadInitialData();
-    } else {
-      setLoading(false);
-    }
-  }, [user?.currentCourse, loadClassroomVideos, loadBatches, loadBatchInfo]);
+    // Always load classroom/batch data — many learners have `course`/`batchId` without currentCourse
+    loadInitialData();
+  }, [user?.id, user?.batchId, user?.course, user?.currentCourse, loadClassroomVideos, loadBatches, loadBatchInfo]);
 
   // Load video enhancements when videos are loaded
   useEffect(() => {
@@ -1431,7 +1389,7 @@ const Dashboard = ({ user, onLogout }) => {
   const loadCourseContent = useCallback(async () => {
     const slug = getCourseSlug();
     try {
-      const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000/api' : '/api';
+      const apiUrl = getApiBaseUrl() + '/api';
       const response = await fetch(`${apiUrl}/content/${slug}`);
       const data = await response.json();
       if (data && data.success) {
@@ -2493,6 +2451,13 @@ const Dashboard = ({ user, onLogout }) => {
                     <span className="schedule-label">Schedules (EST / CST / PST):</span>
                     <span className="schedule-time">{batchInfo.schedule?.days} @ {batchInfo.schedule?.time}</span>
                   </div>
+                </div>
+              )}
+
+              {!batchInfo && (
+                <div className="sky-empty-panel">
+                  <h3>No batch assigned yet</h3>
+                  <p>Once you are assigned to a batch, recordings and schedule details will appear here.</p>
                 </div>
               )}
 

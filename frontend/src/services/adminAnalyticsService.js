@@ -1,8 +1,7 @@
 import axios from 'axios';
+import { getApiBaseUrl } from '../utils/apiBase';
 
-const API_BASE_URL = window.location.hostname === 'localhost' 
-  ? 'http://localhost:5000' 
-  : process.env.REACT_APP_API_URL || '';
+const API_BASE_URL = getApiBaseUrl();
 
 // Retry utility with exponential backoff
 const retryRequest = async (fn, maxRetries = 3, delay = 1000) => {
@@ -139,8 +138,8 @@ export const adminAnalyticsService = {
    */
   downloadStudentReport: async (studentId, params = {}) => {
     try {
-      const response = await api.get(`/api/admin/activity/${studentId}/csv`, { 
-        params,
+      const response = await api.get(`/api/admin/activity/${studentId}`, { 
+        params: { ...params, export: 'csv' },
         responseType: 'blob'
       });
       return response.data;

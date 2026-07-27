@@ -9,33 +9,42 @@ async function createAdminAccount() {
 
     await connectMongo();
 
-    // Check if admin already exists
-    const existingAdmin = await User.findOne({ email: 'admin@sheflms.com' }).exec();
+    const ADMIN_EMAIL = 'support@skystates.us';
+    const ADMIN_NAME = 'Upendra';
+    const ADMIN_PASSWORD = 'SuperAdmin@123';
+
+    // Prefer canonical admin email; also migrate legacy admin@sheflms.com
+    let existingAdmin =
+      (await User.findOne({ email: ADMIN_EMAIL }).exec()) ||
+      (await User.findOne({ email: 'admin@sheflms.com' }).exec());
 
     if (existingAdmin) {
-      console.log('⚠️ Admin account already exists. Updating to active status in MongoDB...');
+      console.log('⚠️ Admin account already exists. Updating details in MongoDB...');
+      existingAdmin.name = ADMIN_NAME;
+      existingAdmin.email = ADMIN_EMAIL;
       existingAdmin.role = 'admin';
       existingAdmin.status = 'active';
       existingAdmin.updatedAt = new Date();
 
       // Ensure super admin uses the requested password
-      const hashedPassword = await bcrypt.hash('SuperAdmin@123', 10);
+      const hashedPassword = await bcrypt.hash(ADMIN_PASSWORD, 10);
       existingAdmin.password = hashedPassword;
 
       await existingAdmin.save();
       console.log('✅ Admin account updated successfully!');
-      console.log('   Email: admin@sheflms.com');
+      console.log(`   Name: ${ADMIN_NAME}`);
+      console.log(`   Email: ${ADMIN_EMAIL}`);
       console.log('   Status: Active');
-      console.log('   Password: SuperAdmin@123');
+      console.log(`   Password: ${ADMIN_PASSWORD}`);
       return;
     }
 
     // Create new admin account
-    const hashedPassword = await bcrypt.hash('SuperAdmin@123', 10);
+    const hashedPassword = await bcrypt.hash(ADMIN_PASSWORD, 10);
 
     const adminData = {
-      name: 'System Administrator',
-      email: 'admin@sheflms.com',
+      name: ADMIN_NAME,
+      email: ADMIN_EMAIL,
       password: hashedPassword,
       role: 'admin',
       status: 'active',
@@ -51,8 +60,9 @@ async function createAdminAccount() {
     const saved = await adminUser.save();
 
     console.log('✅ Admin account created successfully!');
-    console.log('   Email: admin@sheflms.com');
-    console.log('   Password: SuperAdmin@123');
+    console.log(`   Name: ${ADMIN_NAME}`);
+    console.log(`   Email: ${ADMIN_EMAIL}`);
+    console.log(`   Password: ${ADMIN_PASSWORD}`);
     console.log('   ID: ' + saved._id.toString());
     console.log('\n⚠️ IMPORTANT: Please change the default password after first login!');
     console.log('🔗 Login URL: http://localhost:3000/login');

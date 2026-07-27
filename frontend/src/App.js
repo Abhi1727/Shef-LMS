@@ -10,12 +10,10 @@ import './App.css';
 
 // Lazy load heavy dashboard components for better performance
 const Dashboard = lazy(() => import('./components/Dashboard'));
-const MentorDashboard = lazy(() => import('./components/MentorDashboard'));
 const TeacherDashboard = lazy(() => import('./components/TeacherDashboard'));
 const AdminDashboard = lazy(() => import('./components/AdminDashboard'));
 const BatchDetailsPage = lazy(() => import('./components/BatchDetailsPage'));
 const TeacherBatchDetailsPage = lazy(() => import('./components/TeacherBatchDetailsPage'));
-const BatchDetail = lazy(() => import('./components/BatchDetail'));
 const OneToOneBatchManagement = lazy(() => import('./components/OneToOneBatchManagement'));
 const StudentAnalyticsDashboard = lazy(() => import('./components/StudentAnalyticsDashboard'));
 const ResourcesHome = lazy(() => import('./components/ResourcesHome'));
@@ -87,6 +85,7 @@ function App() {
     
     return () => {
       tokenService.stopTokenValidation();
+      tokenService.clearAxiosInterceptor();
     };
   }, []);
 
@@ -175,6 +174,7 @@ const setupTokenMonitoring = () => {
     setUser(null);
     setSessionWarning(null);
     tokenService.stopTokenValidation();
+    tokenService.clearAxiosInterceptor();
     
     // Clear all caches on logout
     cacheManager.clearAllCaches();
@@ -184,6 +184,13 @@ const setupTokenMonitoring = () => {
     
     // Show alert to user (in production, you might want a nicer notification)
     alert(`Session expired: ${reason}. Please login again.`);
+  };
+
+  // Role-aware home redirect (teachers must never bounce via /mentor)
+  const homeForRole = (role) => {
+    if (role === 'admin') return '/admin';
+    if (role === 'teacher' || role === 'mentor') return '/teacher';
+    return '/dashboard';
   };
 
   const handleLogin = (token, userData) => {
@@ -215,6 +222,7 @@ const setupTokenMonitoring = () => {
     setUser(null);
     setSessionWarning(null);
     tokenService.stopTokenValidation();
+    tokenService.clearAxiosInterceptor();
     
     // Clear all caches on logout
     cacheManager.clearAllCaches();
@@ -266,13 +274,7 @@ const setupTokenMonitoring = () => {
             element={
               !isAuthenticated ? 
               <Login onLogin={handleLogin} /> :
-              user?.role === 'admin' ? 
-              <Navigate to="/admin" replace /> : 
-              user?.role === 'mentor' ?
-              <Navigate to="/mentor" replace /> :
-              user?.role === 'teacher' ?
-              <Navigate to="/teacher" replace /> :
-              <Navigate to="/dashboard" replace />
+              <Navigate to={homeForRole(user?.role)} replace />
             } 
           />
           <Route 
@@ -283,9 +285,7 @@ const setupTokenMonitoring = () => {
                 <Dashboard user={user} onLogout={handleLogout} /> : 
                 !isAuthenticated ?
                 <Navigate to="/login" replace /> :
-                user?.role === 'admin' ?
-                <Navigate to="/admin" replace /> :
-                <Navigate to="/mentor" replace />}
+                <Navigate to={homeForRole(user?.role)} replace />}
               </Suspense>
             } 
           />
@@ -303,13 +303,10 @@ const setupTokenMonitoring = () => {
             path="/mentor" 
             element={
               <Suspense fallback={<LoadingSpinner />}>
-                {isAuthenticated && user?.role === 'mentor' ? 
-                <MentorDashboard user={user} onLogout={handleLogout} /> : 
-                !isAuthenticated ?
+                {!isAuthenticated ?
                 <Navigate to="/login" replace /> :
-                user?.role === 'admin' ?
-                <Navigate to="/admin" replace /> :
-                <Navigate to="/dashboard" replace />}
+                // Mentors are remapped to teacher; keep /mentor as alias to teacher home
+                <Navigate to={homeForRole(user?.role === 'mentor' ? 'teacher' : user?.role)} replace />}
               </Suspense>
             } 
           />
@@ -321,11 +318,7 @@ const setupTokenMonitoring = () => {
                 <TeacherDashboard user={user} onLogout={handleLogout} /> : 
                 !isAuthenticated ?
                 <Navigate to="/login" replace /> :
-                user?.role === 'admin' ?
-                <Navigate to="/admin" replace /> :
-                user?.role === 'mentor' ?
-                <Navigate to="/mentor" replace /> :
-                <Navigate to="/dashboard" replace />}
+                <Navigate to={homeForRole(user?.role)} replace />}
               </Suspense>
             } 
           />
@@ -337,11 +330,7 @@ const setupTokenMonitoring = () => {
                 <TeacherBatchDetailsPage /> : 
                 !isAuthenticated ?
                 <Navigate to="/login" replace /> :
-                user?.role === 'admin' ?
-                <Navigate to="/admin" replace /> :
-                user?.role === 'mentor' ?
-                <Navigate to="/mentor" replace /> :
-                <Navigate to="/dashboard" replace />}
+                <Navigate to={homeForRole(user?.role)} replace />}
               </Suspense>
             } 
           />
@@ -353,9 +342,7 @@ const setupTokenMonitoring = () => {
                 <AdminDashboard user={user} onLogout={handleLogout} /> : 
                 !isAuthenticated ?
                 <Navigate to="/login" replace /> :
-                user?.role === 'mentor' ?
-                <Navigate to="/mentor" replace /> :
-                <Navigate to="/dashboard" replace />}
+                <Navigate to={homeForRole(user?.role)} replace />}
               </Suspense>
             } 
           />
@@ -367,9 +354,7 @@ const setupTokenMonitoring = () => {
                 <BatchDetailsPage /> : 
                 !isAuthenticated ?
                 <Navigate to="/login" replace /> :
-                user?.role === 'mentor' ?
-                <Navigate to="/mentor" replace /> :
-                <Navigate to="/dashboard" replace />}
+                <Navigate to={homeForRole(user?.role)} replace />}
               </Suspense>
             } 
           />
@@ -381,9 +366,7 @@ const setupTokenMonitoring = () => {
                 <OneToOneBatchManagement /> : 
                 !isAuthenticated ?
                 <Navigate to="/login" replace /> :
-                user?.role === 'mentor' ?
-                <Navigate to="/mentor" replace /> :
-                <Navigate to="/dashboard" replace />}
+                <Navigate to={homeForRole(user?.role)} replace />}
               </Suspense>
             } 
           />
@@ -415,11 +398,7 @@ const setupTokenMonitoring = () => {
                 <StudentAnalyticsDashboard /> : 
                 !isAuthenticated ?
                 <Navigate to="/login" replace /> :
-                user?.role === 'admin' ?
-                <Navigate to="/admin" replace /> :
-                user?.role === 'mentor' ?
-                <Navigate to="/mentor" replace /> :
-                <Navigate to="/teacher" replace />}
+                <Navigate to={homeForRole(user?.role)} replace />}
               </Suspense>
             } 
           />
@@ -428,16 +407,7 @@ const setupTokenMonitoring = () => {
             element={
               !isAuthenticated ? 
               <Navigate to="/login" replace /> :
-              user?.role === 'admin' ? 
-              <Navigate to="/admin" replace /> : 
-              user?.role === 'mentor' ?
-              <Navigate to="/mentor" replace /> :
-              user?.role === 'teacher' ?
-              <Navigate to="/teacher" replace /> :
-              (() => {
-                console.log('🔍 Root route - Unknown role, redirecting to dashboard:', user?.role);
-                return <Navigate to="/dashboard" replace />;
-              })()
+              <Navigate to={homeForRole(user?.role)} replace />
             } 
           />
         </Routes>

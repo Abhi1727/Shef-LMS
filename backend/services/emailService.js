@@ -281,8 +281,36 @@ const testEmailConfig = async () => {
   }
 };
 
+/**
+ * Send a single transactional email (OTP, password notices, etc.)
+ */
+const sendTransactionalEmail = async ({ to, subject, text, html }) => {
+  if (!to || !subject || (!text && !html)) {
+    throw new Error('Missing required fields: to, subject, and text/html');
+  }
+
+  const transporter = createTransporter();
+  await transporter.verify();
+
+  const senderEmail = process.env.EMAIL_FROM || process.env.EMAIL_USER || 'demo@learnwithus.sbs';
+  const info = await transporter.sendMail({
+    from: `"Sky States LMS" <${senderEmail}>`,
+    to,
+    subject,
+    text: text || undefined,
+    html: html || undefined,
+    headers: {
+      'X-Email-Type': 'transactional',
+      'X-Priority': '1'
+    }
+  });
+
+  return { success: true, messageId: info.messageId };
+};
+
 module.exports = {
   sendEmail,
+  sendTransactionalEmail,
   testEmailConfig,
   validateEmails
 };

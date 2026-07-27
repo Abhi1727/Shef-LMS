@@ -1,8 +1,4 @@
-const getApiBaseUrl = () => {
-  const env = process.env.REACT_APP_API_URL;
-  if (env && String(env).trim()) return String(env).replace(/\/$/, '');
-  return window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
-};
+import { getApiBaseUrl } from '../utils/apiBase';
 
 const API_BASE_URL = getApiBaseUrl();
 // Try admin path first; fallback to standalone path if 404 (handles different deployment setups)
