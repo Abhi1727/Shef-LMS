@@ -455,6 +455,18 @@ const CustomVideoPlayer = ({ video, onClose, resumePosition = 0, onProgressUpdat
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
+  const handleMouseMove = () => {
+    setShowControls(true);
+    if (isPlaying) {
+      if (controlsTimeoutRef.current) {
+        clearTimeout(controlsTimeoutRef.current);
+      }
+      controlsTimeoutRef.current = setTimeout(() => {
+        setShowControls(false);
+      }, 3000);
+    }
+  };
+
   return (
     <div
       ref={containerRef}
