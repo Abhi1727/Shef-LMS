@@ -450,6 +450,103 @@ export default function ResourcesHome({ user, onLogout }) {
                 </div>
             )}
 
+            {/* Module notebooks for Data Science & AI */}
+            {(() => {
+                const notebooks = filteredResources.filter((r) => r.resourceType === 'notebook');
+                if (!notebooks.length) return null;
+                return (
+                    <div style={{ marginTop: '36px', marginBottom: '40px' }}>
+                        <h3 style={{ fontSize: '18px', fontWeight: '600', marginBottom: '8px', color: '#F0F6FC' }}>
+                            Course notebooks
+                        </h3>
+                        <p style={{ fontSize: '13px', color: '#8B949E', margin: '0 0 16px' }}>
+                            Download Jupyter notebooks for your Data Science &amp; AI modules. Open them in Jupyter, VS Code, or Google Colab.
+                        </p>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '14px' }}>
+                            {notebooks.map((nb) => (
+                                <div
+                                    key={nb._id || nb.slug}
+                                    className="res-glass-card"
+                                    style={{ padding: '18px', display: 'flex', flexDirection: 'column', gap: '10px', minHeight: '140px' }}
+                                >
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: '8px' }}>
+                                        <span style={{ fontSize: '11px', color: '#818CF8', fontWeight: 700, textTransform: 'uppercase' }}>
+                                            Notebook
+                                        </span>
+                                        <span style={{ fontSize: '11px', color: '#8B949E' }}>
+                                            {(nb.categorySlug || '').replace(/^ds-module-/, 'M')}
+                                        </span>
+                                    </div>
+                                    <h4 style={{ margin: 0, fontSize: '14px', fontWeight: 650, color: '#F0F6FC', lineHeight: 1.35 }}>
+                                        {nb.title}
+                                    </h4>
+                                    {nb.description ? (
+                                        <p style={{ margin: 0, fontSize: '12px', color: '#8B949E', lineHeight: 1.4 }}>
+                                            {nb.description.length > 110 ? `${nb.description.slice(0, 110)}…` : nb.description}
+                                        </p>
+                                    ) : null}
+                                    <div style={{ marginTop: 'auto', display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                                        <a
+                                            href={`/api/resources/download/${encodeURIComponent(nb.slug)}?token=${encodeURIComponent(token || '')}`}
+                                            onClick={async (e) => {
+                                                e.preventDefault();
+                                                try {
+                                                    const res = await axios.get(`/api/resources/download/${encodeURIComponent(nb.slug)}`, {
+                                                        headers: { Authorization: `Bearer ${token}` },
+                                                        responseType: 'blob'
+                                                    });
+                                                    const blobUrl = window.URL.createObjectURL(new Blob([res.data]));
+                                                    const link = document.createElement('a');
+                                                    link.href = blobUrl;
+                                                    link.download = nb.content?.fileName || `${nb.slug}.ipynb`;
+                                                    document.body.appendChild(link);
+                                                    link.click();
+                                                    link.remove();
+                                                    window.URL.revokeObjectURL(blobUrl);
+                                                } catch (err) {
+                                                    console.error('Notebook download failed', err);
+                                                    window.alert('Could not download this notebook. Please try again or contact support.');
+                                                }
+                                            }}
+                                            style={{
+                                                background: 'var(--res-accent-primary, #6366F1)',
+                                                color: '#fff',
+                                                textDecoration: 'none',
+                                                padding: '8px 12px',
+                                                borderRadius: '6px',
+                                                fontSize: '12px',
+                                                fontWeight: 700,
+                                                cursor: 'pointer'
+                                            }}
+                                        >
+                                            Download .ipynb
+                                        </a>
+                                        {nb.content?.colabUrl ? (
+                                            <a
+                                                href={nb.content.colabUrl}
+                                                target="_blank"
+                                                rel="noreferrer"
+                                                style={{
+                                                    border: '1px solid rgba(255,255,255,0.12)',
+                                                    color: '#F0F6FC',
+                                                    textDecoration: 'none',
+                                                    padding: '8px 12px',
+                                                    borderRadius: '6px',
+                                                    fontSize: '12px',
+                                                    fontWeight: 600
+                                                }}
+                                            >
+                                                Open in Colab
+                                            </a>
+                                        ) : null}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                );
+            })()}
+
             {/* Embedded interactive tool boards/explorers */}
             <ToolkitExplorer 
                 universe={activeUniverse} 

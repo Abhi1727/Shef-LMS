@@ -10,6 +10,7 @@ services:
       - .env
     environment:
       - NODE_OPTIONS=--dns-result-order=ipv4first
+      - CONTENT_ROOT=/app/content
       - MONGODB_USERNAME=${MONGODB_USERNAME}
       - MONGODB_PASSWORD=${MONGODB_PASSWORD}
       - MONGODB_CLUSTER=${MONGODB_CLUSTER}
@@ -20,6 +21,7 @@ services:
     volumes:
       - ./logs:/app/logs
       - ./.env:/app/.env:ro
+      - ../content:/app/content:ro
     restart: unless-stopped
     network_mode: host
 

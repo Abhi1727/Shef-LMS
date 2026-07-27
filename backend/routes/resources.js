@@ -9,6 +9,8 @@ const OneToOneBatch = require('../models/OneToOneBatch');
 const Resource = require('../models/Resource');
 const ResourceCategory = require('../models/ResourceCategory');
 const logger = require('../utils/logger');
+const path = require('path');
+const { resolveContentFile } = require('../utils/contentPaths');
 
 // Middleware to ensure database is connected
 const checkDB = async (req, res, next) => {
@@ -172,6 +174,60 @@ router.get('/', auth, async (req, res) => {
     } catch (err) {
         logger.error('Error fetching resources', { error: err.message });
         res.status(500).send('Server Error');
+    }
+});
+
+// @route   GET /api/resources/download/:slug
+// @desc    Authenticated download for notebook/file resources under content/
+// @access  Private
+router.get('/download/:slug', auth, async (req, res) => {
+    try {
+        const user = await User.findById(req.user.id);
+        if (!user) {
+            return res.status(404).json({ message: 'User not found' });
+        }
+
+        const resource = await Resource.findOne({ slug: req.params.slug, status: 'published' }).exec();
+        if (!resource) {
+            return res.status(404).json({ message: 'Resource not found' });
+        }
+
+        const bypassCheck = ['admin', 'teacher', 'instructor', 'mentor'].includes(user.role);
+        if (!bypassCheck) {
+            const batchId = user.batchId ? String(user.batchId) : '';
+            const o2oId = user.oneToOneBatchId ? String(user.oneToOneBatchId) : '';
+            const assignedBatch = (resource.assignedBatches || []).some((id) => String(id) === batchId);
+            const assignedO2O = (resource.assignedOneToOneBatches || []).some((id) => String(id) === o2oId);
+
+            let resourcesEnabled = false;
+            if (batchId) {
+                const batch = await Batch.findById(batchId).lean();
+                resourcesEnabled = !!(batch && batch.resourcesEnabled);
+            }
+            if (!resourcesEnabled && o2oId) {
+                const o2o = await OneToOneBatch.findById(o2oId).lean();
+                resourcesEnabled = !!(o2o && o2o.resourcesEnabled);
+            }
+
+            if (!resourcesEnabled || (!assignedBatch && !assignedO2O)) {
+                return res.status(403).json({ message: 'You do not have access to this resource' });
+            }
+        }
+
+        const relativePath = resource.content?.fileUrl;
+        const absolute = resolveContentFile(relativePath);
+        if (!absolute) {
+            return res.status(404).json({ message: 'Resource file missing on server' });
+        }
+
+        resource.downloads = (resource.downloads || 0) + 1;
+        await resource.save();
+
+        const downloadName = resource.content?.fileName || path.basename(absolute);
+        return res.download(absolute, downloadName);
+    } catch (err) {
+        logger.error('Error downloading resource', { error: err.message });
+        return res.status(500).json({ message: 'Failed to download resource' });
     }
 });
 

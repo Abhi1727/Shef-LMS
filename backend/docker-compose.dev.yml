@@ -12,11 +12,13 @@ services:
       - NODE_ENV=development
       - PORT=5001
       - NODE_OPTIONS=--dns-result-order=ipv4first
+      - CONTENT_ROOT=/app/content
     dns:
       - 8.8.8.8
       - 8.8.4.4
     volumes:
       - ./logs:/app/logs
       - ./.env.dev:/app/.env:ro
+      - ../content:/app/content:ro
     restart: unless-stopped
     network_mode: host

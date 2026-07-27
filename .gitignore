@@ -23,16 +23,23 @@ dist/
 .cache/
 coverage/
 
-# Local MongoDB data (do not commit)
+# Local MongoDB / dumps
 backend/mongo-data/
 mongo-dump/
+*.dump
+*.archive
 
 # Backup files (may contain secrets)
 *.backup
 *.bak
 
-# Markdown files
-*.md
-
-# Bin folder
+# Scratch / one-off local work
+scratch/
 bin/
+
+# Jupyter
+.ipynb_checkpoints/
+**/.ipynb_checkpoints/
+
+# OS / editor
+Thumbs.db

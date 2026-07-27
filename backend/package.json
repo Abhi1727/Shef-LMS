@@ -18,7 +18,9 @@
     "sync:batches": "node scripts/syncBatchIds.js",
     "sync:firestore": "node scripts/auditAndSyncFromFirestore.js",
     "clone:prod-to-dev": "node scripts/cloneProdToDev.js",
-    "clone:dev-to-prod": "node scripts/cloneDevToProd.js"
+    "clone:dev-to-prod": "node scripts/cloneDevToProd.js",
+    "seed:ds-notebooks": "node scripts/seed-ds-notebooks.js",
+    "seed:ds-notebooks:dev": "ENV_PATH=.env.dev node scripts/seed-ds-notebooks.js"
   },
   "keywords": [
     "lms",
