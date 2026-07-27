@@ -75,10 +75,23 @@ export default function ResourcesHome({ user, onLogout }) {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
-    const universeCategories = useMemo(
-        () => (categories || []).filter((c) => c.course === activeUniverse || c.course === 'both'),
-        [categories, activeUniverse]
-    );
+    const universeCategories = useMemo(() => {
+        const list = (categories || []).filter((c) => c.course === activeUniverse || c.course === 'both');
+        const byKey = new Map();
+        list.forEach((cat) => {
+            const moduleMatch = String(cat.name || '').match(/module\s*(\d+)/i);
+            const key = moduleMatch ? `module-${moduleMatch[1]}` : (cat.slug || cat.name || '').toLowerCase();
+            const existing = byKey.get(key);
+            if (!existing) {
+                byKey.set(key, cat);
+                return;
+            }
+            // Prefer Drive-linked category when duplicate module rows exist
+            const preferNew = !!cat.driveFolderUrl && !existing.driveFolderUrl;
+            if (preferNew) byKey.set(key, cat);
+        });
+        return Array.from(byKey.values()).sort((a, b) => (a.displayOrder || 0) - (b.displayOrder || 0) || String(a.name).localeCompare(String(b.name)));
+    }, [categories, activeUniverse]);
 
     const filteredResources = useMemo(() => {
         return (resources || []).filter((res) => {
