@@ -212,8 +212,15 @@ async function main() {
         existing.categorySlug = payload.categorySlug;
         existing.resourceType = payload.resourceType;
         existing.description = payload.description;
+        existing.difficulty = payload.difficulty;
+        existing.estimatedMinutes = payload.estimatedMinutes;
         existing.tags = payload.tags;
-        existing.content = { ...(existing.content || {}), ...payload.content };
+        // Set nested fields directly — spreading a Mongoose subdoc can
+        // introduce installationGuide: undefined and fail Object cast.
+        existing.set('content.fileUrl', payload.content.fileUrl);
+        existing.set('content.fileName', payload.content.fileName);
+        existing.set('content.fileSizeBytes', payload.content.fileSizeBytes);
+        existing.set('content.fileFormat', payload.content.fileFormat);
         existing.assignedBatches = dsBatchIds;
         existing.assignedOneToOneBatches = dsO2OIds;
         existing.status = 'published';
