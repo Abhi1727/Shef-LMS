@@ -6211,6 +6211,9 @@ body.dark-mode .welcome-title span {
   padding: 30px;
   box-shadow: 0 8px 30px rgba(102, 126, 234, 0.08);
   margin-bottom: 30px;
+  width: 100%;
+  max-width: none;
+  box-sizing: border-box;
 }
 
 .dashboard-section h2 {
@@ -10637,9 +10640,10 @@ body.dark-mode .welcome-title span {
 /* Modern Batch Grid */
 .batches-grid-modern {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
   gap: 24px;
   margin-bottom: 30px;
+  width: 100%;
 }
 
 .batch-card-modern {
@@ -10649,6 +10653,8 @@ body.dark-mode .welcome-title span {
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
   transition: all 0.3s ease;
   overflow: hidden;
+  width: 100%;
+  min-width: 0;
 }
 
 .batch-card-modern:hover {

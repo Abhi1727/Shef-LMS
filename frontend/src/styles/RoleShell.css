@@ -22,8 +22,10 @@
   align-items: center;
   justify-content: space-between;
   gap: 1rem;
-  padding: 0.75rem 1.5rem;
+  padding: 0.75rem 1.75rem;
   min-height: 64px;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .ss-shell-brand {
@@ -221,11 +223,13 @@
   display: flex;
   align-items: center;
   gap: 0.25rem;
-  padding: 0 1.5rem 0.65rem;
+  padding: 0 1.75rem 0.65rem;
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
   flex-wrap: wrap;
   row-gap: 0.35rem;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .ss-shell-nav__btn {
@@ -258,9 +262,11 @@
 }
 
 .ss-shell-main {
-  max-width: 1280px;
-  margin: 0 auto;
-  padding: 1.5rem 1.5rem 3rem;
+  max-width: none;
+  width: 100%;
+  margin: 0;
+  padding: 1.5rem 1.75rem 3rem;
+  box-sizing: border-box;
 }
 
 .ss-page-title {

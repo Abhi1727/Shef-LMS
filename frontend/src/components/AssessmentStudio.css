@@ -1,12 +1,14 @@
 /* Assessment Studio Styles */
 
 .studio-container {
-  padding: 24px;
-  max-width: 1400px;
-  margin: 0 auto;
+  padding: 8px 0 24px;
+  max-width: none;
+  width: 100%;
+  margin: 0;
   font-family: 'Outfit', 'Inter', sans-serif;
   color: #1e293b;
-  min-height: 100vh;
+  min-height: auto;
+  box-sizing: border-box;
 }
 
 /* Glassmorphic Header Card */
