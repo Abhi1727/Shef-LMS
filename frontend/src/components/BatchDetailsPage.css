@@ -1,21 +1,17 @@
 /* Teacher Batch Details Page Styles - Scoped to prevent conflicts */
 .teacher-batch-details-page,
 .batch-details-page {
-  height: 100vh;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  padding: 12px;
-  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  min-height: 100vh;
+  height: auto;
+  background: #f4f6f7;
+  padding: 0;
+  font-family: 'Manrope', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
+  overflow: visible;
 }
 
-  overflow: hidden;
-  padding: 20px 24px 18px;
-  background: rgba(255, 255, 255, 0.95);
-  border-radius: 16px;
-  /* Enhanced Notes Section Styles */
-  .enhanced-notes-section {
+.enhanced-notes-section {
     background: rgba(255, 255, 255, 0.95);
     border-radius: 16px;
     padding: 16px;
@@ -5254,4 +5250,190 @@ body.modal-open {
   gap: 10px;
   padding: 12px 20px 18px;
   border-top: 1px solid #e8eef1;
+}
+
+
+/* ========== FULL-WIDTH teacher lecture workspace (final overrides) ========== */
+.sky-batch-page.teacher-batch-details-page {
+  width: 100%;
+  max-width: none;
+  min-height: 100vh;
+  height: auto !important;
+  overflow: visible !important;
+  padding: 0 !important;
+  background:
+    radial-gradient(900px 420px at 100% 0%, rgba(20, 122, 122, 0.07), transparent 55%),
+    #f4f6f7 !important;
+}
+
+.sky-batch-page.teacher-batch-details-page .sky-batch-header,
+.sky-batch-page.teacher-batch-details-page .sky-batch-tabs {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.sky-batch-page.teacher-batch-details-page .batch-content,
+.sky-batch-page.teacher-batch-details-page .main-content {
+  width: 100% !important;
+  max-width: none !important;
+  margin: 0 !important;
+  height: auto !important;
+  max-height: none !important;
+  min-height: 0 !important;
+  overflow: visible !important;
+  flex: 1 1 auto !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+  border-radius: 0 !important;
+  padding: 0 !important;
+}
+
+.sky-batch-page.teacher-batch-details-page .videos-view.sky-lectures {
+  width: 100%;
+  max-width: none;
+  min-height: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 20px 28px 48px;
+  box-sizing: border-box;
+}
+
+.sky-batch-page .sky-lectures-header.videos-header {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  width: 100%;
+  margin: 0;
+  padding: 14px 16px;
+  background: #fff;
+  border: 1px solid #d5dee3;
+  border-radius: 12px;
+  box-sizing: border-box;
+}
+
+.sky-batch-page .sky-lectures-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  margin-left: auto;
+}
+
+.sky-batch-page .sky-lectures .video-search {
+  min-width: min(320px, 70vw);
+  width: 280px;
+  max-width: 100%;
+  height: 40px;
+  border: 1px solid #d5dee3;
+  border-radius: 8px;
+  padding: 0 12px;
+  background: #fff;
+}
+
+.sky-batch-page .sky-batch-notes-bar {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+/* Full-width lecture rows — uses entire screen, no left-side orphan card */
+.sky-batch-page .sky-lecture-grid.video-grid,
+.sky-batch-page.teacher-batch-details-page .sky-lecture-grid.video-grid,
+.teacher-batch-details-page .sky-lecture-grid.video-grid {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 14px !important;
+  width: 100% !important;
+  max-width: none !important;
+  grid-template-columns: none !important;
+  overflow: visible !important;
+  flex: none !important;
+  min-height: 0 !important;
+}
+
+.sky-batch-page .sky-lecture-card.video-card,
+.teacher-batch-details-page .sky-lecture-card.video-card {
+  display: grid !important;
+  grid-template-columns: minmax(180px, 260px) minmax(0, 1fr);
+  width: 100% !important;
+  max-width: none !important;
+  min-height: 0 !important;
+  margin: 0 !important;
+  cursor: default;
+  overflow: hidden;
+  border: 1px solid #d5dee3;
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: none;
+}
+
+.sky-batch-page .sky-lecture-thumb {
+  width: 100%;
+  height: 100%;
+  min-height: 140px;
+  aspect-ratio: auto;
+  align-self: stretch;
+}
+
+.sky-batch-page .sky-lecture-body.video-right {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 16px 18px;
+  min-width: 0;
+}
+
+.sky-batch-page .sky-lecture-title.video-title {
+  -webkit-line-clamp: 2;
+  font-size: 1.05rem;
+}
+
+.sky-batch-page .sky-lecture-actions.video-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 0;
+  margin-top: auto;
+}
+
+.sky-batch-page .sky-lectures-empty {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+@media (max-width: 768px) {
+  .sky-batch-page.teacher-batch-details-page .videos-view.sky-lectures {
+    padding: 14px 14px 40px;
+  }
+
+  .sky-batch-page .sky-lecture-card.video-card,
+  .teacher-batch-details-page .sky-lecture-card.video-card {
+    grid-template-columns: 1fr !important;
+  }
+
+  .sky-batch-page .sky-lecture-thumb {
+    min-height: 0;
+    aspect-ratio: 16 / 9;
+  }
+
+  .sky-batch-page .sky-lectures .video-search {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .sky-batch-page .sky-lectures-controls {
+    width: 100%;
+    margin-left: 0;
+  }
+
+  .sky-batch-page .sky-lectures-controls .sky-btn {
+    flex: 1;
+  }
 }
