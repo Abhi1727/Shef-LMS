@@ -315,6 +315,7 @@ const CustomVideoPlayer = ({ video, onClose, resumePosition = 0, onProgressUpdat
           controls: 0,
           disablekb: 1,
           enablejsapi: 1,
+          fs: 0,
           iv_load_policy: 3,
           modestbranding: 1,
           rel: 0,
@@ -606,11 +607,23 @@ const CustomVideoPlayer = ({ video, onClose, resumePosition = 0, onProgressUpdat
           )}
 
           {youtubeVideoUrl && (
-            <div
-              ref={youtubeContainerRef}
-              className="youtube-video-player"
-              style={{ width: '100%', height: '100%', backgroundColor: '#000' }}
-            />
+            <>
+              <div
+                ref={youtubeContainerRef}
+                className="youtube-video-player"
+                style={{ width: '100%', height: '100%', backgroundColor: '#000' }}
+                aria-hidden="true"
+              />
+              {/* Blocks YouTube logo/title/link clicks — playback only via LMS controls */}
+              <div
+                className="youtube-click-shield"
+                onClick={togglePlay}
+                onDoubleClick={handleFullscreen}
+                onContextMenu={(e) => e.preventDefault()}
+                role="presentation"
+                title="Use player controls to watch"
+              />
+            </>
           )}
 
           <div className={`video-controls ${showControls ? 'visible' : 'hidden'}`}>

@@ -65,7 +65,7 @@
   background: #000;
 }
 
-/* YouTube Video Player */
+/* YouTube Video Player — clicks disabled; LMS controls only */
 .youtube-video-player {
   position: absolute;
   inset: 0;
@@ -73,6 +73,7 @@
   height: 100%;
   border: none;
   background: #000;
+  pointer-events: none !important;
 }
 
 .youtube-video-player iframe {
@@ -83,6 +84,16 @@
   max-width: none !important;
   max-height: none !important;
   border: 0 !important;
+  pointer-events: none !important;
+}
+
+.youtube-click-shield {
+  position: absolute;
+  inset: 0;
+  z-index: 6;
+  background: transparent;
+  cursor: pointer;
+  pointer-events: auto;
 }
 
 /* Header */
@@ -97,7 +108,7 @@
   top: 0;
   left: 0;
   right: 0;
-  z-index: 10;
+  z-index: 12;
 }
 
 .video-header::before {
@@ -388,6 +399,7 @@
   bottom: 0;
   left: 0;
   right: 0;
+  z-index: 12;
   background: linear-gradient(to top, rgba(0,0,0,0.9), transparent);
   padding: 2rem;
   transition: opacity 0.3s ease;
@@ -400,6 +412,7 @@
 
 .video-controls.visible {
   opacity: 1;
+  pointer-events: auto;
 }
 
 .controls-row {
