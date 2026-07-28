@@ -1014,6 +1014,9 @@
   border-bottom: 1px solid var(--outline-border);
   background-color: rgba(12, 19, 36, 0.4);
   backdrop-filter: blur(10px);
+  overflow: visible;
+  position: relative;
+  z-index: 50;
 }
 
 .aetherial-theme .sidebar-toggle {
@@ -1106,6 +1109,9 @@
   display: flex;
   align-items: center;
   gap: 16px;
+  position: relative;
+  z-index: 60;
+  overflow: visible;
 }
 
 .aetherial-theme .streak-badge {

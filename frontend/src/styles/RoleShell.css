@@ -177,6 +177,14 @@
   z-index: 200;
 }
 
+/* Portaled menu escapes dashboard overflow / glass stacking contexts */
+.ss-account__menu--portal {
+  position: fixed;
+  z-index: 12000;
+  top: auto;
+  right: auto;
+}
+
 .ss-account__menu button {
   display: block;
   width: 100%;
@@ -320,7 +328,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 1000;
+  z-index: 13000;
   padding: 1rem;
 }
 
