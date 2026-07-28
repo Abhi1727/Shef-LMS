@@ -1703,3 +1703,121 @@ html {
     padding: 16px;
   }
 }
+
+
+/* Candidate Activity professional enhancements */
+.sa-eyebrow {
+  margin: 0 0 6px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #64748b;
+}
+
+.sa-user-link {
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  font-weight: 650;
+  color: #0f4c81;
+  cursor: pointer;
+  text-align: left;
+}
+
+.sa-user-link:hover {
+  text-decoration: underline;
+  color: #0b3d4a;
+}
+
+.sa-candidate-summary {
+  background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+  color: #f8fafc;
+  border-radius: 14px;
+  padding: 18px;
+  margin-bottom: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.sa-candidate-identity {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.sa-candidate-avatar {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: #38bdf8;
+  color: #0f172a;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 800;
+  font-size: 1.1rem;
+  flex-shrink: 0;
+}
+
+.sa-candidate-identity h4 {
+  margin: 0 0 2px;
+  font-size: 1.05rem;
+}
+
+.sa-candidate-identity p {
+  margin: 0 0 6px;
+  color: #94a3b8;
+  font-size: 0.85rem;
+}
+
+.sa-candidate-kpis {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(90px, 1fr));
+  gap: 10px;
+}
+
+.sa-candidate-kpis div {
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 10px;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.sa-candidate-kpis strong {
+  font-size: 1.15rem;
+}
+
+.sa-candidate-kpis span {
+  font-size: 0.72rem;
+  color: #94a3b8;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.sa-candidate-meta {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px;
+}
+
+.sa-candidate-meta label {
+  display: block;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #94a3b8;
+  margin-bottom: 2px;
+}
+
+.sa-candidate-meta span {
+  font-size: 0.85rem;
+  color: #e2e8f0;
+  word-break: break-word;
+}

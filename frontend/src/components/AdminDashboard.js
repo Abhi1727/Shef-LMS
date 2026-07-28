@@ -2994,7 +2994,7 @@ const AdminDashboard = ({ user, onLogout }) => {
   const adminNavItems = [
     { id: 'overview', label: 'Overview' },
     { id: 'students', label: 'Students' },
-    { id: 'studentsActivity', label: 'Activity' },
+    { id: 'studentsActivity', label: 'Candidate Activity' },
     { id: 'batches', label: 'Batches' },
     { id: 'oneToOne', label: 'One-to-One' },
     { id: 'classroom', label: 'Classroom' },
@@ -3006,7 +3006,6 @@ const AdminDashboard = ({ user, onLogout }) => {
     { id: 'jobs', label: 'Jobs' },
     { id: 'mentors', label: 'Mentors' },
     { id: 'content', label: 'Content' },
-    { id: 'activity', label: 'Activity Log' },
     { id: 'account', label: 'My Account' }
   ];
 
@@ -4202,74 +4201,12 @@ const AdminDashboard = ({ user, onLogout }) => {
             </div>
           )}
 
-          {/* Students Activity Section - Full dedicated component */}
-          {activeSection === 'studentsActivity' && (
+          {/* Candidate Activity — single professional monitor (replaces Activity + Activity Log) */}
+          {(activeSection === 'studentsActivity' || activeSection === 'activity') && (
             <div className="admin-section students-activity-section">
               <StudentsActivity token={typeof localStorage !== 'undefined' ? localStorage.getItem('token') : null} />
             </div>
           )}
-
-          {/* Activity Section */}
-          {activeSection === 'activity' && (
-            <div className="admin-section">
-              <div className="section-header">
-                <h2>📋 Activity Log</h2>
-                <button onClick={() => refreshData('activity')} className="btn-add" disabled={dataLoading.activity}>
-                  {dataLoading.activity ? '⏳ Loading…' : '🔄 Refresh'}
-                </button>
-              </div>
-              <p className="section-description">
-                Login activity from all users (students, teachers, mentors, admins). Shows IP, location, and ISP.
-              </p>
-              <div className="data-table-container">
-                {dataLoading.activity ? (
-                  <p className="no-data">Loading activity…</p>
-                ) : activities.length === 0 ? (
-                  <p className="no-data">No activity recorded yet. Logins will appear here.</p>
-                ) : (
-                  <table className="data-table">
-                    <thead>
-                      <tr>
-                        <th>Time</th>
-                        <th>User</th>
-                        <th>Role</th>
-                        <th>Action</th>
-                        <th>IP</th>
-                        <th>Location</th>
-                        <th>ISP</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {activities.map((a, i) => (
-                        <tr key={i}>
-                          <td>{new Date(a.timestamp).toLocaleString()}</td>
-                          <td>
-                            <span className="activity-user">{a.userName}</span>
-                            <br />
-                            <small className="activity-email">{a.userEmail}</small>
-                          </td>
-                          <td>
-                            <span className={`role-badge role-${a.userRole}`}>{a.userRole}</span>
-                          </td>
-                          <td>
-                            {a.action === 'video_view' && a.videoTitle
-                              ? `📹 ${a.videoTitle}`
-                              : a.action === 'assessment_submit' && a.assessmentTitle
-                                ? `✏️ ${a.assessmentTitle}${a.score != null ? ` (${a.score})` : ''}`
-                                : a.action}
-                          </td>
-                          <td><span className="ip-address">{a.ipAddress || '—'}</span></td>
-                          <td>{[a.city, a.country].filter(Boolean).join(', ') || '—'}</td>
-                          <td>{a.isp || '—'}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                )}
-              </div>
-            </div>
-          )}
-
 
           {activeSection === 'account' && (
             <div className="admin-section">

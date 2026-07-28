@@ -10,10 +10,13 @@ const API_BASE = window.location.hostname === 'localhost' ? 'http://localhost:50
 
 const ACTION_LABELS = {
   login: { icon: '🔐', label: 'Login', color: '#10b981' },
-  video_view: { icon: '📹', label: 'Video View', color: '#3b82f6' },
-  assessment_submit: { icon: '✏️', label: 'Assessment Submit', color: '#8b5cf6' },
-  page_view: { icon: '📄', label: 'Page View', color: '#6b7280' },
-  logout: { icon: '🚪', label: 'Logout', color: '#ef4444' }
+  logout: { icon: '🚪', label: 'Logout', color: '#ef4444' },
+  video_view: { icon: '📹', label: 'Lecture watched', color: '#3b82f6' },
+  assessment_submit: { icon: '✏️', label: 'Assessment submitted', color: '#8b5cf6' },
+  page_view: { icon: '📄', label: 'Page view', color: '#6b7280' },
+  password_change: { icon: '🔑', label: 'Password changed', color: '#f59e0b' },
+  password_reset: { icon: '🔄', label: 'Password reset', color: '#f97316' },
+  resource_download: { icon: '📥', label: 'Resource download', color: '#06b6d4' }
 };
 
 const ROLE_LABELS = {
@@ -35,6 +38,8 @@ const StudentsActivity = ({ token: tokenProp }) => {
     role: 'student',
     action: '',
     search: '',
+    startDate: '',
+    endDate: '',
     limit: 200
   });
   const [autoRefresh, setAutoRefresh] = useState(false);
@@ -106,6 +111,14 @@ const StudentsActivity = ({ token: tokenProp }) => {
   }, [selectedUser, userFilters.action, userFilters.startDate, userFilters.endDate, userFilters.limit, userFilters.page]);
 
   const filteredActivities = activities.filter(a => {
+    if (filters.startDate) {
+      const start = new Date(`${filters.startDate}T00:00:00`);
+      if (new Date(a.timestamp) < start) return false;
+    }
+    if (filters.endDate) {
+      const end = new Date(`${filters.endDate}T23:59:59`);
+      if (new Date(a.timestamp) > end) return false;
+    }
     if (!filters.search.trim()) return true;
     const s = filters.search.toLowerCase();
     return (
@@ -114,21 +127,68 @@ const StudentsActivity = ({ token: tokenProp }) => {
       (a.ipAddress || '').includes(s) ||
       (a.city || '').toLowerCase().includes(s) ||
       (a.country || '').toLowerCase().includes(s) ||
-      (a.videoTitle || '').toLowerCase().includes(s)
+      (a.videoTitle || '').toLowerCase().includes(s) ||
+      (a.assessmentTitle || '').toLowerCase().includes(s) ||
+      (a.action || '').toLowerCase().includes(s)
     );
   });
+
+  const candidateSummary = React.useMemo(() => {
+    const list = userActivities || [];
+    if (!list.length) {
+      return {
+        lastLogin: null,
+        lastSeen: null,
+        logins: 0,
+        videos: 0,
+        assessments: 0,
+        passwordEvents: 0,
+        locations: [],
+        ips: []
+      };
+    }
+    const logins = list.filter((a) => a.action === 'login');
+    const videos = list.filter((a) => a.action === 'video_view');
+    const assessments = list.filter((a) => a.action === 'assessment_submit');
+    const passwordEvents = list.filter((a) => a.action === 'password_change' || a.action === 'password_reset');
+    const ips = [...new Set(list.map((a) => a.ipAddress).filter(Boolean))];
+    const locations = [...new Set(
+      list.map((a) => [a.city, a.country].filter(Boolean).join(', ')).filter(Boolean)
+    )];
+    const sorted = [...list].sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+    const lastLogin = [...logins].sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))[0] || null;
+    return {
+      lastLogin,
+      lastSeen: sorted[0] || null,
+      logins: logins.length,
+      videos: videos.length,
+      assessments: assessments.length,
+      passwordEvents: passwordEvents.length,
+      locations: locations.slice(0, 8),
+      ips: ips.slice(0, 8)
+    };
+  }, [userActivities]);
 
   const stats = React.useMemo(() => {
     const now = new Date();
     const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+    const weekStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 6).getTime();
     const loginsToday = activities.filter(a => a.action === 'login' && new Date(a.timestamp).getTime() >= todayStart).length;
     const videoViews = activities.filter(a => a.action === 'video_view').length;
-    const uniqueUsers = new Set(activities.map(a => a.userEmail)).size;
+    const assessments = activities.filter(a => a.action === 'assessment_submit').length;
+    const uniqueUsers = new Set(activities.map(a => a.userId || a.userEmail).filter(Boolean)).size;
+    const activeThisWeek = new Set(
+      activities
+        .filter(a => new Date(a.timestamp).getTime() >= weekStart)
+        .map(a => a.userId || a.userEmail)
+        .filter(Boolean)
+    ).size;
+    const uniqueIps = new Set(activities.map(a => a.ipAddress).filter(Boolean)).size;
     const byAction = activities.reduce((acc, a) => {
       acc[a.action] = (acc[a.action] || 0) + 1;
       return acc;
     }, {});
-    return { loginsToday, videoViews, uniqueUsers, byAction };
+    return { loginsToday, videoViews, assessments, uniqueUsers, activeThisWeek, uniqueIps, byAction };
   }, [activities]);
 
   // Process activity data for graph visualization
@@ -388,8 +448,12 @@ const StudentsActivity = ({ token: tokenProp }) => {
   return (
     <div className="students-activity-page">
       <div className="sa-header">
-        <h1>📊 Activity</h1>
-        <p className="sa-subtitle">Logins, video views, assessments. Default: students. Use role filter for teachers/admins.</p>
+        <p className="sa-eyebrow">Monitoring</p>
+        <h1>Candidate Activity</h1>
+        <p className="sa-subtitle">
+          One place to monitor candidate logins, lecture views, assessments, password events, and locations.
+          Click a candidate name to open their full activity dossier.
+        </p>
       </div>
 
       {/* Stats Cards */}
@@ -402,24 +466,38 @@ const StudentsActivity = ({ token: tokenProp }) => {
           </div>
         </div>
         <div className="sa-stat-card">
-          <span className="sa-stat-icon">�</span>
+          <span className="sa-stat-icon">👤</span>
           <div>
-            <span className="sa-stat-value">{stats.videoViews}</span>
-            <span className="sa-stat-label">Video views</span>
+            <span className="sa-stat-value">{stats.activeThisWeek}</span>
+            <span className="sa-stat-label">Active candidates (7d)</span>
           </div>
         </div>
         <div className="sa-stat-card">
-          <span className="sa-stat-icon">👥</span>
+          <span className="sa-stat-icon">📹</span>
           <div>
-            <span className="sa-stat-value">{stats.uniqueUsers}</span>
-            <span className="sa-stat-label">Unique users</span>
+            <span className="sa-stat-value">{stats.videoViews}</span>
+            <span className="sa-stat-label">Lecture views</span>
+          </div>
+        </div>
+        <div className="sa-stat-card">
+          <span className="sa-stat-icon">✏️</span>
+          <div>
+            <span className="sa-stat-value">{stats.assessments}</span>
+            <span className="sa-stat-label">Assessments</span>
+          </div>
+        </div>
+        <div className="sa-stat-card">
+          <span className="sa-stat-icon">🌐</span>
+          <div>
+            <span className="sa-stat-value">{stats.uniqueIps}</span>
+            <span className="sa-stat-label">Unique IPs</span>
           </div>
         </div>
         <div className="sa-stat-card">
           <span className="sa-stat-icon">📋</span>
           <div>
             <span className="sa-stat-value">{total}</span>
-            <span className="sa-stat-label">Total events</span>
+            <span className="sa-stat-label">Events loaded</span>
           </div>
         </div>
       </div>
@@ -444,11 +522,27 @@ const StudentsActivity = ({ token: tokenProp }) => {
           >
             <option value="">All actions</option>
             <option value="login">Login</option>
-            <option value="video_view">Video view</option>
-            <option value="assessment_submit">Assessment submit</option>
-            <option value="page_view">Page view</option>
             <option value="logout">Logout</option>
+            <option value="video_view">Lecture view</option>
+            <option value="assessment_submit">Assessment submit</option>
+            <option value="password_change">Password change</option>
+            <option value="password_reset">Password reset</option>
+            <option value="page_view">Page view</option>
           </select>
+          <input
+            type="date"
+            value={filters.startDate}
+            onChange={(e) => setFilters(f => ({ ...f, startDate: e.target.value }))}
+            className="sa-select"
+            title="From date"
+          />
+          <input
+            type="date"
+            value={filters.endDate}
+            onChange={(e) => setFilters(f => ({ ...f, endDate: e.target.value }))}
+            className="sa-select"
+            title="To date"
+          />
           <select
             value={filters.limit}
             onChange={(e) => setFilters(f => ({ ...f, limit: Number(e.target.value) }))}
@@ -477,7 +571,7 @@ const StudentsActivity = ({ token: tokenProp }) => {
             Auto-refresh (30s)
           </label>
           <button onClick={() => openUserModal()} className="sa-btn sa-btn-secondary">
-            👤 User Activity
+            👤 Inspect candidate
           </button>
           <button onClick={fetchActivities} disabled={loading} className="sa-btn sa-btn-secondary">
             🔄 Refresh
@@ -825,7 +919,24 @@ const StudentsActivity = ({ token: tokenProp }) => {
                         <td className="sa-time">{formatDateTimeDisplay(a.timestamp)}</td>
                         <td className="sa-user-cell">
                           <div className="sa-user-info">
-                            <div className="sa-user-name">{a.userName || 'Unknown'}</div>
+                            <button
+                              type="button"
+                              className="sa-user-name sa-user-link"
+                              title="Inspect candidate activity"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (a.userId) {
+                                  openUserModal({
+                                    id: a.userId,
+                                    name: a.userName,
+                                    email: a.userEmail,
+                                    role: a.userRole
+                                  });
+                                }
+                              }}
+                            >
+                              {a.userName || 'Unknown'}
+                            </button>
                             <div className="sa-user-email">{a.userEmail || '—'}</div>
                             <span className="sa-role" style={{ background: `${roleStyle.color}22`, color: roleStyle.color }}>
                               {roleStyle.label}
@@ -908,7 +1019,7 @@ const StudentsActivity = ({ token: tokenProp }) => {
             aria-labelledby="modal-title"
           >
             <div className="sa-modal-header">
-              <h3 id="modal-title">👤 Individual User Activity</h3>
+              <h3 id="modal-title">Candidate activity dossier</h3>
               <button 
                 onClick={closeUserModal} 
                 className="sa-modal-close"
@@ -921,7 +1032,7 @@ const StudentsActivity = ({ token: tokenProp }) => {
             <div className="sa-modal-body">
               {!selectedUser ? (
                 <div className="sa-user-search">
-                  <h4>Search for a user</h4>
+                  <h4>Find a candidate</h4>
                   <input
                     type="text"
                     placeholder="Type name, email, or enrollment number..."
@@ -963,7 +1074,47 @@ const StudentsActivity = ({ token: tokenProp }) => {
                   )}
                 </div>
               ) : (
-                <div className="sa-user-activity">
+                                <div className="sa-user-activity">
+                  <div className="sa-candidate-summary">
+                    <div className="sa-candidate-identity">
+                      <div className="sa-candidate-avatar">
+                        {(selectedUser.name || selectedUser.email || 'C').charAt(0).toUpperCase()}
+                      </div>
+                      <div>
+                        <h4>{selectedUser.name || 'Candidate'}</h4>
+                        <p>{selectedUser.email || '—'}</p>
+                        <span className="sa-role" style={{ background: '#3b82f622', color: '#3b82f6' }}>
+                          {selectedUser.role || 'student'}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="sa-candidate-kpis">
+                      <div><strong>{candidateSummary.logins}</strong><span>Logins</span></div>
+                      <div><strong>{candidateSummary.videos}</strong><span>Lectures</span></div>
+                      <div><strong>{candidateSummary.assessments}</strong><span>Assessments</span></div>
+                      <div><strong>{candidateSummary.passwordEvents}</strong><span>Password events</span></div>
+                      <div><strong>{candidateSummary.ips.length}</strong><span>IPs</span></div>
+                      <div><strong>{candidateSummary.locations.length}</strong><span>Locations</span></div>
+                    </div>
+                    <div className="sa-candidate-meta">
+                      <div>
+                        <label>Last login</label>
+                        <span>{candidateSummary.lastLogin ? formatDateTimeDisplay(candidateSummary.lastLogin.timestamp) : '—'}</span>
+                      </div>
+                      <div>
+                        <label>Last activity</label>
+                        <span>{candidateSummary.lastSeen ? formatDateTimeDisplay(candidateSummary.lastSeen.timestamp) : '—'}</span>
+                      </div>
+                      <div>
+                        <label>Recent locations</label>
+                        <span>{candidateSummary.locations.join(' · ') || '—'}</span>
+                      </div>
+                      <div>
+                        <label>Recent IPs</label>
+                        <span>{candidateSummary.ips.join(' · ') || '—'}</span>
+                      </div>
+                    </div>
+                  </div>
                   <div className="sa-user-header">
                     <div className="sa-user-details">
                       <h4>{selectedUser.name}</h4>
