@@ -1003,7 +1003,7 @@ const StudentsActivity = ({ token: tokenProp }) => {
             aria-labelledby="modal-title"
           >
             <div className="sa-modal-header">
-              <h3 id="modal-title">Candidate activity dossier</h3>
+              <h3 id="modal-title">Candidate dossier</h3>
               <button 
                 onClick={closeUserModal} 
                 className="sa-modal-close"
@@ -1098,32 +1098,10 @@ const StudentsActivity = ({ token: tokenProp }) => {
                         <span>{candidateSummary.ips.join(' · ') || '—'}</span>
                       </div>
                     </div>
-                  </div>
-                  <div className="sa-user-header">
-                    <div className="sa-user-details">
-                      <h4>{selectedUser.name}</h4>
-                      <p>{selectedUser.email} • {selectedUser.role}</p>
-                      {selectedUser.course && <span className="sa-user-course">Course: {selectedUser.course}</span>}
-                    </div>
-                    <div className="sa-user-actions">
-                      <button 
-                        onClick={() => handleUserExport('csv')}
-                        className="sa-btn sa-btn-primary"
-                      >
-                        📥 Export CSV
-                      </button>
-                      <button 
-                        onClick={() => handleUserExport('json')}
-                        className="sa-btn sa-btn-secondary"
-                      >
-                        📄 Export JSON
-                      </button>
-                      <button 
-                        onClick={() => setSelectedUser(null)}
-                        className="sa-btn sa-btn-secondary"
-                      >
-                        ← Change User
-                      </button>
+                    <div className="sa-user-actions sa-user-actions--dossier">
+                      <button onClick={() => handleUserExport('csv')} className="sa-btn sa-btn-primary">Export CSV</button>
+                      <button onClick={() => handleUserExport('json')} className="sa-btn sa-btn-secondary">Export JSON</button>
+                      <button onClick={() => setSelectedUser(null)} className="sa-btn sa-btn-secondary">Change user</button>
                     </div>
                   </div>
 

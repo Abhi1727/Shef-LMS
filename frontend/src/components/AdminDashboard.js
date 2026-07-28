@@ -5925,138 +5925,198 @@ const AdminDashboard = ({ user, onLogout }) => {
         document.body
       )}
 
-      {/* Student Profile Full-Screen Modal */}
+      {/* Student Profile Dossier Modal */}
       {showStudentDetailsModal && createPortal(
         <div className="fullscreen-modal-overlay" onClick={() => setShowStudentDetailsModal(false)}>
           <div className="fullscreen-modal" onClick={(e) => e.stopPropagation()}>
-            {/* Modal Header */}
+            {(() => {
+              const s = selectedStudentDetails || {};
+              const batchLabel =
+                (batches || []).find((b) => String(b.id || b._id) === String(s.batchId))?.name ||
+                (oneToOneBatches || []).find((b) => String(b.id || b._id) === String(s.batchId))?.name ||
+                s.batchName ||
+                'No batch assigned';
+              const lastLoginAt = s.lastLogin?.timestamp
+                ? new Date(s.lastLogin.timestamp).toLocaleString()
+                : s.lastLoginTimestamp
+                  ? new Date(s.lastLoginTimestamp).toLocaleString()
+                  : 'Never';
+              const lastIp = s.lastLoginIP || s.lastLogin?.ipAddress || '—';
+              const lastLocation = [s.lastLogin?.city, s.lastLogin?.country].filter(Boolean).join(', ') || '—';
+              const joinedAt = s.createdAt || s.joinedAt || s.enrolledAt;
+              return (
+                <>
             <div className="fullscreen-modal-header">
-              <div className="student-header-info">
-                <div className="student-avatar">
-                  <span className="avatar-text">
-                    {selectedStudentDetails?.name?.charAt(0).toUpperCase() || 'S'}
-                  </span>
-                </div>
-                <div className="student-basic-info">
-                  <h2>{selectedStudentDetails?.name || 'Student Name'}</h2>
-                  <p className="student-email">{selectedStudentDetails?.email || 'N/A'}</p>
-                  <div className="student-badges">
-                    <span className={`badge ${selectedStudentDetails?.status || 'active'}`}>
-                      {selectedStudentDetails?.status || 'Active'}
-                    </span>
-                    <span className="badge">
-                      {selectedStudentDetails?.course || 'No Course'}
+              <div className="dossier-header-top">
+                <div className="student-header-info">
+                  <div className="student-avatar">
+                    <span className="avatar-text">
+                      {(s.name || 'S').charAt(0).toUpperCase()}
                     </span>
                   </div>
+                  <div className="student-basic-info">
+                    <p className="dossier-eyebrow">Candidate profile</p>
+                    <h2>{s.name || 'Student'}</h2>
+                    <p className="student-email">{s.email || '—'}</p>
+                    <div className="student-badges">
+                      <span className={`badge ${s.status || 'active'}`}>
+                        {s.status || 'Active'}
+                      </span>
+                      <span className="badge">{s.course || 'No course'}</span>
+                      <span className="badge">{batchLabel}</span>
+                    </div>
+                  </div>
+                </div>
+                <div className="modal-header-actions">
+                  {activeProfileTab === 'profile' && !editMode && (
+                    <button type="button" className="btn-edit-profile" onClick={handleEditProfile}>
+                      Edit profile
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    className="modal-close-fullscreen"
+                    onClick={() => setShowStudentDetailsModal(false)}
+                    aria-label="Close"
+                  >
+                    ×
+                  </button>
                 </div>
               </div>
-              <div className="header-tab-buttons">
+              <div className="header-tab-buttons dossier-tabs">
                 <button
+                  type="button"
                   className={`header-tab-btn ${activeProfileTab === 'profile' ? 'active' : ''}`}
                   onClick={() => setActiveProfileTab('profile')}
                 >
-                  👤 Profile
+                  Profile
                 </button>
                 <button
+                  type="button"
                   className={`header-tab-btn ${activeProfileTab === 'activity' ? 'active' : ''}`}
                   onClick={() => setActiveProfileTab('activity')}
                 >
-                  📊 Activity Log
-                </button>
-              </div>
-              <div className="modal-header-actions">
-                {activeProfileTab === 'profile' && !editMode && (
-                  <button className="btn-edit-profile" onClick={handleEditProfile}>
-                    ✏️ Edit Profile
-                  </button>
-                )}
-                <button className="modal-close-fullscreen" onClick={() => setShowStudentDetailsModal(false)}>
-                  ×
+                  Activity
                 </button>
               </div>
             </div>
 
-            {/* Modal Content */}
             <div className="fullscreen-modal-content">
-              {/* Profile Tab */}
               {activeProfileTab === 'profile' && (
                 <div className="profile-tab-content">
                   {!editMode ? (
-                    <div className="profile-dense-grid">
-                      <div className="profile-card profile-card-personal">
-                        <h3>📝 Personal Information</h3>
-                        <div className="profile-details compact-details">
-                          <div className="detail-item">
-                            <label>Full Name</label>
-                            <span>{selectedStudentDetails?.name || 'N/A'}</span>
-                          </div>
-                          <div className="detail-item">
-                            <label>Email Address</label>
-                            <span className="truncate-value">{selectedStudentDetails?.email || 'N/A'}</span>
-                          </div>
-                          <div className="detail-item">
-                            <label>Phone Number</label>
-                            <span>{selectedStudentDetails?.phone || 'N/A'}</span>
-                          </div>
-                          <div className="detail-item wide-detail">
-                            <label>Address</label>
-                            <span>{selectedStudentDetails?.address || 'N/A'}</span>
-                          </div>
+                    <>
+                      <div className="dossier-kpis">
+                        <div className="dossier-kpi">
+                          <strong>{batchLabel}</strong>
+                          <span>Batch</span>
+                        </div>
+                        <div className="dossier-kpi">
+                          <strong>{s.course || '—'}</strong>
+                          <span>Program</span>
+                        </div>
+                        <div className="dossier-kpi">
+                          <strong>{lastLoginAt}</strong>
+                          <span>Last login</span>
+                        </div>
+                        <div className="dossier-kpi">
+                          <strong>{lastIp}</strong>
+                          <span>Last IP</span>
                         </div>
                       </div>
 
-                      <div className="profile-card profile-card-academic">
-                        <h3>🎓 Academic Information</h3>
-                        <div className="profile-details compact-details">
-                          <div className="detail-item">
-                            <label>Course</label>
-                            <span>{selectedStudentDetails?.course || 'N/A'}</span>
-                          </div>
-                          <div className="detail-item">
-                            <label>Status</label>
-                            <span>
-                              <span className={`status-badge ${selectedStudentDetails?.status || 'inactive'}`}>
-                                {selectedStudentDetails?.status || 'N/A'}
-                              </span>
-                            </span>
-                          </div>
-                          <div className="detail-item">
-                            <label>Batch Name</label>
-                            <span>{selectedStudentDetails?.batchName || 'N/A'}</span>
-                          </div>
-                          <div className="detail-item">
-                            <label>Student ID</label>
-                            <span>{selectedStudentDetails?.id || 'N/A'}</span>
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="profile-card profile-card-login">
-                        <h3>📍 Login Activity</h3>
-                        {(selectedStudentDetails?.lastLogin || selectedStudentDetails?.lastLoginIP) ? (
+                      <div className="profile-dense-grid">
+                        <div className="profile-card profile-card-personal">
+                          <h3>Personal information</h3>
                           <div className="profile-details compact-details">
+                            <div className="detail-item">
+                              <label>Full name</label>
+                              <span>{s.name || '—'}</span>
+                            </div>
+                            <div className="detail-item">
+                              <label>Email</label>
+                              <span className="truncate-value">{s.email || '—'}</span>
+                            </div>
+                            <div className="detail-item">
+                              <label>Phone</label>
+                              <span>{s.phone || '—'}</span>
+                            </div>
+                            <div className="detail-item">
+                              <label>Enrollment no.</label>
+                              <span>{s.enrollmentNumber || '—'}</span>
+                            </div>
                             <div className="detail-item wide-detail">
-                              <label>Last Login</label>
-                              <span>{selectedStudentDetails?.lastLogin?.timestamp ? new Date(selectedStudentDetails.lastLogin.timestamp).toLocaleString() : selectedStudentDetails?.lastLoginTimestamp ? new Date(selectedStudentDetails.lastLoginTimestamp).toLocaleString() : 'Never'}</span>
-                            </div>
-                            <div className="detail-item">
-                              <label>Last IP</label>
-                              <span className="ip-address">{selectedStudentDetails?.lastLoginIP || selectedStudentDetails?.lastLogin?.ipAddress || 'N/A'}</span>
-                            </div>
-                            <div className="detail-item">
-                              <label>Location</label>
-                              <span>{[selectedStudentDetails?.lastLogin?.city, selectedStudentDetails?.lastLogin?.country].filter(Boolean).join(', ') || 'N/A'}</span>
+                              <label>Address</label>
+                              <span>{s.address || '—'}</span>
                             </div>
                           </div>
-                        ) : (
-                          <p className="no-activity">No login activity recorded yet.</p>
-                        )}
+                        </div>
+
+                        <div className="profile-card profile-card-academic">
+                          <h3>Academic information</h3>
+                          <div className="profile-details compact-details">
+                            <div className="detail-item">
+                              <label>Program</label>
+                              <span>{s.course || '—'}</span>
+                            </div>
+                            <div className="detail-item">
+                              <label>Status</label>
+                              <span>
+                                <span className={`dossier-status ${s.status || 'inactive'}`}>
+                                  {s.status || '—'}
+                                </span>
+                              </span>
+                            </div>
+                            <div className="detail-item">
+                              <label>Batch</label>
+                              <span>{batchLabel}</span>
+                            </div>
+                            <div className="detail-item">
+                              <label>Role</label>
+                              <span style={{ textTransform: 'capitalize' }}>{s.role || 'student'}</span>
+                            </div>
+                            <div className="detail-item">
+                              <label>Student ID</label>
+                              <span className="truncate-value">{s.id || s._id || '—'}</span>
+                            </div>
+                            <div className="detail-item">
+                              <label>Joined</label>
+                              <span>{joinedAt ? new Date(joinedAt).toLocaleDateString() : '—'}</span>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="profile-card profile-card-login">
+                          <h3>Login & location</h3>
+                          {(s.lastLogin || s.lastLoginIP || s.lastLoginTimestamp) ? (
+                            <div className="profile-details compact-details">
+                              <div className="detail-item">
+                                <label>Last login</label>
+                                <span>{lastLoginAt}</span>
+                              </div>
+                              <div className="detail-item">
+                                <label>IP address</label>
+                                <span className="ip-address">{lastIp}</span>
+                              </div>
+                              <div className="detail-item">
+                                <label>Location</label>
+                                <span>{lastLocation}</span>
+                              </div>
+                              <div className="detail-item">
+                                <label>ISP</label>
+                                <span>{s.lastLogin?.isp || '—'}</span>
+                              </div>
+                            </div>
+                          ) : (
+                            <p className="no-activity">No login activity recorded yet.</p>
+                          )}
+                        </div>
                       </div>
-                    </div>
+                    </>
                   ) : (
                     <div className="profile-grid">
                       <div className="profile-section">
-                        <h3>✏️ Edit Profile</h3>
+                        <h3>Edit profile</h3>
                         <form className="edit-profile-form" onSubmit={(e) => { e.preventDefault(); handleSaveProfile(); }}>
                           <div className="form-row">
                             <div className="form-group">
@@ -6129,8 +6189,8 @@ const AdminDashboard = ({ user, onLogout }) => {
                             </select>
                           </div>
                           <div className="form-actions">
-                            <button type="submit" className="btn-save">💾 Save Changes</button>
-                            <button type="button" className="btn-cancel" onClick={handleCancelEdit}>❌ Cancel</button>
+                            <button type="submit" className="btn-save">Save changes</button>
+                            <button type="button" className="btn-cancel" onClick={handleCancelEdit}>Cancel</button>
                           </div>
                         </form>
                       </div>
@@ -6633,6 +6693,9 @@ const AdminDashboard = ({ user, onLogout }) => {
                 </div>
               )}
             </div>
+                </>
+              );
+            })()}
           </div>
         </div>,
         document.body
@@ -6643,28 +6706,53 @@ const AdminDashboard = ({ user, onLogout }) => {
         <div className="fullscreen-modal-overlay" onClick={() => setShowTeacherDetailsModal(false)}>
           <div className="fullscreen-modal teacher-details-modal" onClick={(e) => e.stopPropagation()}>
             <div className="fullscreen-modal-header">
-              <div className="student-header-info">
-                <div className="student-avatar">
-                  <span className="avatar-text">
-                    {selectedTeacherDetails?.name?.charAt(0).toUpperCase() || 'T'}
-                  </span>
-                </div>
-                <div className="student-basic-info">
-                  <h2>{selectedTeacherDetails?.name || 'Teacher'}</h2>
-                  <p className="student-email">{selectedTeacherDetails?.email || 'N/A'}</p>
-                  <div className="student-badges">
-                    <span className={`badge ${selectedTeacherDetails?.status || 'active'}`}>
-                      {selectedTeacherDetails?.status || 'Active'}
-                    </span>
-                    <span className="badge">
-                      {(selectedTeacherDetails?.assignedCourses && selectedTeacherDetails.assignedCourses[0])
-                        || selectedTeacherDetails?.domain
-                        || 'No course'}
+              <div className="dossier-header-top">
+                <div className="student-header-info">
+                  <div className="student-avatar">
+                    <span className="avatar-text">
+                      {selectedTeacherDetails?.name?.charAt(0).toUpperCase() || 'T'}
                     </span>
                   </div>
+                  <div className="student-basic-info">
+                    <p className="dossier-eyebrow">Teacher profile</p>
+                    <h2>{selectedTeacherDetails?.name || 'Teacher'}</h2>
+                    <p className="student-email">{selectedTeacherDetails?.email || '—'}</p>
+                    <div className="student-badges">
+                      <span className={`badge ${selectedTeacherDetails?.status || 'active'}`}>
+                        {selectedTeacherDetails?.status || 'Active'}
+                      </span>
+                      <span className="badge">
+                        {(selectedTeacherDetails?.assignedCourses && selectedTeacherDetails.assignedCourses[0])
+                          || selectedTeacherDetails?.domain
+                          || 'No course'}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+                <div className="modal-header-actions">
+                  {selectedTeacherDetails?.id || selectedTeacherDetails?._id ? (
+                    <button
+                      type="button"
+                      className="btn-edit-profile"
+                      onClick={() => {
+                        setShowTeacherDetailsModal(false);
+                        openModal('teacher', selectedTeacherDetails);
+                      }}
+                    >
+                      Edit teacher
+                    </button>
+                  ) : null}
+                  <button
+                    type="button"
+                    className="modal-close-fullscreen"
+                    onClick={() => setShowTeacherDetailsModal(false)}
+                    aria-label="Close"
+                  >
+                    ×
+                  </button>
                 </div>
               </div>
-              <div className="header-tab-buttons">
+              <div className="header-tab-buttons dossier-tabs">
                 <button
                   type="button"
                   className={`header-tab-btn ${activeTeacherTab === 'profile' ? 'active' : ''}`}
@@ -6680,109 +6768,91 @@ const AdminDashboard = ({ user, onLogout }) => {
                   Batches ({teacherAssignedBatches.regular.length + teacherAssignedBatches.oneToOne.length})
                 </button>
               </div>
-              <div className="modal-header-actions">
-                {selectedTeacherDetails?.id || selectedTeacherDetails?._id ? (
-                  <button
-                    type="button"
-                    className="btn-edit-profile"
-                    onClick={() => {
-                      setShowTeacherDetailsModal(false);
-                      openModal('teacher', selectedTeacherDetails);
-                    }}
-                  >
-                    Edit Teacher
-                  </button>
-                ) : null}
-                <button
-                  type="button"
-                  className="modal-close-fullscreen"
-                  onClick={() => setShowTeacherDetailsModal(false)}
-                >
-                  ×
-                </button>
-              </div>
             </div>
 
             <div className="fullscreen-modal-content">
               {activeTeacherTab === 'profile' && (
                 <div className="profile-tab-content">
+                  <div className="dossier-kpis">
+                    <div className="dossier-kpi">
+                      <strong>{teacherAssignedBatches.regular.length}</strong>
+                      <span>Regular batches</span>
+                    </div>
+                    <div className="dossier-kpi">
+                      <strong>{teacherAssignedBatches.oneToOne.length}</strong>
+                      <span>One-to-one</span>
+                    </div>
+                    <div className="dossier-kpi">
+                      <strong>
+                        {[...teacherAssignedBatches.regular, ...teacherAssignedBatches.oneToOne]
+                          .reduce((sum, b) => sum + (b.studentCount || 0), 0)}
+                      </strong>
+                      <span>Students</span>
+                    </div>
+                    <div className="dossier-kpi">
+                      <strong>{selectedTeacherDetails?.experience || '—'}</strong>
+                      <span>Experience</span>
+                    </div>
+                  </div>
+
                   <div className="profile-dense-grid">
                     <div className="profile-card profile-card-personal">
-                      <h3>Personal Information</h3>
+                      <h3>Personal information</h3>
                       <div className="profile-details compact-details">
                         <div className="detail-item">
-                          <label>Full Name</label>
-                          <span>{selectedTeacherDetails?.name || 'N/A'}</span>
+                          <label>Full name</label>
+                          <span>{selectedTeacherDetails?.name || '—'}</span>
                         </div>
                         <div className="detail-item">
                           <label>Email</label>
-                          <span className="truncate-value">{selectedTeacherDetails?.email || 'N/A'}</span>
+                          <span className="truncate-value">{selectedTeacherDetails?.email || '—'}</span>
                         </div>
                         <div className="detail-item">
                           <label>Phone</label>
-                          <span>{selectedTeacherDetails?.phone || 'N/A'}</span>
+                          <span>{selectedTeacherDetails?.phone || '—'}</span>
                         </div>
                         <div className="detail-item">
                           <label>Age</label>
-                          <span>{selectedTeacherDetails?.age || 'N/A'}</span>
+                          <span>{selectedTeacherDetails?.age || '—'}</span>
                         </div>
                         <div className="detail-item wide-detail">
                           <label>Address</label>
-                          <span>{selectedTeacherDetails?.address || 'N/A'}</span>
+                          <span>{selectedTeacherDetails?.address || '—'}</span>
                         </div>
                       </div>
                     </div>
 
                     <div className="profile-card">
-                      <h3>Teaching Profile</h3>
+                      <h3>Teaching profile</h3>
                       <div className="profile-details compact-details">
                         <div className="detail-item">
                           <label>Domain</label>
-                          <span>{selectedTeacherDetails?.domain || 'N/A'}</span>
+                          <span>{selectedTeacherDetails?.domain || '—'}</span>
                         </div>
                         <div className="detail-item">
                           <label>Experience</label>
-                          <span>{selectedTeacherDetails?.experience || 'N/A'}</span>
+                          <span>{selectedTeacherDetails?.experience || '—'}</span>
                         </div>
                         <div className="detail-item">
                           <label>Status</label>
-                          <span className={`status-badge ${selectedTeacherDetails?.status || 'inactive'}`}>
-                            {selectedTeacherDetails?.status || 'N/A'}
+                          <span>
+                            <span className={`dossier-status ${selectedTeacherDetails?.status || 'inactive'}`}>
+                              {selectedTeacherDetails?.status || '—'}
+                            </span>
                           </span>
                         </div>
                         <div className="detail-item">
                           <label>Teacher ID</label>
                           <span className="truncate-value">
-                            {selectedTeacherDetails?.id || selectedTeacherDetails?._id || 'N/A'}
+                            {selectedTeacherDetails?.id || selectedTeacherDetails?._id || '—'}
                           </span>
                         </div>
                         <div className="detail-item wide-detail">
-                          <label>Assigned Courses</label>
+                          <label>Assigned courses</label>
                           <span>
                             {(selectedTeacherDetails?.assignedCourses || []).length > 0
                               ? selectedTeacherDetails.assignedCourses.join(', ')
-                              : (selectedTeacherDetails?.domain || 'N/A')}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="profile-card">
-                      <h3>Assignment Summary</h3>
-                      <div className="profile-details compact-details">
-                        <div className="detail-item">
-                          <label>Regular Batches</label>
-                          <span>{teacherAssignedBatches.regular.length}</span>
-                        </div>
-                        <div className="detail-item">
-                          <label>One-to-One Batches</label>
-                          <span>{teacherAssignedBatches.oneToOne.length}</span>
-                        </div>
-                        <div className="detail-item">
-                          <label>Total Students</label>
-                          <span>
-                            {[...teacherAssignedBatches.regular, ...teacherAssignedBatches.oneToOne]
-                              .reduce((sum, b) => sum + (b.studentCount || 0), 0)}
+                              : (selectedTeacherDetails?.domain || '—')}
                           </span>
                         </div>
                       </div>
@@ -6793,8 +6863,8 @@ const AdminDashboard = ({ user, onLogout }) => {
 
               {activeTeacherTab === 'batches' && (
                 <div className="profile-tab-content teacher-batches-tab">
-                  <div className="profile-card" style={{ marginBottom: '20px' }}>
-                    <h3>Regular Batches</h3>
+                  <div className="profile-card" style={{ marginBottom: '16px' }}>
+                    <h3>Regular batches</h3>
                     {teacherAssignedBatches.regular.length === 0 ? (
                       <p className="no-data">No regular batches assigned.</p>
                     ) : (
@@ -6823,11 +6893,11 @@ const AdminDashboard = ({ user, onLogout }) => {
                                     {batch.name}
                                   </button>
                                 </td>
-                                <td>{batch.course || 'N/A'}</td>
+                                <td>{batch.course || '—'}</td>
                                 <td>{batch.studentCount}</td>
                                 <td>
-                                  <span className={`status-badge ${batch.status || 'active'}`}>
-                                    {batch.status || 'N/A'}
+                                  <span className={`dossier-status ${batch.status || 'active'}`}>
+                                    {batch.status || '—'}
                                   </span>
                                 </td>
                               </tr>
@@ -6839,7 +6909,7 @@ const AdminDashboard = ({ user, onLogout }) => {
                   </div>
 
                   <div className="profile-card">
-                    <h3>One-to-One Batches</h3>
+                    <h3>One-to-one batches</h3>
                     {teacherAssignedBatches.oneToOne.length === 0 ? (
                       <p className="no-data">No one-to-one batches assigned.</p>
                     ) : (
@@ -6868,11 +6938,11 @@ const AdminDashboard = ({ user, onLogout }) => {
                                     {batch.name}
                                   </button>
                                 </td>
-                                <td>{batch.programLabel || batch.course || 'N/A'}</td>
+                                <td>{batch.programLabel || batch.course || '—'}</td>
                                 <td>{batch.studentCount}</td>
                                 <td>
-                                  <span className={`status-badge ${batch.status || 'active'}`}>
-                                    {batch.status || 'N/A'}
+                                  <span className={`dossier-status ${batch.status || 'active'}`}>
+                                    {batch.status || '—'}
                                   </span>
                                 </td>
                               </tr>

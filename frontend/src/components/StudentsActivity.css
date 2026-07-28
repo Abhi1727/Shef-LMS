@@ -1972,3 +1972,45 @@ html {
   color: #e2e8f0;
   word-break: break-word;
 }
+
+
+.sa-candidate-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.sa-user-actions--dossier {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding-top: 4px;
+  border-top: 1px solid rgba(255,255,255,0.1);
+}
+
+.sa-modal {
+  max-width: 960px;
+  border-radius: 18px;
+  border: 1px solid #e2e8f0;
+}
+
+.sa-modal-header {
+  background: linear-gradient(135deg, #0b3d4a 0%, #147a7a 100%);
+  border-bottom: none;
+}
+
+.sa-modal-header h3 {
+  color: #fff;
+}
+
+.sa-modal-close {
+  background: rgba(255,255,255,0.14);
+  color: #fff;
+  border-radius: 10px;
+}
+
+.sa-modal-close:hover {
+  background: rgba(255,255,255,0.28);
+  color: #fff;
+}
