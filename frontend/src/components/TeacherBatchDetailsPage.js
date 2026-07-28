@@ -439,6 +439,16 @@ const TeacherBatchDetailsPage = () => {
               {selectedBatch.schedule.time ? ' IST' : ''}
             </div>
           )}
+          <button
+            type="button"
+            className="sky-btn sky-btn-primary sky-add-lecture-header-btn"
+            onClick={() => {
+              setActiveView('videos');
+              setShowAddVideoModal(true);
+            }}
+          >
+            Add lecture
+          </button>
         </div>
       </div>
 
@@ -510,13 +520,6 @@ const TeacherBatchDetailsPage = () => {
                     onChange={(e) => setVideoSearch(e.target.value)}
                     className="video-search"
                   />
-                  <button
-                    type="button"
-                    className="sky-btn sky-btn-primary"
-                    onClick={() => setShowAddVideoModal(true)}
-                  >
-                    Add lecture
-                  </button>
                 </div>
               </div>
 
