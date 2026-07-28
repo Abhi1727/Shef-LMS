@@ -554,7 +554,158 @@ html {
 }
 
 .sa-graph-content {
-  min-height: 300px;
+  min-height: 320px;
+}
+
+.sa-chart-canvas {
+  width: 100%;
+  min-height: 320px;
+  background: linear-gradient(180deg, #f8fafc 0%, #ffffff 48%);
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 12px 8px 8px;
+}
+
+.sa-chart-canvas--pie {
+  min-height: 280px;
+}
+
+.sa-chart-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 240px;
+  color: #64748b;
+  text-align: center;
+  padding: 24px;
+}
+
+.sa-chart-empty p {
+  margin: 0;
+  font-weight: 650;
+  color: #0f172a;
+}
+
+.sa-chart-empty span {
+  font-size: 0.85rem;
+  max-width: 420px;
+}
+
+.sa-chart-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 10px;
+  font-size: 0.85rem;
+  color: #64748b;
+}
+
+.sa-chart-meta strong {
+  color: #0f4c81;
+}
+
+.sa-chart-tooltip {
+  background: #0f172a;
+  color: #f8fafc;
+  border-radius: 10px;
+  padding: 10px 12px;
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.25);
+  min-width: 160px;
+}
+
+.sa-chart-tooltip__title {
+  font-weight: 700;
+  margin-bottom: 8px;
+  font-size: 0.8rem;
+  color: #94a3b8;
+}
+
+.sa-chart-tooltip__row {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  font-size: 0.82rem;
+  margin-top: 4px;
+}
+
+.sa-distribution-layout {
+  display: grid;
+  grid-template-columns: minmax(240px, 1fr) minmax(280px, 1.2fr);
+  gap: 18px;
+  align-items: center;
+}
+
+.sa-distribution-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.sa-distribution-row {
+  display: grid;
+  grid-template-columns: minmax(120px, 140px) 1fr auto;
+  gap: 12px;
+  align-items: center;
+}
+
+.sa-distribution-row__label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.85rem;
+  color: #334155;
+  font-weight: 600;
+}
+
+.sa-distribution-swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+.sa-distribution-row__bar {
+  height: 8px;
+  background: #e2e8f0;
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.sa-distribution-row__bar > div {
+  height: 100%;
+  border-radius: 999px;
+  min-width: 2px;
+}
+
+.sa-distribution-row__stats {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  min-width: 72px;
+  justify-content: flex-end;
+}
+
+.sa-distribution-row__stats strong {
+  color: #0f172a;
+  font-size: 0.9rem;
+}
+
+.sa-distribution-row__stats span {
+  color: #64748b;
+  font-size: 0.75rem;
+}
+
+@media (max-width: 900px) {
+  .sa-distribution-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .sa-distribution-row {
+    grid-template-columns: minmax(100px, 120px) 1fr auto;
+  }
 }
 
 /* Daily Graph Styles */

@@ -2,7 +2,22 @@
  * Students Activity - Comprehensive activity dashboard for admin
  * Shows every detail: logins, video views, assessments with full metadata
  */
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import {
+  ResponsiveContainer,
+  BarChart,
+  Bar,
+  AreaChart,
+  Area,
+  PieChart,
+  Pie,
+  Cell,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend
+} from 'recharts';
 import { formatDateTimeDisplay, formatDateForComponent } from '../utils/dateUtils';
 import './StudentsActivity.css';
 
@@ -17,6 +32,37 @@ const ACTION_LABELS = {
   password_change: { icon: '🔑', label: 'Password changed', color: '#f59e0b' },
   password_reset: { icon: '🔄', label: 'Password reset', color: '#f97316' },
   resource_download: { icon: '📥', label: 'Resource download', color: '#06b6d4' }
+};
+
+const CHART_COLORS = {
+  total: '#0f4c81',
+  logins: '#10b981',
+  videoViews: '#3b82f6',
+  assessments: '#8b5cf6',
+  grid: '#e2e8f0',
+  axis: '#64748b'
+};
+
+const ChartTooltip = ({ active, payload, label }) => {
+  if (!active || !payload?.length) return null;
+  const row = payload[0]?.payload || {};
+  return (
+    <div className="sa-chart-tooltip">
+      <div className="sa-chart-tooltip__title">{label || row.label || row.time || row.date}</div>
+      {payload.map((entry) => (
+        <div key={entry.dataKey} className="sa-chart-tooltip__row">
+          <span style={{ color: entry.color || entry.fill }}>{entry.name}</span>
+          <strong>{entry.value}</strong>
+        </div>
+      ))}
+      {typeof row.uniqueUsers === 'number' && (
+        <div className="sa-chart-tooltip__row">
+          <span>Unique users</span>
+          <strong>{row.uniqueUsers}</strong>
+        </div>
+      )}
+    </div>
+  );
 };
 
 const ROLE_LABELS = {
@@ -64,7 +110,6 @@ const StudentsActivity = ({ token: tokenProp }) => {
   // Graph visualization states
   const [graphView, setGraphView] = useState('daily'); // 'daily', 'hourly', 'distribution'
   const [showGraph, setShowGraph] = useState(true);
-  const [hoveredBar, setHoveredBar] = useState(null);
   const [selectedDate, setSelectedDate] = useState(null);
 
 
@@ -192,17 +237,16 @@ const StudentsActivity = ({ token: tokenProp }) => {
   }, [activities]);
 
   // Process activity data for graph visualization
-  const processActivityData = useCallback(() => {
+  const chartData = useMemo(() => {
     if (!activities.length) return { dailyData: [], hourlyData: [], actionDistribution: [] };
 
-    // Daily activity for last 7 days
     const dailyData = [];
     const now = new Date();
     for (let i = 6; i >= 0; i--) {
       const date = new Date(now.getFullYear(), now.getMonth(), now.getDate() - i);
-      const dateStart = date.setHours(0, 0, 0, 0);
-      const dateEnd = date.setHours(23, 59, 59, 999);
-      
+      const dateStart = new Date(date).setHours(0, 0, 0, 0);
+      const dateEnd = new Date(date).setHours(23, 59, 59, 999);
+
       const dayActivities = activities.filter(a => {
         const activityTime = new Date(a.timestamp).getTime();
         return activityTime >= dateStart && activityTime <= dateEnd;
@@ -218,22 +262,21 @@ const StudentsActivity = ({ token: tokenProp }) => {
       });
     }
 
-    // Hourly activity for today
     const hourlyData = [];
     const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
     const todayActivities = activities.filter(a => new Date(a.timestamp).getTime() >= todayStart);
-    
+
     for (let hour = 0; hour < 24; hour++) {
       const hourStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), hour, 0, 0).getTime();
       const hourEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), hour, 59, 59).getTime();
-      
+
       const hourActivities = todayActivities.filter(a => {
         const activityTime = new Date(a.timestamp).getTime();
         return activityTime >= hourStart && activityTime <= hourEnd;
       });
 
       hourlyData.push({
-        hour: hour,
+        hour,
         time: `${hour.toString().padStart(2, '0')}:00`,
         total: hourActivities.length,
         logins: hourActivities.filter(a => a.action === 'login').length,
@@ -242,7 +285,6 @@ const StudentsActivity = ({ token: tokenProp }) => {
       });
     }
 
-    // Action distribution
     const actionCounts = activities.reduce((acc, a) => {
       acc[a.action] = (acc[a.action] || 0) + 1;
       return acc;
@@ -250,9 +292,12 @@ const StudentsActivity = ({ token: tokenProp }) => {
 
     const actionDistribution = Object.entries(actionCounts).map(([action, count]) => ({
       action,
+      name: (ACTION_LABELS[action] && ACTION_LABELS[action].label) || action,
+      label: (ACTION_LABELS[action] && ACTION_LABELS[action].label) || action,
+      icon: (ACTION_LABELS[action] && ACTION_LABELS[action].icon) || '•',
+      color: (ACTION_LABELS[action] && ACTION_LABELS[action].color) || '#6b7280',
       count,
-      percentage: ((count / activities.length) * 100).toFixed(1),
-      ...ACTION_LABELS[action]
+      percentage: Number(((count / activities.length) * 100).toFixed(1))
     })).sort((a, b) => b.count - a.count);
 
     return { dailyData, hourlyData, actionDistribution };
@@ -622,235 +667,174 @@ const StudentsActivity = ({ token: tokenProp }) => {
 
           <div className="sa-graph-content">
             {(() => {
-              const { dailyData, hourlyData, actionDistribution } = processActivityData();
-              
+              const { dailyData, hourlyData, actionDistribution } = chartData;
+
+              if (!activities.length) {
+                return (
+                  <div className="sa-chart-empty">
+                    <p>No activity yet to visualize.</p>
+                    <span>Events will appear here as candidates log in, watch lectures, and submit assessments.</span>
+                  </div>
+                );
+              }
+
               if (graphView === 'daily') {
                 return (
                   <div className="sa-daily-graph">
-                    <div className="sa-graph-bars">
-                      {dailyData.map((day, index) => {
-                        const maxValue = Math.max(...dailyData.map(d => d.total));
-                        const heightPercentage = maxValue > 0 ? (day.total / maxValue) * 100 : 0;
-                        const isHovered = hoveredBar === index;
-                        const isSelected = selectedDate === index;
-                        
-                        return (
-                          <div 
-                            key={index} 
-                            className="sa-bar-container"
-                            onMouseEnter={() => setHoveredBar(index)}
-                            onMouseLeave={() => setHoveredBar(null)}
-                            onClick={() => setSelectedDate(selectedDate === index ? null : index)}
-                          >
-                            <div className="sa-bar-wrapper">
-                              {/* Enhanced stacked bar chart */}
-                              <div
-                                className={`sa-bar sa-bar-total ${isHovered ? 'hovered' : ''} ${isSelected ? 'selected' : ''}`}
-                                style={{ height: `${heightPercentage}%` }}
-                                title={`${day.date}: ${day.total} activities`}
-                              >
-                                {day.total > 0 && (
-                                  <span className="sa-bar-value">{day.total}</span>
-                                )}
-                              </div>
-                              
-                              {/* Activity breakdown segments */}
-                              <div className="sa-bar-breakdown">
-                                {day.logins > 0 && (
-                                  <div
-                                    className="sa-bar-segment sa-bar-logins"
-                                    style={{ 
-                                      height: `${(day.logins / day.total) * 100}%`,
-                                      bottom: 0
-                                    }}
-                                    title={`Logins: ${day.logins}`}
-                                  />
-                                )}
-                                {day.videoViews > 0 && (
-                                  <div
-                                    className="sa-bar-segment sa-bar-video-views"
-                                    style={{ 
-                                      height: `${(day.videoViews / day.total) * 100}%`,
-                                      bottom: `${(day.logins / day.total) * 100}%`
-                                    }}
-                                    title={`Video views: ${day.videoViews}`}
-                                  />
-                                )}
-                                {day.assessments > 0 && (
-                                  <div
-                                    className="sa-bar-segment sa-bar-assessments"
-                                    style={{ 
-                                      height: `${(day.assessments / day.total) * 100}%`,
-                                      bottom: `${((day.logins + day.videoViews) / day.total) * 100}%`
-                                    }}
-                                    title={`Assessments: ${day.assessments}`}
-                                  />
-                                )}
-                              </div>
-                              
-                              {/* Enhanced tooltip */}
-                              {isHovered && (
-                                <div className="sa-bar-tooltip">
-                                  <div className="sa-tooltip-header">{day.date}</div>
-                                  <div className="sa-tooltip-content">
-                                    <div className="sa-tooltip-row">
-                                      <span className="sa-tooltip-label">Total:</span>
-                                      <span className="sa-tooltip-value">{day.total}</span>
-                                    </div>
-                                    {day.logins > 0 && (
-                                      <div className="sa-tooltip-row">
-                                        <span className="sa-tooltip-label sa-tooltip-logins">🔐 Logins:</span>
-                                        <span className="sa-tooltip-value">{day.logins}</span>
-                                      </div>
-                                    )}
-                                    {day.videoViews > 0 && (
-                                      <div className="sa-tooltip-row">
-                                        <span className="sa-tooltip-label sa-tooltip-video">📹 Video Views:</span>
-                                        <span className="sa-tooltip-value">{day.videoViews}</span>
-                                      </div>
-                                    )}
-                                    {day.assessments > 0 && (
-                                      <div className="sa-tooltip-row">
-                                        <span className="sa-tooltip-label sa-tooltip-assessment">✏️ Assessments:</span>
-                                        <span className="sa-tooltip-value">{day.assessments}</span>
-                                      </div>
-                                    )}
-                                    <div className="sa-tooltip-row">
-                                      <span className="sa-tooltip-label">👥 Users:</span>
-                                      <span className="sa-tooltip-value">{day.uniqueUsers}</span>
-                                    </div>
-                                  </div>
-                                </div>
-                              )}
-                            </div>
-                            <div className={`sa-bar-label ${isSelected ? 'selected' : ''}`}>{day.date}</div>
-                          </div>
-                        );
-                      })}
+                    <div className="sa-chart-canvas">
+                      <ResponsiveContainer width="100%" height={320}>
+                        <BarChart
+                          data={dailyData}
+                          margin={{ top: 12, right: 12, left: 0, bottom: 4 }}
+                          onClick={(state) => {
+                            if (state && state.activeTooltipIndex != null) {
+                              setSelectedDate(
+                                selectedDate === state.activeTooltipIndex ? null : state.activeTooltipIndex
+                              );
+                            }
+                          }}
+                        >
+                          <CartesianGrid strokeDasharray="3 3" stroke={CHART_COLORS.grid} vertical={false} />
+                          <XAxis dataKey="date" tick={{ fill: CHART_COLORS.axis, fontSize: 12 }} axisLine={false} tickLine={false} />
+                          <YAxis allowDecimals={false} tick={{ fill: CHART_COLORS.axis, fontSize: 12 }} axisLine={false} tickLine={false} />
+                          <Tooltip content={<ChartTooltip />} cursor={{ fill: 'rgba(15, 76, 129, 0.06)' }} />
+                          <Legend wrapperStyle={{ paddingTop: 8 }} />
+                          <Bar dataKey="logins" name="Logins" stackId="a" fill={CHART_COLORS.logins} radius={[0, 0, 0, 0]} maxBarSize={48} />
+                          <Bar dataKey="videoViews" name="Lectures" stackId="a" fill={CHART_COLORS.videoViews} maxBarSize={48} />
+                          <Bar dataKey="assessments" name="Assessments" stackId="a" fill={CHART_COLORS.assessments} radius={[6, 6, 0, 0]} maxBarSize={48} />
+                        </BarChart>
+                      </ResponsiveContainer>
                     </div>
-                    
-                    {/* Enhanced legend with statistics */}
-                    <div className="sa-graph-legend">
-                      <div className="sa-legend-item">
-                        <div className="sa-legend-color sa-bar-total"></div>
-                        <span>Total Activities</span>
-                      </div>
-                      <div className="sa-legend-item">
-                        <div className="sa-legend-color sa-bar-logins"></div>
-                        <span>Logins</span>
-                      </div>
-                      <div className="sa-legend-item">
-                        <div className="sa-legend-color sa-bar-video-views"></div>
-                        <span>Video Views</span>
-                      </div>
-                      <div className="sa-legend-item">
-                        <div className="sa-legend-color sa-bar-assessments"></div>
-                        <span>Assessments</span>
-                      </div>
-                    </div>
-                    
-                    {/* Selected date details */}
+
                     {selectedDate !== null && dailyData[selectedDate] && (
                       <div className="sa-selected-details">
-                        <h4>📊 {dailyData[selectedDate].date} - Detailed Breakdown</h4>
+                        <h4>{dailyData[selectedDate].date} — breakdown</h4>
                         <div className="sa-details-grid">
                           <div className="sa-detail-card">
-                            <div className="sa-detail-icon">🔐</div>
                             <div className="sa-detail-info">
                               <div className="sa-detail-value">{dailyData[selectedDate].logins}</div>
                               <div className="sa-detail-label">Logins</div>
                             </div>
                           </div>
                           <div className="sa-detail-card">
-                            <div className="sa-detail-icon">📹</div>
                             <div className="sa-detail-info">
                               <div className="sa-detail-value">{dailyData[selectedDate].videoViews}</div>
-                              <div className="sa-detail-label">Video Views</div>
+                              <div className="sa-detail-label">Lectures</div>
                             </div>
                           </div>
                           <div className="sa-detail-card">
-                            <div className="sa-detail-icon">✏️</div>
                             <div className="sa-detail-info">
                               <div className="sa-detail-value">{dailyData[selectedDate].assessments}</div>
                               <div className="sa-detail-label">Assessments</div>
                             </div>
                           </div>
                           <div className="sa-detail-card">
-                            <div className="sa-detail-icon">👥</div>
                             <div className="sa-detail-info">
                               <div className="sa-detail-value">{dailyData[selectedDate].uniqueUsers}</div>
-                              <div className="sa-detail-label">Unique Users</div>
+                              <div className="sa-detail-label">Unique users</div>
                             </div>
                           </div>
                         </div>
-                        <button 
-                          className="sa-clear-selection"
-                          onClick={() => setSelectedDate(null)}
-                        >
-                          ✕ Clear Selection
+                        <button className="sa-clear-selection" onClick={() => setSelectedDate(null)}>
+                          Clear selection
                         </button>
                       </div>
                     )}
                   </div>
                 );
-              } else if (graphView === 'hourly') {
+              }
+
+              if (graphView === 'hourly') {
+                const peak = hourlyData.reduce(
+                  (best, h) => (h.total > best.total ? h : best),
+                  { total: 0, time: '—' }
+                );
                 return (
                   <div className="sa-hourly-graph">
-                    <div className="sa-hourly-bars">
-                      {hourlyData.map((hour, index) => {
-                        const maxValue = Math.max(...hourlyData.map(h => h.total));
-                        const heightPercentage = maxValue > 0 ? (hour.total / maxValue) * 100 : 0;
-                        
-                        return (
-                          <div key={index} className="sa-hourly-bar-container">
-                            <div
-                              className="sa-hourly-bar"
-                              style={{ height: `${heightPercentage}%` }}
-                              title={`${hour.time}: ${hour.total} activities`}
-                            >
-                              <span className="sa-hourly-value">{hour.total}</span>
-                            </div>
-                            <div className="sa-hourly-label">{hour.time}</div>
-                          </div>
-                        );
-                      })}
+                    <div className="sa-chart-meta">
+                      <span>Today by hour</span>
+                      <strong>Peak: {peak.time} ({peak.total} events)</strong>
                     </div>
-                  </div>
-                );
-              } else {
-                return (
-                  <div className="sa-distribution-graph">
-                    <div className="sa-distribution-bars">
-                      {actionDistribution.map((item, index) => {
-                        const maxCount = Math.max(...actionDistribution.map(d => d.count));
-                        const widthPercentage = maxCount > 0 ? (item.count / maxCount) * 100 : 0;
-                        
-                        return (
-                          <div key={index} className="sa-distribution-item">
-                            <div className="sa-distribution-label">
-                              <span className="sa-distribution-icon">{item.icon}</span>
-                              <span className="sa-distribution-name">{item.label}</span>
-                            </div>
-                            <div className="sa-distribution-bar-wrapper">
-                              <div
-                                className="sa-distribution-bar"
-                                style={{ 
-                                  width: `${widthPercentage}%`,
-                                  backgroundColor: item.color 
-                                }}
-                              />
-                            </div>
-                            <div className="sa-distribution-stats">
-                              <span className="sa-distribution-count">{item.count}</span>
-                              <span className="sa-distribution-percentage">{item.percentage}%</span>
-                            </div>
-                          </div>
-                        );
-                      })}
+                    <div className="sa-chart-canvas">
+                      <ResponsiveContainer width="100%" height={320}>
+                        <AreaChart data={hourlyData} margin={{ top: 12, right: 12, left: 0, bottom: 4 }}>
+                          <defs>
+                            <linearGradient id="saHourlyFill" x1="0" y1="0" x2="0" y2="1">
+                              <stop offset="0%" stopColor="#0f4c81" stopOpacity={0.35} />
+                              <stop offset="100%" stopColor="#0f4c81" stopOpacity={0.02} />
+                            </linearGradient>
+                          </defs>
+                          <CartesianGrid strokeDasharray="3 3" stroke={CHART_COLORS.grid} vertical={false} />
+                          <XAxis
+                            dataKey="time"
+                            interval={2}
+                            tick={{ fill: CHART_COLORS.axis, fontSize: 11 }}
+                            axisLine={false}
+                            tickLine={false}
+                          />
+                          <YAxis allowDecimals={false} tick={{ fill: CHART_COLORS.axis, fontSize: 12 }} axisLine={false} tickLine={false} />
+                          <Tooltip content={<ChartTooltip />} />
+                          <Area
+                            type="monotone"
+                            dataKey="total"
+                            name="Activities"
+                            stroke={CHART_COLORS.total}
+                            strokeWidth={2.5}
+                            fill="url(#saHourlyFill)"
+                            activeDot={{ r: 5, fill: CHART_COLORS.total }}
+                          />
+                        </AreaChart>
+                      </ResponsiveContainer>
                     </div>
                   </div>
                 );
               }
+
+              return (
+                <div className="sa-distribution-graph">
+                  <div className="sa-distribution-layout">
+                    <div className="sa-chart-canvas sa-chart-canvas--pie">
+                      <ResponsiveContainer width="100%" height={280}>
+                        <PieChart>
+                          <Pie
+                            data={actionDistribution}
+                            dataKey="count"
+                            nameKey="name"
+                            cx="50%"
+                            cy="50%"
+                            innerRadius={58}
+                            outerRadius={96}
+                            paddingAngle={2}
+                          >
+                            {actionDistribution.map((item) => (
+                              <Cell key={item.action} fill={item.color} />
+                            ))}
+                          </Pie>
+                          <Tooltip content={<ChartTooltip />} />
+                          <Legend />
+                        </PieChart>
+                      </ResponsiveContainer>
+                    </div>
+                    <div className="sa-distribution-list">
+                      {actionDistribution.map((item) => (
+                        <div key={item.action} className="sa-distribution-row">
+                          <div className="sa-distribution-row__label">
+                            <span className="sa-distribution-swatch" style={{ background: item.color }} />
+                            <span>{item.label}</span>
+                          </div>
+                          <div className="sa-distribution-row__bar">
+                            <div style={{ width: `${item.percentage}%`, background: item.color }} />
+                          </div>
+                          <div className="sa-distribution-row__stats">
+                            <strong>{item.count}</strong>
+                            <span>{item.percentage}%</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              );
             })()}
           </div>
         </div>
