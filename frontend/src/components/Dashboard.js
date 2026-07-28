@@ -2218,12 +2218,13 @@ const Dashboard = ({ user, onLogout }) => {
               className="global-search-input"
             />
             {searchQuery && (
-              <div className="search-results-dropdown glass-card">
+              <div className="search-results-dropdown" role="listbox">
                 {getFilteredSearchItems().length > 0 ? (
                   getFilteredSearchItems().map((res, i) => (
-                    <div 
-                      key={i} 
-                      className="search-result-item" 
+                    <div
+                      key={i}
+                      className="search-result-item"
+                      role="option"
                       onClick={() => {
                         if (res.item) {
                           handlePlayVideo(res.item);
