@@ -512,7 +512,7 @@ const TeacherBatchDetailsPage = () => {
                     {filteredVideos.length} lecture{filteredVideos.length === 1 ? '' : 's'} in this batch
                   </p>
                 </div>
-                <div className="video-controls sky-lectures-controls">
+                <div className="sky-lectures-controls">
                   <input
                     type="search"
                     placeholder="Search lectures…"

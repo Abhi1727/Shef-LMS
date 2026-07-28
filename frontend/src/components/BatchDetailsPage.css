@@ -5350,14 +5350,14 @@ body.modal-open {
   box-sizing: border-box;
 }
 
-/* Restore compact lecture cards */
+/* Restore professional lecture cards */
 .sky-batch-page .sky-lecture-grid.video-grid,
 .sky-batch-page.teacher-batch-details-page .sky-lecture-grid.video-grid,
 .teacher-batch-details-page .sky-lecture-grid.video-grid {
   display: grid !important;
-  grid-template-columns: repeat(auto-fill, minmax(260px, 300px)) !important;
-  justify-content: start;
-  gap: 16px !important;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)) !important;
+  justify-content: stretch;
+  gap: 20px !important;
   width: 100% !important;
   max-width: none !important;
   overflow: visible !important;
@@ -5370,16 +5370,24 @@ body.modal-open {
   display: flex !important;
   flex-direction: column !important;
   width: 100% !important;
-  max-width: 300px !important;
+  max-width: none !important;
   min-height: 0 !important;
   margin: 0 !important;
   cursor: default;
   overflow: hidden;
-  border: 1px solid #d5dee3;
-  border-radius: 12px;
+  border: 1px solid #dbe3e8;
+  border-radius: 14px;
   background: #fff;
-  box-shadow: none;
+  box-shadow: 0 1px 2px rgba(16, 42, 51, 0.04);
   grid-template-columns: none !important;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
+}
+
+.sky-batch-page .sky-lecture-card.video-card:hover,
+.teacher-batch-details-page .sky-lecture-card.video-card:hover {
+  border-color: #b7c4cb;
+  box-shadow: 0 10px 28px rgba(16, 42, 51, 0.1);
+  transform: translateY(-2px);
 }
 
 .sky-batch-page .sky-lecture-thumb {
@@ -5396,17 +5404,63 @@ body.modal-open {
   align-self: auto;
 }
 
+.sky-batch-page .sky-lecture-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
 .sky-batch-page .sky-lecture-body.video-right {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  padding: 14px 14px 16px;
+  padding: 14px 16px 16px;
   min-width: 0;
+  flex: 1;
+}
+
+.sky-batch-page .sky-lecture-body .video-info {
+  padding: 0;
+  text-align: left;
 }
 
 .sky-batch-page .sky-lecture-title.video-title {
+  margin: 0 0 8px;
+  max-height: none;
+  overflow: hidden;
+  display: -webkit-box;
   -webkit-line-clamp: 2;
-  font-size: 0.95rem;
+  -webkit-box-orient: vertical;
+  font-size: 0.98rem;
+  font-weight: 700;
+  line-height: 1.35;
+  color: #102a33;
+  text-align: left;
+  word-break: break-word;
+}
+
+.sky-batch-page .sky-lecture-meta.video-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  font-size: 0.8rem;
+  color: #5a6d76;
+  justify-content: flex-start;
+  text-align: left;
+}
+
+.sky-batch-page .notes-indicator {
+  display: inline-flex;
+  align-items: center;
+  margin-top: 8px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: #eef7f7;
+  color: #0f5c63;
+  font-size: 0.72rem;
+  font-weight: 650;
+  width: fit-content;
 }
 
 .sky-batch-page .sky-lecture-actions.video-actions {
@@ -5415,6 +5469,12 @@ body.modal-open {
   gap: 8px;
   padding: 0;
   margin-top: auto;
+}
+
+.sky-batch-page .sky-lecture-actions .sky-btn {
+  padding: 8px 12px;
+  font-size: 0.8rem;
+  border-radius: 8px;
 }
 
 .sky-batch-page .sky-lectures-empty {

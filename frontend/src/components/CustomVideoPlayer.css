@@ -371,7 +371,7 @@
     font-size: 1.2rem;
   }
 
-  .video-controls {
+  .custom-video-player .video-controls {
     padding: 1rem;
   }
 
@@ -393,8 +393,8 @@
   }
 }
 
-/* Video Controls */
-.video-controls {
+/* Video Controls — scoped to player so batch page toolbars are never affected */
+.custom-video-player .video-controls {
   position: absolute;
   bottom: 0;
   left: 0;
@@ -405,12 +405,12 @@
   transition: opacity 0.3s ease;
 }
 
-.video-controls.hidden {
+.custom-video-player .video-controls.hidden {
   opacity: 0;
   pointer-events: none;
 }
 
-.video-controls.visible {
+.custom-video-player .video-controls.visible {
   opacity: 1;
   pointer-events: auto;
 }
@@ -546,7 +546,7 @@
   }
   
   
-  .video-controls {
+  .custom-video-player .video-controls {
     padding: 1rem;
   }
   
