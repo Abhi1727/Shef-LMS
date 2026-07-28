@@ -305,8 +305,11 @@ const CustomVideoPlayer = ({ video, onClose, resumePosition = 0, onProgressUpdat
         return;
       }
 
+      const box = youtubeContainerRef.current.getBoundingClientRect();
       new window.YT.Player(youtubeContainerRef.current, {
         videoId: videoId,
+        width: Math.max(640, Math.round(box.width) || 1280),
+        height: Math.max(360, Math.round(box.height) || 720),
         playerVars: {
           autoplay: 0,
           controls: 0,
@@ -439,13 +442,64 @@ const CustomVideoPlayer = ({ video, onClose, resumePosition = 0, onProgressUpdat
     else if (videoRef.current) videoRef.current.playbackRate = newSpeed;
   };
 
-  const handleFullscreen = () => {
-    if (!document.fullscreenElement) {
-      containerRef.current?.requestFullscreen();
+  const enterBrowserFullscreen = async (el) => {
+    if (!el) return false;
+    try {
+      if (el.requestFullscreen) await el.requestFullscreen();
+      else if (el.webkitRequestFullscreen) await el.webkitRequestFullscreen();
+      else if (el.msRequestFullscreen) await el.msRequestFullscreen();
+      else return false;
+      return true;
+    } catch (err) {
+      console.warn('Fullscreen request failed:', err);
+      return false;
+    }
+  };
+
+  const exitBrowserFullscreen = async () => {
+    try {
+      if (document.fullscreenElement || document.webkitFullscreenElement) {
+        if (document.exitFullscreen) await document.exitFullscreen();
+        else if (document.webkitExitFullscreen) await document.webkitExitFullscreen();
+      }
+    } catch (err) {
+      console.warn('Exit fullscreen failed:', err);
+    }
+  };
+
+  const resizeYouTubeToContainer = () => {
+    if (!youtubePlayer || !playerReady || !youtubeContainerRef.current) return;
+    try {
+      const rect = youtubeContainerRef.current.getBoundingClientRect();
+      const w = Math.max(1, Math.round(rect.width));
+      const h = Math.max(1, Math.round(rect.height));
+      if (typeof youtubePlayer.setSize === 'function') {
+        youtubePlayer.setSize(w, h);
+      }
+    } catch (err) {
+      // ignore
+    }
+  };
+
+  const handleFullscreen = async () => {
+    const next = !isFullscreen;
+    if (next) {
+      setShowSidebar(false);
       setIsFullscreen(true);
+      // Prefer true browser fullscreen on the player shell
+      await enterBrowserFullscreen(containerRef.current);
+      // Ensure YouTube iframe fills the maximized area
+      requestAnimationFrame(() => {
+        resizeYouTubeToContainer();
+        setTimeout(resizeYouTubeToContainer, 150);
+      });
     } else {
-      document.exitFullscreen();
       setIsFullscreen(false);
+      await exitBrowserFullscreen();
+      requestAnimationFrame(() => {
+        resizeYouTubeToContainer();
+        setTimeout(resizeYouTubeToContainer, 150);
+      });
     }
   };
 
@@ -454,6 +508,43 @@ const CustomVideoPlayer = ({ video, onClose, resumePosition = 0, onProgressUpdat
     const secs = Math.floor(seconds % 60);
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
+
+  // Keep maximize state in sync with browser fullscreen + resize YouTube
+  useEffect(() => {
+    const onFsChange = () => {
+      const active = !!(document.fullscreenElement || document.webkitFullscreenElement);
+      setIsFullscreen(active);
+      if (active) setShowSidebar(false);
+      requestAnimationFrame(() => {
+        resizeYouTubeToContainer();
+        setTimeout(resizeYouTubeToContainer, 100);
+      });
+    };
+    const onWinResize = () => resizeYouTubeToContainer();
+    document.addEventListener('fullscreenchange', onFsChange);
+    document.addEventListener('webkitfullscreenchange', onFsChange);
+    window.addEventListener('resize', onWinResize);
+    return () => {
+      document.removeEventListener('fullscreenchange', onFsChange);
+      document.removeEventListener('webkitfullscreenchange', onFsChange);
+      window.removeEventListener('resize', onWinResize);
+    };
+  }, [youtubePlayer, playerReady]);
+
+  useEffect(() => {
+    if (!isFullscreen) return undefined;
+    const onKey = (e) => {
+      if (e.key === 'Escape') {
+        setIsFullscreen(false);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [isFullscreen]);
+
+  useEffect(() => {
+    resizeYouTubeToContainer();
+  }, [isFullscreen, showSidebar, playerReady, youtubePlayer]);
 
   const handleMouseMove = () => {
     setShowControls(true);
@@ -470,19 +561,19 @@ const CustomVideoPlayer = ({ video, onClose, resumePosition = 0, onProgressUpdat
   return (
     <div
       ref={containerRef}
-      className={`custom-video-player${embedded ? ' custom-video-player--embedded' : ''}`}
+      className={`custom-video-player${embedded ? ' custom-video-player--embedded' : ''}${isFullscreen ? ' is-fullscreen' : ''}${showSidebar ? ' has-sidebar' : ''}`}
       onMouseMove={handleMouseMove}
       onMouseLeave={() => isPlaying && setShowControls(false)}
     >
       <ToastContainer />
 
       {/* Left Column: Video Container */}
-      <div style={{ flex: showSidebar ? 3 : 1, display: 'flex', flexDirection: 'column', position: 'relative', height: '100%', overflow: 'hidden' }}>
+      <div className="video-main-pane" style={{ flex: (isFullscreen || !showSidebar) ? '1 1 100%' : '3 1 0', display: 'flex', flexDirection: 'column', position: 'relative', height: '100%', width: (isFullscreen || !showSidebar) ? '100%' : undefined, overflow: 'hidden' }}>
         <div className="video-header">
           <button className="close-btn" onClick={onClose}>✕</button>
         </div>
 
-        <div className="video-container" style={{ height: 'calc(100% - 80px)' }}>
+        <div className="video-container">
           {isLoading && (
             <div className="loading-overlay">
               <div className="loading-spinner"></div>
@@ -570,7 +661,12 @@ const CustomVideoPlayer = ({ video, onClose, resumePosition = 0, onProgressUpdat
                   <option value="2">2x</option>
                 </select>
 
-                <button className="control-btn" onClick={handleFullscreen}>
+                <button
+                  className="control-btn"
+                  onClick={handleFullscreen}
+                  title={isFullscreen ? 'Exit full size' : 'Maximize video'}
+                  aria-label={isFullscreen ? 'Exit full size' : 'Maximize video'}
+                >
                   {isFullscreen ? '🗗' : '🗖'}
                 </button>
               </div>
