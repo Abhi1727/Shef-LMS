@@ -41,6 +41,16 @@ const TeacherDashboard = ({ user, onLogout }) => {
     duration: '',
     youtubeUrl: ''
   });
+  const [editingLecture, setEditingLecture] = useState(null);
+  const [showEditLectureModal, setShowEditLectureModal] = useState(false);
+  const [editLectureForm, setEditLectureForm] = useState({
+    title: '',
+    description: '',
+    duration: '',
+    youtubeUrl: ''
+  });
+  const [savingLectureEdit, setSavingLectureEdit] = useState(false);
+  const [editLectureNotesFile, setEditLectureNotesFile] = useState(null);
   const [batches, setBatches] = useState(() => {
     try {
       const cached = sessionStorage.getItem('teacher_batches_cache');
@@ -456,6 +466,81 @@ const TeacherDashboard = ({ user, onLogout }) => {
       showToast('Upload failed. Please try again.', 'error');
     } finally {
       setUploading(false);
+    }
+  };
+
+
+  const handleEditLecture = (lecture) => {
+    setEditingLecture(lecture);
+    setEditLectureForm({
+      title: lecture.title || '',
+      description: lecture.description || '',
+      duration: lecture.duration || '',
+      youtubeUrl: lecture.youtubeVideoUrl || lecture.youtubeUrl || ''
+    });
+    setEditLectureNotesFile(null);
+    setShowEditLectureModal(true);
+  };
+
+  const handleSaveLectureEdit = async () => {
+    if (!editingLecture) return;
+    if (!editLectureForm.title.trim()) {
+      showToast('Title is required', 'error');
+      return;
+    }
+    setSavingLectureEdit(true);
+    try {
+      const token = localStorage.getItem('token');
+      const apiUrl = getApiBaseUrl();
+      const payload = {
+        title: editLectureForm.title.trim(),
+        description: editLectureForm.description.trim(),
+        duration: editLectureForm.duration.trim()
+      };
+      if (editLectureForm.youtubeUrl.trim()) {
+        payload.youtubeUrl = editLectureForm.youtubeUrl.trim();
+      }
+
+      const response = await fetch(`${apiUrl}/api/teacher/videos/${editingLecture.id}`, {
+        method: 'PUT',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(payload)
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        showToast(data.message || 'Failed to update lecture', 'error');
+        return;
+      }
+
+      if (editLectureNotesFile) {
+        const formData = new FormData();
+        formData.append('notesFile', editLectureNotesFile);
+        const notesRes = await fetch(`${apiUrl}/api/teacher/videos/${editingLecture.id}/notes`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}` },
+          body: formData
+        });
+        if (!notesRes.ok) {
+          const notesData = await notesRes.json().catch(() => ({}));
+          showToast(notesData.message || 'Lecture saved, but notes upload failed', 'error');
+        }
+      }
+
+      showToast('Lecture updated successfully', 'success');
+      setShowEditLectureModal(false);
+      setEditingLecture(null);
+      setEditLectureNotesFile(null);
+      if (selectedCourse) {
+        await loadLectures(selectedCourse);
+      }
+    } catch (error) {
+      console.error('Edit lecture error:', error);
+      showToast('Failed to update lecture. Please try again.', 'error');
+    } finally {
+      setSavingLectureEdit(false);
     }
   };
 
@@ -1225,6 +1310,13 @@ const TeacherDashboard = ({ user, onLogout }) => {
                         <div className="lecture-actions">
                           <button
                             type="button"
+                            className="edit-btn"
+                            onClick={() => handleEditLecture(lecture)}
+                          >
+                            Edit details
+                          </button>
+                          <button
+                            type="button"
                             className="delete-btn"
                             onClick={() => handleDeleteLecture(lecture.id)}
                           >
@@ -1318,7 +1410,107 @@ const TeacherDashboard = ({ user, onLogout }) => {
       </div>
 
       {/* Toast Notifications - Rendered via portal for proper stacking */}
-      {createPortal(<ToastContainer />, document.body)}
+
+      {showEditLectureModal && editingLecture && (
+        <div className="modal-overlay" onClick={() => !savingLectureEdit && setShowEditLectureModal(false)}>
+          <div className="modal edit-modal sky-edit-lecture-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <div>
+                <p className="sky-modal-eyebrow">Lecture details</p>
+                <h3>Edit lecture</h3>
+              </div>
+              <button
+                type="button"
+                className="close-button"
+                disabled={savingLectureEdit}
+                onClick={() => setShowEditLectureModal(false)}
+              >
+                ×
+              </button>
+            </div>
+            <div className="edit-form">
+              <div className="form-group">
+                <label htmlFor="td-lecture-title">Title *</label>
+                <input
+                  id="td-lecture-title"
+                  type="text"
+                  value={editLectureForm.title}
+                  onChange={(e) => setEditLectureForm({ ...editLectureForm, title: e.target.value })}
+                  maxLength={200}
+                />
+              </div>
+              <div className="form-group">
+                <label htmlFor="td-lecture-youtube">YouTube URL</label>
+                <input
+                  id="td-lecture-youtube"
+                  type="url"
+                  value={editLectureForm.youtubeUrl}
+                  onChange={(e) => setEditLectureForm({ ...editLectureForm, youtubeUrl: e.target.value })}
+                  placeholder="https://www.youtube.com/watch?v=… or https://youtu.be/…"
+                />
+                <small>Update this to change the lecture content students see.</small>
+              </div>
+              <div className="form-group">
+                <label htmlFor="td-lecture-duration">Duration</label>
+                <input
+                  id="td-lecture-duration"
+                  type="text"
+                  value={editLectureForm.duration}
+                  onChange={(e) => setEditLectureForm({ ...editLectureForm, duration: e.target.value })}
+                  placeholder="e.g. 45 min"
+                  maxLength={50}
+                />
+              </div>
+              <div className="form-group">
+                <label htmlFor="td-lecture-description">Description / content notes</label>
+                <textarea
+                  id="td-lecture-description"
+                  rows="4"
+                  value={editLectureForm.description}
+                  onChange={(e) => setEditLectureForm({ ...editLectureForm, description: e.target.value })}
+                  maxLength={1000}
+                />
+              </div>
+              <div className="form-group">
+                <label htmlFor="td-lecture-notes">Replace notes file (optional)</label>
+                <input
+                  id="td-lecture-notes"
+                  type="file"
+                  accept=".pdf,.doc,.docx"
+                  onChange={(e) => setEditLectureNotesFile(e.target.files?.[0] || null)}
+                />
+                <small>
+                  {editLectureNotesFile
+                    ? `Selected: ${editLectureNotesFile.name}`
+                    : editingLecture.notesAvailable
+                      ? `Current notes: ${editingLecture.notesFileName || 'attached'}`
+                      : 'No notes attached yet'}
+                </small>
+              </div>
+            </div>
+            <div className="modal-actions">
+              <button
+                type="button"
+                className="sky-btn sky-btn-secondary"
+                disabled={savingLectureEdit}
+                onClick={() => setShowEditLectureModal(false)}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="sky-btn sky-btn-primary"
+                disabled={savingLectureEdit}
+                onClick={handleSaveLectureEdit}
+              >
+                {savingLectureEdit ? 'Saving…' : 'Save changes'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+            {createPortal(<ToastContainer />, document.body)}
     </div>
   );
 };

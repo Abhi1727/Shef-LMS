@@ -10,7 +10,7 @@ const validator = require('validator');
  */
 function validateVideoUpdate(req, res, next) {
   try {
-    const { title, description } = req.body;
+    const { title, description, duration, youtubeUrl } = req.body;
     
     // Validate title if provided
     if (title !== undefined) {
@@ -57,6 +57,38 @@ function validateVideoUpdate(req, res, next) {
       
       // Sanitize description
       req.body.description = sanitize(description.trim());
+    }
+
+    if (duration !== undefined && duration !== null) {
+      if (typeof duration !== 'string') {
+        return res.status(400).json({
+          success: false,
+          message: 'Duration must be a string'
+        });
+      }
+      if (duration.length > 50) {
+        return res.status(400).json({
+          success: false,
+          message: 'Duration cannot exceed 50 characters'
+        });
+      }
+      req.body.duration = sanitize(duration.trim());
+    }
+
+    if (youtubeUrl !== undefined && youtubeUrl !== null && youtubeUrl !== '') {
+      if (typeof youtubeUrl !== 'string') {
+        return res.status(400).json({
+          success: false,
+          message: 'YouTube URL must be a string'
+        });
+      }
+      if (youtubeUrl.length > 500) {
+        return res.status(400).json({
+          success: false,
+          message: 'YouTube URL cannot exceed 500 characters'
+        });
+      }
+      req.body.youtubeUrl = sanitize(youtubeUrl.trim());
     }
     
     next();

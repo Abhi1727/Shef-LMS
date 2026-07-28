@@ -23,7 +23,9 @@ const TeacherBatchDetailsPage = () => {
   const [showVideoModal, setShowVideoModal] = useState(false);
   const [editingVideo, setEditingVideo] = useState(null);
   const [showEditModal, setShowEditModal] = useState(false);
-  const [editForm, setEditForm] = useState({ title: '', description: '' });
+  const [editForm, setEditForm] = useState({ title: '', description: '', duration: '', youtubeUrl: '' });
+  const [savingEdit, setSavingEdit] = useState(false);
+  const [editNotesFile, setEditNotesFile] = useState(null);
   const [uploadingNotes, setUploadingNotes] = useState(false);
   const [notesFile, setNotesFile] = useState(null);
   const [notesTargetVideoId, setNotesTargetVideoId] = useState(null);
@@ -174,8 +176,11 @@ const TeacherBatchDetailsPage = () => {
     setEditingVideo(video);
     setEditForm({
       title: video.title || '',
-      description: video.description || ''
+      description: video.description || '',
+      duration: video.duration || '',
+      youtubeUrl: video.youtubeVideoUrl || video.youtubeUrl || ''
     });
+    setEditNotesFile(null);
     setShowEditModal(true);
   };
 
@@ -220,31 +225,71 @@ const TeacherBatchDetailsPage = () => {
 
   const handleSaveVideoEdit = async () => {
     if (!editingVideo) return;
+    if (!editForm.title.trim()) {
+      window.alert('Title is required');
+      return;
+    }
+    setSavingEdit(true);
     try {
       const apiUrl = getApiBaseUrl();
+      const payload = {
+        title: editForm.title.trim(),
+        description: editForm.description.trim(),
+        duration: editForm.duration.trim()
+      };
+      if (editForm.youtubeUrl.trim()) {
+        payload.youtubeUrl = editForm.youtubeUrl.trim();
+      }
+
       const response = await fetch(`${apiUrl}/api/teacher/videos/${editingVideo.id}`, {
         method: 'PUT',
         headers: {
           ...authHeaders(),
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify(editForm)
+        body: JSON.stringify(payload)
       });
+      const data = await response.json().catch(() => ({}));
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        window.alert(errorData.message || 'Failed to update video');
+        window.alert(data.message || 'Failed to update lecture');
         return;
       }
+
+      let notesPatch = {};
+      if (editNotesFile) {
+        const formData = new FormData();
+        formData.append('notesFile', editNotesFile);
+        const notesRes = await fetch(`${apiUrl}/api/teacher/videos/${editingVideo.id}/notes`, {
+          method: 'POST',
+          headers: authHeaders(),
+          body: formData
+        });
+        const notesData = await notesRes.json().catch(() => ({}));
+        if (!notesRes.ok) {
+          window.alert(notesData.message || 'Lecture saved, but notes upload failed');
+        } else {
+          notesPatch = {
+            notesAvailable: true,
+            notesFileName: notesData.notes?.fileName,
+            notesFilePath: notesData.notes?.filePath
+          };
+        }
+      }
+
+      const updated = { ...(data.video || {}), ...notesPatch };
       setClassroomVideos((videos) =>
         videos.map((video) =>
-          video.id === editingVideo.id ? { ...video, ...editForm } : video
+          video.id === editingVideo.id ? { ...video, ...updated } : video
         )
       );
       setShowEditModal(false);
       setEditingVideo(null);
+      setEditNotesFile(null);
     } catch (err) {
       console.error(err);
-      window.alert('Failed to update video. Please try again.');
+      window.alert('Failed to update lecture. Please try again.');
+    } finally {
+      setSavingEdit(false);
     }
   };
 
@@ -762,40 +807,100 @@ const TeacherBatchDetailsPage = () => {
       )}
 
       {showEditModal && editingVideo && (
-        <div className="modal-overlay" onClick={() => setShowEditModal(false)}>
-          <div className="modal edit-modal" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-overlay" onClick={() => !savingEdit && setShowEditModal(false)}>
+          <div className="modal edit-modal sky-edit-lecture-modal" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
-              <h3>Edit lecture</h3>
-              <button type="button" className="close-button" onClick={() => setShowEditModal(false)}>
+              <div>
+                <p className="sky-modal-eyebrow">Lecture details</p>
+                <h3>Edit lecture</h3>
+              </div>
+              <button
+                type="button"
+                className="close-button"
+                disabled={savingEdit}
+                onClick={() => setShowEditModal(false)}
+              >
                 ×
               </button>
             </div>
             <div className="edit-form">
               <div className="form-group">
-                <label htmlFor="video-title">Title</label>
+                <label htmlFor="video-title">Title *</label>
                 <input
                   id="video-title"
                   type="text"
                   value={editForm.title}
                   onChange={(e) => setEditForm({ ...editForm, title: e.target.value })}
+                  placeholder="Lecture title"
+                  maxLength={200}
                 />
               </div>
               <div className="form-group">
-                <label htmlFor="video-description">Description</label>
+                <label htmlFor="video-youtube">YouTube URL</label>
+                <input
+                  id="video-youtube"
+                  type="url"
+                  value={editForm.youtubeUrl}
+                  onChange={(e) => setEditForm({ ...editForm, youtubeUrl: e.target.value })}
+                  placeholder="https://www.youtube.com/watch?v=… or https://youtu.be/…"
+                />
+                <small>Change this to replace the lecture video content for students.</small>
+              </div>
+              <div className="form-group">
+                <label htmlFor="video-duration">Duration</label>
+                <input
+                  id="video-duration"
+                  type="text"
+                  value={editForm.duration}
+                  onChange={(e) => setEditForm({ ...editForm, duration: e.target.value })}
+                  placeholder="e.g. 45 min"
+                  maxLength={50}
+                />
+              </div>
+              <div className="form-group">
+                <label htmlFor="video-description">Description / content notes</label>
                 <textarea
                   id="video-description"
                   rows="4"
                   value={editForm.description}
                   onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
+                  placeholder="What this lecture covers…"
+                  maxLength={1000}
                 />
+              </div>
+              <div className="form-group">
+                <label htmlFor="video-notes-edit">Replace notes file (optional)</label>
+                <input
+                  id="video-notes-edit"
+                  type="file"
+                  accept=".pdf,.doc,.docx"
+                  onChange={(e) => setEditNotesFile(e.target.files?.[0] || null)}
+                />
+                <small>
+                  {editNotesFile
+                    ? `Selected: ${editNotesFile.name}`
+                    : editingVideo.notesAvailable
+                      ? `Current notes: ${editingVideo.notesFileName || 'attached'}`
+                      : 'No notes attached yet'}
+                </small>
               </div>
             </div>
             <div className="modal-actions">
-              <button type="button" className="sky-btn sky-btn-secondary" onClick={() => setShowEditModal(false)}>
+              <button
+                type="button"
+                className="sky-btn sky-btn-secondary"
+                disabled={savingEdit}
+                onClick={() => setShowEditModal(false)}
+              >
                 Cancel
               </button>
-              <button type="button" className="sky-btn sky-btn-primary" onClick={handleSaveVideoEdit}>
-                Save changes
+              <button
+                type="button"
+                className="sky-btn sky-btn-primary"
+                disabled={savingEdit}
+                onClick={handleSaveVideoEdit}
+              >
+                {savingEdit ? 'Saving…' : 'Save changes'}
               </button>
             </div>
           </div>

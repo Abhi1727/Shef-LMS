@@ -5181,3 +5181,77 @@ body.modal-open {
     min-width: 0;
   }
 }
+
+
+/* Edit lecture modal (teacher batch page) */
+.sky-edit-lecture-modal {
+  width: min(560px, 94vw);
+  max-height: 90vh;
+  overflow: auto;
+  background: #fff;
+  border-radius: 14px;
+  border: 1px solid #d5dee3;
+  box-shadow: 0 24px 60px rgba(15, 26, 31, 0.22);
+}
+
+.sky-edit-lecture-modal .modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 18px 20px 12px;
+  border-bottom: 1px solid #e8eef1;
+}
+
+.sky-edit-lecture-modal .modal-header h3 {
+  margin: 0;
+  font-size: 1.2rem;
+  color: #102a33;
+}
+
+.sky-modal-eyebrow {
+  margin: 0 0 4px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #5a6d76;
+}
+
+.sky-edit-lecture-modal .edit-form {
+  padding: 16px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.sky-edit-lecture-modal .form-group label {
+  font-size: 0.78rem;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #5a6d76;
+}
+
+.sky-edit-lecture-modal .form-group input,
+.sky-edit-lecture-modal .form-group textarea {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid #d5dee3;
+  border-radius: 8px;
+  padding: 10px 12px;
+  font: inherit;
+}
+
+.sky-edit-lecture-modal .form-group small {
+  color: #5a6d76;
+  font-size: 0.8rem;
+}
+
+.sky-edit-lecture-modal .modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 12px 20px 18px;
+  border-top: 1px solid #e8eef1;
+}

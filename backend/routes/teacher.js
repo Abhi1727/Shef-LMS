@@ -1189,7 +1189,7 @@ router.get('/students/:studentId/progress', async (req, res) => {
 router.put('/videos/:id', validateVideoUpdate, async (req, res) => {
   try {
     const { id } = req.params;
-    const { title, description } = req.body;
+    const { title, description, duration, youtubeUrl } = req.body;
     const teacherId = String(req.user.id);
 
     // Get the video/lecture
@@ -1200,38 +1200,34 @@ router.put('/videos/:id', validateVideoUpdate, async (req, res) => {
 
     // Verify teacher owns the batch containing this video
     if (lecture.batchId) {
-      // Check regular batches
-      const batch = await Batch.findById(lecture.batchId);
-      
-      if (batch && String(batch.teacherId) !== teacherId) {
-        return res.status(403).json({ 
-          message: 'Access denied. You do not have permission to update this video' 
+      const batch = await Batch.findById(lecture.batchId).lean().exec();
+      let oneToOneBatch = null;
+
+      if (!batch) {
+        const OneToOneBatch = require('../models/OneToOneBatch');
+        oneToOneBatch = await OneToOneBatch.findById(lecture.batchId).lean().exec();
+      }
+
+      if (!batch && !oneToOneBatch) {
+        return res.status(404).json({
+          message: 'Batch not found or access denied'
         });
       }
 
-      // Check one-to-one batches if not found in regular batches
-      if (!batch) {
-        const OneToOneBatch = require('../models/OneToOneBatch');
-        const oneToOneBatch = await OneToOneBatch.findById(lecture.batchId);
-        
-        if (oneToOneBatch && String(oneToOneBatch.teacherId) !== teacherId) {
-          return res.status(403).json({ 
-            message: 'Access denied. You do not have permission to update this video' 
-          });
-        }
-      }
+      const ownerId = batch
+        ? String(batch.teacherId)
+        : String(oneToOneBatch.teacherId);
 
-      // If batch is found but doesn't belong to teacher, deny access
-      if (!batch && !oneToOneBatch) {
-        return res.status(404).json({ 
-          message: 'Batch not found or access denied' 
+      if (ownerId !== teacherId) {
+        return res.status(403).json({
+          message: 'Access denied. You do not have permission to update this video'
         });
       }
     } else {
       // For videos without batchId, check if teacher uploaded the video
-      if (lecture.uploadedBy !== teacherId) {
-        return res.status(403).json({ 
-          message: 'Access denied. You can only update videos you uploaded' 
+      if (String(lecture.uploadedBy) !== teacherId) {
+        return res.status(403).json({
+          message: 'Access denied. You can only update videos you uploaded'
         });
       }
     }
@@ -1240,14 +1236,55 @@ router.put('/videos/:id', validateVideoUpdate, async (req, res) => {
     const updateData = {
       updatedAt: new Date()
     };
+    const changed = [];
 
-    if (title !== undefined) updateData.title = title.trim();
-    if (description !== undefined) updateData.description = description.trim();
+    if (title !== undefined) {
+      updateData.title = title.trim();
+      changed.push('title');
+    }
+    if (description !== undefined) {
+      updateData.description = description.trim();
+      changed.push('description');
+    }
+    if (duration !== undefined) {
+      updateData.duration = duration.trim() || null;
+      changed.push('duration');
+    }
+
+    if (youtubeUrl !== undefined && youtubeUrl !== null && String(youtubeUrl).trim() !== '') {
+      const nextVideoId = extractYouTubeVideoId(youtubeUrl);
+      if (!nextVideoId) {
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid YouTube URL. Use format: https://www.youtube.com/watch?v=... or https://youtu.be/...'
+        });
+      }
+
+      if (lecture.batchId) {
+        const existing = await Classroom.findOne({
+          _id: { $ne: id },
+          youtubeVideoId: nextVideoId,
+          batchId: String(lecture.batchId)
+        }).lean().exec();
+        if (existing) {
+          return res.status(400).json({
+            success: false,
+            message: 'This YouTube video is already assigned to this batch.'
+          });
+        }
+      }
+
+      updateData.youtubeVideoId = nextVideoId;
+      updateData.youtubeVideoUrl = String(youtubeUrl).trim();
+      updateData.youtubeEmbedUrl = `https://www.youtube.com/embed/${nextVideoId}`;
+      updateData.videoSource = lecture.videoSource === 'youtube' ? 'youtube' : 'youtube-url';
+      changed.push('youtubeUrl');
+    }
 
     // Update the video
     const updatedLecture = await Classroom.findByIdAndUpdate(
-      id, 
-      updateData, 
+      id,
+      updateData,
       { new: true }
     ).lean().exec();
 
@@ -1261,7 +1298,7 @@ router.put('/videos/:id', validateVideoUpdate, async (req, res) => {
         userRole: 'teacher',
         videoId: id,
         videoTitle: updatedLecture.title || null,
-        details: `Updated video: ${title ? 'title' : ''}${title && description ? ' and ' : ''}${description ? 'description' : ''}`
+        details: `Updated video: ${changed.join(', ') || 'metadata'}`
       });
     } catch (logErr) {
       console.warn('ActivityLog video_updated failed:', logErr.message);
@@ -1273,15 +1310,24 @@ router.put('/videos/:id', validateVideoUpdate, async (req, res) => {
       video: {
         id: String(updatedLecture._id),
         title: updatedLecture.title,
-        description: updatedLecture.description
+        description: updatedLecture.description,
+        duration: updatedLecture.duration,
+        youtubeVideoId: updatedLecture.youtubeVideoId,
+        youtubeVideoUrl: updatedLecture.youtubeVideoUrl,
+        youtubeEmbedUrl: updatedLecture.youtubeEmbedUrl,
+        videoSource: updatedLecture.videoSource,
+        notesAvailable: updatedLecture.notesAvailable,
+        notesFileName: updatedLecture.notesFileName,
+        notesFilePath: updatedLecture.notesFilePath,
+        updatedAt: updatedLecture.updatedAt
       }
     });
 
   } catch (error) {
     console.error('Error updating teacher video:', error);
-    res.status(500).json({ 
-      success: false, 
-      message: 'Failed to update video' 
+    res.status(500).json({
+      success: false,
+      message: 'Failed to update video'
     });
   }
 });
