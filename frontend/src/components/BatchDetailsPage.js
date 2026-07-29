@@ -3373,36 +3373,6 @@ const BatchDetailsPage = () => {
             {/* Profile Tab */}
             {activeProfileTab === 'profile' && (
               <div className="profile-tab-content">
-                <div className="profile-snapshot">
-                  <div className="profile-snapshot-main">
-                    <div className="profile-snapshot-avatar">
-                      <span>{selectedStudentDetails?.name?.charAt(0).toUpperCase() || 'S'}</span>
-                    </div>
-                    <div className="profile-snapshot-copy">
-                      <div className="profile-snapshot-title-row">
-                        <h3>{selectedStudentDetails?.name || 'Student Profile'}</h3>
-                        <span className={`status-pill ${(selectedStudentDetails?.status || 'inactive').toLowerCase()}`}>
-                          {selectedStudentDetails?.status || 'Unknown'}
-                        </span>
-                      </div>
-                      <p className="profile-snapshot-subtitle">{selectedStudentDetails?.email || 'email@example.com'}</p>
-                      <div className="profile-snapshot-meta">
-                        <span className="meta-chip">{selectedStudentDetails?.course || 'No Course'}</span>
-                        <span className="meta-chip">Batch: {selectedBatch?.name || 'N/A'}</span>
-                        <span className="meta-chip">ID: {selectedStudentDetails?.id || 'N/A'}</span>
-                      </div>
-                    </div>
-                  </div>
-                  <div className="profile-snapshot-actions">
-                    <button 
-                      className="btn-edit-profile"
-                      onClick={() => setEditMode(!editMode)}
-                    >
-                      {editMode ? '👁️ View Mode' : '✏️ Edit Profile'}
-                    </button>
-                  </div>
-                </div>
-
                 {editMode ? (
                   <div className="edit-profile-form compact-profile-form">
                     <div className="profile-form-grid">
@@ -3509,7 +3479,9 @@ const BatchDetailsPage = () => {
                         </div>
                         <div className="detail-item">
                           <label>Student ID</label>
-                          <span>{selectedStudentDetails?.id || 'N/A'}</span>
+                          <span className="truncate-value mono-id" title={selectedStudentDetails?.id || ''}>
+                            {selectedStudentDetails?.id || 'N/A'}
+                          </span>
                         </div>
                       </div>
                     </div>
