@@ -1062,15 +1062,17 @@ const OneToOneBatchManagement = () => {
           )}
 
           {activeView === 'resources' && (
-            <div className="resources-view" style={{ padding: '20px', background: '#0D1117', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.08)', color: '#F0F6FC', margin: '20px 0' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '25px', borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '15px' }}>
+            <div className="resources-view sky-resources">
+              <div className="sky-resources-header">
                 <div>
-                  <h2 style={{ fontSize: '20px', fontWeight: '600', margin: 0 }}>📚 Resources Center Management (1:1)</h2>
-                  <p style={{ fontSize: '12px', color: '#8B949E', margin: '4px 0 0 0' }}>Configure student access and assign specific handouts/tools to this cohort.</p>
+                  <h2>Resources</h2>
+                  <p className="sky-muted">
+                    Control student access and choose which handouts appear for this 1:1 batch.
+                  </p>
                 </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                    <span style={{ fontSize: '13px', fontWeight: '500', color: '#8B949E' }}>Showcase Universe:</span>
+                <div className="sky-resources-controls">
+                  <label className="sky-resources-field">
+                    <span>Showcase universe</span>
                     <select
                       value={batch?.resourceUniverse || 'data-science-ai'}
                       onChange={async (e) => {
@@ -1082,13 +1084,22 @@ const OneToOneBatchManagement = () => {
                             method: 'PUT',
                             headers: {
                               'Content-Type': 'application/json',
-                              'Authorization': `Bearer ${token}`
+                              Authorization: `Bearer ${token}`,
                             },
-                            body: JSON.stringify({ resourceUniverse: newUniverse })
+                            body: JSON.stringify({ resourceUniverse: newUniverse }),
                           });
                           if (response.ok) {
-                            setBatch(prev => ({ ...prev, resourceUniverse: newUniverse }));
-                            showToast(`Resources Showcase Universe set to ${newUniverse === 'data-science-ai' ? 'Data Science' : newUniverse === 'cyber-security' ? 'Cyber Security' : 'Both'}`, 'success');
+                            setBatch((prev) => ({ ...prev, resourceUniverse: newUniverse }));
+                            showToast(
+                              `Resources showcase set to ${
+                                newUniverse === 'data-science-ai'
+                                  ? 'Data Science'
+                                  : newUniverse === 'cyber-security'
+                                    ? 'Cyber Security'
+                                    : 'Both'
+                              }`,
+                              'success'
+                            );
                           } else {
                             showToast('Failed to update showcase universe', 'error');
                           }
@@ -1096,67 +1107,94 @@ const OneToOneBatchManagement = () => {
                           console.error('Error updating resource universe:', err);
                         }
                       }}
-                      style={{ background: '#111827', border: '1px solid rgba(255,255,255,0.1)', color: '#F0F6FC', padding: '6px 12px', borderRadius: '6px', fontSize: '12px', outline: 'none', cursor: 'pointer' }}
+                      className="sky-resources-select"
                     >
                       <option value="data-science-ai">Data Science & AI</option>
                       <option value="cyber-security">Cyber Security</option>
                       <option value="both">Both (Dual Universe)</option>
                     </select>
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px', background: '#111827', padding: '10px 20px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.05)' }}>
-                    <span style={{ fontSize: '13px', fontWeight: '500' }}>Resources Activated:</span>
-                    <label className="res-toggle-switch">
-                      <input 
-                        type="checkbox" 
+                  </label>
+                  <div className="sky-resources-toggle-card">
+                    <div>
+                      <strong>Resources activated</strong>
+                      <span>{batchResourcesEnabled ? 'Students can open Resources' : 'Hidden from students'}</span>
+                    </div>
+                    <label className="sky-switch">
+                      <input
+                        type="checkbox"
                         checked={batchResourcesEnabled}
                         onChange={handleToggleResourcesEnabled}
                       />
-                      <span className="res-toggle-slider"></span>
+                      <span className="sky-switch__slider" />
                     </label>
                   </div>
                 </div>
               </div>
 
               {!batchResourcesEnabled ? (
-                <div style={{ textAlign: 'center', padding: '40px 20px', background: 'rgba(255,255,255,0.01)', borderRadius: '8px', border: '1px dashed rgba(255,255,255,0.1)' }}>
-                  <span style={{ fontSize: '32px' }}>🔒</span>
-                  <h3 style={{ fontSize: '15px', marginTop: '15px', color: '#F0F6FC' }}>Resources Center is Disabled</h3>
-                  <p style={{ fontSize: '12px', color: '#8B949E', maxWidth: '400px', margin: '8px auto 0 auto' }}>Students in this 1:1 batch cannot see the resources icon or access files. Activate the switch above to open access.</p>
+                <div className="sky-resources-empty">
+                  <h3>Resources are disabled</h3>
+                  <p>
+                    Students in this 1:1 batch cannot open the Resources center. Turn on the switch above to grant
+                    access, then assign handouts below.
+                  </p>
                 </div>
               ) : (
-                <div>
-                  <h3 style={{ fontSize: '14px', fontWeight: '600', marginBottom: '15px' }}>Select Handouts to Showcase</h3>
-                  <div style={{ overflowX: 'auto' }}>
-                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', textAlign: 'left' }}>
+                <div className="sky-resources-panel">
+                  <div className="sky-resources-panel__head">
+                    <h3>Handouts for this batch</h3>
+                    <span className="sky-muted">
+                      {allResources.filter((res) =>
+                        (res.assignedOneToOneBatches || []).some(
+                          (id) => String(id) === String(batch?.id || batch?._id || batchId)
+                        )
+                      ).length}{' '}
+                      assigned
+                    </span>
+                  </div>
+                  <div className="sky-resources-table-wrap">
+                    <table className="sky-resources-table">
                       <thead>
-                        <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.08)', color: '#8B949E' }}>
-                          <th style={{ padding: '10px' }}>Resource Title</th>
-                          <th style={{ padding: '10px' }}>Type</th>
-                          <th style={{ padding: '10px' }}>Universe</th>
-                          <th style={{ padding: '10px', textAlign: 'center' }}>Visible to Batch</th>
+                        <tr>
+                          <th>Resource</th>
+                          <th>Type</th>
+                          <th>Universe</th>
+                          <th>Visible</th>
                         </tr>
                       </thead>
                       <tbody>
                         {allResources.length === 0 ? (
                           <tr>
-                            <td colSpan="4" style={{ textAlign: 'center', padding: '20px', color: '#8B949E' }}>No resources registered in the database yet.</td>
+                            <td colSpan="4" className="sky-resources-table__empty">
+                              No resources registered yet.
+                            </td>
                           </tr>
                         ) : (
                           allResources.map((res, index) => {
                             const selectedIdStr = String(batch?.id || batch?._id || batchId);
-                            const isAssigned = (res.assignedOneToOneBatches || []).some(id => String(id) === selectedIdStr);
+                            const isAssigned = (res.assignedOneToOneBatches || []).some(
+                              (id) => String(id) === selectedIdStr
+                            );
                             return (
-                              <tr key={index} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
-                                <td style={{ padding: '12px 10px', fontWeight: '500' }}>{res.title}</td>
-                                <td style={{ padding: '12px 10px', textTransform: 'uppercase', fontSize: '11px', color: '#8B949E' }}>{res.resourceType}</td>
-                                <td style={{ padding: '12px 10px', textTransform: 'capitalize', fontSize: '12px' }}>{res.course}</td>
-                                <td style={{ padding: '12px 10px', textAlign: 'center' }}>
-                                  <input 
-                                    type="checkbox"
-                                    checked={isAssigned}
-                                    onChange={() => handleToggleResourceAssignment(res._id || res.id, isAssigned)}
-                                    style={{ width: '16px', height: '16px', cursor: 'pointer' }}
-                                  />
+                              <tr key={res._id || res.id || index} className={isAssigned ? 'is-assigned' : ''}>
+                                <td>
+                                  <strong>{res.title}</strong>
+                                </td>
+                                <td>
+                                  <span className="sky-resources-type">{res.resourceType || '—'}</span>
+                                </td>
+                                <td className="sky-resources-universe">{res.course || '—'}</td>
+                                <td>
+                                  <label className="sky-resources-check">
+                                    <input
+                                      type="checkbox"
+                                      checked={isAssigned}
+                                      onChange={() =>
+                                        handleToggleResourceAssignment(res._id || res.id, isAssigned)
+                                      }
+                                    />
+                                    <span>{isAssigned ? 'Shown' : 'Hidden'}</span>
+                                  </label>
                                 </td>
                               </tr>
                             );

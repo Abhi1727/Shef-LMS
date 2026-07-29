@@ -1,24 +1,23 @@
 /* SHEF LMS RESOURCES CENTER - Premium Stylesheet */
 
 :root {
-  /* Base Dark Colors */
-  --res-bg-primary: #080C14;
-  --res-bg-secondary: #0D1117;
-  --res-bg-tertiary: #111827;
-  --res-bg-quaternary: #1A2332;
-  --res-border-subtle: rgba(255, 255, 255, 0.06);
-  --res-border-default: rgba(255, 255, 255, 0.10);
-  --res-border-strong: rgba(255, 255, 255, 0.18);
-  --res-text-primary: #F0F6FC;
-  --res-text-secondary: #8B949E;
-  --res-text-tertiary: #484F58;
-  --res-text-muted: #30363D;
+  /* Light Sky States chrome (matches admin/teacher/student shells) */
+  --res-bg-primary: #f4f6f7;
+  --res-bg-secondary: #ffffff;
+  --res-bg-tertiary: #eef2f4;
+  --res-bg-quaternary: #e6eef1;
+  --res-border-subtle: #e6eef1;
+  --res-border-default: #d5dee3;
+  --res-border-strong: #b7c4cb;
+  --res-text-primary: #102a33;
+  --res-text-secondary: #5a6d76;
+  --res-text-tertiary: #3d5059;
+  --res-text-muted: #8a9aa3;
 
-  /* Glassmorphism Defaults */
-  --res-glass-bg: rgba(13, 17, 23, 0.7);
-  --res-glass-border: rgba(255, 255, 255, 0.08);
-  --res-glass-blur: blur(12px);
-  --res-glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+  --res-glass-bg: #ffffff;
+  --res-glass-border: #d5dee3;
+  --res-glass-blur: none;
+  --res-glass-shadow: 0 1px 3px rgba(16, 42, 51, 0.06);
 
   /* Animation Easing */
   --res-ease-smooth: cubic-bezier(0.4, 0, 0.2, 1);
@@ -27,22 +26,22 @@
 
 /* Data Science Accent Theme */
 .theme-data-science {
-  --res-accent-primary: #6366F1;
-  --res-accent-secondary: #818CF8;
-  --res-accent-tertiary: #4F46E5;
-  --res-accent-glow: rgba(99, 102, 241, 0.15);
-  --res-accent-glow-strong: rgba(99, 102, 241, 0.30);
-  --res-gradient-accent: linear-gradient(135deg, #6366F1, #8B5CF6);
+  --res-accent-primary: #147a7a;
+  --res-accent-secondary: #2a9d8f;
+  --res-accent-tertiary: #0b3d4a;
+  --res-accent-glow: rgba(20, 122, 122, 0.12);
+  --res-accent-glow-strong: rgba(20, 122, 122, 0.22);
+  --res-gradient-accent: linear-gradient(135deg, #147a7a, #0b3d4a);
 }
 
 /* Cyber Security Accent Theme */
 .theme-cyber-security {
-  --res-accent-primary: #EF4444;
-  --res-accent-secondary: #F87171;
-  --res-accent-tertiary: #DC2626;
-  --res-accent-glow: rgba(239, 68, 68, 0.15);
-  --res-accent-glow-strong: rgba(239, 68, 68, 0.30);
-  --res-gradient-accent: linear-gradient(135deg, #EF4444, #F97316);
+  --res-accent-primary: #b45309;
+  --res-accent-secondary: #d97706;
+  --res-accent-tertiary: #92400e;
+  --res-accent-glow: rgba(180, 83, 9, 0.12);
+  --res-accent-glow-strong: rgba(180, 83, 9, 0.22);
+  --res-gradient-accent: linear-gradient(135deg, #b45309, #92400e);
 }
 
 /* Base Viewport Rules */
@@ -68,9 +67,9 @@
 }
 
 .res-glass-card:hover {
-  transform: translateY(-2px);
+  transform: none;
   border-color: var(--res-accent-primary);
-  box-shadow: 0 10px 40px var(--res-accent-glow);
+  box-shadow: 0 4px 14px rgba(16, 42, 51, 0.08);
 }
 
 /* Stats Ribbon */
@@ -121,7 +120,7 @@
   display: flex;
   flex-direction: column;
   justify-content: space-between;
-  background: linear-gradient(180deg, rgba(0, 0, 0, 0.2) 0%, rgba(8, 12, 20, 0.9) 100%);
+  background: linear-gradient(180deg, #ffffff 0%, #eef7f7 100%);
   position: relative;
   overflow: hidden;
 }
@@ -165,7 +164,7 @@
   padding: 25px 15px;
   cursor: pointer;
   text-align: center;
-  color: #F0F6FC;
+  color: var(--res-text-primary);
   background: var(--res-glass-bg);
   font: inherit;
   width: 100%;
@@ -174,7 +173,7 @@
 .res-category-label {
   font-size: 13px;
   font-weight: 600;
-  color: #F0F6FC;
+  color: var(--res-text-primary);
   line-height: 1.35;
 }
 
@@ -188,9 +187,9 @@
 }
 
 .res-back-btn {
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  color: #F0F6FC;
+  background: #fff;
+  border: 1px solid var(--res-border-default);
+  color: var(--res-text-primary);
   border-radius: 8px;
   padding: 8px 14px;
   font-size: 13px;
@@ -200,7 +199,8 @@
 
 .res-back-btn:hover {
   border-color: var(--res-accent-primary);
-  color: #fff;
+  color: var(--res-accent-tertiary);
+  background: #eef7f7;
 }
 
 .res-category-icon {
@@ -315,7 +315,8 @@
   display: flex;
   flex-direction: column;
   gap: 15px;
-  background: rgba(255, 255, 255, 0.02);
+  background: #f8fbfb;
+  border: 1px solid var(--res-border-subtle);
   border-radius: 8px;
   padding: 15px;
 }

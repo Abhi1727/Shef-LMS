@@ -164,8 +164,8 @@ export default function ResourcesHome({ user, onLogout }) {
         return (
             <div className="resources-center-container" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', flexDirection: 'column' }}>
                 {pageHeader}
-                <div style={{ border: '4px solid #1A2332', borderTop: '4px solid #6366F1', borderRadius: '50%', width: '50px', height: '50px', animation: 'spin 1s linear infinite' }} />
-                <p style={{ marginTop: '20px', color: '#8B949E' }}>Loading resources…</p>
+                <div style={{ border: '4px solid #d5dee3', borderTop: '4px solid #147a7a', borderRadius: '50%', width: '50px', height: '50px', animation: 'spin 1s linear infinite' }} />
+                <p style={{ marginTop: '20px', color: 'var(--res-text-secondary)' }}>Loading resources…</p>
                 <style>{`@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }`}</style>
             </div>
         );
@@ -177,12 +177,12 @@ export default function ResourcesHome({ user, onLogout }) {
                 {pageHeader}
                 <div className="res-glass-card" style={{ maxWidth: '500px', textAlign: 'center', padding: '40px' }}>
                     <div style={{ fontSize: '48px', marginBottom: '20px' }}>🔒</div>
-                    <h2 style={{ fontSize: '20px', fontWeight: '600', marginBottom: '15px', color: '#F0F6FC' }}>Resources Locked</h2>
-                    <p style={{ color: '#8B949E', fontSize: '14px', lineHeight: '1.6' }}>{message}</p>
+                    <h2 style={{ fontSize: '20px', fontWeight: '600', marginBottom: '15px', color: 'var(--res-text-primary)' }}>Resources Locked</h2>
+                    <p style={{ color: 'var(--res-text-secondary)', fontSize: '14px', lineHeight: '1.6' }}>{message}</p>
                     <button
                         type="button"
                         onClick={() => navigate(homePath)}
-                        style={{ marginTop: '24px', background: '#6366F1', border: 'none', color: '#FFF', padding: '10px 20px', borderRadius: '6px', cursor: 'pointer', fontWeight: '600' }}
+                        style={{ marginTop: '24px', background: 'var(--res-accent-primary)', border: 'none', color: '#FFF', padding: '10px 20px', borderRadius: '6px', cursor: 'pointer', fontWeight: '600' }}
                     >
                         Return to dashboard
                     </button>
@@ -216,8 +216,8 @@ export default function ResourcesHome({ user, onLogout }) {
                     <div style={{ fontSize: '11px', textTransform: 'uppercase', color: 'var(--res-accent-primary)', fontWeight: '600', letterSpacing: '1.5px', marginBottom: '8px' }}>
                         Resources Center • {activeUniverse === 'cyber-security' ? 'Cyber Security & Ethical Hacking' : 'Data Science & AI'}
                     </div>
-                    <h1 style={{ fontSize: '32px', fontWeight: '700', letterSpacing: '-0.5px', margin: '0 0 6px 0', color: '#F0F6FC' }}>Resources</h1>
-                    <p style={{ color: '#8B949E', fontSize: '14px', margin: 0, maxWidth: '560px' }}>
+                    <h1 style={{ fontSize: '32px', fontWeight: '700', letterSpacing: '-0.5px', margin: '0 0 6px 0', color: 'var(--res-text-primary)' }}>Resources</h1>
+                    <p style={{ color: 'var(--res-text-secondary)', fontSize: '14px', margin: 0, maxWidth: '560px' }}>
                         {activeUniverse === 'cyber-security'
                             ? 'Toolkits, references, and materials for ethical hacking.'
                             : 'Module materials, notebooks, and practice tools for Data Science & AI.'}
@@ -227,7 +227,7 @@ export default function ResourcesHome({ user, onLogout }) {
                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
                     {isDualUniverse && (
                         <div className="res-glass-card" style={{ padding: '8px 15px', display: 'flex', alignItems: 'center', gap: '10px', transform: 'none' }}>
-                            <span style={{ fontSize: '12px', color: '#8B949E' }}>DS & AI</span>
+                            <span style={{ fontSize: '12px', color: 'var(--res-text-secondary)' }}>DS & AI</span>
                             <label className="res-toggle-switch">
                                 <input
                                     type="checkbox"
@@ -240,13 +240,13 @@ export default function ResourcesHome({ user, onLogout }) {
                                 />
                                 <span className="res-toggle-slider"></span>
                             </label>
-                            <span style={{ fontSize: '12px', color: '#8B949E' }}>Cyber Security</span>
+                            <span style={{ fontSize: '12px', color: 'var(--res-text-secondary)' }}>Cyber Security</span>
                         </div>
                     )}
                 </div>
             </div>
 
-            <h3 style={{ fontSize: '18px', fontWeight: '600', marginBottom: '15px', color: '#F0F6FC' }}>Browse by Category</h3>
+            <h3 style={{ fontSize: '18px', fontWeight: '600', marginBottom: '15px', color: 'var(--res-text-primary)' }}>Browse by Category</h3>
             <div className="res-categories-grid">
                 <button
                     type="button"
@@ -321,10 +321,10 @@ export default function ResourcesHome({ user, onLogout }) {
                         }}
                     >
                         <div>
-                            <h4 style={{ fontSize: '18px', fontWeight: '700', margin: '0 0 6px 0', color: '#F0F6FC' }}>
+                            <h4 style={{ fontSize: '18px', fontWeight: '700', margin: '0 0 6px 0', color: 'var(--res-text-primary)' }}>
                                 {activeCatObj.name}
                             </h4>
-                            <p style={{ fontSize: '13px', color: '#8B949E', margin: 0, lineHeight: '1.5' }}>
+                            <p style={{ fontSize: '13px', color: 'var(--res-text-secondary)', margin: 0, lineHeight: '1.5' }}>
                                 {activeCatObj.description || 'Module notes, notebooks, and reference materials.'}
                             </p>
                         </div>
@@ -346,7 +346,7 @@ export default function ResourcesHome({ user, onLogout }) {
                                 Open Google Drive notes →
                             </a>
                         ) : (
-                            <span style={{ fontSize: '13px', color: '#8B949E' }}>Drive folder not linked yet</span>
+                            <span style={{ fontSize: '13px', color: 'var(--res-text-secondary)' }}>Drive folder not linked yet</span>
                         )}
                     </div>
                 );
@@ -354,7 +354,7 @@ export default function ResourcesHome({ user, onLogout }) {
 
             {uniqueAssessments.length > 0 && (
                 <div style={{ marginTop: '24px', marginBottom: '36px' }}>
-                    <h3 style={{ fontSize: '18px', fontWeight: '600', marginBottom: '15px', color: '#F0F6FC' }}>
+                    <h3 style={{ fontSize: '18px', fontWeight: '600', marginBottom: '15px', color: 'var(--res-text-primary)' }}>
                         Assigned quizzes
                     </h3>
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '16px' }}>
@@ -364,12 +364,12 @@ export default function ResourcesHome({ user, onLogout }) {
                             );
                             const totalPoints = ass.questions?.reduce((sum, q) => sum + (q.marks || 1), 0) || 0;
                             let statusText = 'Not started';
-                            let statusColor = '#8B949E';
+                            let statusColor = 'var(--res-text-secondary)';
                             let action = (
                                 <button
                                     type="button"
                                     onClick={() => navigate(`/student/assessment/${ass._id}`)}
-                                    style={{ background: '#6366F1', border: 'none', color: '#FFF', padding: '8px 16px', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: 700 }}
+                                    style={{ background: 'var(--res-accent-primary)', border: 'none', color: '#FFF', padding: '8px 16px', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: 700 }}
                                 >
                                     Start quiz
                                 </button>
@@ -406,8 +406,8 @@ export default function ResourcesHome({ user, onLogout }) {
                                     <span style={{ fontSize: '11px', color: statusColor, fontWeight: 700, textTransform: 'uppercase' }}>
                                         {statusText}
                                     </span>
-                                    <h4 style={{ margin: 0, fontSize: '15px', color: '#F0F6FC' }}>{ass.title}</h4>
-                                    <p style={{ margin: 0, fontSize: '12px', color: '#8B949E', lineHeight: 1.4 }}>
+                                    <h4 style={{ margin: 0, fontSize: '15px', color: 'var(--res-text-primary)' }}>{ass.title}</h4>
+                                    <p style={{ margin: 0, fontSize: '12px', color: 'var(--res-text-secondary)', lineHeight: 1.4 }}>
                                         {ass.description || 'No description provided.'}
                                     </p>
                                     <div style={{ marginTop: 'auto', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px' }}>
@@ -423,10 +423,10 @@ export default function ResourcesHome({ user, onLogout }) {
 
             {notebooks.length > 0 && (
                 <div style={{ marginBottom: '36px' }}>
-                    <h3 style={{ fontSize: '18px', fontWeight: '600', marginBottom: '8px', color: '#F0F6FC' }}>
+                    <h3 style={{ fontSize: '18px', fontWeight: '600', marginBottom: '8px', color: 'var(--res-text-primary)' }}>
                         Course notebooks
                     </h3>
-                    <p style={{ fontSize: '13px', color: '#8B949E', margin: '0 0 16px' }}>
+                    <p style={{ fontSize: '13px', color: 'var(--res-text-secondary)', margin: '0 0 16px' }}>
                         Download Jupyter notebooks and open them in Jupyter, VS Code, or Google Colab.
                     </p>
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '14px' }}>
@@ -438,15 +438,15 @@ export default function ResourcesHome({ user, onLogout }) {
                             >
                                 <div style={{ display: 'flex', justifyContent: 'space-between', gap: '8px' }}>
                                     <span style={{ fontSize: '11px', color: '#818CF8', fontWeight: 700, textTransform: 'uppercase' }}>Notebook</span>
-                                    <span style={{ fontSize: '11px', color: '#8B949E' }}>
+                                    <span style={{ fontSize: '11px', color: 'var(--res-text-secondary)' }}>
                                         {(nb.categorySlug || '').replace(/^ds-module-/, 'M')}
                                     </span>
                                 </div>
-                                <h4 style={{ margin: 0, fontSize: '14px', fontWeight: 650, color: '#F0F6FC', lineHeight: 1.35 }}>
+                                <h4 style={{ margin: 0, fontSize: '14px', fontWeight: 650, color: 'var(--res-text-primary)', lineHeight: 1.35 }}>
                                     {nb.title}
                                 </h4>
                                 {nb.description ? (
-                                    <p style={{ margin: 0, fontSize: '12px', color: '#8B949E', lineHeight: 1.4 }}>
+                                    <p style={{ margin: 0, fontSize: '12px', color: 'var(--res-text-secondary)', lineHeight: 1.4 }}>
                                         {nb.description.length > 110 ? `${nb.description.slice(0, 110)}…` : nb.description}
                                     </p>
                                 ) : null}
@@ -455,7 +455,7 @@ export default function ResourcesHome({ user, onLogout }) {
                                         type="button"
                                         onClick={() => downloadNotebook(nb)}
                                         style={{
-                                            background: 'var(--res-accent-primary, #6366F1)',
+                                            background: 'var(--res-accent-primary)',
                                             color: '#fff',
                                             border: 'none',
                                             padding: '8px 12px',
@@ -476,7 +476,7 @@ export default function ResourcesHome({ user, onLogout }) {
 
             {otherResources.length > 0 && (
                 <div style={{ marginBottom: '36px' }}>
-                    <h3 style={{ fontSize: '18px', fontWeight: '600', marginBottom: '15px', color: '#F0F6FC' }}>
+                    <h3 style={{ fontSize: '18px', fontWeight: '600', marginBottom: '15px', color: 'var(--res-text-primary)' }}>
                         Materials & tools
                     </h3>
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '14px' }}>
@@ -489,8 +489,8 @@ export default function ResourcesHome({ user, onLogout }) {
                                 <span style={{ fontSize: '11px', color: '#818CF8', fontWeight: 700, textTransform: 'uppercase' }}>
                                     {item.resourceType}
                                 </span>
-                                <h4 style={{ margin: 0, fontSize: '14px', color: '#F0F6FC' }}>{item.title}</h4>
-                                <p style={{ margin: 0, fontSize: '12px', color: '#8B949E', lineHeight: 1.4 }}>
+                                <h4 style={{ margin: 0, fontSize: '14px', color: 'var(--res-text-primary)' }}>{item.title}</h4>
+                                <p style={{ margin: 0, fontSize: '12px', color: 'var(--res-text-secondary)', lineHeight: 1.4 }}>
                                     {item.description || 'No description provided.'}
                                 </p>
                                 {(item.content?.externalUrl || item.content?.officialUrl || item.content?.fileUrl) && (
@@ -511,7 +511,7 @@ export default function ResourcesHome({ user, onLogout }) {
 
             {filteredResources.length === 0 && uniqueAssessments.length === 0 && (
                 <div className="res-glass-card" style={{ padding: '28px', textAlign: 'center', marginBottom: '30px', transform: 'none' }}>
-                    <p style={{ margin: 0, color: '#8B949E', fontSize: '14px' }}>
+                    <p style={{ margin: 0, color: 'var(--res-text-secondary)', fontSize: '14px' }}>
                         No resources in this category yet. Try another category or check back after your instructor publishes materials.
                     </p>
                 </div>
@@ -530,23 +530,23 @@ export default function ResourcesHome({ user, onLogout }) {
                                 cursor: 'pointer',
                                 padding: '18px 20px',
                                 border: '1px solid var(--res-glass-border)',
-                                color: '#F0F6FC',
+                                color: 'var(--res-text-primary)',
                                 transform: 'none'
                             }}
                         >
                             <strong style={{ display: 'block', marginBottom: '4px' }}>Interactive concept visualizers</strong>
-                            <span style={{ fontSize: '13px', color: '#8B949E' }}>
+                            <span style={{ fontSize: '13px', color: 'var(--res-text-secondary)' }}>
                                 Optional practice boards for Python, stats, ML, and SQL — open when you want them.
                             </span>
                         </button>
                     ) : (
                         <div>
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-                                <h3 style={{ margin: 0, fontSize: '18px', color: '#F0F6FC' }}>Interactive concept visualizers</h3>
+                                <h3 style={{ margin: 0, fontSize: '18px', color: 'var(--res-text-primary)' }}>Interactive concept visualizers</h3>
                                 <button
                                     type="button"
                                     onClick={() => setShowVisualizers(false)}
-                                    style={{ background: 'transparent', border: '1px solid rgba(255,255,255,0.12)', color: '#8B949E', borderRadius: '6px', padding: '6px 10px', cursor: 'pointer', fontSize: '12px' }}
+                                    style={{ background: 'transparent', border: '1px solid #d5dee3', color: 'var(--res-text-secondary)', borderRadius: '6px', padding: '6px 10px', cursor: 'pointer', fontSize: '12px' }}
                                 >
                                     Hide
                                 </button>

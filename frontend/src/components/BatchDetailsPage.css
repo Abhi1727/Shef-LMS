@@ -5638,3 +5638,285 @@ body.modal-open {
     height: auto;
   }
 }
+
+/* ========== Sky States Resources management (admin batch) ========== */
+.resources-view.sky-resources,
+.admin-batch-details-page .resources-view.sky-resources {
+  width: 100%;
+  padding: 20px 28px 40px;
+  box-sizing: border-box;
+  background: transparent;
+  color: var(--lms-ink, #102a33);
+}
+
+.sky-resources-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1rem;
+  flex-wrap: wrap;
+}
+
+.sky-resources-header h2 {
+  margin: 0 0 0.25rem;
+  font-size: 1.35rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--lms-ink, #102a33);
+}
+
+.sky-resources-header .sky-muted {
+  margin: 0;
+}
+
+.sky-resources-controls {
+  display: flex;
+  align-items: stretch;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.sky-resources-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  min-width: 200px;
+}
+
+.sky-resources-field span {
+  font-size: 0.72rem;
+  font-weight: 750;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #5a6d76;
+}
+
+.sky-resources-select {
+  height: 38px;
+  border: 1px solid #d5dee3;
+  border-radius: 8px;
+  background: #fff;
+  color: #102a33;
+  padding: 0 0.75rem;
+  font: inherit;
+  font-size: 0.875rem;
+}
+
+.sky-resources-select:focus {
+  outline: none;
+  border-color: #147a7a;
+  box-shadow: 0 0 0 3px rgba(20, 122, 122, 0.12);
+}
+
+.sky-resources-toggle-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  min-width: 240px;
+  padding: 0.65rem 0.9rem;
+  background: #fff;
+  border: 1px solid #d5dee3;
+  border-radius: 10px;
+}
+
+.sky-resources-toggle-card strong {
+  display: block;
+  font-size: 0.85rem;
+  color: #102a33;
+}
+
+.sky-resources-toggle-card span {
+  display: block;
+  font-size: 0.75rem;
+  color: #5a6d76;
+  margin-top: 0.15rem;
+}
+
+.sky-switch {
+  position: relative;
+  display: inline-block;
+  width: 44px;
+  height: 24px;
+  flex-shrink: 0;
+}
+
+.sky-switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.sky-switch__slider {
+  position: absolute;
+  inset: 0;
+  cursor: pointer;
+  background: #c5d0d6;
+  border-radius: 999px;
+  transition: background 0.2s ease;
+}
+
+.sky-switch__slider::before {
+  content: '';
+  position: absolute;
+  width: 18px;
+  height: 18px;
+  left: 3px;
+  top: 3px;
+  background: #fff;
+  border-radius: 50%;
+  transition: transform 0.2s ease;
+  box-shadow: 0 1px 2px rgba(15, 26, 31, 0.2);
+}
+
+.sky-switch input:checked + .sky-switch__slider {
+  background: #147a7a;
+}
+
+.sky-switch input:checked + .sky-switch__slider::before {
+  transform: translateX(20px);
+}
+
+.sky-resources-empty {
+  background: #fff;
+  border: 1px dashed #b7c4cb;
+  border-radius: 12px;
+  padding: 2.5rem 1.5rem;
+  text-align: center;
+}
+
+.sky-resources-empty h3 {
+  margin: 0 0 0.4rem;
+  color: #102a33;
+  font-size: 1.05rem;
+}
+
+.sky-resources-empty p {
+  margin: 0 auto;
+  max-width: 34rem;
+  color: #5a6d76;
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+.sky-resources-panel {
+  background: #fff;
+  border: 1px solid #d5dee3;
+  border-radius: 12px;
+  box-shadow: 0 1px 2px rgba(16, 42, 51, 0.04);
+  overflow: hidden;
+}
+
+.sky-resources-panel__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.9rem 1.1rem;
+  border-bottom: 1px solid #e6eef1;
+}
+
+.sky-resources-panel__head h3 {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #102a33;
+}
+
+.sky-resources-table-wrap {
+  overflow-x: auto;
+}
+
+.sky-resources-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+}
+
+.sky-resources-table th {
+  text-align: left;
+  padding: 0.75rem 1.1rem;
+  font-size: 0.72rem;
+  font-weight: 750;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #5a6d76;
+  background: #f8fbfb;
+  border-bottom: 1px solid #e6eef1;
+}
+
+.sky-resources-table td {
+  padding: 0.85rem 1.1rem;
+  border-bottom: 1px solid #eef2f4;
+  color: #102a33;
+  vertical-align: middle;
+}
+
+.sky-resources-table tr:last-child td {
+  border-bottom: none;
+}
+
+.sky-resources-table tr.is-assigned {
+  background: #f4fbfb;
+}
+
+.sky-resources-table__empty {
+  text-align: center;
+  color: #5a6d76 !important;
+  padding: 2rem 1rem !important;
+}
+
+.sky-resources-type {
+  display: inline-block;
+  font-size: 0.7rem;
+  font-weight: 750;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #0b4f4f;
+  background: #eef7f7;
+  border: 1px solid #a9d8d8;
+  border-radius: 999px;
+  padding: 0.2rem 0.55rem;
+}
+
+.sky-resources-universe {
+  text-transform: capitalize;
+  color: #3d5059;
+  font-size: 0.85rem;
+}
+
+.sky-resources-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  cursor: pointer;
+  font-size: 0.8rem;
+  font-weight: 650;
+  color: #3d5059;
+  user-select: none;
+}
+
+.sky-resources-check input {
+  width: 15px;
+  height: 15px;
+  accent-color: #147a7a;
+  cursor: pointer;
+}
+
+@media (max-width: 800px) {
+  .resources-view.sky-resources,
+  .admin-batch-details-page .resources-view.sky-resources {
+    padding: 1rem 1rem 2rem;
+  }
+
+  .sky-resources-header {
+    flex-direction: column;
+  }
+
+  .sky-resources-controls,
+  .sky-resources-field,
+  .sky-resources-toggle-card {
+    width: 100%;
+  }
+}
