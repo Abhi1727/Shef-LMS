@@ -2306,7 +2306,7 @@ const BatchDetailsPage = () => {
                             </button>
                             <button
                               type="button"
-                              className="sky-btn sky-btn-ghost"
+                              className="sky-btn sky-btn-secondary"
                               disabled={!video.notesAvailable}
                               onClick={(e) => {
                                 e.stopPropagation();
@@ -2320,7 +2320,7 @@ const BatchDetailsPage = () => {
                               <>
                                 <button
                                   type="button"
-                                  className="sky-btn sky-btn-ghost"
+                                  className="sky-btn sky-btn-secondary"
                                   onClick={(e) => {
                                     e.stopPropagation();
                                     handleEditVideo(video);
@@ -2330,7 +2330,7 @@ const BatchDetailsPage = () => {
                                 </button>
                                 <button
                                   type="button"
-                                  className="sky-btn sky-btn-ghost sky-btn-danger"
+                                  className="sky-btn sky-btn-secondary sky-btn-danger"
                                   onClick={(e) => {
                                     e.stopPropagation();
                                     if (
