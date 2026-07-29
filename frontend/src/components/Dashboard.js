@@ -9,6 +9,7 @@ import { formatDateForComponent } from '../utils/dateUtils';
 import { ToastContainer, showToast } from './Toast';
 import AccountMenu from './AccountMenu';
 import './Dashboard.css';
+import '../styles/RoleShell.css';
 import { getApiBaseUrl } from '../utils/apiBase';
 
 // Premium Image Slider Component with Advanced Features
@@ -843,14 +844,13 @@ const Dashboard = ({ user, onLogout }) => {
     fetchStudentAssessments();
   }, []);
 
-  // Apply dark mode class to body
+  // Student shell uses light theme (match teacher/admin)
   useEffect(() => {
-    if (darkMode) {
-      document.body.classList.add('dark-mode');
-    } else {
+    document.body.classList.remove('dark-mode');
+    return () => {
       document.body.classList.remove('dark-mode');
-    }
-  }, [darkMode]);
+    };
+  }, []);
 
   // Measure navigation button widths and set up ResizeObserver
   useEffect(() => {
@@ -2106,154 +2106,99 @@ const Dashboard = ({ user, onLogout }) => {
   };
 
   return (
-    <div className="dashboard aetherial-theme dark">
-      {/* Background Neural / Grid Overlay */}
-      <div className="grid-overlay" />
-      <div className="aurora-glow bg-primary top-1/4 left-1/4" />
-      <div className="aurora-glow bg-secondary bottom-1/4 right-1/4" />
-
-      {/* Modern Sidebar Navigation */}
-      <aside className={`sidebar ${sidebarOpen ? 'expanded' : 'collapsed'}`}>
-        <div className="sidebar-brand" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <div className="brand-logo">🌌</div>
-            <span className="brand-text">Sky States</span>
+    <div className="dashboard ss-shell student-shell">
+      <header className="ss-shell-header">
+        <div className="ss-shell-header__row">
+          <div className="ss-shell-brand">
+            <h1 className="ss-shell-brand__name">Sky States LMS</h1>
+            <p className="ss-shell-brand__role">Student</p>
           </div>
-          {sidebarOpen && (
-            <button 
-              className="sidebar-close-btn" 
-              onClick={() => setSidebarOpen(false)}
-              style={{ background: 'none', border: 'none', color: 'var(--on-surface-variant)', fontSize: '18px', cursor: 'pointer' }}
-            >
-              ✖
-            </button>
-          )}
-        </div>
-
-        <nav className="sidebar-menu">
-          <button 
-            className={`menu-item ${activeSection === 'overview' ? 'active' : ''}`}
-            onClick={() => { setActiveSection('overview'); setSidebarOpen(false); }}
-          >
-            <span className="menu-icon">🏠</span>
-            <span className="menu-label">Home</span>
-          </button>
-          
-          <button 
-            className={`menu-item ${activeSection === 'classroom' ? 'active' : ''}`}
-            onClick={() => { setActiveSection('classroom'); setSidebarOpen(false); }}
-          >
-            <span className="menu-icon">🎥</span>
-            <span className="menu-label">Classroom</span>
-            {classroomVideos.length > 0 && (
-              <span className="menu-badge">{classroomVideos.length}</span>
-            )}
-          </button>
-
-          <button 
-            className={`menu-item ${activeSection === 'assessments' ? 'active' : ''}`}
-            onClick={() => { setActiveSection('assessments'); setSidebarOpen(false); }}
-          >
-            <span className="menu-icon">✏️</span>
-            <span className="menu-label">Assessments</span>
-            {studentAssessments.length > 0 && (
-              <span className="menu-badge">{studentAssessments.length}</span>
-            )}
-          </button>
-          
-          <button 
-            className="menu-item"
-            onClick={() => { navigate('/resources'); setSidebarOpen(false); }}
-          >
-            <span className="menu-icon">📚</span>
-            <span className="menu-label">Resources</span>
-          </button>
-
-          <button 
-            className={`menu-item ${activeSection === 'profile' ? 'active' : ''}`}
-            onClick={() => { setActiveSection('profile'); setSidebarOpen(false); }}
-          >
-            <span className="menu-icon">👤</span>
-            <span className="menu-label">Profile</span>
-          </button>
-
-          <button 
-            className="menu-item logout-menu-btn"
-            onClick={onLogout}
-          >
-            <span className="menu-icon">🚪</span>
-            <span className="menu-label">Logout</span>
-          </button>
-        </nav>
-      </aside>
-
-      {/* Sidebar overlay backdrop for mobile/collapsing close */}
-      {sidebarOpen && (
-        <div 
-          className="sidebar-overlay visible" 
-          onClick={() => setSidebarOpen(false)} 
-          style={{ zIndex: 99, position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)' }} 
-        />
-      )}
-
-      {/* Main Layout Container */}
-      <div className="main-layout">
-        {/* Top Header Bar */}
-        <header className="aetherial-header">
-          <button 
-            className="sidebar-toggle"
-            onClick={() => setSidebarOpen(!sidebarOpen)}
-            aria-label="Toggle Sidebar"
-          >
-            ☰
-          </button>
-          
-          <div className="global-search-container">
-            <span className="search-icon">🔍</span>
-            <input 
-              type="text" 
-              placeholder="Search lessons, videos, resources, modules..." 
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="global-search-input"
-            />
-            {searchQuery && (
-              <div className="search-results-dropdown" role="listbox">
-                {getFilteredSearchItems().length > 0 ? (
-                  getFilteredSearchItems().map((res, i) => (
-                    <div
-                      key={i}
-                      className="search-result-item"
-                      role="option"
-                      onClick={() => {
-                        if (res.item) {
-                          handlePlayVideo(res.item);
-                        } else if (res.action) {
-                          res.action();
-                        }
-                        setSearchQuery('');
-                      }}
-                    >
-                      <span className="res-icon">{res.icon}</span>
-                      <span className="res-title">{res.title}</span>
-                      <span className="res-type">{res.type}</span>
-                    </div>
-                  ))
-                ) : (
-                  <div className="no-search-results">No matches found</div>
-                )}
-              </div>
-            )}
-          </div>
-
-          <div className="header-user-profile">
-            <span className="streak-badge">🔥 {Math.max(realTimeStats?.streak?.current || 0, getLocalStorageStreak())} Days</span>
+          <div className="ss-shell-actions">
+            <div className="student-header-search">
+              <span className="search-icon" aria-hidden="true">🔍</span>
+              <input
+                type="search"
+                placeholder="Search lessons, videos, modules…"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="student-header-search__input"
+              />
+              {searchQuery && (
+                <div className="search-results-dropdown" role="listbox">
+                  {getFilteredSearchItems().length > 0 ? (
+                    getFilteredSearchItems().map((res, i) => (
+                      <div
+                        key={i}
+                        className="search-result-item"
+                        role="option"
+                        onClick={() => {
+                          if (res.item) {
+                            handlePlayVideo(res.item);
+                          } else if (res.action) {
+                            res.action();
+                          }
+                          setSearchQuery('');
+                        }}
+                      >
+                        <span className="res-icon">{res.icon}</span>
+                        <span className="res-title">{res.title}</span>
+                        <span className="res-type">{res.type}</span>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="no-search-results">No matches found</div>
+                  )}
+                </div>
+              )}
+            </div>
+            <span className="student-streak-chip">
+              🔥 {Math.max(realTimeStats?.streak?.current || 0, getLocalStorageStreak())} days
+            </span>
             <AccountMenu user={user} onLogout={onLogout} />
           </div>
-        </header>
+        </div>
+        <nav className="ss-shell-nav" aria-label="Student">
+          <button
+            type="button"
+            className={`ss-shell-nav__btn ${activeSection === 'overview' ? 'is-active' : ''}`}
+            onClick={() => setActiveSection('overview')}
+          >
+            Home
+          </button>
+          <button
+            type="button"
+            className={`ss-shell-nav__btn ${activeSection === 'classroom' ? 'is-active' : ''}`}
+            onClick={() => setActiveSection('classroom')}
+          >
+            Classroom{classroomVideos.length > 0 ? ` (${classroomVideos.length})` : ''}
+          </button>
+          <button
+            type="button"
+            className={`ss-shell-nav__btn ${activeSection === 'assessments' ? 'is-active' : ''}`}
+            onClick={() => setActiveSection('assessments')}
+          >
+            Assessments{studentAssessments.length > 0 ? ` (${studentAssessments.length})` : ''}
+          </button>
+          <button
+            type="button"
+            className="ss-shell-nav__btn"
+            onClick={() => navigate('/resources')}
+          >
+            Resources
+          </button>
+          <button
+            type="button"
+            className={`ss-shell-nav__btn ${activeSection === 'profile' ? 'is-active' : ''}`}
+            onClick={() => setActiveSection('profile')}
+          >
+            Profile
+          </button>
+        </nav>
+      </header>
 
-        {/* Dashboard Content Pages */}
-        <main className="main-content-scroll">
+      <div className="ss-shell-main student-shell-main">
+        <main className="student-main-content">
+
           {activeSection === 'overview' && (
             <div className="overview-page animate-in">
               {/* Hero Banner Section */}
@@ -2559,6 +2504,7 @@ const Dashboard = ({ user, onLogout }) => {
               />
             </div>
           )}
+
         </main>
       </div>
 

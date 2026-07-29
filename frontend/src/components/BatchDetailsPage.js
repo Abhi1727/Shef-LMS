@@ -2251,116 +2251,107 @@ const BatchDetailsPage = () => {
                 </button>
               </div>
               {batchVideos.length > 0 ? (
-                <div className="video-grid">
-                  {batchVideos.map((video) => (
-                    <div 
-                      key={video.id} 
-                      className="video-card"
-                      onClick={() => setSelectedVideo(video)}
-                    >
-                      <div className="video-thumbnail" style={{ position: 'relative', overflow: 'hidden' }}>
-                        {video.videoSource === 'youtube-url' ? (
-                          <img 
-                            src={`https://img.youtube.com/vi/${video.youtubeVideoId}/mqdefault.jpg`}
-                            alt={video.title}
-                            style={{
-                              width: '100%',
-                              height: '100%',
-                              objectFit: 'cover'
-                            }}
-                            onError={(e) => {
-                              e.target.style.display = 'none';
-                              e.target.nextSibling.style.display = 'flex';
-                            }}
-                          />
-                        ) : null}
-                        
-                        <div style={{
-                          display: video.videoSource === 'youtube-url' ? 'none' : 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          height: '100%',
-                          fontSize: '24px'
-                        }}>
-                          {video.videoSource === 'youtube-url' ? '📺' : 
-                           video.zoomUrl ? '🎥' : '📁'}
-                        </div>
-                        
-                        {video.duration && (
-                          <div style={{
-                            position: 'absolute',
-                            bottom: '4px',
-                            right: '4px',
-                            backgroundColor: 'rgba(0, 0, 0, 0.8)',
-                            color: 'white',
-                            padding: '1px 4px',
-                            borderRadius: '2px',
-                            fontSize: '10px',
-                            fontWeight: 'bold'
-                          }}>
-                            {video.duration}
-                          </div>
-                        )}
-                      </div>
-                      <div className="video-right">
-                        <div className="video-info">
-                          <div className="video-title">{video.title}</div>
-                          <div className="video-meta">
-                            <span className="meta-item">
-                              <span className="label">Trainer:</span>
-                              <span className="value">{selectedBatch.teacherName || video.instructor}</span>
-                            </span>
-                            {(video.classDate || video.date || video.createdAt) && (
-                              <span className="meta-item">
-                                <span className="label">Date:</span>
-                                <span className="value">{formatDateForComponent(video.classDate || video.date || video.createdAt)}</span>
+                <div className="video-grid admin-video-grid">
+                  {batchVideos.map((video) => {
+                    const ytId =
+                      video.youtubeVideoId ||
+                      YouTubeUtils.extractVideoId(video.youtubeVideoUrl || video.videoUrl || '') ||
+                      '';
+                    const thumb = ytId
+                        ? `https://img.youtube.com/vi/${ytId}/mqdefault.jpg`
+                        : null;
+                    const videoDate = formatDateForComponent(
+                      video.classDate || video.date || video.createdAt
+                    );
+                    return (
+                      <article key={video.id} className="video-card admin-video-card">
+                        <button
+                          type="button"
+                          className="admin-video-thumb"
+                          onClick={() => setSelectedVideo(video)}
+                          aria-label={`Play ${video.title || 'lecture'}`}
+                        >
+                          {thumb ? (
+                            <img src={thumb} alt="" loading="lazy" />
+                          ) : (
+                            <div className="admin-video-placeholder">
+                              {video.zoomUrl ? 'Live' : 'Lecture'}
+                            </div>
+                          )}
+                          {video.duration ? (
+                            <span className="admin-video-duration">{video.duration}</span>
+                          ) : null}
+                        </button>
+                        <div className="video-right admin-video-body">
+                          <div className="video-info">
+                            <h3 className="video-title admin-video-title" title={video.title}>
+                              {video.title || 'Untitled lecture'}
+                            </h3>
+                            <div className="video-meta admin-video-meta">
+                              <span>
+                                Trainer: {selectedBatch.teacherName || video.instructor || '—'}
                               </span>
-                            )}
+                              {videoDate ? <span>{videoDate}</span> : null}
+                              {video.notesAvailable ? (
+                                <span className="admin-notes-chip">Notes available</span>
+                              ) : null}
+                            </div>
                           </div>
-                        </div>
-                        <div className="video-actions">
-                          {video.notesAvailable && (
-                            <button 
-                              onClick={(e) => {
-                                e.stopPropagation(); // Prevent video play
-                                handleDownloadNotes(video);
-                              }}
+                          <div className="video-actions admin-video-actions">
+                            <button
+                              type="button"
+                              className="sky-btn sky-btn-primary"
+                              onClick={() => setSelectedVideo(video)}
+                            >
+                              View
+                            </button>
+                            <button
+                              type="button"
                               className="sky-btn sky-btn-ghost"
-                              title="Download Notes"
+                              disabled={!video.notesAvailable}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (video.notesAvailable) handleDownloadNotes(video);
+                              }}
+                              title={video.notesAvailable ? 'Download notes' : 'No notes attached'}
                             >
                               Notes
                             </button>
-                          )}
-                          {isAdmin && (
-                            <>
-                              <button 
-                                onClick={(e) => {
-                                  e.stopPropagation(); // Prevent video play
-                                  handleEditVideo(video);
-                                }}
-                                className="sky-btn sky-btn-ghost"
-                                title="Edit Video"
-                              >
-                                Edit
-                              </button>
-                              <button 
-                                onClick={(e) => {
-                                  e.stopPropagation(); // Prevent video play
-                                  if (window.confirm(`Remove "${video.title}" from this batch? This will not delete the video, only unassign it from this batch.`)) {
-                                  handleDeleteVideo(video);
-                                  }
-                                }}
-                                className="sky-btn sky-btn-ghost sky-btn-danger"
-                                title="Remove Video from Batch"
-                              >
-                                🗑️ Remove
-                              </button>
-                            </>
-                          )}
+                            {isAdmin && (
+                              <>
+                                <button
+                                  type="button"
+                                  className="sky-btn sky-btn-ghost"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleEditVideo(video);
+                                  }}
+                                >
+                                  Edit
+                                </button>
+                                <button
+                                  type="button"
+                                  className="sky-btn sky-btn-ghost sky-btn-danger"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    if (
+                                      window.confirm(
+                                        `Remove "${video.title}" from this batch? This will not delete the video, only unassign it from this batch.`
+                                      )
+                                    ) {
+                                      handleDeleteVideo(video);
+                                    }
+                                  }}
+                                >
+                                  Remove
+                                </button>
+                              </>
+                            )}
+                          </div>
                         </div>
-                      </div>
-                    </div>
-                  ))}
+                      </article>
+                    );
+                  })}
                 </div>
               ) : (
                 <div className="no-data">

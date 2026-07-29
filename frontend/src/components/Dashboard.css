@@ -12798,3 +12798,153 @@ html {
     background: rgba(255, 255, 255, 0.3);
   }
 }
+
+
+/* ========== Student light shell (match teacher/admin) ========== */
+.student-shell.ss-shell {
+  background: #f4f6f7 !important;
+  color: #0f1a1f !important;
+  min-height: 100vh;
+}
+
+.student-shell .ss-shell-main.student-shell-main {
+  max-width: none;
+  width: 100%;
+  margin: 0;
+  padding: 1.25rem 1.5rem 3rem;
+  box-sizing: border-box;
+}
+
+.student-shell .student-main-content {
+  width: 100%;
+  max-width: none;
+}
+
+.student-shell .ss-shell-actions {
+  gap: 0.65rem;
+  flex-wrap: wrap;
+}
+
+.student-header-search {
+  position: relative;
+  display: flex;
+  align-items: center;
+  min-width: min(340px, 48vw);
+}
+
+.student-header-search .search-icon {
+  position: absolute;
+  left: 10px;
+  font-size: 0.85rem;
+  opacity: 0.7;
+  pointer-events: none;
+}
+
+.student-header-search__input {
+  width: 100%;
+  height: 38px;
+  border: 1px solid #d5dee3;
+  border-radius: 8px;
+  padding: 0 12px 0 32px;
+  background: #fff;
+  color: #0f1a1f;
+  font: inherit;
+}
+
+.student-header-search__input:focus {
+  outline: none;
+  border-color: #147a7a;
+  box-shadow: 0 0 0 3px rgba(20, 122, 122, 0.12);
+}
+
+.student-header-search .search-results-dropdown {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  background: #0f172a;
+  border: 1px solid #1e293b;
+  border-radius: 10px;
+  box-shadow: 0 16px 40px rgba(15, 23, 42, 0.28);
+  z-index: 13000;
+  max-height: 320px;
+  overflow: auto;
+}
+
+.student-streak-chip {
+  display: inline-flex;
+  align-items: center;
+  height: 36px;
+  padding: 0 12px;
+  border-radius: 999px;
+  background: #fff7ed;
+  color: #c2410c;
+  border: 1px solid #fed7aa;
+  font-size: 0.8rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+/* Soften leftover dark aetherial blocks inside student shell */
+.student-shell .overview-page,
+.student-shell .classroom-page,
+.student-shell .assessments-page,
+.student-shell .profile-page {
+  color: #0f1a1f;
+}
+
+.student-shell .glass-card,
+.student-shell .hero-section.glass-card,
+.student-shell .welcome-glass-card {
+  background: #fff !important;
+  border: 1px solid #d5dee3 !important;
+  box-shadow: 0 1px 2px rgba(16, 42, 51, 0.04) !important;
+  color: #0f1a1f !important;
+  backdrop-filter: none !important;
+}
+
+.student-shell .hero-title,
+.student-shell .shimmer-text,
+.student-shell .glow-text {
+  color: #102a33 !important;
+  background: none !important;
+  -webkit-text-fill-color: #102a33 !important;
+  text-shadow: none !important;
+}
+
+.student-shell .hero-desc,
+.student-shell .badge-mono {
+  color: #5a6d76 !important;
+}
+
+.student-shell .stat-pill,
+.student-shell .dashboard-stat-pill,
+.student-shell .ss-stat {
+  background: #fff !important;
+  border: 1px solid #d5dee3 !important;
+  color: #0f1a1f !important;
+}
+
+.student-shell .floating-ai-assistant-btn {
+  background: #147a7a;
+  color: #fff;
+  border: none;
+  box-shadow: 0 8px 20px rgba(20, 122, 122, 0.28);
+}
+
+@media (max-width: 900px) {
+  .student-header-search {
+    order: 3;
+    width: 100%;
+    min-width: 0;
+    flex: 1 1 100%;
+  }
+
+  .student-shell .ss-shell-header__row {
+    flex-wrap: wrap;
+  }
+
+  .student-shell .ss-shell-main.student-shell-main {
+    padding: 1rem 1rem 2.5rem;
+  }
+}
