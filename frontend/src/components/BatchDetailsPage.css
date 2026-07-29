@@ -2269,514 +2269,457 @@ body.modal-open {
   }
 }
 
-/* Email View Styles */
-.email-view {
+/* ========== Sky States Email composer (admin batch) ========== */
+.email-view.sky-email,
+.admin-batch-details-page .email-view.sky-email {
   width: 100%;
-  max-width: 100%;
+  padding: 20px 28px 40px;
+  box-sizing: border-box;
 }
 
-.email-header {
-  margin-bottom: 16px;
-  padding: 16px 20px;
-  background: linear-gradient(135deg, #f8f9ff 0%, #f0f3ff 100%);
-  border-radius: 12px;
-  border: 1px solid rgba(102, 126, 234, 0.15);
+.sky-email-header {
   display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.email-header-icon {
-  font-size: 1.5rem;
-  opacity: 0.8;
-}
-
-.email-header h2 {
-  margin: 0;
-  color: #2c3e50;
-  font-size: 1.3rem;
-  font-weight: 600;
-}
-
-.email-header-subtitle {
-  color: #6c757d;
-  font-size: 0.85rem;
-  margin-top: 2px;
-}
-
-.email-modal {
-  background: #ffffff;
-  border-radius: 12px;
-  border: 1px solid rgba(102, 126, 234, 0.15);
-  box-shadow: 0 4px 16px rgba(102, 126, 234, 0.08);
-}
-
-.email-content {
-  padding: 12px;
-}
-
-/* Email Sender Section */
-.email-sender-card,
-.email-sender {
-  margin-bottom: 16px;
-  padding: 12px 16px;
-  background: linear-gradient(135deg, #f8f9ff 0%, #f0f3ff 100%);
-  border-radius: 8px;
-  border: 1px solid rgba(102, 126, 234, 0.15);
-}
-
-.email-sender-label {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-weight: 600;
-  color: #5a6c9a;
-  margin-bottom: 6px;
-  font-size: 0.85rem;
-}
-
-.email-sender-icon {
-  font-size: 0.9rem;
-}
-
-.email-sender-value {
-  font-size: 1rem;
-  font-weight: 600;
-  color: #2c3e50;
-  margin-bottom: 2px;
-}
-
-.email-sender-input {
-  width: 100%;
-  padding: 12px;
-  border: 1px solid #dce1e8;
-  border-radius: 6px;
-  font-size: 0.9rem;
-  background: #ffffff;
-  transition: all 0.2s ease;
-}
-
-.email-sender-note {
-  color: #6c757d;
-  font-size: 12px;
-  font-style: italic;
-}
-
-/* Email Students Section */
-.email-students-section {
-  margin-bottom: 12px;
-  padding: 12px;
-  background: #ffffff;
-  border-radius: 8px;
-  border: 1px solid #e8ecf4;
-  box-shadow: 0 1px 4px rgba(102, 126, 234, 0.04);
-}
-
-.email-students-header {
-  display: flex;
+  align-items: flex-start;
   justify-content: space-between;
-  align-items: center;
-  margin-bottom: 12px;
-  gap: 12px;
+  gap: 1rem;
+  margin-bottom: 1rem;
   flex-wrap: wrap;
 }
 
-.email-section-label {
+.sky-email-header h2 {
+  margin: 0 0 0.25rem;
+  font-size: 1.35rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--lms-ink, #102a33);
+}
+
+.sky-email-header .sky-muted {
+  margin: 0;
+}
+
+.sky-email-header-meta {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.sky-email-count-chip {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  font-weight: 600;
-  color: #1a1d26;
-  font-size: 0.9rem;
+  height: 32px;
+  padding: 0 0.75rem;
+  border-radius: 999px;
+  background: #eef7f7;
+  border: 1px solid #a9d8d8;
+  color: #0b4f4f;
+  font-size: 0.78rem;
+  font-weight: 700;
 }
 
-.email-section-icon {
-  font-size: 1rem;
+.sky-email-count-chip--muted {
+  background: #f4f6f7;
+  border-color: #d5dee3;
+  color: #5a6d76;
 }
 
-/* Student Search */
-.email-student-search {
-  flex: 1;
-  min-width: 200px;
-  max-width: 300px;
+.sky-email-layout {
+  display: grid;
+  grid-template-columns: minmax(280px, 360px) minmax(0, 1fr);
+  gap: 1rem;
+  align-items: stretch;
+  min-height: 560px;
 }
 
-.email-student-search-input {
-  width: 100%;
-  padding: 8px 12px;
-  border: 1px solid #dce1e8;
-  border-radius: 6px;
-  font-size: 0.85rem;
-  background: #ffffff;
-  transition: all 0.2s ease;
-}
-
-.email-student-search-input:focus {
-  outline: none;
-  border-color: #667eea;
-  box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.1);
-}
-
-/* Quick Filters */
-.email-quick-filters {
+.sky-email-panel {
+  background: #fff;
+  border: 1px solid var(--lms-border, #d5dee3);
+  border-radius: 12px;
+  box-shadow: 0 1px 2px rgba(16, 42, 51, 0.04);
   display: flex;
-  gap: 8px;
-  margin-bottom: 12px;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+.sky-email-panel__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.9rem 1rem;
+  border-bottom: 1px solid #e6eef1;
   flex-wrap: wrap;
 }
 
-.email-quick-filter {
-  padding: 4px 8px;
-  border: 1px solid #dce1e8;
-  border-radius: 4px;
-  background: #ffffff;
-  font-size: 0.8rem;
+.sky-email-panel__head h3 {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #102a33;
+}
+
+.sky-email-recipient-actions {
+  display: flex;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+}
+
+.sky-email-mini-btn {
+  height: 30px;
+  padding: 0 0.65rem;
+  font-size: 0.75rem;
+}
+
+.sky-email-toolbar {
+  padding: 0.85rem 1rem 0.65rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.sky-email-search {
+  width: 100%;
+  height: 38px;
+  border: 1px solid #d5dee3;
+  border-radius: 8px;
+  padding: 0 0.75rem;
+  font: inherit;
+  font-size: 0.875rem;
+  color: #0f1a1f;
+  background: #fff;
+  box-sizing: border-box;
+}
+
+.sky-email-search:focus {
+  outline: none;
+  border-color: #147a7a;
+  box-shadow: 0 0 0 3px rgba(20, 122, 122, 0.12);
+}
+
+.sky-email-filters {
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+
+.sky-email-filter {
+  height: 30px;
+  padding: 0 0.7rem;
+  border-radius: 999px;
+  border: 1px solid #d5dee3;
+  background: #fff;
+  color: #3d5059;
+  font-size: 0.75rem;
+  font-weight: 650;
   cursor: pointer;
-  transition: all 0.2s ease;
-  color: #4a5568;
+  font-family: inherit;
 }
 
-.email-quick-filter:hover {
-  border-color: #667eea;
-  background: #f8f9ff;
+.sky-email-filter:hover {
+  border-color: #a9d8d8;
+  background: #eef7f7;
+  color: #0b4f4f;
 }
 
-.email-quick-filter.active {
-  background: #667eea;
-  border-color: #667eea;
-  color: white;
+.sky-email-filter.is-active {
+  background: #147a7a;
+  border-color: #147a7a;
+  color: #fff;
 }
 
-.email-select-all {
+.sky-email-select-all {
   display: flex;
   align-items: center;
-  gap: 8px;
-  font-size: 0.85rem;
-  color: #4a5568;
+  gap: 0.55rem;
+  padding: 0.45rem 1rem 0.65rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #3d5059;
   cursor: pointer;
   user-select: none;
+}
+
+.sky-email-select-all input {
+  width: 15px;
+  height: 15px;
+  accent-color: #147a7a;
+  cursor: pointer;
+}
+
+.sky-email-students-list {
+  flex: 1;
+  min-height: 220px;
+  max-height: none;
+  overflow-y: auto;
+  border-top: 1px solid #e6eef1;
+}
+
+.sky-email-student {
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.7rem 1rem;
+  border-bottom: 1px solid #eef2f4;
+  cursor: pointer;
+  transition: background 0.12s ease;
+}
+
+.sky-email-student:hover {
+  background: #f8fbfb;
+}
+
+.sky-email-student.is-selected {
+  background: #eef7f7;
+}
+
+.sky-email-student input {
+  width: 15px;
+  height: 15px;
+  accent-color: #147a7a;
+  cursor: pointer;
+}
+
+.sky-email-student__avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: #0b3d4a;
+  color: #fff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.75rem;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.sky-email-student__meta {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: 0.1rem;
+}
+
+.sky-email-student__name {
+  font-size: 0.875rem;
+  font-weight: 700;
+  color: #102a33;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sky-email-student__email {
+  font-size: 0.75rem;
+  color: #5a6d76;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sky-email-status {
+  font-size: 0.65rem;
+  font-weight: 750;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  padding: 0.2rem 0.45rem;
+  border-radius: 999px;
+  border: 1px solid #d5dee3;
+  color: #5a6d76;
+  background: #f4f6f7;
   white-space: nowrap;
 }
 
-.email-select-all input[type="checkbox"] {
-  width: 16px;
-  height: 16px;
-  accent-color: #667eea;
-  cursor: pointer;
+.sky-email-status--active {
+  background: #ecfdf5;
+  border-color: #a7f3d0;
+  color: #047857;
 }
 
-.email-students-list {
-  max-height: 400px;
-  overflow-y: auto;
-  border: 1px solid #e8ecf4;
-  border-radius: 6px;
-  background: #fafbff;
+.sky-email-status--inactive,
+.sky-email-status--on-leave {
+  background: #fff7ed;
+  border-color: #fed7aa;
+  color: #c2410c;
 }
 
-.email-students-list::-webkit-scrollbar {
-  width: 8px;
-}
-
-.email-students-list::-webkit-scrollbar-track {
-  background: #f1f3f8;
-  border-radius: 4px;
-}
-
-.email-students-list::-webkit-scrollbar-thumb {
-  background: #c5cee0;
-  border-radius: 4px;
-}
-
-.email-students-list::-webkit-scrollbar-thumb:hover {
-  background: #a8b4cc;
-}
-
-.email-student-item {
-  display: flex;
-  align-items: center;
-  padding: 8px 12px;
-  border-bottom: 1px solid #e8ecf4;
-  transition: background-color 0.15s ease;
-}
-
-.email-student-item:last-child {
-  border-bottom: none;
-}
-
-.email-student-item:hover {
-  background-color: #f4f6fc;
-}
-
-.email-student-item input[type="checkbox"] {
-  width: 16px;
-  height: 16px;
-  margin-right: 10px;
-  accent-color: #667eea;
-  cursor: pointer;
-}
-
-.email-student-info,
-.email-student-label {
-  display: flex;
-  flex-direction: column;
-  flex: 1;
-  min-width: 0;
-}
-
-.student-name {
-  font-weight: 600;
-  color: #2c3e50;
-  font-size: 0.9rem;
-  margin-bottom: 2px;
-}
-
-.student-email {
-  font-size: 0.8rem;
-  color: #6c757d;
-  word-break: break-all;
-  line-height: 1.2;
-}
-
-.no-students-message {
+.sky-email-empty {
+  padding: 2.5rem 1.25rem;
   text-align: center;
-  padding: 40px 20px;
-  color: #6c757d;
+  color: #5a6d76;
+  font-size: 0.875rem;
 }
 
-.no-students-message p {
+.sky-email-empty p {
   margin: 0;
-  font-size: 14px;
 }
 
-/* Email Composition Section */
-.email-composition {
-  margin-bottom: 12px;
+.sky-email-compose {
+  padding-bottom: 0;
 }
 
-.email-form {
+.sky-email-from {
   display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.email-field-group {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.email-field-label {
-  font-weight: 600;
-  color: #2c3e50;
-  font-size: 0.9rem;
-}
-
-.required {
-  color: #ef4444;
-}
-
-.email-subject-input,
-.email-message-input {
-  width: 100%;
-  padding: 10px 12px;
-  border: 1px solid #dce1e8;
-  border-radius: 6px;
-  font-size: 0.9rem;
-  transition: all 0.2s ease;
-  background-color: #fff;
-}
-
-.email-subject-input:focus,
-.email-message-input:focus {
-  outline: none;
-  border-color: #667eea;
-  box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.1);
-}
-
-.email-message-input {
-  min-height: 120px;
-  line-height: 1.5;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
-  resize: vertical;
-  tab-size: 4;
-}
-
-/* Character Counter */
-.email-char-counter {
-  text-align: right;
-  font-size: 0.8rem;
-  color: #6c757d;
-  margin-top: 4px;
-}
-
-/* Email Actions */
-.email-actions {
-  display: flex;
-  justify-content: space-between;
   align-items: center;
-  gap: 12px;
-  padding-top: 12px;
-  border-top: 1px solid #e8ecf4;
+  gap: 0.75rem;
+  padding: 0.85rem 1.1rem 0;
+}
+
+.sky-email-from__label {
+  font-size: 0.72rem;
+  font-weight: 750;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: #5a6d76;
+}
+
+.sky-email-from__value {
+  font-size: 0.875rem;
+  font-weight: 650;
+  color: #102a33;
+  background: #f4f7f8;
+  border: 1px solid #e6eef1;
+  border-radius: 6px;
+  padding: 0.35rem 0.65rem;
+}
+
+.sky-email-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  padding: 0.85rem 1.1rem 0;
+}
+
+.sky-email-field--message {
+  flex: 1;
+  min-height: 0;
+  padding-bottom: 0.85rem;
+}
+
+.sky-email-field__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.sky-email-field label {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #3d5059;
+}
+
+.sky-email-char-count {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #5a6d76;
+}
+
+.sky-email-input,
+.sky-email-textarea {
+  width: 100%;
+  border: 1px solid #d5dee3;
+  border-radius: 8px;
+  background: #fff;
+  color: #0f1a1f;
+  font: inherit;
+  font-size: 0.9rem;
+  box-sizing: border-box;
+}
+
+.sky-email-input {
+  height: 40px;
+  padding: 0 0.85rem;
+}
+
+.sky-email-textarea {
+  flex: 1;
+  min-height: 220px;
+  padding: 0.85rem;
+  line-height: 1.55;
+  resize: vertical;
+}
+
+.sky-email-input:focus,
+.sky-email-textarea:focus {
+  outline: none;
+  border-color: #147a7a;
+  box-shadow: 0 0 0 3px rgba(20, 122, 122, 0.12);
+}
+
+.sky-email-footer {
+  margin-top: auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  padding: 0.9rem 1.1rem;
+  border-top: 1px solid #e6eef1;
+  background: #f8fbfb;
+  border-radius: 0 0 12px 12px;
+}
+
+.sky-email-footer__hint {
+  margin: 0;
+  font-size: 0.82rem;
+  color: #5a6d76;
+  font-weight: 550;
+}
+
+.sky-email-footer__actions {
+  display: flex;
+  gap: 0.5rem;
   flex-wrap: wrap;
 }
 
-.email-selection-info {
-  font-size: 0.85rem;
-  color: #6c757d;
-  font-weight: 500;
-}
-
-.email-action-buttons {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-}
-
-.btn-email-cancel {
-  padding: 8px 16px;
-  border: 1px solid #dce1e8;
-  border-radius: 6px;
-  background: white;
-  color: #6c757d;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  font-size: 0.9rem;
-}
-
-.btn-email-cancel:hover {
-  background: #f4f6fc;
-  border-color: #c5cee0;
-}
-
-.btn-send-email {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: white;
-  border: none;
-  padding: 8px 16px;
-  border-radius: 6px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  box-shadow: 0 2px 8px rgba(102, 126, 234, 0.25);
-  font-size: 0.9rem;
-}
-
-.btn-send-email:hover:not(:disabled) {
-  transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.35);
-}
-
-.btn-send-email:disabled {
-  background: linear-gradient(135deg, #b0b8d4 0%, #a89bb8 100%);
-  cursor: not-allowed;
-  transform: none;
-  box-shadow: none;
-}
-
-.btn-send-loading {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-/* Responsive Email View */
-@media (max-width: 768px) {
-  .email-content {
-    padding: 8px;
+@media (max-width: 980px) {
+  .sky-email-layout {
+    grid-template-columns: 1fr;
+    min-height: 0;
   }
-  
-  .email-header {
-    padding: 12px 16px;
+
+  .sky-email-students-list {
+    max-height: 280px;
+  }
+
+  .sky-email-textarea {
+    min-height: 180px;
+  }
+}
+
+@media (max-width: 640px) {
+  .email-view.sky-email,
+  .admin-batch-details-page .email-view.sky-email {
+    padding: 1rem 1rem 2rem;
+  }
+
+  .sky-email-header {
     flex-direction: column;
-    align-items: flex-start;
-    gap: 8px;
   }
-  
-  .email-header h2 {
-    font-size: 1.1rem;
+
+  .sky-email-student {
+    grid-template-columns: auto auto minmax(0, 1fr);
   }
-  
-  .email-students-section {
-    padding: 8px;
+
+  .sky-email-status {
+    grid-column: 3;
+    justify-self: start;
   }
-  
-  .email-students-header {
+
+  .sky-email-footer {
     flex-direction: column;
     align-items: stretch;
-    gap: 8px;
   }
-  
-  .email-student-search {
-    max-width: none;
-  }
-  
-  .email-quick-filters {
-    justify-content: center;
-  }
-  
-  .email-actions {
-    flex-direction: column;
-    gap: 8px;
-  }
-  
-  .email-action-buttons {
+
+  .sky-email-footer__actions {
     width: 100%;
-    justify-content: stretch;
   }
-  
-  .btn-send-email,
-  .btn-email-cancel {
+
+  .sky-email-footer__actions .sky-btn {
     flex: 1;
-    width: 100%;
-  }
-
-  .email-student-item {
-    padding: 8px 10px;
-  }
-  
-  .student-name {
-    font-size: 0.85rem;
-  }
-  
-  .student-email {
-    font-size: 0.75rem;
-  }
-  
-  .email-students-list {
-    max-height: 300px;
-  }
-}
-
-@media (max-width: 480px) {
-  .email-content {
-    padding: 6px;
-  }
-  
-  .email-header {
-    padding: 8px 12px;
-  }
-  
-  .email-students-section {
-    padding: 6px;
-  }
-  
-  .email-students-list {
-    max-height: 250px;
-  }
-  
-  .email-form {
-    gap: 8px;
-  }
-  
-  .email-subject-input,
-  .email-message-input {
-    padding: 8px 10px;
-    font-size: 0.85rem;
-  }
-  
-  .email-message-input {
-    min-height: 100px;
   }
 }
 

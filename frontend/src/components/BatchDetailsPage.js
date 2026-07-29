@@ -305,7 +305,6 @@ const BatchDetailsPage = () => {
   const [isSendingEmail, setIsSendingEmail] = useState(false);
   const [emailSearchTerm, setEmailSearchTerm] = useState('');
   const [emailQuickFilter, setEmailQuickFilter] = useState('all');
-  const [showCharCounter, setShowCharCounter] = useState(false);
 
   // Activity graph state
   const [showLogins, setShowLogins] = useState(true);
@@ -2564,237 +2563,228 @@ const BatchDetailsPage = () => {
           )}
 
           {activeView === 'email' && (
-            <div className="email-view">
-              <div className="email-header">
-                <div className="email-header-icon">✉️</div>
+            <div className="email-view sky-email">
+              <div className="sky-email-header">
                 <div>
-                  <h2>Send Email to Batch</h2>
-                  <p className="email-header-subtitle">{selectedBatch?.name}</p>
+                  <h2>Email batch</h2>
+                  <p className="sky-muted">
+                    Message students in {selectedBatch?.name || 'this batch'} from support@skystates.us
+                  </p>
+                </div>
+                <div className="sky-email-header-meta">
+                  <span className="sky-email-count-chip">
+                    {emailForm.selectedStudents.length} selected
+                  </span>
+                  <span className="sky-email-count-chip sky-email-count-chip--muted">
+                    {batchStudents.length} in batch
+                  </span>
                 </div>
               </div>
-              
-              <div className="email-modal">
-                <div className="email-content">
-                  {/* Sender Email Display */}
-                  <div className="email-sender-card">
-                    <div className="email-sender-label">
-                      <span className="email-sender-icon">📤</span>
-                      <span>From</span>
+
+              <div className="sky-email-layout">
+                <aside className="sky-email-panel sky-email-recipients">
+                  <div className="sky-email-panel__head">
+                    <h3>Recipients</h3>
+                    <div className="sky-email-recipient-actions">
+                      <button type="button" className="sky-btn sky-btn-ghost sky-email-mini-btn" onClick={handleSelectAllFiltered}>
+                        Select filtered
+                      </button>
+                      <button type="button" className="sky-btn sky-btn-ghost sky-email-mini-btn" onClick={handleSelectActive}>
+                        Active only
+                      </button>
+                      <button type="button" className="sky-btn sky-btn-ghost sky-email-mini-btn" onClick={handleSelectNone}>
+                        Clear
+                      </button>
                     </div>
-                    <div className="email-sender-value">support@skystates.us</div>
-                    <small className="email-sender-note">Batch notifications will be sent from this address</small>
                   </div>
 
-                  {/* Student Selection */}
-                  <div className="email-students-section">
-                    <div className="email-students-header">
-                      <label className="email-section-label">
-                        <span className="email-section-icon">👥</span>
-                        Select Students
-                      </label>
-                      <div className="email-student-search">
-                        <input
-                          type="text"
-                          placeholder="Search students..."
-                          value={emailSearchTerm}
-                          onChange={(e) => setEmailSearchTerm(e.target.value)}
-                          className="email-student-search-input"
-                        />
-                      </div>
-                    </div>
-                    
-                    {/* Quick Filters */}
-                    <div className="email-quick-filters">
+                  <div className="sky-email-toolbar">
+                    <input
+                      type="search"
+                      placeholder="Search by name or email…"
+                      value={emailSearchTerm}
+                      onChange={(e) => setEmailSearchTerm(e.target.value)}
+                      className="sky-email-search"
+                    />
+                    <div className="sky-email-filters" role="group" aria-label="Recipient filters">
                       <button
                         type="button"
-                        className={`email-quick-filter ${emailQuickFilter === 'all' ? 'active' : ''}`}
+                        className={`sky-email-filter ${emailQuickFilter === 'all' ? 'is-active' : ''}`}
                         onClick={() => handleQuickSelect('all')}
                       >
                         All ({batchStudents.length})
                       </button>
                       <button
                         type="button"
-                        className={`email-quick-filter ${emailQuickFilter === 'active' ? 'active' : ''}`}
+                        className={`sky-email-filter ${emailQuickFilter === 'active' ? 'is-active' : ''}`}
                         onClick={() => handleQuickSelect('active')}
                       >
-                        Active ({batchStudents.filter(s => s.status === 'active').length})
+                        Active ({batchStudents.filter((s) => s.status === 'active').length})
                       </button>
                       <button
                         type="button"
-                        className={`email-quick-filter ${emailQuickFilter === 'inactive' ? 'active' : ''}`}
+                        className={`sky-email-filter ${emailQuickFilter === 'inactive' ? 'is-active' : ''}`}
                         onClick={() => handleQuickSelect('inactive')}
                       >
-                        Inactive ({batchStudents.filter(s => s.status === 'inactive').length})
-                      </button>
-                      <button
-                        type="button"
-                        className="email-quick-filter"
-                        onClick={handleSelectAllFiltered}
-                      >
-                        Select All Filtered
-                      </button>
-                      <button
-                        type="button"
-                        className="email-quick-filter"
-                        onClick={handleSelectNone}
-                      >
-                        Clear Selection
-                      </button>
-                      <button
-                        type="button"
-                        className="email-quick-filter"
-                        onClick={handleSelectActive}
-                      >
-                        Select Active Only
+                        Inactive ({batchStudents.filter((s) => s.status === 'inactive').length})
                       </button>
                     </div>
-                    
-                    <div className="email-students-header">
-                      <label className="email-select-all" htmlFor="select-all-students">
-                        <input
-                          type="checkbox"
-                          id="select-all-students"
-                          checked={emailForm.selectedStudents.length === filteredEmailStudents.length && filteredEmailStudents.length > 0}
-                          onChange={(e) => {
-                            if (e.target.checked) {
-                              setEmailForm(prev => ({
-                                ...prev,
-                                selectedStudents: filteredEmailStudents.map(student => student.email)
-                              }));
-                            } else {
-                              setEmailForm(prev => ({
-                                ...prev,
-                                selectedStudents: []
-                              }));
-                            }
-                          }}
-                        />
-                        <span>Select All ({filteredEmailStudents.length} of {batchStudents.length})</span>
-                      </label>
-                    </div>
-                    
-                    <div className="email-students-list">
-                      {filteredEmailStudents.length > 0 ? (
-                        filteredEmailStudents.map(student => (
-                          <label key={student.id} htmlFor={`student-${student.id}`} className="email-student-item">
+                  </div>
+
+                  <label className="sky-email-select-all" htmlFor="select-all-students">
+                    <input
+                      type="checkbox"
+                      id="select-all-students"
+                      checked={
+                        filteredEmailStudents.length > 0 &&
+                        filteredEmailStudents.every((s) => emailForm.selectedStudents.includes(s.email))
+                      }
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setEmailForm((prev) => ({
+                            ...prev,
+                            selectedStudents: filteredEmailStudents.map((student) => student.email),
+                          }));
+                        } else {
+                          setEmailForm((prev) => ({ ...prev, selectedStudents: [] }));
+                        }
+                      }}
+                    />
+                    <span>
+                      Select all shown ({filteredEmailStudents.length})
+                    </span>
+                  </label>
+
+                  <div className="sky-email-students-list">
+                    {filteredEmailStudents.length > 0 ? (
+                      filteredEmailStudents.map((student) => {
+                        const checked = emailForm.selectedStudents.includes(student.email);
+                        const status = (student.status || 'active').toLowerCase();
+                        return (
+                          <label
+                            key={student.id}
+                            htmlFor={`email-student-${student.id}`}
+                            className={`sky-email-student ${checked ? 'is-selected' : ''}`}
+                          >
                             <input
                               type="checkbox"
-                              id={`student-${student.id}`}
-                              checked={emailForm.selectedStudents.includes(student.email)}
+                              id={`email-student-${student.id}`}
+                              checked={checked}
                               onChange={(e) => {
                                 if (e.target.checked) {
-                                  setEmailForm(prev => ({
+                                  setEmailForm((prev) => ({
                                     ...prev,
-                                    selectedStudents: [...prev.selectedStudents, student.email]
+                                    selectedStudents: [...prev.selectedStudents, student.email],
                                   }));
                                 } else {
-                                  setEmailForm(prev => ({
+                                  setEmailForm((prev) => ({
                                     ...prev,
-                                    selectedStudents: prev.selectedStudents.filter(email => email !== student.email)
+                                    selectedStudents: prev.selectedStudents.filter((email) => email !== student.email),
                                   }));
                                 }
                               }}
                             />
-                            <div className="email-student-info">
-                              <span className="student-name">{student.name}</span>
-                              <span className="student-email">{student.email}</span>
-                            </div>
+                            <span className="sky-email-student__avatar" aria-hidden="true">
+                              {(student.name || 'S').charAt(0).toUpperCase()}
+                            </span>
+                            <span className="sky-email-student__meta">
+                              <span className="sky-email-student__name">{student.name}</span>
+                              <span className="sky-email-student__email">{student.email}</span>
+                            </span>
+                            <span className={`sky-email-status sky-email-status--${status}`}>
+                              {status}
+                            </span>
                           </label>
-                        ))
-                      ) : (
-                        <div className="no-students-message">
-                          <p>
-                            {emailSearchTerm || emailQuickFilter !== 'all' 
-                              ? 'No students match the current filters.' 
-                              : 'No students in this batch to email.'}
-                          </p>
-                        </div>
-                      )}
-                    </div>
+                        );
+                      })
+                    ) : (
+                      <div className="sky-email-empty">
+                        <p>
+                          {emailSearchTerm || emailQuickFilter !== 'all'
+                            ? 'No students match the current filters.'
+                            : 'No students in this batch to email.'}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                </aside>
+
+                <section className="sky-email-panel sky-email-compose">
+                  <div className="sky-email-panel__head">
+                    <h3>Compose</h3>
                   </div>
 
-                  {/* Email Composition */}
-                  <div className="email-composition">
-                    <label className="email-section-label">
-                      <span className="email-section-icon">✏️</span>
-                      Compose Message
-                    </label>
-                    <div className="email-form">
-                      <div className="email-field-group">
-                        <label className="email-field-label">Subject <span className="required">*</span></label>
-                        <input
-                          type="text"
-                          placeholder="Enter email subject"
-                          value={emailForm.subject}
-                          onChange={(e) => setEmailForm(prev => ({ ...prev, subject: e.target.value }))}
-                          className="email-subject-input"
-                          required
-                        />
-                      </div>
-                      <div className="email-field-group">
-                        <label className="email-field-label">
-                          Message <span className="required">*</span>
-                          <span 
-                            style={{ marginLeft: '8px', fontSize: '0.8rem', color: '#6c757d', cursor: 'pointer' }}
-                            onClick={() => setShowCharCounter(!showCharCounter)}
-                          >
-                            {showCharCounter ? 'Hide' : 'Show'} counter
-                          </span>
-                        </label>
-                        <textarea
-                          placeholder="Write your message to the selected students..."
-                          value={emailForm.message}
-                          onChange={(e) => setEmailForm(prev => ({ ...prev, message: e.target.value }))}
-                          className="email-message-input"
-                          rows="6"
-                          required
-                          maxLength="5000"
-                        />
-                        {showCharCounter && (
-                          <div className="email-char-counter">
-                            {emailForm.message.length}/5000 characters
-                          </div>
-                        )}
-                      </div>
-                      
-                      <div className="email-actions">
-                        <div className="email-selection-info">
-                          {emailForm.selectedStudents.length > 0 && (
-                            <span>
-                              {emailForm.selectedStudents.length} of {batchStudents.length} students selected
-                            </span>
-                          )}
-                        </div>
-                        <div className="email-action-buttons">
-                          <button
-                            type="button"
-                            className="btn-email-cancel"
-                            onClick={() => {
-                              setEmailForm({ subject: '', message: '', selectedStudents: [] });
-                              setEmailSearchTerm('');
-                              setEmailQuickFilter('all');
-                              setActiveView('videos');
-                            }}
-                          >
-                            Cancel
-                          </button>
-                          <button
-                            type="button"
-                            className="btn-send-email"
-                            onClick={handleSendEmail}
-                            disabled={isSendingEmail || !emailForm.subject.trim() || !emailForm.message.trim() || emailForm.selectedStudents.length === 0}
-                          >
-                            {isSendingEmail ? (
-                              <span className="btn-send-loading">⏳ Sending...</span>
-                            ) : (
-                              <span>Send to {emailForm.selectedStudents.length} student{emailForm.selectedStudents.length !== 1 ? 's' : ''}</span>
-                            )}
-                          </button>
-                        </div>
-                      </div>
+                  <div className="sky-email-from">
+                    <span className="sky-email-from__label">From</span>
+                    <span className="sky-email-from__value">support@skystates.us</span>
+                  </div>
+
+                  <div className="sky-email-field">
+                    <label htmlFor="sky-email-subject">Subject</label>
+                    <input
+                      id="sky-email-subject"
+                      type="text"
+                      placeholder="e.g. Class update for this week"
+                      value={emailForm.subject}
+                      onChange={(e) => setEmailForm((prev) => ({ ...prev, subject: e.target.value }))}
+                      className="sky-email-input"
+                    />
+                  </div>
+
+                  <div className="sky-email-field sky-email-field--message">
+                    <div className="sky-email-field__row">
+                      <label htmlFor="sky-email-message">Message</label>
+                      <span className="sky-email-char-count">
+                        {emailForm.message.length}/5000
+                      </span>
+                    </div>
+                    <textarea
+                      id="sky-email-message"
+                      placeholder="Write a clear message for the selected students…"
+                      value={emailForm.message}
+                      onChange={(e) => setEmailForm((prev) => ({ ...prev, message: e.target.value }))}
+                      className="sky-email-textarea"
+                      rows={12}
+                      maxLength={5000}
+                    />
+                  </div>
+
+                  <div className="sky-email-footer">
+                    <p className="sky-email-footer__hint">
+                      {emailForm.selectedStudents.length > 0
+                        ? `Ready to send to ${emailForm.selectedStudents.length} student${emailForm.selectedStudents.length === 1 ? '' : 's'}.`
+                        : 'Select at least one recipient to send.'}
+                    </p>
+                    <div className="sky-email-footer__actions">
+                      <button
+                        type="button"
+                        className="sky-btn sky-btn-secondary"
+                        onClick={() => {
+                          setEmailForm({ subject: '', message: '', selectedStudents: [] });
+                          setEmailSearchTerm('');
+                          setEmailQuickFilter('all');
+                        }}
+                      >
+                        Reset
+                      </button>
+                      <button
+                        type="button"
+                        className="sky-btn sky-btn-primary"
+                        onClick={handleSendEmail}
+                        disabled={
+                          isSendingEmail ||
+                          !emailForm.subject.trim() ||
+                          !emailForm.message.trim() ||
+                          emailForm.selectedStudents.length === 0
+                        }
+                      >
+                        {isSendingEmail
+                          ? 'Sending…'
+                          : `Send email${emailForm.selectedStudents.length ? ` (${emailForm.selectedStudents.length})` : ''}`}
+                      </button>
                     </div>
                   </div>
-                </div>
+                </section>
               </div>
             </div>
           )}
