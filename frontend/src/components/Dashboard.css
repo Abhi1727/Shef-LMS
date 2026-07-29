@@ -12805,6 +12805,7 @@ html {
   background: #f4f6f7 !important;
   color: #0f1a1f !important;
   min-height: 100vh;
+  overflow: visible !important;
 }
 
 .student-shell .ss-shell-main.student-shell-main {
@@ -12862,13 +12863,44 @@ html {
   top: calc(100% + 6px);
   left: 0;
   right: 0;
-  background: #0f172a;
-  border: 1px solid #1e293b;
+  background: #fff;
+  border: 1px solid #d5dee3;
   border-radius: 10px;
-  box-shadow: 0 16px 40px rgba(15, 23, 42, 0.28);
+  box-shadow: 0 12px 28px rgba(15, 26, 31, 0.12);
   z-index: 13000;
   max-height: 320px;
   overflow: auto;
+}
+
+.student-header-search .search-result-item {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.7rem 0.85rem;
+  cursor: pointer;
+  color: #0f1a1f;
+}
+
+.student-header-search .search-result-item:hover {
+  background: #eef7f7;
+}
+
+.student-header-search .res-title {
+  flex: 1;
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.student-header-search .res-type {
+  font-size: 0.7rem;
+  color: #5a6d76;
+  text-transform: uppercase;
+}
+
+.student-header-search .no-search-results {
+  padding: 1rem;
+  color: #5a6d76;
+  font-size: 0.875rem;
 }
 
 .student-streak-chip {
@@ -12885,22 +12917,55 @@ html {
   white-space: nowrap;
 }
 
-/* Soften leftover dark aetherial blocks inside student shell */
 .student-shell .overview-page,
 .student-shell .classroom-page,
 .student-shell .assessments-page,
 .student-shell .profile-page {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
   color: #0f1a1f;
+  max-width: none;
+  width: 100%;
 }
 
 .student-shell .glass-card,
 .student-shell .hero-section.glass-card,
-.student-shell .welcome-glass-card {
+.student-shell .welcome-glass-card,
+.student-shell .dashboard-widget-section.glass-card,
+.student-shell .empty-state-container.glass-card,
+.student-shell .batch-details-banner.glass-card,
+.student-shell .video-recording-card.glass-card {
   background: #fff !important;
   border: 1px solid #d5dee3 !important;
+  border-radius: 12px !important;
   box-shadow: 0 1px 2px rgba(16, 42, 51, 0.04) !important;
   color: #0f1a1f !important;
   backdrop-filter: none !important;
+}
+
+.student-shell .hero-section {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 2rem;
+  padding: 1.75rem 2rem;
+  position: relative;
+  overflow: hidden;
+}
+
+.student-shell .badge-mono {
+  display: inline-block;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #0b4f4f !important;
+  background: #eef7f7;
+  border: 1px solid #a9d8d8;
+  padding: 0.25rem 0.55rem;
+  border-radius: 6px;
+  margin-bottom: 0.75rem;
 }
 
 .student-shell .hero-title,
@@ -12912,24 +12977,594 @@ html {
   text-shadow: none !important;
 }
 
-.student-shell .hero-desc,
-.student-shell .badge-mono {
+.student-shell .hero-title {
+  font-size: clamp(1.6rem, 2.4vw, 2.1rem);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+  margin: 0 0 0.65rem;
+}
+
+.student-shell .hero-desc {
   color: #5a6d76 !important;
+  font-size: 0.95rem;
+  line-height: 1.55;
+  max-width: 36rem;
+  margin: 0 0 1.1rem;
+}
+
+.student-shell .hero-desc strong,
+.student-shell .glow-text {
+  color: #0b3d4a !important;
+  -webkit-text-fill-color: #0b3d4a !important;
+  font-weight: 700;
+}
+
+.student-shell .shimmer-btn,
+.student-shell .primary-btn {
+  background: #147a7a !important;
+  color: #fff !important;
+  border: 1px solid #147a7a !important;
+  font-weight: 650;
+  font-size: 0.875rem;
+  padding: 0.7rem 1.2rem;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.student-shell .shimmer-btn:hover,
+.student-shell .primary-btn:hover {
+  background: #0f6363 !important;
+  border-color: #0f6363 !important;
+  transform: none;
+}
+
+/* Progress ring — prevent default SVG black fill / oversized circle */
+.student-shell .hero-visual-card {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.student-shell .metric-ring-large {
+  position: relative;
+  width: 140px;
+  height: 140px;
+  max-width: 140px;
+  max-height: 140px;
+  flex-shrink: 0;
+}
+
+.student-shell .metric-ring-large svg {
+  display: block;
+  width: 140px !important;
+  height: 140px !important;
+  max-width: 140px;
+  max-height: 140px;
+  transform: rotate(-90deg);
+  overflow: visible;
+}
+
+.student-shell .metric-ring-large circle,
+.student-shell .ring-bg,
+.student-shell .ring-fill {
+  fill: none !important;
+}
+
+.student-shell .ring-bg {
+  stroke: #e6eef1;
+  stroke-width: 8px;
+}
+
+.student-shell .ring-fill {
+  stroke: #147a7a;
+  stroke-width: 8px;
+  stroke-linecap: round;
+}
+
+.student-shell .ring-inner {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.student-shell .percentage-number {
+  font-size: 1.5rem;
+  font-weight: 800;
+  color: #102a33;
+  line-height: 1;
+}
+
+.student-shell .percentage-label {
+  margin-top: 0.25rem;
+  font-size: 0.65rem;
+  letter-spacing: 0.08em;
+  font-weight: 700;
+  color: #5a6d76;
+}
+
+.student-shell .dashboard-columns-grid {
+  display: grid;
+  grid-template-columns: 1.55fr 1fr;
+  gap: 1.25rem;
+}
+
+.student-shell .column-left,
+.student-shell .column-right {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  min-width: 0;
+}
+
+.student-shell .dashboard-widget-section {
+  padding: 1.25rem 1.35rem;
+}
+
+.student-shell .widget-header {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  margin-bottom: 1rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid #e6eef1;
+}
+
+.student-shell .widget-title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 700;
+  color: #102a33;
+}
+
+.student-shell .continue-learning-video-card {
+  display: flex;
+  gap: 1rem;
+  cursor: pointer;
+  align-items: stretch;
+}
+
+.student-shell .video-card-thumb {
+  width: 140px;
+  height: 90px;
+  flex-shrink: 0;
+  border-radius: 8px;
+  border: 1px solid #d5dee3;
+  background: linear-gradient(135deg, #eef7f7, #e6eef1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.student-shell .play-button-overlay {
+  color: #147a7a;
+  font-size: 1.25rem;
+}
+
+.student-shell .video-card-meta {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-width: 0;
+  flex: 1;
+}
+
+.student-shell .lesson-badge-mono {
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: #0b4f4f;
+  margin-bottom: 0.25rem;
+}
+
+.student-shell .video-card-title {
+  margin: 0 0 0.25rem;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #102a33;
+}
+
+.student-shell .video-card-desc,
+.student-shell .empty-text,
+.student-shell .preview-schedule,
+.student-shell .step-desc {
+  margin: 0;
+  font-size: 0.8rem;
+  color: #5a6d76;
+}
+
+.student-shell .progress-bar-thin {
+  height: 4px;
+  margin-top: 0.65rem;
+  background: #e6eef1;
+  border-radius: 99px;
+  overflow: hidden;
+}
+
+.student-shell .progress-bar-fill {
+  height: 100%;
+  background: #147a7a;
+}
+
+.student-shell .roadmap-journey {
+  position: relative;
+  padding-left: 1.25rem;
+}
+
+.student-shell .roadmap-progress-bar {
+  position: absolute;
+  left: 6px;
+  top: 8px;
+  bottom: 8px;
+  width: 2px;
+  background: #d5dee3;
+}
+
+.student-shell .roadmap-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 1.1rem;
+}
+
+.student-shell .roadmap-step {
+  display: flex;
+  gap: 0.85rem;
+  position: relative;
+}
+
+.student-shell .step-marker {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #fff;
+  border: 2px solid #b7c4cb;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.55rem;
+  z-index: 2;
+  margin-top: 3px;
+  margin-left: -1.35rem;
+  flex-shrink: 0;
+}
+
+.student-shell .roadmap-step.completed .step-marker {
+  background: #147a7a;
+  border-color: #147a7a;
+  color: #fff;
+}
+
+.student-shell .roadmap-step.active .step-marker {
+  background: #2a9d8f;
+  border-color: #2a9d8f;
+  color: #fff;
+  box-shadow: none;
+}
+
+.student-shell .step-title {
+  margin: 0 0 0.2rem;
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: #102a33;
+}
+
+.student-shell .grid-stats-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
 }
 
 .student-shell .stat-pill,
 .student-shell .dashboard-stat-pill,
 .student-shell .ss-stat {
-  background: #fff !important;
+  background: #f8fbfb !important;
   border: 1px solid #d5dee3 !important;
+  border-radius: 10px !important;
   color: #0f1a1f !important;
+  padding: 0.9rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.student-shell .pill-number {
+  font-size: 1.25rem;
+  font-weight: 800;
+  color: #102a33;
+}
+
+.student-shell .pill-label {
+  font-size: 0.75rem;
+  color: #5a6d76;
+  font-weight: 600;
+}
+
+.student-shell .classroom-preview-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.student-shell .preview-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.student-shell .batch-name-badge {
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: #102a33;
+}
+
+.student-shell .pulse-dot {
+  font-size: 0.75rem;
+  color: #b45309;
+  font-weight: 650;
+}
+
+.student-shell .join-session-btn {
+  background: #147a7a;
+  border: 1px solid #147a7a;
+  color: #fff;
+  padding: 0.65rem 0.9rem;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 650;
+  font-size: 0.875rem;
+}
+
+.student-shell .join-session-btn:hover {
+  background: #0f6363;
+}
+
+.student-shell .page-header {
+  border-bottom: 1px solid #e6eef1;
+  padding-bottom: 0.85rem;
+}
+
+.student-shell .page-title,
+.student-shell .section-title {
+  margin: 0 0 0.35rem;
+  font-size: 1.45rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: #102a33;
+}
+
+.student-shell .page-subtitle,
+.student-shell .section-subtitle {
+  margin: 0;
+  font-size: 0.9rem;
+  color: #5a6d76;
+}
+
+.student-shell .batch-details-banner {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: center;
+  padding: 1rem 1.25rem;
+  flex-wrap: wrap;
+}
+
+.student-shell .batch-banner-title {
+  display: block;
+  font-size: 1rem;
+  font-weight: 700;
+  color: #102a33;
+}
+
+.student-shell .batch-banner-meta,
+.student-shell .schedule-label,
+.student-shell .schedule-time {
+  font-size: 0.85rem;
+  color: #5a6d76;
+}
+
+.student-shell .videos-grid-layout {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 1rem;
+}
+
+.student-shell .video-recording-card {
+  cursor: pointer;
+  overflow: hidden;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.student-shell .video-recording-card:hover {
+  border-color: #6fbaba !important;
+  box-shadow: 0 4px 14px rgba(16, 42, 51, 0.08) !important;
+}
+
+.student-shell .video-card-thumbnail-wrapper {
+  position: relative;
+  aspect-ratio: 16 / 9;
+  background: #e6eef1;
+  overflow: hidden;
+}
+
+.student-shell .video-thumbnail-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.student-shell .video-thumbnail-fallback {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.75rem;
+  background: #eef7f7;
+}
+
+.student-shell .session-number-badge {
+  position: absolute;
+  top: 0.5rem;
+  left: 0.5rem;
+  background: rgba(15, 26, 31, 0.78);
+  color: #fff;
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 0.2rem 0.45rem;
+  border-radius: 4px;
+}
+
+.student-shell .video-card-details {
+  padding: 0.9rem 1rem 1.05rem;
+}
+
+.student-shell .video-title {
+  margin: 0 0 0.35rem;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #102a33;
+}
+
+.student-shell .video-meta-text {
+  margin: 0;
+  font-size: 0.8rem;
+  color: #5a6d76;
+}
+
+.student-shell .download-notes-action-btn {
+  margin-top: 0.75rem;
+  width: 100%;
+  height: 34px;
+  border-radius: 6px;
+  border: 1px solid #d5dee3;
+  background: #f8fbfb;
+  color: #0b4f4f;
+  font-size: 0.8rem;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.student-shell .download-notes-action-btn:hover {
+  background: #eef7f7;
+  border-color: #a9d8d8;
+}
+
+.student-shell .empty-state-container,
+.student-shell .sky-empty-panel {
+  padding: 2rem 1.5rem;
+  text-align: center;
+}
+
+.student-shell .empty-state-container h3,
+.student-shell .sky-empty-panel h3 {
+  margin: 0 0 0.4rem;
+  color: #102a33;
+}
+
+.student-shell .empty-state-container p,
+.student-shell .sky-empty-panel p {
+  margin: 0;
+  color: #5a6d76;
+}
+
+.student-shell .student-assessments-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 1rem;
+}
+
+.student-shell .student-assessment-card {
+  padding: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.student-shell .student-assessment-card__badge {
+  align-self: flex-start;
+  font-size: 0.7rem;
+  font-weight: 750;
+  letter-spacing: 0.04em;
+  color: #0b4f4f;
+  background: #eef7f7;
+  border: 1px solid #a9d8d8;
+  border-radius: 999px;
+  padding: 0.2rem 0.6rem;
+}
+
+.student-shell .student-assessment-card__title {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: #102a33;
+}
+
+.student-shell .student-assessment-card__desc {
+  margin: 0;
+  font-size: 0.875rem;
+  color: #5a6d76;
+  line-height: 1.45;
+  flex: 1;
+}
+
+.student-shell .student-assessment-card__meta {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  font-size: 0.85rem;
+  color: #3d5059;
+}
+
+.student-shell .student-assessment-card .shimmer-btn {
+  width: 100%;
+  margin-top: 0.35rem;
 }
 
 .student-shell .floating-ai-assistant-btn {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  width: 54px;
+  height: 54px;
+  border-radius: 50%;
   background: #147a7a;
   color: #fff;
   border: none;
+  font-size: 0.8rem;
+  font-weight: 700;
+  cursor: pointer;
+  z-index: 500;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   box-shadow: 0 8px 20px rgba(20, 122, 122, 0.28);
+}
+
+@media (max-width: 960px) {
+  .student-shell .hero-section {
+    grid-template-columns: 1fr;
+    padding: 1.35rem 1.25rem;
+  }
+
+  .student-shell .dashboard-columns-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .student-shell .metric-ring-large,
+  .student-shell .metric-ring-large svg {
+    width: 120px !important;
+    height: 120px !important;
+  }
 }
 
 @media (max-width: 900px) {
@@ -12946,5 +13581,20 @@ html {
 
   .student-shell .ss-shell-main.student-shell-main {
     padding: 1rem 1rem 2.5rem;
+  }
+}
+
+@media (max-width: 640px) {
+  .student-shell .continue-learning-video-card {
+    flex-direction: column;
+  }
+
+  .student-shell .video-card-thumb {
+    width: 100%;
+    height: 140px;
+  }
+
+  .student-shell .grid-stats-2 {
+    grid-template-columns: 1fr 1fr;
   }
 }

@@ -2204,24 +2204,33 @@ const Dashboard = ({ user, onLogout }) => {
               {/* Hero Banner Section */}
               <section className="hero-section glass-card">
                 <div className="hero-text-content">
-                  <span className="badge-mono">AETHERIAL ACADEMY</span>
-                  <h1 className="hero-title shimmer-text">
-                    Transform Your Mind. <br />Build Future Architecture.
+                  <span className="badge-mono">Sky States LMS</span>
+                  <h1 className="hero-title">
+                    Welcome back, {user?.name?.split(' ')[0] || 'Student'}
                   </h1>
                   <p className="hero-desc">
-                    Welcome back, <strong className="glow-text">{user?.name}</strong>. You are currently enrolled in <strong>{user?.currentCourse || 'Data Science & AI'}</strong>.
+                    You are enrolled in <strong>{user?.currentCourse || batchInfo?.course || 'your course'}</strong>.
+                    Pick up where you left off or jump into the classroom.
                   </p>
                   <div className="hero-actions">
-                    <button className="shimmer-btn primary-btn" onClick={() => setActiveSection('classroom')}>
+                    <button type="button" className="shimmer-btn primary-btn" onClick={() => setActiveSection('classroom')}>
                       Resume Learning
                     </button>
                   </div>
                 </div>
                 <div className="hero-visual-card">
-                  <div className="metric-ring-large">
-                    <svg viewBox="0 0 100 100">
-                      <circle cx="50" cy="50" r="45" className="ring-bg" />
-                      <circle cx="50" cy="50" r="45" className="ring-fill" strokeDasharray="283" strokeDashoffset={283 - (283 * progressPercent) / 100} />
+                  <div className="metric-ring-large" aria-label={`${progressPercent}% complete`}>
+                    <svg viewBox="0 0 100 100" width="140" height="140">
+                      <circle cx="50" cy="50" r="45" className="ring-bg" fill="none" />
+                      <circle
+                        cx="50"
+                        cy="50"
+                        r="45"
+                        className="ring-fill"
+                        fill="none"
+                        strokeDasharray="283"
+                        strokeDashoffset={283 - (283 * progressPercent) / 100}
+                      />
                     </svg>
                     <div className="ring-inner">
                       <span className="percentage-number">{progressPercent}%</span>
@@ -2454,40 +2463,39 @@ const Dashboard = ({ user, onLogout }) => {
           )}
 
           {activeSection === 'assessments' && (
-            <div className="classroom-section animate-in">
-              <h2 className="section-title">✏️ Dynamic Assessments</h2>
-              <p className="section-subtitle">Test your knowledge with AI-driven, secure quizzes and exams.</p>
-              
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '24px', marginTop: '24px' }}>
-                {studentAssessments.map(ass => (
-                  <div key={ass._id} style={{ background: '#1e293b', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '16px', padding: '24px', color: 'white', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
-                    <div>
-                      <span style={{ fontSize: '0.8rem', background: 'rgba(79, 70, 229, 0.2)', color: '#818cf8', padding: '4px 10px', borderRadius: '9999px', fontWeight: 'bold' }}>
-                        {ass.difficulty.toUpperCase()}
-                      </span>
-                      <h3 style={{ fontSize: '1.25rem', marginTop: '12px', marginBottom: '8px' }}>{ass.title}</h3>
-                      <p style={{ fontSize: '0.9rem', color: '#94a3b8', margin: '0 0 20px 0' }}>{ass.description}</p>
-                      
-                      <div style={{ fontSize: '0.85rem', color: '#cbd5e1', display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '20px' }}>
-                        <div>⏱️ <strong>Duration:</strong> {ass.duration} minutes</div>
-                        <div>❓ <strong>Questions:</strong> {ass.questions?.length || 0}</div>
-                        <div>🎯 <strong>Passing Score:</strong> {ass.passingMarks}%</div>
-                      </div>
-                    </div>
-                    
-                    <button 
+            <div className="assessments-page animate-in">
+              <div className="page-header">
+                <h1 className="page-title">Assessments</h1>
+                <p className="page-subtitle">Secure quizzes and exams published for your batch.</p>
+              </div>
+
+              <div className="student-assessments-grid">
+                {studentAssessments.map((ass) => (
+                  <article key={ass._id} className="student-assessment-card glass-card">
+                    <span className="student-assessment-card__badge">
+                      {(ass.difficulty || 'standard').toUpperCase()}
+                    </span>
+                    <h3 className="student-assessment-card__title">{ass.title}</h3>
+                    <p className="student-assessment-card__desc">{ass.description || 'No description provided.'}</p>
+                    <ul className="student-assessment-card__meta">
+                      <li><strong>Duration:</strong> {ass.duration} minutes</li>
+                      <li><strong>Questions:</strong> {ass.questions?.length || 0}</li>
+                      <li><strong>Passing score:</strong> {ass.passingMarks}%</li>
+                    </ul>
+                    <button
+                      type="button"
+                      className="shimmer-btn primary-btn"
                       onClick={() => navigate(`/student/assessment/${ass._id}`)}
-                      className="btn-primary" 
-                      style={{ width: '100%', padding: '12px' }}
                     >
                       Start Assessment
                     </button>
-                  </div>
+                  </article>
                 ))}
                 {studentAssessments.length === 0 && (
-                  <p style={{ color: '#94a3b8', gridColumn: '1/-1', textAlign: 'center', padding: '40px' }}>
-                    No assessments published for you at this time.
-                  </p>
+                  <div className="empty-state-container glass-card">
+                    <h3>No assessments yet</h3>
+                    <p>Published assessments for your batch will appear here.</p>
+                  </div>
                 )}
               </div>
             </div>
