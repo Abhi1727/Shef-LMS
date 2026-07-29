@@ -1081,16 +1081,26 @@ const BatchDetailsPage = () => {
     }
   };
 
-  // Download full report
+  // Download full student dossier PDF
   const handleDownloadReport = async () => {
     try {
-      let startDate, endDate;
-      
+      if (!selectedStudentDetails?.id && !selectedStudentDetails?._id) {
+        showToast('No student selected', 'warning');
+        return;
+      }
+
+      let startDate;
+      let endDate;
+
       if (reportPeriod === 'custom') {
         startDate = customDateRange.start;
         endDate = customDateRange.end;
+        if (!startDate || !endDate) {
+          showToast('Select a custom date range first', 'warning');
+          return;
+        }
       } else {
-        const days = parseInt(reportPeriod);
+        const days = parseInt(reportPeriod, 10) || 30;
         endDate = new Date().toISOString().split('T')[0];
         const start = new Date();
         start.setDate(start.getDate() - days);
@@ -1099,28 +1109,39 @@ const BatchDetailsPage = () => {
 
       const token = localStorage.getItem('token');
       const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
-      
-      const response = await fetch(`${apiUrl}/api/admin/activity/${selectedStudentDetails.id}?startDate=${startDate}&endDate=${endDate}&export=csv`, {
-        headers: { 'Authorization': `Bearer ${token}` }
+      const studentId = selectedStudentDetails.id || selectedStudentDetails._id;
+      const params = new URLSearchParams({
+        startDate,
+        endDate,
+        period: reportPeriod === 'custom' ? 'custom' : String(reportPeriod),
       });
-      
-      if (response.ok) {
-        const blob = await response.blob();
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `report-${selectedStudentDetails.name.replace(/\s+/g, '-')}-${startDate}-to-${endDate}.csv`;
-        document.body.appendChild(a);
-        a.click();
-        window.URL.revokeObjectURL(url);
-        document.body.removeChild(a);
-        showToast('Report downloaded successfully!', 'success');
-      } else {
-        showToast('Failed to download report', 'error');
+
+      const response = await fetch(
+        `${apiUrl}/api/admin/students/${studentId}/report.pdf?${params.toString()}`,
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({}));
+        showToast(err.message || 'Failed to download PDF report', 'error');
+        return;
       }
+
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `sky-states-report-${String(selectedStudentDetails.name || 'student')
+        .replace(/\s+/g, '-')
+        .slice(0, 40)}-${startDate}-to-${endDate}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+      showToast('PDF report downloaded', 'success');
     } catch (error) {
-      console.error('Error downloading report:', error);
-      showToast('Error downloading report', 'error');
+      console.error('Error downloading PDF report:', error);
+      showToast('Error downloading PDF report', 'error');
     }
   };
 
@@ -3766,7 +3787,7 @@ const BatchDetailsPage = () => {
                           className="btn-download-report"
                           onClick={handleDownloadReport}
                         >
-                          📥 Download Full Report (CSV)
+                          📥 Download Full Report (PDF)
                         </button>
                       </div>
                     </div>

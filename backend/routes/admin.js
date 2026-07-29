@@ -13,11 +13,13 @@ const Course = require('../models/Course');
 const Module = require('../models/Module');
 const Classroom = require('../models/Classroom');
 const OneToOne = require('../models/OneToOne');
+const OneToOneBatch = require('../models/OneToOneBatch');
 const { sendEmail } = require('../services/emailService');
 const {
   allocateEnrollmentNumber,
   planBackfill,
 } = require('../utils/enrollmentNumber');
+const { buildStudentReportPdf } = require('../utils/studentReportPdf');
 
 // Content-Type mapping for proper file download headers
 const contentTypes = {
@@ -782,6 +784,110 @@ router.get('/activity/:studentId', async (req, res) => {
   } catch (err) {
     console.error('Error fetching student activity:', err);
     res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// @route   GET /api/admin/students/:studentId/report.pdf
+// @desc    Download full student dossier PDF (personal, batch, login, interactivity)
+router.get('/students/:studentId/report.pdf', async (req, res) => {
+  try {
+    const { studentId } = req.params;
+    const { startDate, endDate, period } = req.query;
+
+    const student = await User.findById(studentId).select('-password').lean();
+    if (!student || student.role !== 'student') {
+      return res.status(404).json({ message: 'Student not found' });
+    }
+
+    let batch = null;
+    let oneToOneBatch = null;
+    if (student.batchId) {
+      try {
+        batch = await Batch.findById(student.batchId).lean();
+      } catch (_) {
+        batch = null;
+      }
+    }
+    if (student.oneToOneBatchId) {
+      try {
+        oneToOneBatch = await OneToOneBatch.findById(student.oneToOneBatchId).lean();
+      } catch (_) {
+        oneToOneBatch = null;
+      }
+    }
+
+    const filter = { userId: String(studentId) };
+    if (startDate || endDate) {
+      filter.timestamp = {};
+      if (startDate) filter.timestamp.$gte = new Date(startDate);
+      if (endDate) {
+        const end = new Date(endDate);
+        end.setHours(23, 59, 59, 999);
+        filter.timestamp.$lte = end;
+      }
+    }
+
+    const activities = await ActivityLog.find(filter)
+      .sort({ timestamp: -1 })
+      .limit(500)
+      .lean();
+
+    const formattedActivities = activities.map((doc) => ({
+      action: doc.action,
+      timestamp: doc.timestamp,
+      ipAddress: doc.ipAddress || null,
+      city: doc.city || null,
+      country: doc.country || null,
+      isp: doc.isp || null,
+      videoTitle: doc.videoTitle || null,
+      assessmentTitle: doc.assessmentTitle || null,
+      score: doc.score,
+      path: doc.path || null,
+    }));
+
+    const summary = {
+      totalActivities: formattedActivities.length,
+      videoViews: formattedActivities.filter((a) => a.action === 'video_view').length,
+      logins: formattedActivities.filter((a) => a.action === 'login').length,
+      assessments: formattedActivities.filter(
+        (a) => a.action === 'assessment_submit' || a.action === 'assessment'
+      ).length,
+    };
+
+    let periodLabel = 'All available activity';
+    if (startDate && endDate) {
+      periodLabel = `${startDate} to ${endDate}`;
+    } else if (period) {
+      periodLabel = `Last ${period} day(s)`;
+    }
+
+    const pdfBuffer = await buildStudentReportPdf({
+      student: { ...student, id: String(student._id) },
+      batch: batch
+        ? { ...batch, id: String(batch._id) }
+        : null,
+      oneToOneBatch: oneToOneBatch
+        ? { ...oneToOneBatch, id: String(oneToOneBatch._id) }
+        : null,
+      period: { label: periodLabel, startDate, endDate },
+      summary,
+      activities: formattedActivities,
+      generatedAt: new Date(),
+    });
+
+    const safeName = String(student.name || 'student')
+      .replace(/[^\w\-]+/g, '-')
+      .replace(/-+/g, '-')
+      .slice(0, 40);
+    const filename = `sky-states-report-${safeName}-${new Date().toISOString().slice(0, 10)}.pdf`;
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.setHeader('Content-Length', pdfBuffer.length);
+    return res.send(pdfBuffer);
+  } catch (err) {
+    console.error('Error generating student PDF report:', err);
+    res.status(500).json({ message: 'Failed to generate PDF report', error: err.message });
   }
 });
 

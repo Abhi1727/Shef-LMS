@@ -49,6 +49,7 @@
     "node-cron": "^3.0.3",
     "nodemailer": "^8.0.1",
     "pdf-parse": "^2.4.5",
+    "pdfkit": "^0.19.1",
     "validator": "^13.15.26",
     "winston": "^3.19.0"
   },

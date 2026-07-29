@@ -2932,45 +2932,64 @@ const AdminDashboard = ({ user, onLogout }) => {
     }
   }, [fetchAnalyticsData, activeSection]);
 
-  const handleDownloadReport = useCallback(() => {
-    if (!reportData) return;
+  const handleDownloadReport = useCallback(async () => {
+    try {
+      const studentId = selectedStudentDetails?.id || selectedStudentDetails?._id;
+      if (!studentId) {
+        showToast('No student selected', 'warning');
+        return;
+      }
 
-    const csvContent = [
-      ['Student Activity Report'],
-      ['Student:', selectedStudentDetails?.name || 'N/A'],
-      ['Email:', selectedStudentDetails?.email || 'N/A'],
-      ['Period:', reportPeriod],
-      ['Generated:', new Date().toLocaleString()],
-      [],
-      ['Summary'],
-      ['Total Activities:', reportData.totalActivities],
-      ['Video Views:', reportData.summary.videoViews],
-      ['Logins:', reportData.summary.logins],
-      ['Assessments:', reportData.summary.assessments],
-      ['Page Views:', reportData.summary.pageViews],
-      [],
-      ['Activity Details'],
-      ['Date', 'Action', 'IP Address', 'Location', 'Details'],
-      ...reportData.activities.map(activity => [
-        new Date(activity.timestamp).toLocaleString(),
-        activity.action,
-        activity.ipAddress || 'N/A',
-        [activity.city, activity.country].filter(Boolean).join(', ') || 'N/A',
-        activity.videoTitle || activity.assessmentTitle || activity.path || 'N/A'
-      ])
-    ].map(row => row.join(',')).join('\n');
+      let startDate;
+      let endDate;
+      const period = reportPeriod || '30days';
 
-    const blob = new Blob([csvContent], { type: 'text/csv' });
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `report-${selectedStudentDetails?.name || 'student'}-${new Date().toISOString().split('T')[0]}.csv`;
-    document.body.appendChild(a);
-    a.click();
-    window.URL.revokeObjectURL(url);
-    document.body.removeChild(a);
-    showToast('Report downloaded successfully!', 'success');
-  }, [reportData, selectedStudentDetails, reportPeriod]);
+      if (period === 'custom') {
+        startDate = customDateRange.start;
+        endDate = customDateRange.end;
+        if (!startDate || !endDate) {
+          showToast('Select a custom date range first', 'warning');
+          return;
+        }
+      } else {
+        const days = parseInt(String(period).replace(/\D/g, ''), 10) || 30;
+        endDate = new Date().toISOString().split('T')[0];
+        const start = new Date();
+        start.setDate(start.getDate() - days);
+        startDate = start.toISOString().split('T')[0];
+      }
+
+      const token = localStorage.getItem('token');
+      const apiUrl = getApiBaseUrl();
+      const params = new URLSearchParams({ startDate, endDate, period });
+      const response = await fetch(
+        `${apiUrl}/api/admin/students/${studentId}/report.pdf?${params.toString()}`,
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({}));
+        showToast(err.message || 'Failed to download PDF report', 'error');
+        return;
+      }
+
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `sky-states-report-${String(selectedStudentDetails?.name || 'student')
+        .replace(/\s+/g, '-')
+        .slice(0, 40)}-${startDate}-to-${endDate}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+      showToast('PDF report downloaded', 'success');
+    } catch (error) {
+      console.error('Error downloading PDF report:', error);
+      showToast('Error downloading PDF report', 'error');
+    }
+  }, [selectedStudentDetails, reportPeriod, customDateRange]);
 
   // Load activities when profile tab is opened
   useEffect(() => {
