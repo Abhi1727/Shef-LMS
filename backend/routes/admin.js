@@ -14,6 +14,10 @@ const Module = require('../models/Module');
 const Classroom = require('../models/Classroom');
 const OneToOne = require('../models/OneToOne');
 const { sendEmail } = require('../services/emailService');
+const {
+  allocateEnrollmentNumber,
+  planBackfill,
+} = require('../utils/enrollmentNumber');
 
 // Content-Type mapping for proper file download headers
 const contentTypes = {
@@ -208,10 +212,22 @@ router.get('/users', async (req, res) => {
 const normalizeEmail = (e) => (e || '').trim().toLowerCase();
 
 // @route   POST /api/admin/users
-// @desc    Create a new user
+// @desc    Create a new user (auto-assigns SKY enrollment number for students)
 router.post('/users', async (req, res) => {
   try {
-    const { name, email, password, enrollmentNumber, course, batchId, status, role, phone, address } = req.body;
+    const {
+      name,
+      email,
+      password,
+      enrollmentNumber,
+      course,
+      batchId,
+      status,
+      role,
+      phone,
+      address,
+      joiningDate,
+    } = req.body;
 
     // Password is required for new users (needed for login)
     if (!password || !String(password).trim()) {
@@ -223,6 +239,11 @@ router.post('/users', async (req, res) => {
       return res.status(400).json({ message: 'Email is required' });
     }
 
+    const existing = await User.findOne({ email: normalizedEmail }).select('_id').lean();
+    if (existing) {
+      return res.status(400).json({ message: 'A user with this email already exists' });
+    }
+
     // Hash password (always use plain text from admin form; never store pre-hashed)
     let finalPassword = password;
     if (!password.startsWith('$2')) {
@@ -231,26 +252,125 @@ router.post('/users', async (req, res) => {
       finalPassword = await bcrypt.hash(password, salt);
     }
 
+    const resolvedRole = role || 'student';
+    const joinDate = joiningDate ? new Date(joiningDate) : new Date();
+    if (Number.isNaN(joinDate.getTime())) {
+      return res.status(400).json({ message: 'Invalid joining date' });
+    }
+
+    let finalEnrollment = enrollmentNumber ? String(enrollmentNumber).trim() : '';
+    if (resolvedRole === 'student' && !finalEnrollment) {
+      const allocated = await allocateEnrollmentNumber(User, joinDate);
+      finalEnrollment = allocated.enrollmentNumber;
+    }
+
+    if (finalEnrollment) {
+      const clash = await User.findOne({ enrollmentNumber: finalEnrollment }).select('_id email').lean();
+      if (clash) {
+        return res.status(400).json({
+          message: `Enrollment number ${finalEnrollment} is already assigned to ${clash.email}`,
+        });
+      }
+    }
+
     const userData = {
-      name,
+      name: String(name || '').trim(),
       email: normalizedEmail,
       password: finalPassword,
-      enrollmentNumber,
-      course,
+      enrollmentNumber: finalEnrollment || undefined,
+      course: course || '',
       batchId: batchId || null,
       status: status || 'active',
-      role: role || 'student'
+      role: resolvedRole,
+      joiningDate: joinDate,
+      createdAt: new Date(),
     };
 
-    if (phone) userData.phone = phone;
-    if (address) userData.address = address;
+    if (phone) userData.phone = String(phone).trim();
+    if (address) userData.address = String(address).trim();
 
     const user = new User(userData);
     const saved = await user.save();
 
-    res.json({ id: String(saved._id), message: 'User created successfully' });
+    // Keep Batch.students in sync when enrolling directly into a batch
+    if (saved.role === 'student' && saved.batchId) {
+      try {
+        await Batch.findByIdAndUpdate(saved.batchId, {
+          $addToSet: { students: saved._id },
+        });
+      } catch (batchErr) {
+        console.error('Warning: student created but batch sync failed:', batchErr.message);
+      }
+    }
+
+    res.json({
+      id: String(saved._id),
+      enrollmentNumber: saved.enrollmentNumber || null,
+      message: 'User created successfully',
+    });
   } catch (err) {
     console.error('Error creating user:', err);
+    if (err && err.code === 11000) {
+      return res.status(400).json({ message: 'Duplicate email or enrollment number' });
+    }
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// @route   POST /api/admin/enrollment/backfill
+// @desc    Assign SKY_{MM}_{YYYY}_{series} enrollment numbers to all students
+router.post('/enrollment/backfill', async (req, res) => {
+  try {
+    const dryRun = Boolean(req.body?.dryRun);
+    const students = await User.find({ role: 'student' })
+      .select('name email enrollmentNumber createdAt joiningDate')
+      .lean();
+
+    const { assignments, conflicts, nextSeries } = planBackfill(students);
+    const toWrite = assignments.filter((a) => !a.skipped);
+
+    if (!dryRun) {
+      for (const row of toWrite) {
+        await User.findByIdAndUpdate(row.id, {
+          $set: {
+            enrollmentNumber: row.enrollmentNumber,
+            joiningDate: row.joinDate ? new Date(row.joinDate) : undefined,
+          },
+        });
+      }
+    }
+
+    res.json({
+      dryRun,
+      totalStudents: students.length,
+      updated: dryRun ? 0 : toWrite.length,
+      wouldUpdate: toWrite.length,
+      skipped: assignments.filter((a) => a.skipped).length,
+      nextSeries,
+      conflicts,
+      sample: toWrite.slice(0, 10),
+      message: dryRun
+        ? 'Dry run complete — no changes written'
+        : `Assigned enrollment numbers to ${toWrite.length} student(s)`,
+    });
+  } catch (err) {
+    console.error('Error backfilling enrollment numbers:', err);
+    res.status(500).json({ message: 'Server error', error: err.message });
+  }
+});
+
+// @route   GET /api/admin/enrollment/preview-next
+// @desc    Preview the next enrollment number for a joining date
+router.get('/enrollment/preview-next', async (req, res) => {
+  try {
+    const joinDate = req.query.joiningDate ? new Date(req.query.joiningDate) : new Date();
+    if (Number.isNaN(joinDate.getTime())) {
+      return res.status(400).json({ message: 'Invalid joining date' });
+    }
+    const allocated = await allocateEnrollmentNumber(User, joinDate);
+    res.json(allocated);
+  } catch (err) {
+    console.error('Error previewing enrollment number:', err);
     res.status(500).json({ message: 'Server error' });
   }
 });
@@ -265,11 +385,41 @@ router.put('/users/:id', async (req, res) => {
       updatedAt: new Date()
     };
     delete updateData.password; // Never update password via this endpoint; use dedicated flow
+    delete updateData.role; // Role changes should be explicit elsewhere
+    // Enrollment numbers are system-managed — do not allow arbitrary overwrite from edit form
+    // unless explicitly provided and unique
+    if (Object.prototype.hasOwnProperty.call(updateData, 'enrollmentNumber')) {
+      const nextEn = updateData.enrollmentNumber ? String(updateData.enrollmentNumber).trim() : '';
+      if (!nextEn) {
+        delete updateData.enrollmentNumber;
+      } else {
+        const clash = await User.findOne({
+          enrollmentNumber: nextEn,
+          _id: { $ne: id },
+        }).select('_id email').lean();
+        if (clash) {
+          return res.status(400).json({
+            message: `Enrollment number ${nextEn} is already assigned to ${clash.email}`,
+          });
+        }
+        updateData.enrollmentNumber = nextEn;
+      }
+    }
+    if (updateData.joiningDate) {
+      const jd = new Date(updateData.joiningDate);
+      if (Number.isNaN(jd.getTime())) {
+        return res.status(400).json({ message: 'Invalid joining date' });
+      }
+      updateData.joiningDate = jd;
+    }
 
     await User.findByIdAndUpdate(id, updateData, { new: true }).exec();
     res.json({ message: 'User updated successfully' });
   } catch (err) {
     console.error('Error updating user:', err);
+    if (err && err.code === 11000) {
+      return res.status(400).json({ message: 'Duplicate email or enrollment number' });
+    }
     res.status(500).json({ message: 'Server error' });
   }
 });

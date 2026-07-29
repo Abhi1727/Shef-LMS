@@ -32,6 +32,19 @@ const UserSchema = new mongoose.Schema({
   },
   enrollmentNumber: {
     type: String,
+    trim: true,
+  },
+  // Official join date used for SKY_{MM}_{YYYY}_{series} (falls back to createdAt)
+  joiningDate: {
+    type: Date,
+  },
+  phone: {
+    type: String,
+    trim: true,
+  },
+  address: {
+    type: String,
+    trim: true,
   },
   batchId: {
     type: String,
@@ -89,5 +102,17 @@ const UserSchema = new mongoose.Schema({
     default: Date.now
   }
 });
+
+// Unique when present — allows empty during migration
+UserSchema.index(
+  { enrollmentNumber: 1 },
+  {
+    unique: true,
+    sparse: true,
+    partialFilterExpression: {
+      enrollmentNumber: { $type: 'string', $gt: '' },
+    },
+  }
+);
 
 module.exports = mongoose.model('User', UserSchema);

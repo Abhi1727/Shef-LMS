@@ -5445,3 +5445,76 @@ body.modal-open {
   color: #9ca3af;
   text-align: center;
 }
+
+/* ========== Sky States student enrollment form ========== */
+.sky-enroll-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.sky-enroll-form__intro {
+  margin: 0;
+  padding: 0.75rem 0.9rem;
+  background: #eef7f7;
+  border: 1px solid #a9d8d8;
+  border-radius: 10px;
+  color: #0b4f4f;
+  font-size: 0.875rem;
+  line-height: 1.45;
+}
+
+.sky-enroll-form__intro code {
+  font-weight: 700;
+  font-size: 0.8rem;
+}
+
+.sky-enroll-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.85rem 1rem;
+}
+
+.sky-enroll-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
+.sky-enroll-field--full {
+  grid-column: 1 / -1;
+}
+
+.sky-enroll-field > span {
+  font-size: 0.72rem;
+  font-weight: 750;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #5a6d76;
+}
+
+.sky-enroll-field input,
+.sky-enroll-field select,
+.sky-enroll-field textarea {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.sky-enroll-readonly {
+  background: #f4f7f8 !important;
+  color: #0b3d4a !important;
+  font-weight: 700 !important;
+  letter-spacing: 0.02em;
+  cursor: default;
+}
+
+.sky-enroll-form .password-input-container {
+  width: 100%;
+}
+
+@media (max-width: 640px) {
+  .sky-enroll-grid {
+    grid-template-columns: 1fr;
+  }
+}

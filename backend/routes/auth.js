@@ -56,13 +56,19 @@ router.post('/register', async (req, res) => {
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
 
+    const { allocateEnrollmentNumber } = require('../utils/enrollmentNumber');
+    const joinDate = new Date();
+    const { enrollmentNumber } = await allocateEnrollmentNumber(User, joinDate);
+
     const user = new User({
       name,
       email: normalizedEmail,
       password: hashedPassword,
       role: 'student',
       status: 'active',
-      createdAt: new Date()
+      enrollmentNumber,
+      joiningDate: joinDate,
+      createdAt: joinDate,
     });
 
     const savedUser = await user.save();

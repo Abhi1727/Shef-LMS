@@ -43,7 +43,7 @@ const StudentSearch = memo(({ searchEmail, setSearchEmail, clearSearch, onAddStu
         </div>
         {onAddStudent && (
           <button onClick={onAddStudent} className="btn-add">
-            ➕ Add Student
+            Enroll Student
           </button>
         )}
       </div>
@@ -483,6 +483,7 @@ const AdminDashboard = ({ user, onLogout }) => {
   const [modalType, setModalType] = useState('');
   const [editingItem, setEditingItem] = useState(null);
   const [formData, setFormData] = useState({});
+  const [enrollmentPreview, setEnrollmentPreview] = useState('');
   
   // Batch details modal state
   const [showBatchDetailsModal, setShowBatchDetailsModal] = useState(false);
@@ -494,6 +495,34 @@ const AdminDashboard = ({ user, onLogout }) => {
     setSearchEmail('');
     setStudentPage(1);
   }, []);
+
+  // Preview next SKY enrollment number while enrolling a student
+  useEffect(() => {
+    if (!showModal || modalType !== 'student' || editingItem) {
+      return undefined;
+    }
+    const joiningDate = formData.joiningDate || new Date().toISOString().slice(0, 10);
+    let cancelled = false;
+    const timer = setTimeout(async () => {
+      try {
+        const token = localStorage.getItem('token');
+        const apiUrl = getApiBaseUrl();
+        const res = await fetch(
+          `${apiUrl}/api/admin/enrollment/preview-next?joiningDate=${encodeURIComponent(joiningDate)}`,
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+        if (!res.ok) return;
+        const data = await res.json();
+        if (!cancelled) setEnrollmentPreview(data.enrollmentNumber || '');
+      } catch (_) {
+        /* ignore preview errors */
+      }
+    }, 250);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [showModal, modalType, editingItem, formData.joiningDate]);
 
   // Manage body scroll when modal is open
   useEffect(() => {
@@ -1603,7 +1632,17 @@ const AdminDashboard = ({ user, onLogout }) => {
         console.log('🔍 Editing teacher formData:', teacherFormData);
         setFormData(teacherFormData);
       } else {
-        setFormData(item);
+        const editData = { ...item };
+        if (type === 'student') {
+          const rawJoin = item.joiningDate || item.createdAt;
+          if (rawJoin) {
+            const d = new Date(rawJoin);
+            if (!Number.isNaN(d.getTime())) {
+              editData.joiningDate = d.toISOString().slice(0, 10);
+            }
+          }
+        }
+        setFormData(editData);
         // Load batches if editing student with course
         if (type === 'student' && item.course) {
           loadBatchesByCourse(item.course);
@@ -1629,6 +1668,7 @@ const AdminDashboard = ({ user, onLogout }) => {
       role: 'student',
       phone: '',
       address: '',
+      joiningDate: new Date().toISOString().slice(0, 10),
       age: '',
       domain: '',
       experience: '',
@@ -1638,6 +1678,7 @@ const AdminDashboard = ({ user, onLogout }) => {
       bio: '',
       skills: []
     });
+    setEnrollmentPreview('');
     
     // Reset password update states
     setPasswordUpdateData({
@@ -1651,7 +1692,19 @@ const AdminDashboard = ({ user, onLogout }) => {
 
   const getDefaultFormData = (type) => {
     const defaults = {
-      student: { name: '', email: '', password: '', course: '', batchId: '', status: 'active', role: 'student', phone: '', address: '' },
+      student: {
+        name: '',
+        email: '',
+        password: '',
+        course: '',
+        batchId: '',
+        status: 'active',
+        role: 'student',
+        phone: '',
+        address: '',
+        joiningDate: new Date().toISOString().slice(0, 10),
+        enrollmentNumber: '',
+      },
       teacher: { name: '', email: '', password: '', age: '', domain: '', assignedCourses: [], experience: '', status: 'active', role: 'teacher', phone: '', address: '' },
       course: { title: '', description: '', duration: '', modules: 0, status: 'active', instructor: '', price: '' },
       batch: { name: '', course: '', startDate: '', teacherId: '', teacherName: '', status: 'active', batchType: 'regular', programLabel: '', customProgram: false },
@@ -1702,13 +1755,13 @@ const AdminDashboard = ({ user, onLogout }) => {
               name: formData.name,
               email: formData.email,
               password: formData.password, // Send plain text, backend will hash
-              enrollmentNumber: '', // Send empty string since we removed this field
               phone: formData.phone || '',
               address: formData.address || '',
               course: formData.course || '',
               batchId: formData.batchId || '',
               status: formData.status || 'active',
-              role: 'student'
+              role: 'student',
+              joiningDate: formData.joiningDate || new Date().toISOString().slice(0, 10),
             };
 
             const createResponse = await fetch(`${apiUrl}/api/admin/users`, {
@@ -1721,7 +1774,14 @@ const AdminDashboard = ({ user, onLogout }) => {
             });
             
             if (createResponse.ok) {
-              showToast('Student created successfully! Email: ' + formData.email, 'success');
+              const created = await createResponse.json();
+              const enNo = created.enrollmentNumber || enrollmentPreview || '';
+              showToast(
+                enNo
+                  ? `Student enrolled successfully. Enrollment no: ${enNo}`
+                  : `Student enrolled successfully! Email: ${formData.email}`,
+                'success'
+              );
               closeModal();
               await loadStudents();
             } else {
@@ -1742,7 +1802,8 @@ const AdminDashboard = ({ user, onLogout }) => {
             address: formData.address || '',
             course: formData.course || '',
             batchId: formData.batchId || '',
-            status: formData.status || 'active'
+            status: formData.status || 'active',
+            joiningDate: formData.joiningDate || undefined,
           };
           
           // Password cannot be updated during edit for security
@@ -3082,7 +3143,7 @@ const AdminDashboard = ({ user, onLogout }) => {
                 <div className="actions-grid">
                   <button onClick={() => openModal('student')} className="action-btn">
                     <span className="icon">➕</span>
-                    <span>Add Student</span>
+                    <span>Enroll Student</span>
                   </button>
                   <button onClick={() => openModal('teacher')} className="action-btn">
                     <span className="icon">👨‍🏫</span>
@@ -4340,216 +4401,267 @@ const AdminDashboard = ({ user, onLogout }) => {
         <div className="modal-overlay">
           <div className="modal" onClick={(e) => e.stopPropagation()} key={`${modalType}-${editingItem ? editingItem.id : 'new'}`}>
             <div className="modal-header">
-              <h2>{editingItem ? 'Edit' : 'Add'} {modalType.charAt(0).toUpperCase() + modalType.slice(1)}</h2>
+              <h2>
+                {modalType === 'student'
+                  ? (editingItem ? 'Edit enrollment' : 'Student enrollment')
+                  : `${editingItem ? 'Edit' : 'Add'} ${modalType.charAt(0).toUpperCase() + modalType.slice(1)}`}
+              </h2>
               <button className="close-btn" onClick={closeModal}>✕</button>
             </div>
 
             <div className="modal-content">
               {modalType === 'student' && (
-                <>
-                  <input
-                    type="text"
-                    placeholder="Student full name *"
-                    value={formData.name || ''}
-                    onChange={(e) => handleInputChange('name', e.target.value)}
-                    required
-                  />
-                  <input
-                    type="email"
-                    placeholder="Enter student email address *"
-                    value={formData.email || ''}
-                    onChange={(e) => handleInputChange('email', e.target.value)}
-                    required
-                    autoComplete="off"
-                    readOnly
-                    onFocus={(e) => e.target.removeAttribute('readonly')}
-                    onBlur={(e) => e.target.setAttribute('readonly', true)}
-                  />
-                  {!editingItem && (
-                    <div className="password-input-container">
+                <div className="sky-enroll-form">
+                  <p className="sky-enroll-form__intro">
+                    Enroll a Sky States student. Enrollment numbers follow{' '}
+                    <code>SKY_MM_YYYY_1101+</code> from the joining month and year.
+                  </p>
+
+                  <div className="sky-enroll-grid">
+                    <label className="sky-enroll-field sky-enroll-field--full">
+                      <span>Full name *</span>
                       <input
-                        type={showStudentPassword ? "text" : "password"}
-                        placeholder="Create password for student *"
-                        value={formData.password || ''}
-                        onChange={(e) => handleInputChange('password', e.target.value)}
+                        type="text"
+                        placeholder="Student full name"
+                        value={formData.name || ''}
+                        onChange={(e) => handleInputChange('name', e.target.value)}
+                        required
+                      />
+                    </label>
+
+                    <label className="sky-enroll-field">
+                      <span>Email *</span>
+                      <input
+                        type="email"
+                        placeholder="student@email.com"
+                        value={formData.email || ''}
+                        onChange={(e) => handleInputChange('email', e.target.value)}
                         required
                         autoComplete="off"
                         readOnly
                         onFocus={(e) => e.target.removeAttribute('readonly')}
                         onBlur={(e) => e.target.setAttribute('readonly', true)}
                       />
-                      <button
-                        type="button"
-                        className="password-toggle-btn"
-                        onClick={() => setShowStudentPassword(!showStudentPassword)}
-                        title={showStudentPassword ? "Hide password" : "Show password"}
+                    </label>
+
+                    <label className="sky-enroll-field">
+                      <span>Phone</span>
+                      <input
+                        type="tel"
+                        placeholder="Phone number"
+                        value={formData.phone || ''}
+                        onChange={(e) => handleInputChange('phone', e.target.value)}
+                      />
+                    </label>
+
+                    {!editingItem && (
+                      <label className="sky-enroll-field sky-enroll-field--full">
+                        <span>Login password *</span>
+                        <div className="password-input-container">
+                          <input
+                            type={showStudentPassword ? 'text' : 'password'}
+                            placeholder="Create password for student"
+                            value={formData.password || ''}
+                            onChange={(e) => handleInputChange('password', e.target.value)}
+                            required
+                            autoComplete="off"
+                            readOnly
+                            onFocus={(e) => e.target.removeAttribute('readonly')}
+                            onBlur={(e) => e.target.setAttribute('readonly', true)}
+                          />
+                          <button
+                            type="button"
+                            className="password-toggle-btn"
+                            onClick={() => setShowStudentPassword(!showStudentPassword)}
+                            title={showStudentPassword ? 'Hide password' : 'Show password'}
+                          >
+                            {showStudentPassword ? 'Hide' : 'Show'}
+                          </button>
+                        </div>
+                      </label>
+                    )}
+
+                    <label className="sky-enroll-field">
+                      <span>Joining date *</span>
+                      <input
+                        type="date"
+                        value={formData.joiningDate || ''}
+                        onChange={(e) => handleInputChange('joiningDate', e.target.value)}
+                        required
+                      />
+                    </label>
+
+                    <label className="sky-enroll-field">
+                      <span>Enrollment number</span>
+                      <input
+                        type="text"
+                        className="sky-enroll-readonly"
+                        value={
+                          editingItem
+                            ? (formData.enrollmentNumber || editingItem.enrollmentNumber || '—')
+                            : (enrollmentPreview || 'Will assign on save')
+                        }
+                        readOnly
+                      />
+                    </label>
+
+                    <label className="sky-enroll-field">
+                      <span>Course *</span>
+                      <select
+                        value={formData.course || ''}
+                        onChange={handleCourseChange}
+                        required
                       >
-                        {showStudentPassword ? "Hide" : "Show"}
-                      </button>
-                    </div>
-                  )}
-                  {/* Enrollment Number Field - Commented Out */}
-                  {/* <input
-                    type="text"
-                    placeholder="Enrollment Number *"
-                    value={formData.enrollmentNumber || ''}
-                    onChange={(e) => handleInputChange('enrollmentNumber', e.target.value)}
-                    required
-                  /> */}
-                  <input
-                    type="tel"
-                    placeholder="Phone Number"
-                    value={formData.phone || ''}
-                    onChange={(e) => handleInputChange('phone', e.target.value)}
-                  />
-                  <textarea
-                    placeholder="Address"
-                    value={formData.address || ''}
-                    onChange={(e) => handleInputChange('address', e.target.value)}
-                    rows="2"
-                  />
-                  <select
-                    value={formData.course || ''}
-                    onChange={handleCourseChange}
-                    required
-                  >
-                    <option value="">Select Course *</option>
-                    <option value="Data Science & AI">Data Science & AI</option>
-                    <option value="Cyber Security & Ethical Hacking">Cyber Security & Ethical Hacking</option>
-                    <option value="Cybersecurity & AI">Cybersecurity & AI</option>
-                    <option value="DevOps & AI">DevOps & AI</option>
-                    <option value="DevOps & Cloud">DevOps & Cloud</option>
-                    <option value="One-to-One">One-to-One</option>
-                  </select>
-                  <select
-                    value={formData.batchId || ''}
-                    onChange={(e) => handleInputChange('batchId', e.target.value)}
-                  >
-                    <option value="">Select Batch (Optional)</option>
-                    {batches.map(batch => (
-                      <option key={batch.id || batch._id} value={batch.id || batch._id}>
-                        {batch.name}
-                      </option>
-                    ))}
-                  </select>
-                  <select
-                    value={formData.status || 'active'}
-                    onChange={(e) => handleInputChange('status', e.target.value)}
-                  >
-                    <option value="active">Active</option>
-                    {/* Commented out - Deactivation options disabled */}
-                    {/* <option value="inactive">Deactivated</option>
-                    <option value="graduated">Graduated</option>
-                    <option value="suspended">Suspended</option> */}
-                  </select>
+                        <option value="">Select course</option>
+                        <option value="Data Science & AI">Data Science & AI</option>
+                        <option value="Cyber Security & Ethical Hacking">Cyber Security & Ethical Hacking</option>
+                        <option value="Cybersecurity & AI">Cybersecurity & AI</option>
+                        <option value="DevOps & AI">DevOps & AI</option>
+                        <option value="DevOps & Cloud">DevOps & Cloud</option>
+                        <option value="One-to-One">One-to-One</option>
+                      </select>
+                    </label>
+
+                    <label className="sky-enroll-field">
+                      <span>Batch</span>
+                      <select
+                        value={formData.batchId || ''}
+                        onChange={(e) => handleInputChange('batchId', e.target.value)}
+                      >
+                        <option value="">Select batch (optional)</option>
+                        {batches.map((batch) => (
+                          <option key={batch.id || batch._id} value={batch.id || batch._id}>
+                            {batch.name}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+
+                    <label className="sky-enroll-field">
+                      <span>Status</span>
+                      <select
+                        value={formData.status || 'active'}
+                        onChange={(e) => handleInputChange('status', e.target.value)}
+                      >
+                        <option value="active">Active</option>
+                      </select>
+                    </label>
+
+                    <label className="sky-enroll-field sky-enroll-field--full">
+                      <span>Address</span>
+                      <textarea
+                        placeholder="Mailing / contact address"
+                        value={formData.address || ''}
+                        onChange={(e) => handleInputChange('address', e.target.value)}
+                        rows="2"
+                      />
+                    </label>
+                  </div>
+
                   {editingItem && (editingItem.lastLogin || editingItem.lastLoginIP) && (
                     <div className="login-activity-section">
-                      <h4>📍 Login Activity</h4>
+                      <h4>Login activity</h4>
                       <div className="activity-detail">
-                        <strong>Last Login:</strong>{' '}
-                        {editingItem.lastLogin?.timestamp ? new Date(editingItem.lastLogin.timestamp).toLocaleString() : editingItem.lastLoginTimestamp ? new Date(editingItem.lastLoginTimestamp).toLocaleString() : 'Never'}
+                        <strong>Last login:</strong>{' '}
+                        {editingItem.lastLogin?.timestamp
+                          ? new Date(editingItem.lastLogin.timestamp).toLocaleString()
+                          : editingItem.lastLoginTimestamp
+                            ? new Date(editingItem.lastLoginTimestamp).toLocaleString()
+                            : 'Never'}
                       </div>
                       <div className="activity-detail">
-                        <strong>Last IP:</strong> <span className="ip-address">{editingItem.lastLoginIP || editingItem.lastLogin?.ipAddress || 'N/A'}</span>
+                        <strong>Last IP:</strong>{' '}
+                        <span className="ip-address">
+                          {editingItem.lastLoginIP || editingItem.lastLogin?.ipAddress || 'N/A'}
+                        </span>
                       </div>
-                      <div className="activity-detail">
-                        <strong>Location:</strong>{' '}
-                        {[editingItem.lastLogin?.city, editingItem.lastLogin?.country].filter(Boolean).join(', ') || 'N/A'}
+                    </div>
+                  )}
+
+                  {editingItem && (
+                    <div className="password-update-section">
+                      <div className="password-update-header">
+                        <h4>Update password</h4>
+                        <button
+                          type="button"
+                          className="btn-toggle-password-update"
+                          onClick={() => setShowPasswordUpdate(!showPasswordUpdate)}
+                        >
+                          {showPasswordUpdate ? 'Cancel' : 'Update password'}
+                        </button>
                       </div>
-                      <div className="activity-detail">
-                        <strong>ISP:</strong> {editingItem.lastLogin?.isp || 'N/A'}
-                      </div>
-                      {editingItem.loginHistory?.length > 0 && (
-                        <div className="login-history">
-                          <strong>Recent logins:</strong>
-                          <ul>
-                            {editingItem.loginHistory.slice(0, 5).map((h, i) => (
-                              <li key={i}>
-                                {new Date(h.timestamp).toLocaleString()} — {h.ipAddress} ({h.city && h.country ? `${h.city}, ${h.country}` : 'N/A'})
-                              </li>
-                            ))}
-                          </ul>
-                        </div>
-                      )}
-                      
-                      {/* Password Update Section - Only for existing users */}
-                      {editingItem && (
-                        <div className="password-update-section">
-                          <div className="password-update-header">
-                            <h4>Update Password</h4>
-                            <button 
-                              type="button" 
-                              className="btn-toggle-password-update"
-                              onClick={() => setShowPasswordUpdate(!showPasswordUpdate)}
+                      {showPasswordUpdate && (
+                        <div className="password-update-form">
+                          <div className="password-input-container">
+                            <input
+                              type={showNewPassword ? 'text' : 'password'}
+                              placeholder="New password"
+                              value={passwordUpdateData.newPassword}
+                              onChange={(e) =>
+                                setPasswordUpdateData({ ...passwordUpdateData, newPassword: e.target.value })
+                              }
+                              className="password-input"
+                            />
+                            <button
+                              type="button"
+                              className="password-toggle-btn"
+                              onClick={() => setShowNewPassword(!showNewPassword)}
+                              title={showNewPassword ? 'Hide password' : 'Show password'}
                             >
-                              {showPasswordUpdate ? 'Cancel' : 'Update Password'}
+                              {showNewPassword ? 'Hide' : 'Show'}
                             </button>
                           </div>
-                          
-                          {showPasswordUpdate && (
-                            <div className="password-update-form">
-                              <div className="password-input-container">
-                                <input
-                                  type={showNewPassword ? "text" : "password"}
-                                  placeholder="New Password"
-                                  value={passwordUpdateData.newPassword}
-                                  onChange={(e) => setPasswordUpdateData({...passwordUpdateData, newPassword: e.target.value})}
-                                  className="password-input"
-                                />
-                                <button
-                                  type="button"
-                                  className="password-toggle-btn"
-                                  onClick={() => setShowNewPassword(!showNewPassword)}
-                                  title={showNewPassword ? "Hide password" : "Show password"}
-                                >
-                                  {showNewPassword ? "Hide" : "Show"}
-                                </button>
-                              </div>
-                              
-                              <div className="password-input-container">
-                                <input
-                                  type={showConfirmPassword ? "text" : "password"}
-                                  placeholder="Confirm New Password"
-                                  value={passwordUpdateData.confirmPassword}
-                                  onChange={(e) => setPasswordUpdateData({...passwordUpdateData, confirmPassword: e.target.value})}
-                                  className="password-input"
-                                />
-                                <button
-                                  type="button"
-                                  className="password-toggle-btn"
-                                  onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                                  title={showConfirmPassword ? "Hide password" : "Show password"}
-                                >
-                                  {showConfirmPassword ? "Hide" : "Show"}
-                                </button>
-                              </div>
-                              
-                              <div className="password-requirements">
-                                <small>Password must contain:</small>
-                                <ul>
-                                  <li>At least 8 characters</li>
-                                  <li>One uppercase letter</li>
-                                  <li>One lowercase letter</li>
-                                  <li>One number</li>
-                                  <li>One special character (@$!%*?&)</li>
-                                </ul>
-                              </div>
-                              
-                              <button
-                                type="button"
-                                onClick={handlePasswordUpdate}
-                                className="btn-update-password"
-                                disabled={saving || !passwordUpdateData.newPassword || !passwordUpdateData.confirmPassword || !editingItem || (!editingItem.id && !editingItem._id)}
-                              >
-                                {saving ? 'Updating...' : 'Update Password'}
-                              </button>
-                            </div>
-                          )}
+                          <div className="password-input-container">
+                            <input
+                              type={showConfirmPassword ? 'text' : 'password'}
+                              placeholder="Confirm new password"
+                              value={passwordUpdateData.confirmPassword}
+                              onChange={(e) =>
+                                setPasswordUpdateData({
+                                  ...passwordUpdateData,
+                                  confirmPassword: e.target.value,
+                                })
+                              }
+                              className="password-input"
+                            />
+                            <button
+                              type="button"
+                              className="password-toggle-btn"
+                              onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                              title={showConfirmPassword ? 'Hide password' : 'Show password'}
+                            >
+                              {showConfirmPassword ? 'Hide' : 'Show'}
+                            </button>
+                          </div>
+                          <div className="password-requirements">
+                            <small>Password must contain:</small>
+                            <ul>
+                              <li>At least 8 characters</li>
+                              <li>One uppercase letter</li>
+                              <li>One lowercase letter</li>
+                              <li>One number</li>
+                              <li>One special character (@$!%*?&)</li>
+                            </ul>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={handlePasswordUpdate}
+                            className="btn-update-password"
+                            disabled={
+                              saving ||
+                              !passwordUpdateData.newPassword ||
+                              !passwordUpdateData.confirmPassword ||
+                              !editingItem ||
+                              (!editingItem.id && !editingItem._id)
+                            }
+                          >
+                            {saving ? 'Updating...' : 'Update password'}
+                          </button>
                         </div>
                       )}
                     </div>
                   )}
-                </>
+                </div>
               )}
 
               {modalType === 'teacher' && (
