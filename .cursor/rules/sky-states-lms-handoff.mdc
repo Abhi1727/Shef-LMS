@@ -1,0 +1,58 @@
+---
+description: Sky States LMS handoff — architecture, DEV/PROD, Firestore cutover, remotes
+alwaysApply: true
+---
+
+# Sky States LMS — session handoff
+
+## Product
+- LMS for Sky States: batches, classroom recordings, Google Meet live classes, materials, attendance, certificates.
+- Brand: Sky States LMS · sites: prod `learnwithus.sbs`, DEV `dev.learnwithus.sbs`.
+
+## Stack
+- Frontend: React CRA (`frontend/`)
+- Backend: Express + Mongoose models (`backend/`)
+- Prod DB: MongoDB Atlas database `lms`
+- DEV DB historically: Mongo `shef-lms-dev`
+- DEV runtime (current): **Firestore** project `skystateslms` when `USE_FIRESTORE=true` in `backend/.env.dev`
+
+## Remotes / Git
+- Primary: `origin` → https://github.com/Sky-States/LMS.git (default branch `develop`)
+- Legacy personal: `abhi` → https://github.com/Abhi1727/Shef-LMS.git
+- Work on **`develop`**; do not push experimental DEV Firestore cutover to production deploy without approval.
+
+## Environments (critical)
+- **DEV only** for experiments: Docker `shef-lms-backend-dev` port **5001**, frontend `/var/www/shef-lms-dev`
+- **PROD** Docker `shef-lms-backend` port **5000** — leave untouched unless user explicitly asks
+- Deploy DEV: `scripts/deploy-dev.sh` or FE build → `/var/www/shef-lms-dev` + `docker compose -p shef-lms-dev -f backend/docker-compose.dev.yml`
+
+## Google Meet / Drive (DEV)
+- Host: `admin@lms.skystates.us`
+- OAuth refresh token in `backend/.env.dev` (Calendar + Drive `drive.file`)
+- Docs: `docs/GOOGLE_MEET_DEV_SETUP.md`
+- Recordings: **manual upload** after class → Drive batch folder → Classroom lecture (not auto Meet→LMS sync)
+- Org policy blocks service-account JSON keys
+
+## Firestore cutover status
+- Data copy: DEV + PROD Mongo exported into `skystateslms` (PROD under `prod_*` collections)
+- Scripts: `backend/scripts/exportMongoToFirestore.js` (`--both --clear`)
+- DEV app can run on Firestore via `USE_FIRESTORE=true` + OAuth env vars (`FIRESTORE_OAUTH_*`)
+- Facades: `backend/firestore/`, client `backend/services/firestoreDb.js`, switch `backend/config/dataStore.js`
+- Rollback DEV to Mongo: set `USE_FIRESTORE=false`, recreate DEV container — see `docs/FIRESTORE_DEV_RUNTIME.md`
+- **Do not delete Atlas Mongo** or switch prod to Firestore until user approves after DEV soak
+
+## Auth accounts (DEV)
+- Admin: `support@skystates.us` (name Upendra) — password is in server env/ops notes, not in git
+- Smoke student may exist: `smoke-test-student@skystates.us`
+
+## Recent feature areas
+- Meet live classes, join attendance, reminders, Drive upload, materials/shares
+- Student home + Schedule calendar (week/month, Google Calendar links)
+- Teacher availability toggle is **admin-only** (not shown to students in chat)
+- Certificates, engagement health, lesson path on Classroom
+
+## Agent rules of thumb
+- Prefer DEV for all risky changes; ask before production
+- Never commit `.env`, `.env.dev`, or `backend/secrets/`
+- Do not amend commits unless user asks and amend rules allow
+- Keep UI consistent with Sky States teal / Fraunces+Manrope system already in the app
