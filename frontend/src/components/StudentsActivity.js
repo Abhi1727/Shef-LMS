@@ -35,12 +35,13 @@ const ACTION_LABELS = {
 };
 
 const CHART_COLORS = {
-  total: '#0f4c81',
-  logins: '#10b981',
-  videoViews: '#3b82f6',
-  assessments: '#8b5cf6',
-  grid: '#e2e8f0',
-  axis: '#64748b'
+  total: '#0b3d4a',
+  logins: '#0b3d4a',      // deep brand navy-teal
+  videoViews: '#2f6fed',  // clear professional blue
+  assessments: '#c27803', // warm amber (high contrast)
+  grid: '#e8eef1',
+  axis: '#5a6d76',
+  cursor: 'rgba(11, 61, 74, 0.07)'
 };
 
 const ChartTooltip = ({ active, payload, label }) => {
@@ -632,8 +633,8 @@ const StudentsActivity = ({ token: tokenProp }) => {
         <div className="sa-graph-section">
           <div className="sa-graph-header">
             <div className="sa-graph-title">
-              <h3>📈 Activity Visualization</h3>
-              <p>Visualize platform activity patterns and trends</p>
+              <h3>Activity visualization</h3>
+              <p>Platform activity patterns across logins, lectures, and assessments</p>
             </div>
             <div className="sa-graph-controls">
               <div className="sa-graph-view-toggle">
@@ -660,7 +661,7 @@ const StudentsActivity = ({ token: tokenProp }) => {
                 className="sa-graph-toggle-btn"
                 onClick={() => setShowGraph(false)}
               >
-                × Hide Graph
+                Hide graph
               </button>
             </div>
           </div>
@@ -681,11 +682,13 @@ const StudentsActivity = ({ token: tokenProp }) => {
               if (graphView === 'daily') {
                 return (
                   <div className="sa-daily-graph">
-                    <div className="sa-chart-canvas">
-                      <ResponsiveContainer width="100%" height={320}>
+                    <div className="sa-chart-canvas sa-chart-canvas--bars">
+                      <ResponsiveContainer width="100%" height={340}>
                         <BarChart
                           data={dailyData}
-                          margin={{ top: 12, right: 12, left: 0, bottom: 4 }}
+                          margin={{ top: 16, right: 8, left: -8, bottom: 4 }}
+                          barCategoryGap="8%"
+                          barGap={0}
                           onClick={(state) => {
                             if (state && state.activeTooltipIndex != null) {
                               setSelectedDate(
@@ -694,14 +697,30 @@ const StudentsActivity = ({ token: tokenProp }) => {
                             }
                           }}
                         >
-                          <CartesianGrid strokeDasharray="3 3" stroke={CHART_COLORS.grid} vertical={false} />
-                          <XAxis dataKey="date" tick={{ fill: CHART_COLORS.axis, fontSize: 12 }} axisLine={false} tickLine={false} />
-                          <YAxis allowDecimals={false} tick={{ fill: CHART_COLORS.axis, fontSize: 12 }} axisLine={false} tickLine={false} />
-                          <Tooltip content={<ChartTooltip />} cursor={{ fill: 'rgba(15, 76, 129, 0.06)' }} />
-                          <Legend wrapperStyle={{ paddingTop: 8 }} />
-                          <Bar dataKey="logins" name="Logins" stackId="a" fill={CHART_COLORS.logins} radius={[0, 0, 0, 0]} maxBarSize={48} />
-                          <Bar dataKey="videoViews" name="Lectures" stackId="a" fill={CHART_COLORS.videoViews} maxBarSize={48} />
-                          <Bar dataKey="assessments" name="Assessments" stackId="a" fill={CHART_COLORS.assessments} radius={[6, 6, 0, 0]} maxBarSize={48} />
+                          <CartesianGrid strokeDasharray="2 6" stroke={CHART_COLORS.grid} vertical={false} />
+                          <XAxis
+                            dataKey="date"
+                            tick={{ fill: CHART_COLORS.axis, fontSize: 11, fontWeight: 600 }}
+                            axisLine={false}
+                            tickLine={false}
+                            dy={6}
+                          />
+                          <YAxis
+                            allowDecimals={false}
+                            tick={{ fill: CHART_COLORS.axis, fontSize: 11 }}
+                            axisLine={false}
+                            tickLine={false}
+                            width={36}
+                          />
+                          <Tooltip content={<ChartTooltip />} cursor={{ fill: CHART_COLORS.cursor }} />
+                          <Legend
+                            wrapperStyle={{ paddingTop: 12, fontSize: 12, fontWeight: 600 }}
+                            iconType="circle"
+                            iconSize={8}
+                          />
+                          <Bar dataKey="logins" name="Logins" stackId="a" fill={CHART_COLORS.logins} maxBarSize={112} />
+                          <Bar dataKey="videoViews" name="Lectures" stackId="a" fill={CHART_COLORS.videoViews} maxBarSize={112} />
+                          <Bar dataKey="assessments" name="Assessments" stackId="a" fill={CHART_COLORS.assessments} radius={[4, 4, 0, 0]} maxBarSize={112} />
                         </BarChart>
                       </ResponsiveContainer>
                     </div>
@@ -760,8 +779,8 @@ const StudentsActivity = ({ token: tokenProp }) => {
                         <AreaChart data={hourlyData} margin={{ top: 12, right: 12, left: 0, bottom: 4 }}>
                           <defs>
                             <linearGradient id="saHourlyFill" x1="0" y1="0" x2="0" y2="1">
-                              <stop offset="0%" stopColor="#0f4c81" stopOpacity={0.35} />
-                              <stop offset="100%" stopColor="#0f4c81" stopOpacity={0.02} />
+                              <stop offset="0%" stopColor="#2f6fed" stopOpacity={0.32} />
+                              <stop offset="100%" stopColor="#2f6fed" stopOpacity={0.02} />
                             </linearGradient>
                           </defs>
                           <CartesianGrid strokeDasharray="3 3" stroke={CHART_COLORS.grid} vertical={false} />

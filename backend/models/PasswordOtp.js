@@ -15,4 +15,7 @@ const PasswordOtpSchema = new mongoose.Schema({
 
 PasswordOtpSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
 
-module.exports = mongoose.model('PasswordOtp', PasswordOtpSchema);
+const __mongoPasswordOtp = mongoose.models.PasswordOtp || mongoose.model('PasswordOtp', PasswordOtpSchema);
+module.exports = String(process.env.USE_FIRESTORE || '').toLowerCase() === 'true'
+  ? require('../firestore/models').PasswordOtp
+  : __mongoPasswordOtp;

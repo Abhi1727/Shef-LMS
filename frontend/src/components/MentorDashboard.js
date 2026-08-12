@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { firebaseService, COLLECTIONS } from '../services/firebaseService';
 import { formatDateForComponent } from '../utils/dateUtils';
+import SkyLoadingScreen from './SkyLoadingScreen';
 import './AdminDashboard.css';
 
 const MentorDashboard = ({ user, onLogout }) => {
@@ -106,12 +107,10 @@ const MentorDashboard = ({ user, onLogout }) => {
 
   if (loading) {
     return (
-      <div className="dashboard">
-        <div className="loading-spinner">
-          <div className="spinner"></div>
-          <p>Loading your mentor dashboard...</p>
-        </div>
-      </div>
+      <SkyLoadingScreen
+        message="Loading mentor dashboard"
+        subtext="Preparing your Sky States workspace"
+      />
     );
   }
 

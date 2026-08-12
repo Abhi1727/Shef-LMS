@@ -1100,6 +1100,16 @@
   padding-bottom: 10px;
 }
 
+/* Videos/Students section titles sit beside action buttons — no underline divider */
+.teacher-batch-details-page .main-content .videos-header h2,
+.teacher-batch-details-page .main-content .students-header h2,
+.sky-batch-page .main-content .videos-header h2,
+.sky-batch-page .main-content .students-header h2 {
+  border-bottom: none !important;
+  padding-bottom: 0 !important;
+  margin: 0 !important;
+}
+
 /* Force height calculations - Override any conflicting styles */
 .teacher-batch-details-page .batch-content,
 .batch-details-page .batch-content {
@@ -1706,7 +1716,112 @@
   color: #059669;
 }
 
-/* Modal Styles */
+/*
+ * Portaled modals render on document.body, so they MUST NOT be scoped under
+ * .teacher-batch-details-page — otherwise styles vanish when AdminDashboard.css
+ * isn't loaded (intermittent "Add Video does nothing").
+ */
+.batch-portal-modal-overlay {
+  position: fixed !important;
+  inset: 0 !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  max-width: none !important;
+  margin: 0 !important;
+  padding: 16px !important;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  z-index: 100000 !important;
+  box-sizing: border-box !important;
+  overflow: auto !important;
+}
+
+.batch-portal-modal {
+  background: #fff;
+  border-radius: 14px;
+  width: min(560px, 100%);
+  max-width: 560px;
+  max-height: min(90vh, 900px);
+  overflow-y: auto;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.28);
+  position: relative;
+  margin: auto;
+}
+
+.batch-portal-modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 18px 20px 12px;
+  border-bottom: 1px solid #e9ecef;
+}
+
+.batch-portal-modal-header h3 {
+  margin: 0;
+  color: #102a33;
+  font-size: 1.15rem;
+  font-weight: 700;
+}
+
+.batch-portal-modal-close {
+  background: none;
+  border: none;
+  font-size: 24px;
+  line-height: 1;
+  cursor: pointer;
+  color: #6c757d;
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+}
+
+.batch-portal-modal-close:hover {
+  color: #dc3545;
+  background: #f8fafc;
+}
+
+.batch-portal-modal-content {
+  padding: 18px 20px;
+}
+
+.batch-portal-modal-subtitle {
+  margin: 0 0 14px;
+  color: #6c757d;
+  font-size: 0.9rem;
+}
+
+.batch-portal-modal-content input,
+.batch-portal-modal-content select,
+.batch-portal-modal-content textarea {
+  width: 100%;
+  box-sizing: border-box;
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border: 1px solid #d5dee3;
+  border-radius: 8px;
+  font: inherit;
+}
+
+.batch-portal-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 12px 20px 18px;
+  border-top: 1px solid #e9ecef;
+}
+
+.batch-portal-confirm {
+  max-width: 480px;
+}
+
+/* Legacy in-page modal styles (non-portaled) */
 .teacher-batch-details-page .modal-overlay {
   position: fixed;
   top: 0;
@@ -2764,9 +2879,390 @@ body.modal-open {
   }
 }
 
-/* Modal Header */
+/* Modal Header — Candidate Profile dossier (aligned with Admin Students) */
+.student-profile-modal .fullscreen-modal-header {
+  background: linear-gradient(135deg, #0b3d4a 0%, #0f5c63 55%, #147a7a 100%);
+  color: white;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  border-bottom: none;
+  flex-shrink: 0;
+}
+
+.student-profile-modal .dossier-header-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 22px 24px 16px;
+}
+
+.student-profile-modal .student-header-info {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  min-width: 0;
+}
+
+.student-profile-modal .student-avatar {
+  width: 64px;
+  height: 64px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.16);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  flex-shrink: 0;
+}
+
+.student-profile-modal .avatar-text {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: white;
+  letter-spacing: 0.02em;
+}
+
+.student-profile-modal .student-basic-info {
+  min-width: 0;
+}
+
+.student-profile-modal .dossier-eyebrow {
+  margin: 0 0 4px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.65);
+}
+
+.student-profile-modal .student-basic-info h2 {
+  margin: 0 0 4px 0;
+  font-size: 1.45rem;
+  font-weight: 700;
+  color: white;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+}
+
+.student-profile-modal .student-email {
+  margin: 0 0 10px 0;
+  font-size: 0.9rem;
+  color: rgba(255, 255, 255, 0.78);
+  word-break: break-word;
+}
+
+.student-profile-modal .student-badges {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.student-profile-modal .student-badges .badge {
+  background: rgba(255, 255, 255, 0.14);
+  color: white;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  text-transform: capitalize;
+}
+
+.student-profile-modal .student-badges .badge.active {
+  background: rgba(16, 185, 129, 0.25);
+  border-color: rgba(16, 185, 129, 0.45);
+}
+
+.student-profile-modal .student-badges .badge.inactive,
+.student-profile-modal .student-badges .badge.suspended {
+  background: rgba(239, 68, 68, 0.22);
+  border-color: rgba(239, 68, 68, 0.4);
+}
+
+.student-profile-modal .modal-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.student-profile-modal .btn-create-report {
+  background: #fff;
+  border: none;
+  padding: 8px 14px;
+  border-radius: 10px;
+  color: #0b3d4a;
+  cursor: pointer;
+  font-size: 0.85rem;
+  font-weight: 700;
+  transition: background 0.2s ease, transform 0.2s ease;
+}
+
+.student-profile-modal .btn-create-report:hover {
+  background: #e6fffb;
+  transform: translateY(-1px);
+}
+
+.student-profile-modal .btn-create-report--header {
+  padding: 9px 16px;
+}
+
+.student-profile-modal .btn-edit-profile {
+  background: rgba(255, 255, 255, 0.14);
+  color: white;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  padding: 8px 14px;
+  border-radius: 10px;
+  cursor: pointer;
+  font-weight: 600;
+  transition: background 0.2s ease, border-color 0.2s ease;
+  font-size: 0.85rem;
+}
+
+.student-profile-modal .btn-edit-profile:hover {
+  background: rgba(255, 255, 255, 0.24);
+  border-color: rgba(255, 255, 255, 0.4);
+  transform: none;
+}
+
+.student-profile-modal .modal-close-fullscreen {
+  background: rgba(255, 255, 255, 0.14);
+  color: white;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  cursor: pointer;
+  font-size: 20px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s ease;
+}
+
+.student-profile-modal .modal-close-fullscreen:hover {
+  background: rgba(255, 255, 255, 0.28);
+  transform: none;
+}
+
+.student-profile-modal .dossier-tabs,
+.student-profile-modal .header-tab-buttons {
+  display: flex;
+  gap: 0;
+  align-items: stretch;
+  padding: 0 24px;
+  background: rgba(0, 0, 0, 0.15);
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.student-profile-modal .header-tab-btn {
+  background: transparent;
+  color: rgba(255, 255, 255, 0.7);
+  border: none;
+  border-bottom: 2px solid transparent;
+  padding: 12px 18px;
+  border-radius: 0;
+  font-size: 0.88rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: color 0.2s ease, border-color 0.2s ease;
+  white-space: nowrap;
+}
+
+.student-profile-modal .header-tab-btn:hover {
+  color: white;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.student-profile-modal .header-tab-btn.active {
+  background: transparent;
+  color: white;
+  border-bottom-color: #5eead4;
+  box-shadow: none;
+}
+
+.student-profile-modal .fullscreen-modal-content {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 22px 24px 28px;
+  background: #f1f5f9;
+  display: flex;
+  flex-direction: column;
+}
+
+.student-profile-modal .dossier-kpis {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.student-profile-modal .dossier-kpi {
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.student-profile-modal .dossier-kpi strong {
+  font-size: 1.05rem;
+  color: #0f172a;
+  font-weight: 700;
+  line-height: 1.2;
+  word-break: break-word;
+}
+
+.student-profile-modal .dossier-kpi span {
+  font-size: 0.7rem;
+  font-weight: 650;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #64748b;
+}
+
+.student-profile-modal .profile-dense-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  margin-bottom: 0;
+}
+
+.student-profile-modal .profile-card {
+  background: white;
+  border-radius: 14px;
+  padding: 18px 20px;
+  box-shadow: none;
+  border: 1px solid #e2e8f0;
+  min-width: 0;
+}
+
+.student-profile-modal .profile-card h3 {
+  margin: 0 0 14px 0;
+  color: #0f172a;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  border-bottom: 1px solid #e2e8f0;
+  padding-bottom: 10px;
+}
+
+.student-profile-modal .profile-details.compact-details {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px 18px;
+}
+
+.student-profile-modal .profile-details.compact-details .detail-item {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  padding: 0;
+  border-bottom: none;
+  gap: 4px;
+}
+
+.student-profile-modal .profile-details.compact-details .detail-item label {
+  font-weight: 650;
+  color: #64748b;
+  margin: 0;
+  font-size: 0.7rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.student-profile-modal .profile-details.compact-details .detail-item span {
+  color: #0f172a;
+  font-weight: 550;
+  font-size: 0.92rem;
+  line-height: 1.35;
+  word-break: break-word;
+}
+
+.student-profile-modal .profile-card .ip-address {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.85rem;
+  color: #334155;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  padding: 2px 8px;
+}
+
+.student-profile-modal .wide-detail {
+  grid-column: 1 / -1;
+}
+
+.student-profile-modal .truncate-value {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+
+.student-profile-modal .profile-card-login {
+  grid-column: 1 / -1;
+}
+
+.student-profile-modal .dossier-status {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 650;
+  text-transform: capitalize;
+  background: #e2e8f0;
+  color: #334155;
+}
+
+.student-profile-modal .dossier-status.active {
+  background: #d1fae5;
+  color: #065f46;
+}
+
+.student-profile-modal .dossier-status.inactive,
+.student-profile-modal .dossier-status.suspended {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.student-profile-modal .edit-profile-form {
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  padding: 20px;
+}
+
+.student-profile-modal .reports-tab-content {
+  background: transparent;
+}
+
+.student-profile-modal .reports-header h3 {
+  color: #0f172a;
+  font-size: 0.9rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.student-profile-modal .summary-card {
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  box-shadow: none;
+}
+
+/* Legacy purple header kept only if used outside student profile */
 .fullscreen-modal-header {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: linear-gradient(135deg, #0b3d4a 0%, #0f5c63 55%, #147a7a 100%);
   color: white;
   padding: 17px 32px;
   display: flex;
@@ -2784,12 +3280,12 @@ body.modal-open {
 .student-avatar {
   width: 64px;
   height: 64px;
-  border-radius: 50%;
-  background: rgba(255, 255, 255, 0.2);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.16);
   display: flex;
   align-items: center;
   justify-content: center;
-  border: 3px solid rgba(255, 255, 255, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.28);
 }
 
 .avatar-text {
@@ -2870,7 +3366,7 @@ body.modal-open {
   transform: rotate(90deg);
 }
 
-/* Tab Navigation */
+/* Tab Navigation (legacy — unused by dossier header tabs) */
 .profile-tabs-nav {
   background: #f8f9fa;
   border-bottom: 2px solid #e9ecef;
@@ -5680,10 +6176,30 @@ body.modal-open {
   color: #8a9aa3 !important;
 }
 
-.admin-batch-details-page .videos-view {
+.admin-batch-details-page .videos-view,
+.admin-batch-details-page .students-view,
+.sky-batch-page .videos-view,
+.sky-batch-page .students-view {
   width: 100%;
   padding: 20px 28px 40px;
   box-sizing: border-box;
+  /* Neutralize leaked AdminDashboard / OneToOne global rules (line on first SPA visit) */
+  max-height: none !important;
+  overflow: visible !important;
+  border: none !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.admin-batch-details-page .videos-header,
+.admin-batch-details-page .students-header,
+.sky-batch-page .videos-header,
+.sky-batch-page .students-header {
+  border: none !important;
+  border-bottom: none !important;
+  box-shadow: none !important;
+  background: transparent !important;
 }
 
 @media (max-width: 700px) {
@@ -5978,5 +6494,30 @@ body.modal-open {
   .sky-resources-field,
   .sky-resources-toggle-card {
     width: 100%;
+  }
+}
+
+@media (max-width: 900px) {
+  .student-profile-modal .dossier-header-top {
+    flex-direction: column;
+  }
+
+  .student-profile-modal .dossier-kpis {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .student-profile-modal .profile-dense-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 600px) {
+  .student-profile-modal .dossier-kpis {
+    grid-template-columns: 1fr;
+  }
+
+  .student-profile-modal .modal-header-actions {
+    width: 100%;
+    flex-wrap: wrap;
   }
 }

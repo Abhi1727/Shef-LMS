@@ -489,16 +489,15 @@ body.dark-mode .dashboard {
 .teacher-students-toolbar {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: 12px;
   margin: 1rem 0 1.25rem;
   flex-wrap: wrap;
 }
 
 .teacher-students-toolbar .form-input-modern {
-  flex: 1;
-  min-width: 220px;
-  max-width: 420px;
+  flex: 1 1 160px;
+  min-width: 140px;
+  max-width: 280px;
   height: 44px;
   border: 1px solid var(--lms-border);
   border-radius: 10px;

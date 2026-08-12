@@ -295,7 +295,12 @@ router.get('/:courseId', async (req, res) => {
       duration: lecture.duration,
       uploadedBy: lecture.uploadedBy,
       createdAt: lecture.createdAt,
-      videoSource: lecture.videoSource
+      videoSource: lecture.videoSource,
+      driveId: lecture.driveId || '',
+      youtubeVideoUrl: lecture.youtubeVideoUrl || '',
+      youtubeVideoId: lecture.youtubeVideoId || '',
+      youtubeEmbedUrl: lecture.youtubeEmbedUrl || '',
+      zoomUrl: lecture.zoomUrl || ''
     }));
 
     res.json({

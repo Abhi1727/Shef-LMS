@@ -1,6 +1,7 @@
 import React, { useState, useEffect, lazy, Suspense } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import Login from './components/Login';
+import SkyLoadingScreen from './components/SkyLoadingScreen';
 import tokenService from './services/tokenService';
 import cacheManager from './utils/cacheManager';
 import enhancedApiService from './utils/enhancedApiService';
@@ -20,19 +21,11 @@ const ResourcesHome = lazy(() => import('./components/ResourcesHome'));
 const StudentAssessmentView = lazy(() => import('./components/StudentAssessmentView'));
 const StudentAssessmentResults = lazy(() => import('./components/StudentAssessmentResults'));
 
-// Loading component for lazy loaded components
 const LoadingSpinner = () => (
-  <div style={{ 
-    display: 'flex', 
-    justifyContent: 'center', 
-    alignItems: 'center', 
-    height: '100vh',
-    flexDirection: 'column',
-    gap: '20px'
-  }}>
-    <div className="loader"></div>
-    <p>Loading dashboard...</p>
-  </div>
+  <SkyLoadingScreen
+    message="Loading"
+    subtext="Preparing your Sky States workspace"
+  />
 );
 
 // Service Worker Registration

@@ -6,4 +6,7 @@ const studentSchema = new mongoose.Schema({
     batchId: { type: mongoose.Schema.Types.ObjectId, ref: 'Batch', required: true }
 });
 
-module.exports = mongoose.model('Student', studentSchema);
+const __mongoStudent = mongoose.models.Student || mongoose.model('Student', studentSchema);
+module.exports = String(process.env.USE_FIRESTORE || '').toLowerCase() === 'true'
+  ? require('../firestore/models').Student
+  : __mongoStudent;

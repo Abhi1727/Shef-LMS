@@ -8,8 +8,44 @@ const multer = require('multer');
 const Batch = require('../models/Batch');
 const User = require('../models/User');
 const Classroom = require('../models/Classroom');
+const LiveClass = require('../models/LiveClass');
+const BatchMaterial = require('../models/BatchMaterial');
+const StudentShare = require('../models/StudentShare');
 const classroomService = require('../services/classroomService');
+const attendanceAnalytics = require('../services/attendanceAnalytics');
+const googleDriveService = require('../services/googleDriveService');
+const lessonPath = require('../services/lessonPath');
+const { Assessment } = require('../models/AssessmentStudio');
 const { logActivity } = require('../utils/activityLogger');
+
+const materialUpload = multer({
+  dest: path.join(__dirname, '../uploads/tmp-materials'),
+  limits: { fileSize: 200 * 1024 * 1024 }, // 200MB
+  fileFilter: (req, file, cb) => {
+    const ok =
+      /^video\//.test(file.mimetype) ||
+      /^image\//.test(file.mimetype) ||
+      /^application\//.test(file.mimetype) ||
+      /^text\//.test(file.mimetype) ||
+      /\.(pdf|doc|docx|ppt|pptx|xls|xlsx|zip|rar|txt|csv|md|rtf|mp4|mov|webm|png|jpg|jpeg)$/i.test(
+        file.originalname || ''
+      );
+    if (!ok) return cb(new Error('File type not allowed'));
+    cb(null, true);
+  }
+});
+try {
+  fs.mkdirSync(path.join(__dirname, '../uploads/tmp-materials'), { recursive: true });
+} catch (_) {
+  /* ignore */
+}
+
+async function assertTeacherOwnsBatch(teacherId, batchId) {
+  const batch = await Batch.findById(batchId).lean().exec();
+  if (!batch) return null;
+  if (String(batch.teacherId) !== String(teacherId)) return null;
+  return batch;
+}
 const {
   verifyCourseOwnership,
   verifyModuleOwnership,
@@ -29,6 +65,377 @@ const {
 router.use(isTeacher);
 
 // ----- MongoDB-backed teacher routes -----
+
+// @route   GET /api/teacher/availability
+// @desc    Get current teacher's availability status
+// @access  Teacher only
+router.get('/availability', async (req, res) => {
+  try {
+    const teacher = await User.findById(req.user.id)
+      .select('isAvailable availabilityUpdatedAt weeklyAvailability name')
+      .lean()
+      .exec();
+    if (!teacher) {
+      return res.status(404).json({ success: false, message: 'Teacher not found' });
+    }
+    res.json({
+      success: true,
+      isAvailable: Boolean(teacher.isAvailable),
+      availabilityUpdatedAt: teacher.availabilityUpdatedAt || null,
+      weeklyAvailability: Array.isArray(teacher.weeklyAvailability)
+        ? teacher.weeklyAvailability
+        : []
+    });
+  } catch (error) {
+    console.error('Error fetching availability:', error);
+    res.status(500).json({ success: false, message: 'Failed to fetch availability' });
+  }
+});
+
+// @route   PATCH /api/teacher/availability
+// @desc    Set trainer available / unavailable and/or weekly windows
+// @access  Teacher only
+router.patch('/availability', async (req, res) => {
+  try {
+    const updates = { availabilityUpdatedAt: new Date() };
+    if (typeof req.body?.isAvailable === 'boolean') {
+      updates.isAvailable = req.body.isAvailable;
+    }
+    if (Array.isArray(req.body?.weeklyAvailability)) {
+      updates.weeklyAvailability = req.body.weeklyAvailability
+        .map((w) => ({
+          day: Number(w.day),
+          startTime: String(w.startTime || '10:00').slice(0, 5),
+          endTime: String(w.endTime || '18:00').slice(0, 5),
+          timezone: String(w.timezone || 'Asia/Kolkata')
+        }))
+        .filter((w) => Number.isInteger(w.day) && w.day >= 0 && w.day <= 6);
+    }
+    const updated = await User.findByIdAndUpdate(req.user.id, updates, { new: true })
+      .select('isAvailable availabilityUpdatedAt weeklyAvailability')
+      .lean()
+      .exec();
+
+    if (!updated) {
+      return res.status(404).json({ success: false, message: 'Teacher not found' });
+    }
+
+    res.json({
+      success: true,
+      isAvailable: Boolean(updated.isAvailable),
+      availabilityUpdatedAt: updated.availabilityUpdatedAt || null,
+      weeklyAvailability: updated.weeklyAvailability || []
+    });
+  } catch (error) {
+    console.error('Error updating availability:', error);
+    res.status(500).json({ success: false, message: 'Failed to update availability' });
+  }
+});
+
+// @route   PUT /api/teacher/availability
+// @desc    Replace weekly availability windows
+router.put('/availability', async (req, res) => {
+  req.body = { ...(req.body || {}), weeklyAvailability: req.body?.weeklyAvailability || [] };
+  // Reuse PATCH handler logic via internal call pattern
+  try {
+    const windows = Array.isArray(req.body.weeklyAvailability) ? req.body.weeklyAvailability : [];
+    const weeklyAvailability = windows
+      .map((w) => ({
+        day: Number(w.day),
+        startTime: String(w.startTime || '10:00').slice(0, 5),
+        endTime: String(w.endTime || '18:00').slice(0, 5),
+        timezone: String(w.timezone || 'Asia/Kolkata')
+      }))
+      .filter((w) => Number.isInteger(w.day) && w.day >= 0 && w.day <= 6);
+
+    const updated = await User.findByIdAndUpdate(
+      req.user.id,
+      { weeklyAvailability, availabilityUpdatedAt: new Date() },
+      { new: true }
+    )
+      .select('isAvailable availabilityUpdatedAt weeklyAvailability')
+      .lean()
+      .exec();
+
+    if (!updated) {
+      return res.status(404).json({ success: false, message: 'Teacher not found' });
+    }
+    res.json({
+      success: true,
+      isAvailable: Boolean(updated.isAvailable),
+      availabilityUpdatedAt: updated.availabilityUpdatedAt || null,
+      weeklyAvailability: updated.weeklyAvailability || []
+    });
+  } catch (error) {
+    console.error('PUT /availability error:', error);
+    res.status(500).json({ success: false, message: 'Failed to save weekly availability' });
+  }
+});
+
+// @route   GET /api/teacher/attendance-overview
+router.get('/attendance-overview', async (req, res) => {
+  try {
+    const teacherId = String(req.user.id);
+    const batches = await Batch.find({ teacherId }).select('_id name course').lean().exec();
+    const rows = [];
+    for (const b of batches) {
+      const summary = await attendanceAnalytics.getBatchAttendanceSummary(String(b._id));
+      rows.push({
+        batchId: String(b._id),
+        batchName: b.name || '',
+        course: b.course || '',
+        sessionsTotal: summary.sessionsTotal || 0,
+        batchJoinRateAvg: summary.batchJoinRateAvg || 0,
+        belowThresholdCount: summary.belowThresholdCount || 0,
+        streakAlertCount: summary.streakAlertCount || 0,
+        threshold: summary.threshold,
+        streakLimit: summary.streakLimit,
+        studentCount: (summary.students || []).length,
+        engagementCounts: summary.engagementCounts || {
+          Healthy: 0,
+          Passive: 0,
+          Unengaged: 0
+        },
+        students: (summary.students || []).map((s) => ({
+          studentId: s.studentId,
+          studentName: s.studentName,
+          email: s.email,
+          joinRate: s.joinRate,
+          engagement: s.engagement,
+          consecutiveAbsent: s.consecutiveAbsent,
+          recentlyActive: s.recentlyActive,
+          belowThreshold: s.belowThreshold,
+          streakAlert: s.streakAlert
+        }))
+      });
+    }
+    rows.sort((a, b) => a.batchJoinRateAvg - b.batchJoinRateAvg);
+    res.json({ success: true, batches: rows });
+  } catch (error) {
+    console.error('GET /attendance-overview error:', error);
+    res.status(500).json({ success: false, message: 'Failed to load attendance overview' });
+  }
+});
+
+// @route   GET /api/teacher/batches/:batchId/materials
+router.get('/batches/:batchId/materials', async (req, res) => {
+  try {
+    const batch = await assertTeacherOwnsBatch(req.user.id, req.params.batchId);
+    if (!batch) return res.status(404).json({ success: false, message: 'Batch not found' });
+    const materials = await BatchMaterial.find({ batchId: String(req.params.batchId) })
+      .sort({ createdAt: -1 })
+      .lean()
+      .exec();
+    res.json({
+      success: true,
+      driveFolderId: batch.driveFolderId || '',
+      driveFolderLink: batch.driveFolderLink || '',
+      studentUploadsEnabled: Boolean(batch.studentUploadsEnabled),
+      materials: materials.map((m) => ({ id: String(m._id), ...m }))
+    });
+  } catch (error) {
+    console.error('GET materials error:', error);
+    res.status(500).json({ success: false, message: 'Failed to list materials' });
+  }
+});
+
+// @route   POST /api/teacher/batches/:batchId/materials
+router.post('/batches/:batchId/materials', materialUpload.single('file'), async (req, res) => {
+  let tempPath = req.file?.path;
+  try {
+    const batch = await assertTeacherOwnsBatch(req.user.id, req.params.batchId);
+    if (!batch) return res.status(404).json({ success: false, message: 'Batch not found' });
+    if (!req.file) {
+      return res.status(400).json({ success: false, message: 'file is required' });
+    }
+
+    let folderId = batch.driveFolderId || '';
+    let folderLink = batch.driveFolderLink || '';
+    if (!folderId) {
+      const ensured = await googleDriveService.ensureBatchFolder({
+        batchId: String(batch._id),
+        batchName: batch.name || 'Batch'
+      });
+      folderId = ensured.folderId;
+      folderLink = ensured.folderLink;
+      await Batch.updateOne(
+        { _id: batch._id },
+        { $set: { driveFolderId: folderId, driveFolderLink: folderLink, updatedAt: new Date() } }
+      );
+    }
+
+    const uploaded = await googleDriveService.uploadBatchFile({
+      batchId: String(batch._id),
+      batchName: batch.name || '',
+      folderId,
+      filePath: req.file.path,
+      fileName: req.file.originalname || `material-${Date.now()}`,
+      mimeType: req.file.mimetype,
+      title: req.body?.name || req.file.originalname
+    });
+
+    const KIND_OK = ['project', 'handout', 'notes', 'writing', 'video', 'other'];
+    let kind = KIND_OK.includes(req.body?.kind) ? req.body.kind : 'handout';
+    const mime = String(req.file.mimetype || '');
+    const nameLower = String(req.file.originalname || '').toLowerCase();
+    if (kind === 'handout') {
+      if (/^video\//.test(mime) || /\.(mp4|mov|webm|mkv)$/i.test(nameLower)) kind = 'video';
+      else if (/\.(pdf|doc|docx|txt|md|rtf)$/i.test(nameLower)) kind = 'writing';
+    }
+
+    const addAsLecture =
+      String(req.body?.addAsLecture || '') === 'true' ||
+      String(req.body?.addAsLecture || '') === '1';
+
+    let classroomLectureId = '';
+    if (addAsLecture && (kind === 'video' || /^video\//.test(mime))) {
+      const order = await lessonPath.nextOrderForBatch(String(batch._id));
+      const lecture = await Classroom.create({
+        title: req.body?.name || req.file.originalname || 'Extra video',
+        instructor: req.user.name || '',
+        description: req.body?.description || 'Extra video uploaded by trainer',
+        course: batch.course || '',
+        batchId: String(batch._id),
+        batchName: batch.name || '',
+        date: new Date().toISOString().slice(0, 10),
+        videoSource: 'drive',
+        driveId: uploaded.driveFileId,
+        zoomUrl: uploaded.driveLink,
+        order,
+        unlockRule: 'open',
+        uploadedBy: String(req.user.id),
+        createdAt: new Date(),
+        updatedAt: new Date()
+      });
+      classroomLectureId = String(lecture._id);
+      kind = 'video';
+    }
+
+    const doc = await BatchMaterial.create({
+      batchId: String(batch._id),
+      kind,
+      name: req.body?.name || req.file.originalname || uploaded.driveName,
+      mimeType: req.file.mimetype || '',
+      driveFileId: uploaded.driveFileId,
+      driveLink: uploaded.driveLink,
+      driveFolderId: uploaded.folderId,
+      liveClassId: req.body?.liveClassId ? String(req.body.liveClassId) : '',
+      classroomLectureId,
+      uploadedBy: String(req.user.id),
+      uploadedByName: req.user.name || '',
+      createdAt: new Date(),
+      updatedAt: new Date()
+    });
+
+    res.status(201).json({
+      success: true,
+      material: { id: String(doc._id), ...doc.toObject() },
+      driveFolderLink: folderLink,
+      classroomLectureId: classroomLectureId || undefined
+    });
+  } catch (error) {
+    console.error('POST materials error:', error);
+    const code = error.code === 'MEET_DISABLED' || error.code === 'MEET_NOT_CONFIGURED' ? 503 : 500;
+    res.status(code).json({
+      success: false,
+      message: error.message || 'Failed to upload material'
+    });
+  } finally {
+    if (tempPath && fs.existsSync(tempPath)) {
+      try {
+        fs.unlinkSync(tempPath);
+      } catch (_) {
+        /* ignore */
+      }
+    }
+  }
+});
+
+// @route   DELETE /api/teacher/batches/:batchId/materials/:id
+router.delete('/batches/:batchId/materials/:id', async (req, res) => {
+  try {
+    const batch = await assertTeacherOwnsBatch(req.user.id, req.params.batchId);
+    if (!batch) return res.status(404).json({ success: false, message: 'Batch not found' });
+    const mat = await BatchMaterial.findOne({
+      _id: req.params.id,
+      batchId: String(req.params.batchId)
+    });
+    if (!mat) return res.status(404).json({ success: false, message: 'Material not found' });
+    await mat.deleteOne();
+    res.json({ success: true, message: 'Material removed' });
+  } catch (error) {
+    console.error('DELETE materials error:', error);
+    res.status(500).json({ success: false, message: 'Failed to delete material' });
+  }
+});
+
+// @route   PATCH /api/teacher/batches/:batchId/student-uploads
+router.patch('/batches/:batchId/student-uploads', async (req, res) => {
+  try {
+    const batch = await assertTeacherOwnsBatch(req.user.id, req.params.batchId);
+    if (!batch) return res.status(404).json({ success: false, message: 'Batch not found' });
+    const enabled = Boolean(req.body?.enabled);
+    await Batch.updateOne(
+      { _id: batch._id },
+      { $set: { studentUploadsEnabled: enabled, updatedAt: new Date() } }
+    );
+    res.json({ success: true, studentUploadsEnabled: enabled });
+  } catch (error) {
+    console.error('PATCH student-uploads error:', error);
+    res.status(500).json({ success: false, message: 'Failed to update setting' });
+  }
+});
+
+// @route   GET /api/teacher/batches/:batchId/shares
+router.get('/batches/:batchId/shares', async (req, res) => {
+  try {
+    const batch = await assertTeacherOwnsBatch(req.user.id, req.params.batchId);
+    if (!batch) return res.status(404).json({ success: false, message: 'Batch not found' });
+    const shares = await StudentShare.find({ batchId: String(req.params.batchId) })
+      .sort({ createdAt: -1 })
+      .limit(200)
+      .lean();
+    res.json({
+      success: true,
+      studentUploadsEnabled: Boolean(batch.studentUploadsEnabled),
+      shares: shares.map((s) => ({ id: String(s._id), ...s }))
+    });
+  } catch (error) {
+    console.error('GET shares error:', error);
+    res.status(500).json({ success: false, message: 'Failed to list shares' });
+  }
+});
+
+// @route   PATCH /api/teacher/batches/:batchId/shares/:id
+router.patch('/batches/:batchId/shares/:id', async (req, res) => {
+  try {
+    const batch = await assertTeacherOwnsBatch(req.user.id, req.params.batchId);
+    if (!batch) return res.status(404).json({ success: false, message: 'Batch not found' });
+    const share = await StudentShare.findOne({
+      _id: req.params.id,
+      batchId: String(req.params.batchId)
+    });
+    if (!share) return res.status(404).json({ success: false, message: 'Share not found' });
+
+    const status = String(req.body?.status || '').toLowerCase();
+    if (['submitted', 'reviewed', 'returned'].includes(status)) {
+      share.status = status;
+      if (status === 'reviewed' || status === 'returned') {
+        share.reviewedAt = new Date();
+        share.reviewedBy = String(req.user.id);
+      }
+    }
+    if (req.body?.teacherFeedback != null) {
+      share.teacherFeedback = String(req.body.teacherFeedback).slice(0, 4000);
+    }
+    share.updatedAt = new Date();
+    await share.save();
+    res.json({ success: true, share: { id: String(share._id), ...share.toObject() } });
+  } catch (error) {
+    console.error('PATCH share error:', error);
+    res.status(500).json({ success: false, message: 'Failed to update share' });
+  }
+});
 
 // @route   GET /api/teacher/courses
 // @desc    Get teacher's batches as course-like cards
@@ -116,10 +523,10 @@ router.get('/classroom/:batchId', async (req, res) => {
     const lectures = await Classroom.find({
       batchId: String(batchId)
     })
-      .sort({ createdAt: -1 })
+      .sort({ order: 1, createdAt: 1 })
       .lean()
       .exec();
-    const list = lectures.map(l => ({
+    const list = lectures.map((l, idx) => ({
       id: String(l._id),
       title: l.title,
       description: l.description,
@@ -132,12 +539,16 @@ router.get('/classroom/:batchId', async (req, res) => {
       youtubeVideoUrl: l.youtubeVideoUrl,
       youtubeEmbedUrl: l.youtubeEmbedUrl,
       videoSource: l.videoSource,
-      // Prefer session/class date over upload timestamp so admin & teacher show the same day
+      driveId: l.driveId || '',
+      zoomUrl: l.zoomUrl || '',
       date: l.date || null,
       classDate: l.classDate || l.date || null,
       createdAt: l.createdAt,
       fileInfo: l.fileInfo,
-      notesAvailable: !!(l.notesAvailable || l.notesFile)
+      notesAvailable: !!(l.notesAvailable || l.notesFile),
+      order: Number(l.order) || idx + 1,
+      linkedAssessmentId: l.linkedAssessmentId || '',
+      unlockRule: l.unlockRule === 'afterPrevious' ? 'afterPrevious' : 'open'
     }));
     res.json({ courseId: batchId, lectures: list, total: list.length });
   } catch (error) {
@@ -265,6 +676,8 @@ router.post('/classroom/youtube-url', async (req, res) => {
       }
     }
 
+    const order = batchIdNorm ? await lessonPath.nextOrderForBatch(batchIdNorm) : 0;
+
     const lectureData = {
       title: title.trim(),
       description: (description || '').trim(),
@@ -277,6 +690,8 @@ router.post('/classroom/youtube-url', async (req, res) => {
       youtubeVideoId: videoId,
       youtubeVideoUrl,
       youtubeEmbedUrl,
+      order,
+      unlockRule: 'open',
       uploadedBy: teacherId
     };
 
@@ -339,6 +754,71 @@ router.delete('/classroom/:lectureId', async (req, res) => {
       return res.status(404).json({ message: 'Lecture not found' });
     }
     res.status(500).json({ message: 'Failed to delete lecture' });
+  }
+});
+
+// @route   PATCH /api/teacher/classroom/:lectureId/path
+// @desc    Update lesson path fields (order, unlockRule, linkedAssessmentId)
+router.patch('/classroom/:lectureId/path', async (req, res) => {
+  try {
+    const teacherId = String(req.user.id);
+    const lecture = await Classroom.findById(req.params.lectureId);
+    if (!lecture) return res.status(404).json({ success: false, message: 'Lecture not found' });
+
+    if (lecture.batchId) {
+      const batch = await Batch.findById(lecture.batchId).lean().exec();
+      if (!batch || String(batch.teacherId) !== teacherId) {
+        return res.status(403).json({ success: false, message: 'Access denied' });
+      }
+    } else {
+      return res.status(403).json({ success: false, message: 'Lecture has no batch' });
+    }
+
+    if (req.body.order != null) {
+      const n = parseInt(req.body.order, 10);
+      if (Number.isFinite(n) && n >= 0) lecture.order = n;
+    }
+    if (req.body.unlockRule != null) {
+      lecture.unlockRule = req.body.unlockRule === 'afterPrevious' ? 'afterPrevious' : 'open';
+    }
+    if (req.body.linkedAssessmentId !== undefined) {
+      const aid = String(req.body.linkedAssessmentId || '').trim();
+      if (aid) {
+        const assessment = await Assessment.findById(aid).lean().exec();
+        if (!assessment) {
+          return res.status(400).json({ success: false, message: 'Assessment not found' });
+        }
+        lecture.linkedAssessmentId = aid;
+        await Assessment.updateOne(
+          { _id: aid },
+          { $set: { classroomLectureId: String(lecture._id), updatedAt: new Date() } }
+        );
+      } else {
+        if (lecture.linkedAssessmentId) {
+          await Assessment.updateOne(
+            { _id: lecture.linkedAssessmentId },
+            { $unset: { classroomLectureId: 1 }, $set: { updatedAt: new Date() } }
+          ).catch(() => {});
+        }
+        lecture.linkedAssessmentId = '';
+      }
+    }
+
+    lecture.updatedAt = new Date();
+    await lecture.save();
+
+    res.json({
+      success: true,
+      lecture: {
+        id: String(lecture._id),
+        order: lecture.order,
+        unlockRule: lecture.unlockRule,
+        linkedAssessmentId: lecture.linkedAssessmentId || ''
+      }
+    });
+  } catch (error) {
+    console.error('PATCH classroom path error:', error);
+    res.status(500).json({ success: false, message: 'Failed to update lesson path' });
   }
 });
 
@@ -460,42 +940,23 @@ router.use((error, req, res, next) => {
 });
 
 // @route   GET /api/teacher/dashboard
-// @desc    Get teacher dashboard data
+// @desc    Get teacher dashboard data (Mongo)
 // @access  Teacher only
 router.get('/dashboard', async (req, res) => {
   try {
-    const teacherId = req.user.id;
+    const teacherId = String(req.user.id);
+    const teacher = await User.findById(teacherId).select('name email assignedCourses').lean().exec();
+    if (!teacher) {
+      return res.status(404).json({ success: false, message: 'Teacher not found' });
+    }
 
-    // Get teacher's courses
-    const teacherDoc = await db.collection('users').doc(teacherId).get();
-    const teacherData = teacherDoc.data();
-    const assignedCourses = teacherData.assignedCourses || [];
-
-    // Get teacher's batches
-    const batchesSnapshot = await db.collection('batches')
-      .where('teacherId', '==', teacherId)
-      .get();
-
-    const batches = [];
-    batchesSnapshot.forEach(doc => {
-      batches.push({ id: doc.id, ...doc.data() });
-    });
-
-    // Get students count for teacher's batches
-    let totalStudents = 0;
-    batches.forEach(batch => {
-      totalStudents += batch.students?.length || 0;
-    });
-
-    // Get upcoming classes
-    const classesSnapshot = await db.collection('liveClasses')
-      .where('teacherId', '==', teacherId)
-      .where('status', '==', 'scheduled')
-      .get();
-
-    const upcomingClasses = [];
-    classesSnapshot.forEach(doc => {
-      upcomingClasses.push({ id: doc.id, ...doc.data() });
+    const batches = await Batch.find({ teacherId }).lean().exec();
+    const totalStudents = batches.reduce((n, b) => n + (b.students?.length || 0), 0);
+    const LiveClass = require('../models/LiveClass');
+    const upcomingCount = await LiveClass.countDocuments({
+      teacherId,
+      status: 'scheduled',
+      scheduledStart: { $gte: new Date() }
     });
 
     res.json({
@@ -503,25 +964,25 @@ router.get('/dashboard', async (req, res) => {
       data: {
         teacher: {
           id: teacherId,
-          name: teacherData.name,
-          email: teacherData.email,
-          assignedCourses
+          name: teacher.name,
+          email: teacher.email,
+          assignedCourses: teacher.assignedCourses || []
         },
-        batches,
+        batches: batches.map((b) => ({ id: String(b._id), ...b })),
         totalStudents,
-        upcomingClasses: upcomingClasses.length,
+        upcomingClasses: upcomingCount,
         stats: {
           totalBatches: batches.length,
           totalStudents,
-          totalClasses: upcomingClasses.length
+          totalClasses: upcomingCount
         }
       }
     });
   } catch (error) {
     console.error('Error fetching teacher dashboard:', error);
-    res.status(500).json({ 
-      success: false, 
-      message: 'Failed to load dashboard' 
+    res.status(500).json({
+      success: false,
+      message: 'Failed to load dashboard'
     });
   }
 });
@@ -626,253 +1087,40 @@ router.get('/students', async (req, res) => {
   }
 });
 
-// @route   POST /api/teacher/class
-// @desc    Create a live class (with Zoom)
-// @access  Teacher only
-router.post('/class', async (req, res) => {
-  try {
-    const { title, batchId, scheduledDate, scheduledTime, duration, description } = req.body;
-    const teacherId = req.user.id;
-    const teacherName = req.user.name;
-
-    // Validate required fields
-    if (!title || !batchId || !scheduledDate || !scheduledTime) {
-      return res.status(400).json({ 
-        success: false, 
-        message: 'Title, batch, date, and time are required' 
-      });
-    }
-
-    // Get batch details
-    const batchDoc = await db.collection('batches').doc(batchId).get();
-    if (!batchDoc.exists) {
-      return res.status(404).json({ 
-        success: false, 
-        message: 'Batch not found' 
-      });
-    }
-
-    const batchData = batchDoc.data();
-
-    // Verify teacher owns this batch
-    if (batchData.teacherId !== teacherId) {
-      return res.status(403).json({ 
-        success: false, 
-        message: 'You do not have permission to create classes for this batch' 
-      });
-    }
-
-    // Create Zoom meeting
-    const startTime = new Date(`${scheduledDate}T${scheduledTime}`).toISOString();
-    const durationMinutes = parseInt(duration) || 60;
-
-    const zoomResult = await zoomService.createMeeting({
-      topic: title,
-      startTime: startTime,
-      duration: durationMinutes,
-      agenda: description || '',
-      timezone: 'Asia/Kolkata'
-    });
-
-    if (!zoomResult.success) {
-      return res.status(500).json({ 
-        success: false, 
-        message: 'Failed to create Zoom meeting' 
-      });
-    }
-
-    // Create live class document
-    const classData = {
-      title,
-      course: batchData.course,
-      batchId,
-      batchName: batchData.name,
-      teacherId,
-      teacherName,
-      instructor: teacherName,
-      zoomMeetingId: zoomResult.meeting.id,
-      joinUrl: zoomResult.meeting.joinUrl,
-      startUrl: zoomResult.meeting.startUrl,
-      password: zoomResult.meeting.password,
-      scheduledDate,
-      scheduledTime,
-      date: scheduledDate, // for compatibility
-      time: scheduledTime, // for compatibility
-      duration: `${durationMinutes} min`,
-      description: description || '',
-      status: 'scheduled',
-      enrolledStudents: batchData.students || [],
-      attendedStudents: [],
-      students: batchData.students?.length || 0,
-      createdBy: teacherId,
-      createdAt: new Date().toISOString()
-    };
-
-    const classRef = await db.collection('liveClasses').add(classData);
-
-    res.json({
-      success: true,
-      message: 'Live class created successfully',
-      class: {
-        id: classRef.id,
-        ...classData
-      }
-    });
-  } catch (error) {
-    console.error('Error creating class:', error);
-    res.status(500).json({ 
-      success: false, 
-      message: error.message || 'Failed to create class' 
-    });
-  }
+// Legacy Zoom/Firebase live-class routes — use /api/meetings (Google Meet)
+router.post('/class', (req, res) => {
+  res.status(410).json({
+    success: false,
+    message: 'Use POST /api/meetings to schedule a Google Meet class.'
+  });
 });
 
-// @route   GET /api/teacher/classes
-// @desc    Get all classes created by teacher
-// @access  Teacher only
-router.get('/classes', async (req, res) => {
-  try {
-    const teacherId = req.user.id;
-
-    const classesSnapshot = await db.collection('liveClasses')
-      .where('teacherId', '==', teacherId)
-      .get();
-
-    const classes = [];
-    classesSnapshot.forEach(doc => {
-      classes.push({ id: doc.id, ...doc.data() });
-    });
-
-    // Sort by date
-    classes.sort((a, b) => {
-      const dateA = new Date(`${a.scheduledDate} ${a.scheduledTime}`);
-      const dateB = new Date(`${b.scheduledDate} ${b.scheduledTime}`);
-      return dateB - dateA;
-    });
-
-    res.json({
-      success: true,
-      classes
-    });
-  } catch (error) {
-    console.error('Error fetching classes:', error);
-    res.status(500).json({ 
-      success: false, 
-      message: 'Failed to fetch classes' 
-    });
-  }
+router.get('/classes', (req, res) => {
+  res.status(410).json({
+    success: false,
+    message: 'Use GET /api/meetings to list Meet classes.'
+  });
 });
 
-// @route   DELETE /api/teacher/class/:id
-// @desc    Delete a class
-// @access  Teacher only
-router.delete('/class/:id', async (req, res) => {
-  try {
-    const classId = req.params.id;
-    const teacherId = req.user.id;
-
-    const classDoc = await db.collection('liveClasses').doc(classId).get();
-    
-    if (!classDoc.exists) {
-      return res.status(404).json({ 
-        success: false, 
-        message: 'Class not found' 
-      });
-    }
-
-    const classData = classDoc.data();
-
-    // Verify teacher owns this class
-    if (classData.teacherId !== teacherId) {
-      return res.status(403).json({ 
-        success: false, 
-        message: 'You do not have permission to delete this class' 
-      });
-    }
-
-    // Delete from Zoom if meeting ID exists
-    if (classData.zoomMeetingId) {
-      try {
-        await zoomService.deleteMeeting(classData.zoomMeetingId);
-      } catch (error) {
-        console.log('Could not delete from Zoom:', error.message);
-      }
-    }
-
-    // Delete from Firestore
-    await db.collection('liveClasses').doc(classId).delete();
-
-    res.json({
-      success: true,
-      message: 'Class deleted successfully'
-    });
-  } catch (error) {
-    console.error('Error deleting class:', error);
-    res.status(500).json({ 
-      success: false, 
-      message: 'Failed to delete class' 
-    });
-  }
+router.delete('/class/:id', (req, res) => {
+  res.status(410).json({
+    success: false,
+    message: 'Use POST /api/meetings/:id/cancel to cancel a Meet class.'
+  });
 });
 
-// @route   PUT /api/teacher/class/:id
-// @desc    Update a live class (reschedule, etc.)
-router.put('/class/:id', async (req, res) => {
-  try {
-    const classDoc = await db.collection('liveClasses').doc(req.params.id).get();
-    if (!classDoc.exists) {
-      return res.status(404).json({ success: false, message: 'Class not found' });
-    }
-    const classData = classDoc.data();
-    if (classData.teacherId !== req.user.id) {
-      return res.status(403).json({ success: false, message: 'You do not have permission to update this class' });
-    }
-    const { scheduledDate, scheduledTime, duration, title, description } = req.body;
-    const updateData = { updatedAt: new Date().toISOString() };
-    if (scheduledDate) updateData.scheduledDate = scheduledDate;
-    if (scheduledTime) updateData.scheduledTime = scheduledTime;
-    if (duration) updateData.duration = duration;
-    if (title) updateData.title = title;
-    if (description !== undefined) updateData.description = description;
-    if (classData.zoomMeetingId && (scheduledDate || scheduledTime || duration)) {
-      const startTime = new Date(`${scheduledDate || classData.scheduledDate}T${scheduledTime || classData.scheduledTime}`).toISOString();
-      await zoomService.updateMeeting(classData.zoomMeetingId, {
-        start_time: startTime,
-        duration: parseInt(duration || classData.duration) || 60,
-        topic: title || classData.title,
-        agenda: description !== undefined ? description : classData.description
-      });
-    }
-    await db.collection('liveClasses').doc(req.params.id).update(updateData);
-    res.json({ success: true, message: 'Class updated successfully' });
-  } catch (error) {
-    console.error('Error updating class:', error);
-    res.status(500).json({ success: false, message: 'Failed to update class' });
-  }
+router.put('/class/:id', (req, res) => {
+  res.status(410).json({
+    success: false,
+    message: 'Live class updates via /api/teacher/class are retired. Cancel and reschedule via /api/meetings.'
+  });
 });
 
-// @route   GET /api/teacher/class/:id/start
-router.get('/class/:id/start', async (req, res) => {
-  try {
-    const classDoc = await db.collection('liveClasses').doc(req.params.id).get();
-    if (!classDoc.exists) {
-      return res.status(404).json({ success: false, message: 'Class not found' });
-    }
-    const classData = classDoc.data();
-    if (classData.teacherId !== req.user.id) {
-      return res.status(403).json({ success: false, message: 'You do not have permission to start this class' });
-    }
-    res.json({
-      success: true,
-      startUrl: classData.startUrl,
-      joinUrl: classData.joinUrl,
-      password: classData.password,
-      title: classData.title
-    });
-  } catch (error) {
-    console.error('Error getting start URL:', error);
-    res.status(500).json({ success: false, message: 'Failed to get start URL' });
-  }
+router.get('/class/:id/start', (req, res) => {
+  res.status(410).json({
+    success: false,
+    message: 'Use GET /api/meetings/:id for the Meet link.'
+  });
 });
 
 // ==================== COURSES ====================

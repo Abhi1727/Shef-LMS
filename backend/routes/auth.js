@@ -57,8 +57,10 @@ router.post('/register', async (req, res) => {
     const hashedPassword = await bcrypt.hash(password, salt);
 
     const { allocateEnrollmentNumber } = require('../utils/enrollmentNumber');
+    const { allocateFormNumber } = require('../utils/reportFormNumber');
     const joinDate = new Date();
     const { enrollmentNumber } = await allocateEnrollmentNumber(User, joinDate);
+    const { formNumber } = await allocateFormNumber(User);
 
     const user = new User({
       name,
@@ -67,6 +69,7 @@ router.post('/register', async (req, res) => {
       role: 'student',
       status: 'active',
       enrollmentNumber,
+      formNumber,
       joiningDate: joinDate,
       createdAt: joinDate,
     });

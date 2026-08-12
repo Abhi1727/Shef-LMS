@@ -19,6 +19,9 @@
     "sync:firestore": "node scripts/auditAndSyncFromFirestore.js",
     "clone:prod-to-dev": "node scripts/cloneProdToDev.js",
     "clone:dev-to-prod": "node scripts/cloneDevToProd.js",
+    "export:mongo-dev-to-firestore": "node scripts/exportMongoDevToFirestore.js",
+    "export:mongo-to-firestore": "node scripts/exportMongoToFirestore.js",
+    "export:mongo-both-to-firestore": "node scripts/exportMongoToFirestore.js --both --clear",
     "seed:ds-notebooks": "node scripts/seed-ds-notebooks.js",
     "seed:ds-notebooks:dev": "ENV_PATH=.env.dev node scripts/seed-ds-notebooks.js"
   },

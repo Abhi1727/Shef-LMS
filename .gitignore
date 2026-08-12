@@ -43,3 +43,6 @@ bin/
 
 # OS / editor
 Thumbs.db
+
+# Local credential dumps (never commit)
+backend/secrets/

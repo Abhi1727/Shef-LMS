@@ -16,4 +16,7 @@ const resourceCategorySchema = new mongoose.Schema({
     createdAt: { type: Date, default: Date.now }
 });
 
-module.exports = mongoose.model('ResourceCategory', resourceCategorySchema);
+const __mongoResourceCategory = mongoose.models.ResourceCategory || mongoose.model('ResourceCategory', resourceCategorySchema);
+module.exports = String(process.env.USE_FIRESTORE || '').toLowerCase() === 'true'
+  ? require('../firestore/models').ResourceCategory
+  : __mongoResourceCategory;

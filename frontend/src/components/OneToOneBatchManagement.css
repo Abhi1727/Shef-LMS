@@ -734,7 +734,8 @@ textarea {
   min-height: 500px;
 }
 
-.main-content h2 {
+/* Keep scoped to this page so BatchDetailsPage titles don't pick up the underline */
+.batch-details-page .main-content h2 {
   margin: 0 0 25px 0;
   color: var(--text-primary, #2c3e50);
   font-size: 1.5rem;

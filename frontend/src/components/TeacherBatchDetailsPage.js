@@ -5,7 +5,11 @@ import { YouTubeUtils } from '../utils/youtubeUtils';
 import { formatDateForComponent } from '../utils/dateUtils';
 import { getApiBaseUrl } from '../utils/apiBase';
 import CustomVideoPlayer from './CustomVideoPlayer';
+import SkyLoadingScreen from './SkyLoadingScreen';
+import MeetLiveClassesPanel from './MeetLiveClassesPanel';
+import TeacherMaterialsPanel from './TeacherMaterialsPanel';
 import './BatchDetailsPage.css';
+import './MeetLiveClasses.css';
 
 const TeacherBatchDetailsPage = () => {
   const navigate = useNavigate();
@@ -18,7 +22,12 @@ const TeacherBatchDetailsPage = () => {
   const [selectedVideo, setSelectedVideo] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [activeView, setActiveView] = useState('videos');
+  const [activeView, setActiveView] = useState(
+    location.state?.activeView || 'overview'
+  );
+  const [attendanceSummary, setAttendanceSummary] = useState(null);
+  const [attendanceLoading, setAttendanceLoading] = useState(false);
+  const [nextSession, setNextSession] = useState(null);
   const [videoSearch, setVideoSearch] = useState('');
   const [showVideoModal, setShowVideoModal] = useState(false);
   const [editingVideo, setEditingVideo] = useState(null);
@@ -29,6 +38,7 @@ const TeacherBatchDetailsPage = () => {
   const [uploadingNotes, setUploadingNotes] = useState(false);
   const [notesFile, setNotesFile] = useState(null);
   const [notesTargetVideoId, setNotesTargetVideoId] = useState(null);
+  const [studentNameFilter, setStudentNameFilter] = useState('');
   const [showAddVideoModal, setShowAddVideoModal] = useState(false);
   const [addingVideo, setAddingVideo] = useState(false);
   const [addVideoForm, setAddVideoForm] = useState({
@@ -118,6 +128,25 @@ const TeacherBatchDetailsPage = () => {
       setSelectedBatch(batchData);
       setStudents(studentsData);
       setClassroomVideos(videosData);
+
+      try {
+        const meetRes = await fetch(
+          `${apiUrl}/api/meetings?batchId=${encodeURIComponent(batchId)}`,
+          { headers: authHeaders() }
+        );
+        if (meetRes.ok) {
+          const meetData = await meetRes.json();
+          const upcoming = (meetData.meetings || [])
+            .filter((m) => m.status !== 'cancelled' && m.status !== 'completed')
+            .sort(
+              (a, b) =>
+                new Date(a.scheduledStart || 0) - new Date(b.scheduledStart || 0)
+            );
+          setNextSession(upcoming[0] || null);
+        }
+      } catch (_) {
+        setNextSession(null);
+      }
     } catch (err) {
       console.error('Error loading batch data:', err);
       setError('Could not load batch details. Please try again.');
@@ -127,9 +156,43 @@ const TeacherBatchDetailsPage = () => {
     }
   }, [batchId]);
 
+  const loadAttendanceSummary = useCallback(async () => {
+    if (!batchId) return;
+    setAttendanceLoading(true);
+    try {
+      const res = await fetch(
+        `${getApiBaseUrl()}/api/meetings/attendance-summary?batchId=${encodeURIComponent(batchId)}`,
+        { headers: authHeaders() }
+      );
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) setAttendanceSummary(data);
+      else setAttendanceSummary(null);
+    } catch (_) {
+      setAttendanceSummary(null);
+    } finally {
+      setAttendanceLoading(false);
+    }
+  }, [batchId]);
+
   useEffect(() => {
     loadBatchData();
   }, [loadBatchData]);
+
+  useEffect(() => {
+    if (activeView === 'attendance' || activeView === 'overview' || activeView === 'students') {
+      loadAttendanceSummary();
+    }
+  }, [activeView, loadAttendanceSummary]);
+
+  useEffect(() => {
+    if (location.state?.openAddLecture && selectedBatch) {
+      setActiveView('videos');
+      setShowAddVideoModal(true);
+    }
+    if (location.state?.activeView) {
+      setActiveView(location.state.activeView);
+    }
+  }, [location.state, selectedBatch]);
 
   const handleBackToTeacher = () => {
     const from = location.state?.from;
@@ -377,14 +440,42 @@ const TeacherBatchDetailsPage = () => {
     );
   });
 
+  const updateLessonPath = async (videoId, patch) => {
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch(`${getApiBaseUrl()}/api/teacher/classroom/${videoId}/path`, {
+        method: 'PATCH',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(patch)
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.message || 'Failed to update path');
+      setClassroomVideos((videos) =>
+        videos.map((v) =>
+          v.id === videoId
+            ? {
+                ...v,
+                order: data.lecture?.order ?? v.order,
+                unlockRule: data.lecture?.unlockRule ?? v.unlockRule,
+                linkedAssessmentId: data.lecture?.linkedAssessmentId ?? v.linkedAssessmentId
+              }
+            : v
+        )
+      );
+    } catch (err) {
+      setError(err.message || 'Failed to update lesson path');
+    }
+  };
   if (loading) {
     return (
-      <div className="sky-batch-page sky-batch-loading">
-        <div className="sky-loading-card">
-          <div className="sky-spinner" />
-          <p>Loading batch…</p>
-        </div>
-      </div>
+      <SkyLoadingScreen
+        message="Loading batch"
+        subtext="Fetching lectures and learners"
+        compact
+      />
     );
   }
 
@@ -406,6 +497,7 @@ const TeacherBatchDetailsPage = () => {
     selectedBatch.batchType === 'one-to-one' ||
     (selectedBatch.course || '').toLowerCase().includes('one-to-one') ||
     (selectedBatch.course || '').toLowerCase().includes('one to one');
+  const isProject = selectedBatch.batchType === 'project';
 
   return (
     <div className="teacher-batch-details-page sky-batch-page">
@@ -421,6 +513,7 @@ const TeacherBatchDetailsPage = () => {
                 {selectedBatch.programLabel || selectedBatch.course || 'Program'}
               </span>
               {isOneToOne && <span className="sky-badge sky-badge-type">One-to-One</span>}
+              {isProject && <span className="sky-badge sky-badge-type">Project Class</span>}
               <span className={`sky-badge sky-badge-status ${selectedBatch.status || 'active'}`}>
                 {selectedBatch.status || 'active'}
               </span>
@@ -453,31 +546,172 @@ const TeacherBatchDetailsPage = () => {
       </div>
 
       <div className="sky-batch-tabs">
-        <button
-          type="button"
-          className={`sky-tab ${activeView === 'videos' ? 'active' : ''}`}
-          onClick={() => setActiveView('videos')}
-        >
-          Videos ({classroomVideos.length})
-        </button>
-        <button
-          type="button"
-          className={`sky-tab ${activeView === 'students' ? 'active' : ''}`}
-          onClick={() => setActiveView('students')}
-        >
-          Students ({students.length})
-        </button>
-        <button
-          type="button"
-          className={`sky-tab ${activeView === 'timing' ? 'active' : ''}`}
-          onClick={() => setActiveView('timing')}
-        >
-          Timing
-        </button>
+        {[
+          { id: 'overview', label: 'Overview' },
+          { id: 'meet', label: 'Sessions' },
+          { id: 'attendance', label: 'Attendance' },
+          { id: 'videos', label: `Classroom (${classroomVideos.length})` },
+          { id: 'materials', label: 'Materials' },
+          { id: 'students', label: `Students (${students.length})` },
+          { id: 'timing', label: 'Schedule' }
+        ].map((tab) => (
+          <button
+            key={tab.id}
+            type="button"
+            className={`sky-tab ${activeView === tab.id ? 'active' : ''}`}
+            onClick={() => setActiveView(tab.id)}
+          >
+            {tab.label}
+          </button>
+        ))}
       </div>
 
       <div className="batch-content">
         <div className="main-content">
+          {activeView === 'overview' && (
+            <div className="live-lobby">
+              <div className="live-lobby__grid">
+                <section className="live-lobby__card">
+                  <h3>Next session</h3>
+                  {nextSession ? (
+                    <>
+                      <h4 className="live-session__title">{nextSession.title}</h4>
+                      <p className="live-session__meta">
+                        {nextSession.scheduledDate} · {nextSession.scheduledTime} IST ·{' '}
+                        {nextSession.duration}
+                      </p>
+                      <div className="live-session__cta">
+                        <button
+                          type="button"
+                          className="live-lobby__btn live-lobby__btn--primary"
+                          onClick={() => setActiveView('meet')}
+                        >
+                          Open sessions
+                        </button>
+                      </div>
+                    </>
+                  ) : (
+                    <p className="live-lobby__muted">No upcoming live class. Schedule one in Sessions.</p>
+                  )}
+                </section>
+                <section className="live-lobby__card">
+                  <h3>Attendance snapshot</h3>
+                  {attendanceLoading && !attendanceSummary ? (
+                    <p className="live-lobby__muted">Loading…</p>
+                  ) : attendanceSummary ? (
+                    <div className="live-session__stats">
+                      <span className="live-stat">{attendanceSummary.sessionsTotal || 0} sessions</span>
+                      <span className="live-stat live-stat--present">
+                        Avg {attendanceSummary.batchJoinRateAvg ?? 0}%
+                      </span>
+                      <span className="live-stat live-stat--absent">
+                        {attendanceSummary.belowThresholdCount || 0} below bar
+                      </span>
+                    </div>
+                  ) : (
+                    <p className="live-lobby__muted">No attendance data yet.</p>
+                  )}
+                  <div className="live-session__cta" style={{ marginTop: '0.75rem' }}>
+                    <button
+                      type="button"
+                      className="live-lobby__btn live-lobby__btn--ghost"
+                      onClick={() => setActiveView('attendance')}
+                    >
+                      Attendance detail
+                    </button>
+                    <button
+                      type="button"
+                      className="live-lobby__btn live-lobby__btn--ghost"
+                      onClick={() => setActiveView('materials')}
+                    >
+                      Materials
+                    </button>
+                    <button
+                      type="button"
+                      className="live-lobby__btn live-lobby__btn--ghost"
+                      onClick={() => setActiveView('videos')}
+                    >
+                      Classroom
+                    </button>
+                  </div>
+                </section>
+              </div>
+            </div>
+          )}
+
+          {activeView === 'meet' && (
+            <div className="sky-timing-panel">
+              <div className="sky-timing-card">
+                <MeetLiveClassesPanel
+                  batchId={selectedBatch.id}
+                  title={`Sessions · ${selectedBatch.name}`}
+                />
+              </div>
+            </div>
+          )}
+
+          {activeView === 'attendance' && (
+            <div className="live-lobby">
+              <section className="live-lobby__card">
+                <div className="live-lobby__card-head">
+                  <h3>Batch attendance</h3>
+                  <button
+                    type="button"
+                    className="live-lobby__btn live-lobby__btn--ghost live-lobby__btn--sm"
+                    onClick={loadAttendanceSummary}
+                  >
+                    Refresh
+                  </button>
+                </div>
+                {attendanceLoading && !attendanceSummary ? (
+                  <p className="live-lobby--empty">Loading…</p>
+                ) : !attendanceSummary ? (
+                  <p className="live-lobby--empty">No data yet.</p>
+                ) : (
+                  <>
+                    <div className="live-session__stats">
+                      <span className="live-stat">{attendanceSummary.sessionsTotal} sessions</span>
+                      <span className="live-stat live-stat--present">
+                        Avg {attendanceSummary.batchJoinRateAvg}%
+                      </span>
+                      <span className="live-stat live-stat--absent">
+                        {attendanceSummary.belowThresholdCount} below {attendanceSummary.threshold}%
+                      </span>
+                    </div>
+                    <div className="live-summary-scroll" style={{ maxHeight: 420, marginTop: '0.75rem' }}>
+                      <table className="live-attendance__table">
+                        <thead>
+                          <tr>
+                            <th>Student</th>
+                            <th>Join %</th>
+                            <th>Present</th>
+                            <th>Absent</th>
+                            <th>Streak</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {(attendanceSummary.students || []).map((s) => (
+                            <tr key={s.studentId}>
+                              <td>{s.studentName}</td>
+                              <td>{s.joinRate}%</td>
+                              <td>{s.presentCount}</td>
+                              <td>{s.absentCount}</td>
+                              <td>{s.consecutiveAbsent}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </>
+                )}
+              </section>
+            </div>
+          )}
+
+          {activeView === 'materials' && (
+            <TeacherMaterialsPanel batchId={selectedBatch.id} batchName={selectedBatch.name} />
+          )}
+
           {activeView === 'timing' && (
             <div className="sky-timing-panel">
               <div className="sky-timing-card">
@@ -604,7 +838,9 @@ const TeacherBatchDetailsPage = () => {
                         {thumbnailUrl ? (
                           <img src={thumbnailUrl} alt="" loading="lazy" />
                         ) : (
-                          <div className="video-placeholder sky-lecture-placeholder">Lecture</div>
+                          <div className="video-placeholder sky-lecture-placeholder">
+                            {videoSource === 'drive' || video.driveId ? 'Drive' : 'Lecture'}
+                          </div>
                         )}
                         <span className="sky-lecture-play" aria-hidden="true">▶</span>
                       </button>
@@ -622,6 +858,44 @@ const TeacherBatchDetailsPage = () => {
                           {video.notesAvailable ? (
                             <div className="notes-indicator">Notes available</div>
                           ) : null}
+                          <div className="sky-lecture-meta" style={{ marginTop: 8, gap: 8, display: 'flex', flexWrap: 'wrap' }}>
+                            <label style={{ fontSize: 12 }}>
+                              Order{' '}
+                              <input
+                                type="number"
+                                min={1}
+                                value={video.order || ''}
+                                style={{ width: 56 }}
+                                onChange={(e) =>
+                                  setClassroomVideos((videos) =>
+                                    videos.map((v) =>
+                                      v.id === video.id
+                                        ? { ...v, order: Number(e.target.value) || 0 }
+                                        : v
+                                    )
+                                  )
+                                }
+                                onBlur={(e) =>
+                                  updateLessonPath(video.id, { order: Number(e.target.value) || 0 })
+                                }
+                              />
+                            </label>
+                            <label style={{ fontSize: 12 }}>
+                              Unlock{' '}
+                              <select
+                                value={video.unlockRule === 'afterPrevious' ? 'afterPrevious' : 'open'}
+                                onChange={(e) =>
+                                  updateLessonPath(video.id, { unlockRule: e.target.value })
+                                }
+                              >
+                                <option value="open">Open</option>
+                                <option value="afterPrevious">After previous</option>
+                              </select>
+                            </label>
+                            {video.linkedAssessmentId ? (
+                              <span className="notes-indicator">Quiz linked</span>
+                            ) : null}
+                          </div>
                         </div>
                         <div className="video-actions sky-lecture-actions">
                           <button
@@ -704,6 +978,30 @@ const TeacherBatchDetailsPage = () => {
                   Contact details stay private and are not shown to trainers.
                 </p>
               </div>
+              <div className="teacher-students-toolbar" style={{ marginTop: 12 }}>
+                <input
+                  type="search"
+                  className="form-input-modern"
+                  placeholder="Filter by name or enrollment…"
+                  value={studentNameFilter}
+                  onChange={(e) => setStudentNameFilter(e.target.value)}
+                  aria-label="Filter students by name"
+                />
+                <span className="stat-item">
+                  <span className="stat-number">
+                    {
+                      students.filter((s) => {
+                        const q = studentNameFilter.trim().toLowerCase();
+                        if (!q) return true;
+                        return [s.name, s.enrollmentNumber, s.course]
+                          .filter(Boolean)
+                          .some((v) => String(v).toLowerCase().includes(q));
+                      }).length
+                    }
+                  </span>
+                  <span className="stat-label">shown</span>
+                </span>
+              </div>
               <div className="teacher-students-table-wrap">
                 <table className="teacher-students-table">
                   <thead>
@@ -712,10 +1010,19 @@ const TeacherBatchDetailsPage = () => {
                       <th>Program</th>
                       <th>Enrollment</th>
                       <th>Status</th>
+                      <th>Certificate</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {students.map((student) => (
+                    {students
+                      .filter((s) => {
+                        const q = studentNameFilter.trim().toLowerCase();
+                        if (!q) return true;
+                        return [s.name, s.enrollmentNumber, s.course]
+                          .filter(Boolean)
+                          .some((v) => String(v).toLowerCase().includes(q));
+                      })
+                      .map((student) => (
                       <tr key={student.id || student._id}>
                         <td>
                           <div className="teacher-student-name">
@@ -731,6 +1038,35 @@ const TeacherBatchDetailsPage = () => {
                           <span className={`status-badge ${student.status || 'active'}`}>
                             {student.status || 'active'}
                           </span>
+                        </td>
+                        <td>
+                          <button
+                            type="button"
+                            className="sky-btn sky-btn-ghost"
+                            onClick={async () => {
+                              try {
+                                const token = localStorage.getItem('token');
+                                const res = await fetch(`${getApiBaseUrl()}/api/certificates/issue`, {
+                                  method: 'POST',
+                                  headers: {
+                                    Authorization: `Bearer ${token}`,
+                                    'Content-Type': 'application/json'
+                                  },
+                                  body: JSON.stringify({
+                                    studentId: student.id || student._id,
+                                    batchId
+                                  })
+                                });
+                                const data = await res.json().catch(() => ({}));
+                                if (!res.ok) throw new Error(data.message || 'Issue failed');
+                                alert(data.message || 'Certificate issued');
+                              } catch (err) {
+                                setError(err.message || 'Issue failed');
+                              }
+                            }}
+                          >
+                            Issue
+                          </button>
                         </td>
                       </tr>
                     ))}

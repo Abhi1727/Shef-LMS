@@ -46,4 +46,7 @@ ActivityLogSchema.index({ timestamp: -1 });
 ActivityLogSchema.index({ userId: 1, timestamp: -1 });
 ActivityLogSchema.index({ action: 1, timestamp: -1 });
 
-module.exports = mongoose.model('ActivityLog', ActivityLogSchema);
+const __mongoActivityLog = mongoose.models.ActivityLog || mongoose.model('ActivityLog', ActivityLogSchema);
+module.exports = String(process.env.USE_FIRESTORE || '').toLowerCase() === 'true'
+  ? require('../firestore/models').ActivityLog
+  : __mongoActivityLog;

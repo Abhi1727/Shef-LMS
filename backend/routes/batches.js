@@ -442,20 +442,32 @@ router.post('/:id/students', auth, isBatchOwnerOrAdmin, async (req, res) => {
     let user = await User.findOne({ email }).exec();
     
     if (!user) {
-      // Create new user
+      const { allocateEnrollmentNumber } = require('../utils/enrollmentNumber');
+      const { allocateFormNumber } = require('../utils/reportFormNumber');
+      const joinDate = new Date();
+      const { enrollmentNumber } = await allocateEnrollmentNumber(User, joinDate);
+      const { formNumber } = await allocateFormNumber(User);
       user = new User({
         name,
         email,
         role: 'student',
         batchId,
-        createdAt: new Date(),
-        updatedAt: new Date()
+        enrollmentNumber,
+        formNumber,
+        joiningDate: joinDate,
+        createdAt: joinDate,
+        updatedAt: joinDate,
       });
       await user.save();
     } else {
       // Update existing user
       user.batchId = batchId;
       user.updatedAt = new Date();
+      if (user.role === 'student' && !user.formNumber) {
+        const { allocateFormNumber } = require('../utils/reportFormNumber');
+        const { formNumber } = await allocateFormNumber(User);
+        user.formNumber = formNumber;
+      }
       await user.save();
     }
 

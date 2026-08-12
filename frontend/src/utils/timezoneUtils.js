@@ -199,18 +199,20 @@ export function formatTimeWithTimezone(time, timezone) {
  * Convert IST start/end (any common format) to a labeled US zone range string.
  */
 export function convertIstRangeToZone(startTime, endTime, timezone) {
-  if (!startTime || !endTime || !timezone) return '';
+  if (!startTime || !timezone) return '';
 
   if (!['EST', 'CST', 'PST', 'MST'].includes(timezone)) return '';
 
   // Allow callers to pass a full range in startTime alone
   let start = startTime;
-  let end = endTime;
-  if (!safeParseTime(start) && String(startTime).includes('-')) {
+  let end = endTime || '';
+  if ((!end || !safeParseTime(start)) && String(startTime).includes('-')) {
     const parsed = parseTimeRange(startTime);
-    start = parsed.startTime;
+    start = parsed.startTime || start;
     end = parsed.endTime || end;
   }
+
+  if (!start || !end) return '';
 
   const convertedStart = convertIstToUsTimezone(start, timezone);
   const convertedEnd = convertIstToUsTimezone(end, timezone);
@@ -218,6 +220,16 @@ export function convertIstRangeToZone(startTime, endTime, timezone) {
 
   const abbreviation = getTimezoneAbbreviation(timezone);
   return `${convertedStart} - ${convertedEnd} ${abbreviation}`;
+}
+
+/** Format an IST schedule time range as EST / CST / PST lines for student UI. */
+export function formatScheduleForStudentUsZones(istTimeRange) {
+  if (!istTimeRange) return '';
+  const zones = ['EST', 'CST', 'PST'];
+  const parts = zones
+    .map((zone) => convertIstRangeToZone(istTimeRange, '', zone))
+    .filter(Boolean);
+  return parts.join(' · ');
 }
 
 /**

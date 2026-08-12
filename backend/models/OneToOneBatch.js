@@ -37,4 +37,7 @@ oneToOneBatchSchema.index({ studentId: 1, course: 1 });
 oneToOneBatchSchema.index({ teacherId: 1 });
 oneToOneBatchSchema.index({ status: 1 });
 
-module.exports = mongoose.model('OneToOneBatch', oneToOneBatchSchema);
+const __mongoOneToOneBatch = mongoose.models.OneToOneBatch || mongoose.model('OneToOneBatch', oneToOneBatchSchema);
+module.exports = String(process.env.USE_FIRESTORE || '').toLowerCase() === 'true'
+  ? require('../firestore/models').OneToOneBatch
+  : __mongoOneToOneBatch;

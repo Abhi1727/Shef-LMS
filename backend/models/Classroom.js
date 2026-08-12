@@ -29,6 +29,10 @@ const classroomSchema = new mongoose.Schema({
   notesAvailable: { type: Boolean, default: false },
   notesFileName: { type: String },
   notesFilePath: { type: String },
+  // Lesson learning path
+  order: { type: Number, default: 0, index: true },
+  linkedAssessmentId: { type: String, default: '' },
+  unlockRule: { type: String, enum: ['open', 'afterPrevious'], default: 'open' },
   uploadedBy: { type: String },
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now },
@@ -39,4 +43,7 @@ classroomSchema.pre('save', function (next) {
   next();
 });
 
-module.exports = mongoose.model('Classroom', classroomSchema);
+const __mongoClassroom = mongoose.models.Classroom || mongoose.model('Classroom', classroomSchema);
+module.exports = String(process.env.USE_FIRESTORE || '').toLowerCase() === 'true'
+  ? require('../firestore/models').Classroom
+  : __mongoClassroom;

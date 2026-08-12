@@ -1,18 +1,19 @@
+const dotenv = require('dotenv');
+// Load env before models (USE_FIRESTORE must be set at require-time)
+dotenv.config({ path: process.env.ENV_PATH || '.env' });
+
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
-const dotenv = require('dotenv');
 const path = require('path');
 const fs = require('fs');
-const { connectMongo } = require('./config/mongo');
+const { connectDataStore, useFirestore } = require('./config/dataStore');
 const logger = require('./utils/logger');
 const auth = require('./middleware/auth');
 // const { startRecordingSync } = require('./jobs/syncRecordings');
 const videoProcessor = require('./middleware/videoProcessor');
 const { apiCacheHeaders, staticAssetCache, developmentCacheBust } = require('./middleware/cacheHeaders');
-
-dotenv.config();
 
 // Handle unhandled promise rejections
 process.on('unhandledRejection', (reason, promise) => {
@@ -117,6 +118,33 @@ app.use('/api/activity', require('./routes/activity'));
 app.use('/api/resources', require('./routes/resources'));
 app.use('/api/assessment-studio', require('./routes/assessmentStudio'));
 app.use('/api/classroom-interaction', require('./routes/classroomInteraction'));
+app.use('/api/chat', require('./routes/chat'));
+app.use('/api/meetings', require('./routes/meetings'));
+app.use('/api/certificates', require('./routes/certificates'));
+
+// OAuth redirect landing (Google Meet / Calendar setup). Shows the auth code to paste into setup-meet-oauth.js
+app.get('/auth/google/callback', (req, res) => {
+  const code = req.query.code ? String(req.query.code) : '';
+  const error = req.query.error ? String(req.query.error) : '';
+  if (error) {
+    return res.status(400).type('html').send(
+      `<!doctype html><meta charset="utf-8"><title>Meet OAuth</title>
+       <h1>Google OAuth error</h1><pre>${error}</pre>
+       <p>${req.query.error_description || ''}</p>`
+    );
+  }
+  if (!code) {
+    return res.status(400).type('html').send(
+      '<!doctype html><meta charset="utf-8"><title>Meet OAuth</title><h1>No code in URL</h1><p>Retry the setup script auth link.</p>'
+    );
+  }
+  res.type('html').send(`<!doctype html><meta charset="utf-8"><title>Meet OAuth</title>
+    <h1>Google authorization OK</h1>
+    <p>Copy this code and paste it into the terminal running <code>setup-meet-oauth.js</code>:</p>
+    <textarea id="c" style="width:100%;height:120px;font-size:14px">${code.replace(/</g, '&lt;')}</textarea>
+    <p><button onclick="navigator.clipboard.writeText(document.getElementById('c').value)">Copy code</button></p>
+    <p style="color:#666">You can close this tab after pasting.</p>`);
+});
 
 // Fallback endpoint for direct file access (authenticated)
 app.get('/api/uploads/notes/:filename', auth, (req, res) => {
@@ -209,14 +237,30 @@ app.use((error, req, res, next) => {
 
 const PORT = process.env.PORT || 5000;
 
-// Ensure MongoDB is connected before starting the server
-connectMongo()
-  .then(() => {
+// Connect data store (Mongo by default; Firestore when USE_FIRESTORE=true on DEV)
+connectDataStore()
+  .then((store) => {
     app.listen(PORT, () => {
-      logger.info('Server running', { port: PORT, env: process.env.NODE_ENV || 'development' });
+      logger.info('Server running', {
+        port: PORT,
+        env: process.env.NODE_ENV || 'development',
+        dataStore: store?.type || (useFirestore() ? 'firestore' : 'mongo')
+      });
+      try {
+        const { startMeetReminderJob } = require('./jobs/meetReminders');
+        startMeetReminderJob();
+      } catch (err) {
+        logger.error('Failed to start Meet reminder job', { error: err.message });
+      }
+      try {
+        const { startAttendanceAlertJob } = require('./jobs/attendanceAlerts');
+        startAttendanceAlertJob();
+      } catch (err) {
+        logger.error('Failed to start attendance alert job', { error: err.message });
+      }
     });
   })
   .catch((err) => {
-    logger.error('Failed to start server due to MongoDB error', { error: err.message });
+    logger.error('Failed to start server due to data store error', { error: err.message });
     process.exit(1);
   });

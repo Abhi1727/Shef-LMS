@@ -4,10 +4,14 @@ import CustomVideoPlayer from './CustomVideoPlayer';
 import StudentProfile from './StudentProfile';
 import StudentAnalyticsDashboard from './StudentAnalyticsDashboard';
 import { YouTubeUtils } from '../utils/youtubeUtils';
-import { convertIstRangeToZone } from '../utils/timezoneUtils';
+import { formatScheduleForStudentUsZones } from '../utils/timezoneUtils';
 import { formatDateForComponent } from '../utils/dateUtils';
 import { ToastContainer, showToast } from './Toast';
 import AccountMenu from './AccountMenu';
+import DirectChatPanel from './DirectChatPanel';
+import StudentLiveClassLobby from './StudentLiveClassLobby';
+import StudentScheduleCalendar, { googleCalendarUrl } from './StudentScheduleCalendar';
+import StudentMaterialsPanel from './StudentMaterialsPanel';
 import './Dashboard.css';
 import '../styles/RoleShell.css';
 import { getApiBaseUrl } from '../utils/apiBase';
@@ -585,9 +589,11 @@ const Dashboard = ({ user, onLogout }) => {
   // Video watching history state
   const [videoWatchHistory, setVideoWatchHistory] = useState([]);
   const [batchInfo, setBatchInfo] = useState(null);
+  const [upcomingMeetings, setUpcomingMeetings] = useState([]);
   
   // Classroom videos from Firebase
   const [classroomVideos, setClassroomVideos] = useState([]);
+  const [certificates, setCertificates] = useState([]);
   
   // Batches and enhanced video information
   const [batches, setBatches] = useState([]);
@@ -1196,22 +1202,22 @@ const Dashboard = ({ user, onLogout }) => {
             ? raw.videos
             : [];
 
-        // Additional sorting on frontend to ensure correct ordering (newest class date first)
-        const sortedVideos = videos.sort((a, b) => {
-          const getVideoDate = (v) => {
-            if (v.isOneToOne && v.classDate) {
-              try {
-                return new Date(v.classDate.split('-').reverse().join('-'));
-              } catch (e) {
-                // fallback
-              }
-            }
-            return new Date(v.date || v.createdAt || v.addedAt || 0);
-          };
-          const dateA = getVideoDate(a);
-          const dateB = getVideoDate(b);
-          return dateB - dateA;
-        });
+        const hasPathOrder = videos.some((v) => v.order > 0 || v.lessonPath || v.steps);
+        const sortedVideos = hasPathOrder
+          ? [...videos].sort((a, b) => (Number(a.order) || 0) - (Number(b.order) || 0))
+          : [...videos].sort((a, b) => {
+              const getVideoDate = (v) => {
+                if (v.isOneToOne && v.classDate) {
+                  try {
+                    return new Date(v.classDate.split('-').reverse().join('-'));
+                  } catch (e) {
+                    // fallback
+                  }
+                }
+                return new Date(v.date || v.createdAt || v.addedAt || 0);
+              };
+              return getVideoDate(b) - getVideoDate(a);
+            });
 
         // Hide support/utility Zoom rooms from students (e.g. personal meeting rooms)
         const filteredVideos = sortedVideos.filter(v => {
@@ -1219,12 +1225,6 @@ const Dashboard = ({ user, onLogout }) => {
           return !title.includes("support's personal meeting room") &&
                  !title.includes('support\'s personal meeting room');
         });
-
-        console.log('🔍 Frontend Debug - First 3 videos after sorting/filtering:', filteredVideos.slice(0, 3).map(v => ({
-          title: v.title,
-          createdAt: v.createdAt,
-          date: v.date
-        })));
 
         setClassroomVideos(filteredVideos);
       } else {
@@ -1235,6 +1235,20 @@ const Dashboard = ({ user, onLogout }) => {
     } catch (error) {
       console.error('Error loading classroom videos:', error);
       setClassroomVideos([]);
+    }
+  }, []);
+
+  const loadCertificates = useCallback(async () => {
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch(`${getApiBaseUrl()}/api/certificates/mine`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) setCertificates(data.certificates || []);
+      else setCertificates([]);
+    } catch (_) {
+      setCertificates([]);
     }
   }, []);
 
@@ -1292,6 +1306,37 @@ const Dashboard = ({ user, onLogout }) => {
     }
   }, []);
 
+  const loadUpcomingMeetings = useCallback(async () => {
+    try {
+      const token = localStorage.getItem('token');
+      if (!token) return;
+      const apiUrl = getApiBaseUrl();
+      const response = await fetch(`${apiUrl}/api/meetings`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (!response.ok) {
+        setUpcomingMeetings([]);
+        return;
+      }
+      const data = await response.json();
+      const list = data.meetings || [];
+      const now = Date.now();
+      const upcoming = list.filter((m) => {
+        if (m.status === 'cancelled' || !m.meetLink) return false;
+        const start = m.scheduledStart
+          ? new Date(m.scheduledStart).getTime()
+          : new Date(`${m.scheduledDate}T${m.scheduledTime || '00:00'}`).getTime();
+        if (Number.isNaN(start)) return false;
+        // Show until 2h after start, and only within next 14 days
+        return start + 2 * 60 * 60 * 1000 >= now && start <= now + 14 * 24 * 60 * 60 * 1000;
+      });
+      setUpcomingMeetings(upcoming);
+    } catch (error) {
+      console.error('Error loading Meet classes:', error);
+      setUpcomingMeetings([]);
+    }
+  }, []);
+
   // Get teacher name from batch ID
   const getTeacherName = useCallback((batchId) => {
     console.log('🔍 Dashboard Debug - Getting teacher for batchId:', batchId);
@@ -1338,7 +1383,9 @@ const Dashboard = ({ user, onLogout }) => {
         await Promise.all([
           loadClassroomVideos(),
           loadBatches(),
-          loadBatchInfo()
+          loadBatchInfo(),
+          loadUpcomingMeetings(),
+          loadCertificates()
         ]);
       } catch (error) {
         console.error('Error loading initial dashboard data:', error);
@@ -1349,7 +1396,7 @@ const Dashboard = ({ user, onLogout }) => {
 
     // Always load classroom/batch data — many learners have `course`/`batchId` without currentCourse
     loadInitialData();
-  }, [user?.id, user?.batchId, user?.course, user?.currentCourse, loadClassroomVideos, loadBatches, loadBatchInfo]);
+  }, [user?.id, user?.batchId, user?.course, user?.currentCourse, loadClassroomVideos, loadBatches, loadBatchInfo, loadUpcomingMeetings, loadCertificates]);
 
   // Load video enhancements when videos are loaded
   useEffect(() => {
@@ -2174,10 +2221,31 @@ const Dashboard = ({ user, onLogout }) => {
           </button>
           <button
             type="button"
+            className={`ss-shell-nav__btn ${activeSection === 'schedule' ? 'is-active' : ''}`}
+            onClick={() => setActiveSection('schedule')}
+          >
+            Schedule
+          </button>
+          <button
+            type="button"
+            className={`ss-shell-nav__btn ${activeSection === 'materials' ? 'is-active' : ''}`}
+            onClick={() => setActiveSection('materials')}
+          >
+            Materials
+          </button>
+          <button
+            type="button"
             className={`ss-shell-nav__btn ${activeSection === 'assessments' ? 'is-active' : ''}`}
             onClick={() => setActiveSection('assessments')}
           >
             Assessments{studentAssessments.length > 0 ? ` (${studentAssessments.length})` : ''}
+          </button>
+          <button
+            type="button"
+            className={`ss-shell-nav__btn ${activeSection === 'messages' ? 'is-active' : ''}`}
+            onClick={() => setActiveSection('messages')}
+          >
+            Messages
           </button>
           <button
             type="button"
@@ -2200,198 +2268,255 @@ const Dashboard = ({ user, onLogout }) => {
         <main className="student-main-content">
 
           {activeSection === 'overview' && (
-            <div className="overview-page animate-in">
-              {/* Hero Banner Section */}
-              <section className="hero-section glass-card">
-                <div className="hero-text-content">
-                  <span className="badge-mono">Sky States LMS</span>
-                  <h1 className="hero-title">
-                    Welcome back, {user?.name?.split(' ')[0] || 'Student'}
-                  </h1>
-                  <p className="hero-desc">
-                    You are enrolled in <strong>{user?.currentCourse || batchInfo?.course || 'your course'}</strong>.
-                    Pick up where you left off or jump into the classroom.
+            <div className="ss-home animate-in">
+              <section className="ss-home__hero">
+                <div>
+                  <p className="ss-home__eyebrow">Sky States LMS</p>
+                  <h1>Welcome back, {user?.name?.split(' ')[0] || 'Student'}</h1>
+                  <p>
+                    {user?.currentCourse || batchInfo?.course || 'Your program'}
+                    {batchInfo?.name ? ` · ${batchInfo.name}` : ''}
+                    {batchInfo?.schedule?.days
+                      ? ` · Cohort ${batchInfo.schedule.days}${
+                          batchInfo.schedule?.time
+                            ? ` @ ${
+                                formatScheduleForStudentUsZones(batchInfo.schedule.time) ||
+                                batchInfo.schedule.time
+                              }`
+                            : ''
+                        }`
+                      : ''}
                   </p>
-                  <div className="hero-actions">
-                    <button type="button" className="shimmer-btn primary-btn" onClick={() => setActiveSection('classroom')}>
-                      Resume Learning
+                  <div className="ss-home__actions">
+                    <button
+                      type="button"
+                      className="ss-home__action ss-home__action--primary"
+                      onClick={() => setActiveSection('classroom')}
+                    >
+                      Open Classroom
+                    </button>
+                    <button
+                      type="button"
+                      className="ss-home__action"
+                      onClick={() => setActiveSection('schedule')}
+                    >
+                      Cohort calendar
+                    </button>
+                    <button
+                      type="button"
+                      className="ss-home__action"
+                      onClick={() => setActiveSection('materials')}
+                    >
+                      Materials
+                    </button>
+                    <button
+                      type="button"
+                      className="ss-home__action"
+                      onClick={() => setActiveSection('assessments')}
+                    >
+                      Assessments
                     </button>
                   </div>
                 </div>
-                <div className="hero-visual-card">
-                  <div className="metric-ring-large" aria-label={`${progressPercent}% complete`}>
-                    <svg viewBox="0 0 100 100" width="140" height="140">
-                      <circle cx="50" cy="50" r="45" className="ring-bg" fill="none" />
+                <div className="ss-home__progress">
+                  <div className="ss-home__progress-ring" aria-label={`${progressPercent}% complete`}>
+                    <svg viewBox="0 0 100 100" width="120" height="120">
+                      <circle cx="50" cy="50" r="42" className="ring-bg" fill="none" />
                       <circle
                         cx="50"
                         cy="50"
-                        r="45"
+                        r="42"
                         className="ring-fill"
                         fill="none"
-                        strokeDasharray="283"
-                        strokeDashoffset={283 - (283 * progressPercent) / 100}
+                        strokeDasharray="264"
+                        strokeDashoffset={264 - (264 * Math.min(100, Math.max(0, progressPercent))) / 100}
                       />
                     </svg>
-                    <div className="ring-inner">
-                      <span className="percentage-number">{progressPercent}%</span>
-                      <span className="percentage-label">COMPLETE</span>
+                    <div className="ss-home__progress-inner">
+                      <strong>{progressPercent}%</strong>
+                      <span>DONE</span>
                     </div>
                   </div>
                 </div>
               </section>
 
-              {/* Continue Learning & Timeline Columns */}
-              <div className="dashboard-columns-grid">
-                <div className="column-left">
-                  {/* Continue Learning Progress Card */}
-                  <section className="dashboard-widget-section glass-card">
-                    <div className="widget-header">
-                      <span className="widget-icon">⚡</span>
-                      <h2 className="widget-title">Continue Learning</h2>
-                    </div>
-                    <div className="widget-body">
-                      {(() => {
+              <div className="ss-home__grid">
+                <div style={{ display: 'grid', gap: '1rem' }}>
+                  <section className="ss-home__card">
+                    <h2>Continue learning</h2>
+                    {(() => {
+                      let videoToResume = null;
+                      try {
                         const coursePrefix = getCourseSlug();
                         const lastPlayed = localStorage.getItem(`${coursePrefix}_lastPlayedVideo`);
-                        const videoToResume = lastPlayed ? JSON.parse(lastPlayed) : (classroomVideos.length > 0 ? classroomVideos[0] : null);
-                        
-                        if (videoToResume) {
-                          const progressRecord = videoWatchHistory.find(r => r.videoId === videoToResume.id);
-                          const progressPercentage = progressRecord ? Math.round(progressRecord.watchProgress) : 0;
-                          
-                          return (
-                            <div className="continue-learning-video-card" onClick={() => handlePlayVideo(videoToResume)}>
-                              <div className="video-card-thumb">
-                                <span className="play-button-overlay">▶</span>
-                              </div>
-                              <div className="video-card-meta">
-                                <span className="lesson-badge-mono">RESUME SESSION</span>
-                                <h3 className="video-card-title">{videoToResume.title}</h3>
-                                <p className="video-card-desc">Instructor: {videoToResume.instructor || 'Staff'}</p>
-                                <div className="progress-bar-thin">
-                                  <div className="progress-bar-fill" style={{ width: `${progressPercentage || 10}%` }} />
-                                </div>
-                                <span style={{ fontSize: '11px', color: 'var(--on-surface-variant)', marginTop: '4px' }}>
-                                  {progressPercentage}% Watched
-                                </span>
-                              </div>
-                            </div>
-                          );
-                        } else {
-                          return <p className="empty-text">No class sessions available yet.</p>;
-                        }
-                      })()}
-                    </div>
+                        if (lastPlayed) videoToResume = JSON.parse(lastPlayed);
+                      } catch (_) {
+                        videoToResume = null;
+                      }
+                      if (!videoToResume && classroomVideos.length > 0) {
+                        videoToResume = classroomVideos.find((v) => !v.locked) || classroomVideos[0];
+                      }
+                      if (!videoToResume) {
+                        return (
+                          <p className="ss-home__muted">
+                            No recordings yet. Check Live class when your trainer schedules the next
+                            session.
+                          </p>
+                        );
+                      }
+                      const progressRecord = videoWatchHistory.find(
+                        (r) => String(r.videoId) === String(videoToResume.id)
+                      );
+                      const progressPercentage = progressRecord
+                        ? Math.round(progressRecord.watchProgress || 0)
+                        : videoToResume.watchComplete
+                          ? 100
+                          : 0;
+                      return (
+                        <button
+                          type="button"
+                          className="ss-home__resume"
+                          onClick={() => {
+                            if (videoToResume.locked) {
+                              alert('Complete the previous lesson to unlock this one.');
+                              return;
+                            }
+                            handlePlayVideo(videoToResume);
+                          }}
+                        >
+                          <span className="ss-home__resume-badge">
+                            {videoToResume.locked ? 'Locked' : 'Resume'}
+                          </span>
+                          <strong>{videoToResume.title}</strong>
+                          <span className="ss-home__muted">
+                            {videoToResume.instructor || 'Trainer'}
+                            {videoToResume.order ? ` · Lesson ${videoToResume.order}` : ''}
+                          </span>
+                          <div className="ss-home__bar">
+                            <i style={{ width: `${progressPercentage}%` }} />
+                          </div>
+                          <span className="ss-home__muted">{progressPercentage}% watched</span>
+                        </button>
+                      );
+                    })()}
                   </section>
 
-                  {/* Learning Journey / Roadmap Section */}
-                  <section className="dashboard-widget-section glass-card">
-                    <div className="widget-header">
-                      <span className="widget-icon">🛣️</span>
-                      <h2 className="widget-title">Learning Journey</h2>
-                    </div>
-                    <div className="widget-body">
-                      <div className="roadmap-journey">
-                        <div className="roadmap-progress-bar" />
-                        <div className="roadmap-steps">
-                          <div className="roadmap-step completed">
-                            <div className="step-marker">✓</div>
-                            <div className="step-content">
-                              <h4 className="step-title">Foundation & Basics</h4>
-                              <p className="step-desc">Core variables, environments, and setups.</p>
+                  <section className="ss-home__card">
+                    <h2>Next live class</h2>
+                    {upcomingMeetings.length === 0 ? (
+                      <p className="ss-home__muted">
+                        No upcoming Meet sessions. Your trainer will schedule the next cohort class
+                        here.
+                      </p>
+                    ) : (
+                      <div className="ss-home__next-live">
+                        {upcomingMeetings.slice(0, 2).map((m) => (
+                          <div key={m.id} className="live-session">
+                            <div className="live-session__top">
+                              <div>
+                                <h4 className="live-session__title">{m.title}</h4>
+                                <p className="live-session__meta">
+                                  {m.scheduledDate} · {m.scheduledTime} IST · {m.duration}
+                                </p>
+                              </div>
+                              <span className="live-session__badge live-session__badge--soon">
+                                Live
+                              </span>
+                            </div>
+                            <div className="live-session__cta">
+                              <button
+                                type="button"
+                                className="live-lobby__btn live-lobby__btn--primary live-lobby__btn--sm"
+                                onClick={() => setActiveSection('schedule')}
+                              >
+                                Open calendar
+                              </button>
+                              {m.scheduledStart && (
+                                <a
+                                  className="live-lobby__btn live-lobby__btn--ghost live-lobby__btn--sm"
+                                  href={googleCalendarUrl({
+                                    title: m.title,
+                                    start: m.scheduledStart,
+                                    end: m.scheduledEnd,
+                                    description: m.description,
+                                    teacherName: m.teacherName,
+                                    batchName: batchInfo?.name
+                                  })}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                >
+                                  Add to Google Calendar
+                                </a>
+                              )}
                             </div>
                           </div>
-                          <div className="roadmap-step active">
-                            <div className="step-marker">●</div>
-                            <div className="step-content">
-                              <h4 className="step-title">Intermediate Deep Dive</h4>
-                              <p className="step-desc">Interactive scripts and API pipelines.</p>
-                            </div>
-                          </div>
-                          <div className="roadmap-step locked">
-                            <div className="step-marker">🔒</div>
-                            <div className="step-content">
-                              <h4 className="step-title">Advanced Capstone</h4>
-                              <p className="step-desc">High-performance production integrations.</p>
-                            </div>
-                          </div>
-                        </div>
+                        ))}
                       </div>
-                    </div>
+                    )}
                   </section>
+
+                  <StudentLiveClassLobby compact />
                 </div>
 
-                <div className="column-right">
-                  {/* Today's Learning Stats / Quick Actions */}
-                  <section className="dashboard-widget-section glass-card">
-                    <div className="widget-header">
-                      <span className="widget-icon">📊</span>
-                      <h2 className="widget-title">Today's Achievements</h2>
-                    </div>
-                    <div className="widget-body grid-stats-2">
-                      <div className="dashboard-stat-pill">
-                        <span className="pill-number">{Math.max(realTimeStats?.streak?.current || 0, getLocalStorageStreak())}</span>
-                        <span className="pill-label">Daily Streak</span>
+                <div style={{ display: 'grid', gap: '1rem' }}>
+                  <section className="ss-home__card">
+                    <h2>Your progress</h2>
+                    <div className="ss-home__stats">
+                      <div className="ss-home__stat">
+                        <strong>
+                          {Math.max(
+                            realTimeStats?.streak?.current || 0,
+                            getLocalStorageStreak()
+                          )}
+                        </strong>
+                        <span>Day streak</span>
                       </div>
-                      <div className="dashboard-stat-pill">
-                        <span className="pill-number">{viewedFiles.length}</span>
-                        <span className="pill-label">Files Viewed</span>
+                      <div className="ss-home__stat">
+                        <strong>{classroomVideos.length}</strong>
+                        <span>Lessons</span>
                       </div>
-                      <div className="dashboard-stat-pill">
-                        <span className="pill-number">{videoWatchHistory.filter(r => r.watchProgress > 0).length}</span>
-                        <span className="pill-label">Videos Watched</span>
+                      <div className="ss-home__stat">
+                        <strong>
+                          {classroomVideos.filter((v) => v.watchComplete).length ||
+                            videoWatchHistory.filter((r) => r.watchProgress >= 95).length}
+                        </strong>
+                        <span>Completed</span>
                       </div>
-                      <div className="dashboard-stat-pill">
-                        <span className="pill-number">
-                          {(() => {
-                            const videoSeconds = videoWatchHistory.reduce((acc, curr) => acc + (curr.lastWatchedPosition || 0), 0);
-                            const videoHours = videoSeconds / 3600;
-                            const noteFilesCount = viewedFiles.filter(id => id.includes('_notes')).length;
-                            const noteHours = noteFilesCount * 0.25;
-                            const totalHours = videoHours + noteHours;
-                            const baselineHours = (viewedFiles.length * 0.6);
-                            const finalHours = totalHours > 0 ? Math.max(totalHours, baselineHours) : 0;
-                            return finalHours > 0 ? finalHours.toFixed(1) + 'h' : '0.0h';
-                          })()}
-                        </span>
-                        <span className="pill-label">Learning Hours</span>
+                      <div className="ss-home__stat">
+                        <strong>{certificates.length}</strong>
+                        <span>Certificates</span>
                       </div>
                     </div>
                   </section>
 
-                  {/* Upcoming Zoom Class Classroom Preview */}
-                  <section className="dashboard-widget-section glass-card">
-                    <div className="widget-header">
-                      <span className="widget-icon">🎥</span>
-                      <h2 className="widget-title">Classroom Preview</h2>
-                    </div>
-                    <div className="widget-body">
-                      {batchInfo ? (
-                        <div className="classroom-preview-card">
-                          <div className="preview-header">
-                            <span className="batch-name-badge">{batchInfo.name}</span>
-                            <span className="pulse-dot">🔴 Live Soon</span>
-                          </div>
-                          <p className="preview-schedule">Schedule: {batchInfo.schedule?.days || 'N/A'} at {batchInfo.schedule?.time || 'N/A'}</p>
-                          <button className="join-session-btn" onClick={() => setActiveSection('classroom')}>
-                            Go to Classroom
-                          </button>
-                        </div>
-                      ) : (
-                        <p className="empty-text">No active batch assigned.</p>
-                      )}
-                    </div>
-                  </section>
+                  <StudentScheduleCalendar
+                    compact
+                    hideHero
+                    classroomVideos={classroomVideos}
+                    onPlayRecording={handlePlayVideo}
+                  />
                 </div>
               </div>
+            </div>
+          )}
+
+          {activeSection === 'schedule' && (
+            <div className="animate-in">
+              <StudentScheduleCalendar
+                classroomVideos={classroomVideos}
+                onPlayRecording={handlePlayVideo}
+              />
             </div>
           )}
 
           {activeSection === 'classroom' && (
             <div className="classroom-page animate-in">
               <div className="page-header">
-                <h1 className="page-title">🎥 Classroom Recordings</h1>
-                <p className="page-subtitle">Access your batch live sessions, record replays, and download notes.</p>
+                <h1 className="page-title">Classroom</h1>
+                <p className="page-subtitle">
+                  Lesson path for your cohort — watch recordings, download notes, and take linked
+                  quizzes.
+                </p>
               </div>
 
               {batchInfo && (
@@ -2402,7 +2527,12 @@ const Dashboard = ({ user, onLogout }) => {
                   </div>
                   <div className="batch-banner-right">
                     <span className="schedule-label">Schedules (EST / CST / PST):</span>
-                    <span className="schedule-time">{batchInfo.schedule?.days} @ {batchInfo.schedule?.time}</span>
+                    <span className="schedule-time">
+                      {batchInfo.schedule?.days || 'N/A'}
+                      {batchInfo.schedule?.time
+                        ? ` @ ${formatScheduleForStudentUsZones(batchInfo.schedule.time) || batchInfo.schedule.time}`
+                        : ''}
+                    </span>
                   </div>
                 </div>
               )}
@@ -2416,41 +2546,85 @@ const Dashboard = ({ user, onLogout }) => {
 
               {classroomVideos.length > 0 ? (
                 <div className="videos-grid-layout">
-                  {classroomVideos.map((video, idx) => (
-                    <div 
-                      key={video.id} 
-                      className="video-recording-card glass-card"
-                      onClick={() => handlePlayVideo(video)}
-                    >
-                      <div className="video-card-thumbnail-wrapper">
-                        {video.youtubeVideoId ? (
-                          <img 
-                            src={`https://img.youtube.com/vi/${video.youtubeVideoId}/mqdefault.jpg`} 
-                            alt={video.title} 
-                            className="video-thumbnail-img"
-                          />
-                        ) : (
-                          <div className="video-thumbnail-fallback">🎥</div>
-                        )}
-                        <span className="session-number-badge">Session {idx + 1}</span>
+                  {classroomVideos.map((video, idx) => {
+                    const locked = Boolean(video.locked);
+                    const steps = video.steps || {};
+                    return (
+                      <div
+                        key={video.id}
+                        className={`video-recording-card glass-card${locked ? ' video-recording-card--locked' : ''}`}
+                        onClick={() => {
+                          if (locked) {
+                            alert('Complete the previous lesson (watch the recording) to unlock this one.');
+                            return;
+                          }
+                          handlePlayVideo(video);
+                        }}
+                        style={locked ? { opacity: 0.72, cursor: 'not-allowed' } : undefined}
+                      >
+                        <div className="video-card-thumbnail-wrapper">
+                          {video.youtubeVideoId ? (
+                            <img
+                              src={`https://img.youtube.com/vi/${video.youtubeVideoId}/mqdefault.jpg`}
+                              alt={video.title}
+                              className="video-thumbnail-img"
+                            />
+                          ) : (
+                            <div className="video-thumbnail-fallback">🎥</div>
+                          )}
+                          <span className="session-number-badge">
+                            Lesson {video.order || idx + 1}
+                            {locked ? ' · Locked' : video.watchComplete ? ' · Done' : ''}
+                          </span>
+                        </div>
+                        <div className="video-card-details">
+                          <h3 className="video-title">{video.title}</h3>
+                          <p className="video-meta-text">
+                            👤 {video.instructor || 'Staff'} • 📅{' '}
+                            {formatDateForComponent(video.date || video.createdAt)}
+                          </p>
+                          <p className="video-meta-text" style={{ marginTop: 6 }}>
+                            <span>1. Watch{steps.watch === 'done' ? ' ✓' : locked ? ' 🔒' : ''}</span>
+                            {steps.notes !== 'skipped' && (
+                              <span>
+                                {' '}
+                                → 2. Notes{steps.notes === 'available' ? '' : locked ? ' 🔒' : ''}
+                              </span>
+                            )}
+                            {video.linkedAssessment && (
+                              <span>
+                                {' '}
+                                → 3. Quiz{steps.quiz === 'available' ? '' : ' 🔒'}
+                              </span>
+                            )}
+                          </p>
+                          {!locked && video.notesAvailable && (
+                            <button
+                              className="download-notes-action-btn"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDownloadNotes(video);
+                              }}
+                            >
+                              📥 Download Lecture Notes
+                            </button>
+                          )}
+                          {!locked && video.linkedAssessment && steps.quiz === 'available' && (
+                            <button
+                              className="download-notes-action-btn"
+                              style={{ marginTop: 8 }}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                navigate(`/student/assessment/${video.linkedAssessment.id}`);
+                              }}
+                            >
+                              ▶ Take quiz: {video.linkedAssessment.title}
+                            </button>
+                          )}
+                        </div>
                       </div>
-                      <div className="video-card-details">
-                        <h3 className="video-title">{video.title}</h3>
-                        <p className="video-meta-text">👤 {video.instructor || 'Staff'} • 📅 {formatDateForComponent(video.date || video.createdAt)}</p>
-                        {video.notesAvailable && video.notesFilePath && (
-                          <button 
-                            className="download-notes-action-btn"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleDownloadNotes(video);
-                            }}
-                          >
-                            📥 Download Lecture Notes
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               ) : (
                 <div className="empty-state-container glass-card">
@@ -2459,6 +2633,22 @@ const Dashboard = ({ user, onLogout }) => {
                   <p>Your class replays will be posted here automatically within 24 hours.</p>
                 </div>
               )}
+            </div>
+          )}
+
+          {activeSection === 'materials' && (
+            <div className="animate-in">
+              <StudentMaterialsPanel />
+            </div>
+          )}
+
+          {activeSection === 'messages' && (
+            <div className="animate-in">
+              <h1 className="ss-page-title">Messages</h1>
+              <p className="ss-page-sub">
+                Chat privately with your assigned trainer. Availability shows whether they are free right now.
+              </p>
+              <DirectChatPanel role="student" currentUserId={String(user?.id || user?._id || '')} />
             </div>
           )}
 
@@ -2510,6 +2700,65 @@ const Dashboard = ({ user, onLogout }) => {
                   window.location.reload();
                 }}
               />
+              <div className="glass-card" style={{ marginTop: 24, padding: 20 }}>
+                <h2 style={{ marginTop: 0 }}>Certificates</h2>
+                {certificates.length === 0 ? (
+                  <p className="ss-page-sub">
+                    No certificates yet. Complete live-class attendance and published batch assessments to earn one.
+                  </p>
+                ) : (
+                  <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+                    {certificates.map((c) => (
+                      <li
+                        key={c.id}
+                        style={{
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          gap: 12,
+                          padding: '12px 0',
+                          borderBottom: '1px solid rgba(0,0,0,0.08)'
+                        }}
+                      >
+                        <div>
+                          <strong>{c.course || c.batchName || 'Program'}</strong>
+                          <div className="ss-page-sub">
+                            {c.batchName ? `${c.batchName} · ` : ''}
+                            {c.code}
+                            {c.issuedAt
+                              ? ` · ${new Date(c.issuedAt).toLocaleDateString('en-IN')}`
+                              : ''}
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          className="shimmer-btn primary-btn"
+                          onClick={async () => {
+                            try {
+                              const token = localStorage.getItem('token');
+                              const res = await fetch(
+                                `${getApiBaseUrl()}/api/certificates/${c.id}/pdf`,
+                                { headers: { Authorization: `Bearer ${token}` } }
+                              );
+                              if (!res.ok) throw new Error('Download failed');
+                              const blob = await res.blob();
+                              const url = URL.createObjectURL(blob);
+                              const a = document.createElement('a');
+                              a.href = url;
+                              a.download = `sky-states-certificate-${c.code}.pdf`;
+                              a.click();
+                              URL.revokeObjectURL(url);
+                            } catch (err) {
+                              alert(err.message || 'Download failed');
+                            }
+                          }}
+                        >
+                          Download PDF
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
             </div>
           )}
 

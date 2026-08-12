@@ -7,6 +7,49 @@ const User = require('../models/User');
 const Batch = require('../models/Batch');
 const Classroom = require('../models/Classroom');
 const ActivityLog = require('../models/ActivityLog');
+const LiveClass = require('../models/LiveClass');
+const BatchMaterial = require('../models/BatchMaterial');
+const StudentShare = require('../models/StudentShare');
+const path = require('path');
+const fs = require('fs');
+const multer = require('multer');
+const googleDriveService = require('../services/googleDriveService');
+
+const shareUpload = multer({
+  dest: path.join(__dirname, '../uploads/tmp-student-shares'),
+  limits: { fileSize: 100 * 1024 * 1024 }, // 100MB
+  fileFilter: (req, file, cb) => {
+    const ok =
+      /^video\//.test(file.mimetype) ||
+      /^image\//.test(file.mimetype) ||
+      /^application\//.test(file.mimetype) ||
+      /^text\//.test(file.mimetype) ||
+      /\.(pdf|doc|docx|ppt|pptx|xls|xlsx|zip|rar|txt|csv|md|rtf|mp4|mov|webm|png|jpg|jpeg)$/i.test(
+        file.originalname || ''
+      );
+    if (!ok) return cb(new Error('File type not allowed'));
+    cb(null, true);
+  }
+});
+
+try {
+  fs.mkdirSync(path.join(__dirname, '../uploads/tmp-student-shares'), { recursive: true });
+} catch (_) {
+  /* ignore */
+}
+
+async function resolveStudentBatchIds(userId) {
+  const userDoc = await User.findOne({
+    $or: [{ _id: userId }, { firestoreId: userId }]
+  })
+    .select('batchId oneToOneBatchId')
+    .lean()
+    .exec();
+  const batchIds = [userDoc?.batchId, userDoc?.oneToOneBatchId].filter(Boolean).map(String);
+  const memberBatches = await Batch.find({ students: userId }).select('_id').lean().exec();
+  memberBatches.forEach((b) => batchIds.push(String(b._id)));
+  return [...new Set(batchIds)];
+}
 
 // Apply auth and student role check to all student routes
 router.use(auth);
@@ -258,6 +301,289 @@ router.put('/password', async (req, res) => {
   } catch (err) {
     console.error('❌ Error updating password:', err);
     res.status(500).json({ message: 'Server error: ' + err.message });
+  }
+});
+
+// @route   GET /api/student/batch-materials
+// @desc    Drive materials for the student's enrolled batches
+router.get('/batch-materials', async (req, res) => {
+  try {
+    const userId = String(req.user.id);
+    const userDoc = await User.findOne({
+      $or: [{ _id: userId }, { firestoreId: userId }]
+    })
+      .select('batchId oneToOneBatchId')
+      .lean()
+      .exec();
+    const batchIds = [userDoc?.batchId, userDoc?.oneToOneBatchId].filter(Boolean).map(String);
+    const memberBatches = await Batch.find({ students: userId }).select('_id').lean().exec();
+    memberBatches.forEach((b) => batchIds.push(String(b._id)));
+    const unique = [...new Set(batchIds)];
+    if (!unique.length) {
+      return res.json({ success: true, materials: [] });
+    }
+    const materials = await BatchMaterial.find({ batchId: { $in: unique } })
+      .sort({ createdAt: -1 })
+      .limit(100)
+      .lean()
+      .exec();
+    res.json({
+      success: true,
+      materials: materials.map((m) => ({
+        id: String(m._id),
+        batchId: m.batchId,
+        kind: m.kind,
+        name: m.name,
+        driveLink: m.driveLink,
+        mimeType: m.mimeType,
+        liveClassId: m.liveClassId || '',
+        classroomLectureId: m.classroomLectureId || '',
+        createdAt: m.createdAt
+      }))
+    });
+  } catch (err) {
+    console.error('GET /student/batch-materials error:', err);
+    res.status(500).json({ success: false, message: 'Failed to load materials' });
+  }
+});
+
+// @route   GET /api/student/shares
+router.get('/shares', async (req, res) => {
+  try {
+    const userId = String(req.user.id);
+    const unique = await resolveStudentBatchIds(userId);
+    const batches = unique.length
+      ? await Batch.find({ _id: { $in: unique } })
+          .select('name studentUploadsEnabled course')
+          .lean()
+      : [];
+    const shares = await StudentShare.find({ studentId: userId })
+      .sort({ createdAt: -1 })
+      .limit(100)
+      .lean();
+    res.json({
+      success: true,
+      batches: batches.map((b) => ({
+        id: String(b._id),
+        name: b.name || '',
+        course: b.course || '',
+        studentUploadsEnabled: Boolean(b.studentUploadsEnabled)
+      })),
+      shares: shares.map((s) => ({ id: String(s._id), ...s }))
+    });
+  } catch (err) {
+    console.error('GET /student/shares error:', err);
+    res.status(500).json({ success: false, message: 'Failed to load shares' });
+  }
+});
+
+// @route   POST /api/student/shares
+router.post('/shares', shareUpload.single('file'), async (req, res) => {
+  let tempPath = req.file?.path;
+  try {
+    const userId = String(req.user.id);
+    const batchId = String(req.body?.batchId || '');
+    if (!batchId) {
+      return res.status(400).json({ success: false, message: 'batchId is required' });
+    }
+    if (!req.file) {
+      return res.status(400).json({ success: false, message: 'file is required' });
+    }
+
+    const allowed = await resolveStudentBatchIds(userId);
+    if (!allowed.includes(batchId)) {
+      return res.status(403).json({ success: false, message: 'Not enrolled in this batch' });
+    }
+
+    const batch = await Batch.findById(batchId).lean();
+    if (!batch) return res.status(404).json({ success: false, message: 'Batch not found' });
+    if (!batch.studentUploadsEnabled) {
+      return res.status(403).json({
+        success: false,
+        message: 'Your trainer has not enabled student uploads for this batch yet'
+      });
+    }
+
+    let folderId = batch.driveFolderId || '';
+    let folderLink = batch.driveFolderLink || '';
+    if (!folderId) {
+      const ensured = await googleDriveService.ensureBatchFolder({
+        batchId,
+        batchName: batch.name || 'Batch'
+      });
+      folderId = ensured.folderId;
+      folderLink = ensured.folderLink;
+      await Batch.updateOne(
+        { _id: batchId },
+        { $set: { driveFolderId: folderId, driveFolderLink: folderLink, updatedAt: new Date() } }
+      );
+    }
+
+    const uploaded = await googleDriveService.uploadBatchFile({
+      batchId,
+      batchName: batch.name || '',
+      folderId,
+      filePath: req.file.path,
+      fileName: `student-${userId}-${Date.now()}-${req.file.originalname || 'share'}`,
+      mimeType: req.file.mimetype,
+      title: req.body?.title || req.file.originalname
+    });
+
+    const KIND_OK = ['assignment', 'project', 'writing', 'video', 'other'];
+    let kind = KIND_OK.includes(req.body?.kind) ? req.body.kind : 'assignment';
+    const mime = String(req.file.mimetype || '');
+    if (/^video\//.test(mime)) kind = 'video';
+    else if (/\.(pdf|doc|docx|txt|md)$/i.test(req.file.originalname || '')) kind = kind === 'assignment' ? 'writing' : kind;
+
+    const user = await User.findById(userId).select('name').lean();
+    const share = await StudentShare.create({
+      batchId,
+      studentId: userId,
+      studentName: user?.name || req.user.name || '',
+      title: String(req.body?.title || req.file.originalname || 'Student share').slice(0, 200),
+      note: String(req.body?.note || '').slice(0, 2000),
+      kind,
+      mimeType: req.file.mimetype || '',
+      driveFileId: uploaded.driveFileId,
+      driveLink: uploaded.driveLink,
+      status: 'submitted',
+      createdAt: new Date(),
+      updatedAt: new Date()
+    });
+
+    res.status(201).json({
+      success: true,
+      share: { id: String(share._id), ...share.toObject() },
+      driveFolderLink: folderLink
+    });
+  } catch (err) {
+    console.error('POST /student/shares error:', err);
+    const code = err.code === 'MEET_DISABLED' || err.code === 'MEET_NOT_CONFIGURED' ? 503 : 500;
+    res.status(code).json({
+      success: false,
+      message: err.message || 'Failed to upload share'
+    });
+  } finally {
+    if (tempPath && fs.existsSync(tempPath)) {
+      try {
+        fs.unlinkSync(tempPath);
+      } catch (_) {
+        /* ignore */
+      }
+    }
+  }
+});
+
+// @route   GET /api/student/schedule
+// @desc    Unified calendar events: upcoming live classes + classroom recordings
+router.get('/schedule', async (req, res) => {
+  try {
+    const userId = String(req.user.id);
+    const userDoc = await User.findOne({
+      $or: [{ _id: userId }, { firestoreId: userId }]
+    })
+      .select('batchId oneToOneBatchId')
+      .lean()
+      .exec();
+
+    const batchIds = [userDoc?.batchId, userDoc?.oneToOneBatchId].filter(Boolean).map(String);
+    const memberBatches = await Batch.find({ students: userId }).select('_id').lean().exec();
+    memberBatches.forEach((b) => batchIds.push(String(b._id)));
+    const unique = [...new Set(batchIds)];
+
+    if (!unique.length) {
+      return res.json({ success: true, events: [], cohort: [], batchIds: [] });
+    }
+
+    const now = Date.now();
+    const meetings = await LiveClass.find({
+      batchId: { $in: unique },
+      status: { $ne: 'cancelled' },
+      meetLink: { $ne: '' }
+    })
+      .sort({ scheduledStart: 1 })
+      .lean()
+      .exec();
+
+    const batchesMeta = await Batch.find({ _id: { $in: unique } })
+      .select('name course schedule teacherName')
+      .lean()
+      .exec();
+
+    const liveEvents = meetings.map((m) => {
+      const start = m.scheduledStart ? new Date(m.scheduledStart) : null;
+      const end = m.scheduledEnd ? new Date(m.scheduledEnd) : null;
+      const ended = end && end.getTime() < now;
+      const batch = batchesMeta.find((b) => String(b._id) === String(m.batchId));
+      return {
+        id: `live-${m._id}`,
+        type: ended || m.status === 'completed' ? 'live_past' : 'live',
+        title: m.title,
+        start: start ? start.toISOString() : null,
+        end: end ? end.toISOString() : null,
+        meetingId: String(m._id),
+        batchId: String(m.batchId || ''),
+        batchName: batch?.name || '',
+        status: m.status,
+        hasMeetLink: Boolean(m.meetLink),
+        hasRecording: Boolean(m.driveFileId || m.classroomLectureId),
+        classroomLectureId: m.classroomLectureId || '',
+        teacherName: m.teacherName || m.instructor || '',
+        duration: m.duration || '',
+        description: m.description || '',
+        videoSource: m.driveFileId ? 'drive' : ''
+      };
+    });
+
+    const lectures = await Classroom.find({ batchId: { $in: unique } })
+      .sort({ date: -1, createdAt: -1 })
+      .limit(80)
+      .lean()
+      .exec();
+
+    const recordingEvents = lectures.map((l) => {
+      let start = null;
+      if (l.date) {
+        const d = new Date(l.date);
+        if (!Number.isNaN(d.getTime())) start = d.toISOString();
+      }
+      if (!start && l.createdAt) start = new Date(l.createdAt).toISOString();
+      return {
+        id: `rec-${l._id}`,
+        type: 'recording',
+        title: l.title,
+        start,
+        end: null,
+        lectureId: String(l._id),
+        batchId: String(l.batchId || ''),
+        videoSource: l.videoSource || (l.driveId ? 'drive' : l.youtubeVideoUrl ? 'youtube-url' : ''),
+        driveId: l.driveId || '',
+        youtubeVideoUrl: l.youtubeVideoUrl || '',
+        youtubeVideoId: l.youtubeVideoId || '',
+        youtubeEmbedUrl: l.youtubeEmbedUrl || '',
+        duration: l.duration || '',
+        instructor: l.instructor || ''
+      };
+    });
+
+    const events = [...liveEvents, ...recordingEvents].sort((a, b) => {
+      const ta = a.start ? new Date(a.start).getTime() : 0;
+      const tb = b.start ? new Date(b.start).getTime() : 0;
+      return ta - tb;
+    });
+
+    const cohort = batchesMeta.map((b) => ({
+      batchId: String(b._id),
+      batchName: b.name || '',
+      course: b.course || '',
+      teacherName: b.teacherName || '',
+      schedule: b.schedule || null
+    }));
+
+    res.json({ success: true, events, batchIds: unique, cohort });
+  } catch (err) {
+    console.error('GET /student/schedule error:', err);
+    res.status(500).json({ success: false, message: 'Failed to load schedule' });
   }
 });
 

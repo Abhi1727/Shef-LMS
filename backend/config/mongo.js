@@ -71,6 +71,10 @@ async function getConnectionUri() {
 }
 
 async function connectMongo() {
+  // When Firestore runtime is enabled, skip Mongo entirely.
+  if (String(process.env.USE_FIRESTORE || '').toLowerCase() === 'true') {
+    return null;
+  }
   if (isConnected) {
     return mongoose.connection;
   }

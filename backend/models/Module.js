@@ -88,4 +88,7 @@ moduleSchema.set('toJSON', {
   }
 });
 
-module.exports = mongoose.model('Module', moduleSchema);
+const __mongoModule = mongoose.models.Module || mongoose.model('Module', moduleSchema);
+module.exports = String(process.env.USE_FIRESTORE || '').toLowerCase() === 'true'
+  ? require('../firestore/models').Module
+  : __mongoModule;

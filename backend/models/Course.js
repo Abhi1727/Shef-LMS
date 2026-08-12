@@ -39,4 +39,7 @@ const CourseSchema = new mongoose.Schema({
   }
 });
 
-module.exports = mongoose.model('Course', CourseSchema);
+const __mongoCourse = mongoose.models.Course || mongoose.model('Course', CourseSchema);
+module.exports = String(process.env.USE_FIRESTORE || '').toLowerCase() === 'true'
+  ? require('../firestore/models').Course
+  : __mongoCourse;

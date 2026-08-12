@@ -13,11 +13,33 @@ import { processActivityData, exportToCSV } from '../utils/activityDataProcessor
 import AssessmentStudio from './AssessmentStudio';
 import ChangePasswordPanel from './ChangePasswordPanel';
 import AccountMenu from './AccountMenu';
+import SkyLoadingScreen from './SkyLoadingScreen';
+import ResponsiveShellNav from './ResponsiveShellNav';
 import './Dashboard.css';
 import './AdminDashboard.css';
 import './AdminAnalytics.css';
+import './MeetLiveClasses.css';
 
 const CACHE_DURATION = 15 * 60 * 1000; // 15 minutes
+
+const ADMIN_NAV_ITEMS = [
+  { id: 'overview', label: 'Overview' },
+  { id: 'students', label: 'Students' },
+  { id: 'studentsActivity', label: 'Candidate Activity' },
+  { id: 'batches', label: 'Batches' },
+  { id: 'oneToOne', label: 'One-to-One' },
+  { id: 'projectClass', label: 'Project Class' },
+  { id: 'classroom', label: 'Classroom' },
+  { id: 'teachers', label: 'Teachers' },
+  { id: 'assessment-studio', label: 'Assessment Studio' },
+  { id: 'modules', label: 'Modules' },
+  { id: 'projects', label: 'Projects' },
+  { id: 'assessments', label: 'Assessments' },
+  { id: 'jobs', label: 'Jobs' },
+  { id: 'mentors', label: 'Mentors' },
+  { id: 'content', label: 'Content' },
+  { id: 'account', label: 'My Account' }
+];
 
 // Student search bar that filters the main students table
 const StudentSearch = memo(({ searchEmail, setSearchEmail, clearSearch, onAddStudent }) => {
@@ -204,6 +226,7 @@ const AdminDashboard = ({ user, onLogout }) => {
   const [classroomVideos, setClassroomVideos] = useState([]);
   const [liveClasses, setLiveClasses] = useState([]);
   const [stats, setStats] = useState({});
+  const [attendanceAlerts, setAttendanceAlerts] = useState([]);
   const [activities, setActivities] = useState([]);
   
   // Student Profile Modal states
@@ -222,6 +245,7 @@ const AdminDashboard = ({ user, onLogout }) => {
   // Teacher details modal
   const [showTeacherDetailsModal, setShowTeacherDetailsModal] = useState(false);
   const [selectedTeacherDetails, setSelectedTeacherDetails] = useState(null);
+  const [teacherSessionStats, setTeacherSessionStats] = useState(null);
   const [activeTeacherTab, setActiveTeacherTab] = useState('profile');
   
   // Activity Chart states
@@ -330,6 +354,8 @@ const AdminDashboard = ({ user, onLogout }) => {
   });
   const [oneToOneTeacherFilter, setOneToOneTeacherFilter] = useState('all');
   const [oneToOneProgramFilter, setOneToOneProgramFilter] = useState('all');
+  const [projectTeacherFilter, setProjectTeacherFilter] = useState('all');
+  const [projectProgramFilter, setProjectProgramFilter] = useState('all');
 
   // Enhanced setter functions with localStorage persistence
   const setBatchSearchWithPersistence = useCallback((value) => {
@@ -414,18 +440,32 @@ const AdminDashboard = ({ user, onLogout }) => {
 
     setSelectedTeacherDetails(teacher);
     setActiveTeacherTab('profile');
+    setTeacherSessionStats(null);
     setShowTeacherDetailsModal(true);
-  }, [teachers]);
+    const tid = teacher.id || teacher._id;
+    if (tid) {
+      fetch(`${apiUrl}/api/admin/teachers/${tid}/session-stats`, {
+        headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+      })
+        .then((r) => r.json())
+        .then((data) => {
+          if (data?.success) setTeacherSessionStats(data);
+        })
+        .catch(() => setTeacherSessionStats(null));
+    }
+  }, [teachers, apiUrl]);
 
   const handleBatchClick = useCallback((batch) => {
     const batchId = batch.id || batch._id;
-    console.log('Navigating to batch:', {
-      batchName: batch.name,
-      batchId: batchId,
-      fullBatch: batch
-    });
-    navigate(`/admin/batch/${batchId}`, { 
-      state: { from: 'admin-batches' } 
+    const course = (batch?.course || '').toLowerCase();
+    const returnSection =
+      batch?.batchType === 'project'
+        ? 'projectClass'
+        : batch?.batchType === 'one-to-one' || course.includes('one-to-one') || course === 'one to one'
+          ? 'oneToOne'
+          : 'batches';
+    navigate(`/admin/batch/${batchId}`, {
+      state: { from: 'admin-batches', activeSection: returnSection }
     });
   }, [navigate]);
 
@@ -614,8 +654,31 @@ const AdminDashboard = ({ user, onLogout }) => {
     return course.includes('one-to-one') || course === 'one to one';
   }, []);
 
+  const isProjectBatch = useCallback((batch) => {
+    return Boolean(batch && batch.batchType === 'project');
+  }, []);
+
+  const isSpecialBatch = useCallback((batch) => {
+    return isOneToOneBatch(batch) || isProjectBatch(batch);
+  }, [isOneToOneBatch, isProjectBatch]);
+
+  const getStudentsForBatch = useCallback((batch) => {
+    const batchId = batch?.id || batch?._id;
+    if (!batchId) return [];
+    return (students || []).filter(
+      (student) => student.role === 'student' && String(student.batchId || '') === String(batchId)
+    );
+  }, [students]);
+
+  const formatBatchStudentNames = useCallback((batch) => {
+    const list = getStudentsForBatch(batch);
+    if (!list.length) return '—';
+    const names = list.map((s) => s.name || s.email || 'Student').join(', ');
+    return list.length > 1 ? `${names} (${list.length})` : names;
+  }, [getStudentsForBatch]);
+
   const teacherAssignedBatches = useMemo(() => {
-    if (!selectedTeacherDetails) return { regular: [], oneToOne: [] };
+    if (!selectedTeacherDetails) return { regular: [], oneToOne: [], project: [] };
     const teacherId = String(selectedTeacherDetails.id || selectedTeacherDetails._id || '');
     const teacherName = (selectedTeacherDetails.name || '').trim().toLowerCase();
 
@@ -636,11 +699,12 @@ const AdminDashboard = ({ user, onLogout }) => {
         return { ...batch, studentCount };
       });
 
-    const regular = withCounts((batches || []).filter((b) => !isOneToOneBatch(b) && matchesTeacher(b)));
+    const regular = withCounts((batches || []).filter((b) => !isSpecialBatch(b) && matchesTeacher(b)));
     const oneToOne = withCounts([
       ...(batches || []).filter((b) => isOneToOneBatch(b) && matchesTeacher(b)),
       ...(oneToOneBatches || []).filter((b) => matchesTeacher(b))
     ]);
+    const project = withCounts((batches || []).filter((b) => isProjectBatch(b) && matchesTeacher(b)));
 
     const seen = new Set();
     const uniqueOneToOne = oneToOne.filter((b) => {
@@ -650,15 +714,20 @@ const AdminDashboard = ({ user, onLogout }) => {
       return true;
     });
 
-    return { regular, oneToOne: uniqueOneToOne };
-  }, [selectedTeacherDetails, batches, oneToOneBatches, students, isOneToOneBatch]);
+    return { regular, oneToOne: uniqueOneToOne, project };
+  }, [selectedTeacherDetails, batches, oneToOneBatches, students, isOneToOneBatch, isProjectBatch, isSpecialBatch]);
 
-  // Filter teachers by selected course for batch modal (all teachers for 1:1)
+  // Filter teachers by selected course for batch modal (all teachers for 1:1 / project)
   const getFilteredTeachers = useCallback(() => {
     if (modalType !== 'batch') {
       return teachers;
     }
-    if (formData.batchType === 'one-to-one' || !formData.course || formData.course === '__custom__') {
+    if (
+      formData.batchType === 'one-to-one' ||
+      formData.batchType === 'project' ||
+      !formData.course ||
+      formData.course === '__custom__'
+    ) {
       return teachers;
     }
     return (teachers || []).filter(teacher => {
@@ -761,7 +830,7 @@ const AdminDashboard = ({ user, onLogout }) => {
 
   // Derived filtered data for batches section (regular batches only)
   const filteredBatches = useMemo(() => {
-    let filtered = (batches || []).filter(batch => !isOneToOneBatch(batch));
+    let filtered = (batches || []).filter(batch => !isSpecialBatch(batch));
     
     // Apply course filter
     if (batchCourseFilter !== 'all') {
@@ -807,7 +876,7 @@ const AdminDashboard = ({ user, onLogout }) => {
     }
     
     return filtered;
-  }, [batches, batchCourseFilter, batchTeacherFilter, batchSearch, students, isOneToOneBatch, matchesProgramFilter]);
+  }, [batches, batchCourseFilter, batchTeacherFilter, batchSearch, students, isSpecialBatch, matchesProgramFilter]);
 
   const oneToOneTeacherOptions = useMemo(() => {
     const names = new Map();
@@ -819,14 +888,23 @@ const AdminDashboard = ({ user, onLogout }) => {
     return Array.from(names.values()).sort((a, b) => a.localeCompare(b));
   }, [batches, isOneToOneBatch]);
 
-  const regularBatchTeacherOptions = useMemo(() => {
+  const projectTeacherOptions = useMemo(() => {
     const names = new Map();
-    (batches || []).filter((batch) => !isOneToOneBatch(batch)).forEach((batch) => {
+    (batches || []).filter(isProjectBatch).forEach((batch) => {
       const name = (batch.teacherName || '').trim();
       if (name) names.set(name.toLowerCase(), name);
     });
     return Array.from(names.values()).sort((a, b) => a.localeCompare(b));
-  }, [batches, isOneToOneBatch]);
+  }, [batches, isProjectBatch]);
+
+  const regularBatchTeacherOptions = useMemo(() => {
+    const names = new Map();
+    (batches || []).filter((batch) => !isSpecialBatch(batch)).forEach((batch) => {
+      const name = (batch.teacherName || '').trim();
+      if (name) names.set(name.toLowerCase(), name);
+    });
+    return Array.from(names.values()).sort((a, b) => a.localeCompare(b));
+  }, [batches, isSpecialBatch]);
 
   const filteredOneToOneBatches = useMemo(() => {
     let filtered = (batches || []).filter(batch => isOneToOneBatch(batch));
@@ -849,9 +927,30 @@ const AdminDashboard = ({ user, onLogout }) => {
     return filtered;
   }, [batches, isOneToOneBatch, oneToOneTeacherFilter, oneToOneProgramFilter, matchesProgramFilter]);
 
+  const filteredProjectBatches = useMemo(() => {
+    let filtered = (batches || []).filter(batch => isProjectBatch(batch));
+
+    if (projectProgramFilter !== 'all') {
+      filtered = filtered.filter(batch =>
+        matchesProgramFilter(batch.programLabel || batch.course, projectProgramFilter)
+      );
+    }
+
+    if (projectTeacherFilter !== 'all') {
+      const selected = projectTeacherFilter.trim().toLowerCase();
+      filtered = filtered.filter(batch => {
+        const teacherName = (batch.teacherName || '').trim().toLowerCase();
+        const teacherId = String(batch.teacherId || '');
+        return teacherName === selected || teacherId === projectTeacherFilter;
+      });
+    }
+
+    return filtered;
+  }, [batches, isProjectBatch, projectTeacherFilter, projectProgramFilter, matchesProgramFilter]);
+
   const regularBatchTotal = useMemo(
-    () => (batches || []).filter(batch => !isOneToOneBatch(batch)).length,
-    [batches, isOneToOneBatch]
+    () => (batches || []).filter(batch => !isSpecialBatch(batch)).length,
+    [batches, isSpecialBatch]
   );
 
   // Optimized individual data loading functions
@@ -1381,11 +1480,14 @@ const AdminDashboard = ({ user, onLogout }) => {
           await Promise.race([loadCourses(true), timeout(5000)]);
           break;
         case 'batches':
+        case 'oneToOne':
+        case 'projectClass':
           await Promise.race([
             Promise.all([
               loadCourses(true),
               loadBatches(true),
-              loadTeachers(true)
+              loadTeachers(true),
+              loadStudents(true)
             ]),
             timeout(8000)
           ]);
@@ -1430,7 +1532,10 @@ const AdminDashboard = ({ user, onLogout }) => {
           await Promise.race([loadJobs(true), timeout(5000)]);
           break;
         case 'liveClasses':
-          await Promise.race([loadLiveClasses(true), timeout(5000)]);
+          await Promise.race([
+            Promise.all([loadLiveClasses(true), loadBatches(true)]),
+            timeout(8000)
+          ]);
           break;
         case 'mentors':
           await Promise.race([loadMentors(true), timeout(5000)]);
@@ -1473,6 +1578,25 @@ const AdminDashboard = ({ user, onLogout }) => {
     setLoading(true);
     await loadSectionData('overview');
   }, [loadSectionData]);
+
+  const loadAttendanceAlerts = useCallback(async () => {
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch(`${apiUrl}/api/admin/attendance-alerts?limit=12`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) setAttendanceAlerts(Array.isArray(data.alerts) ? data.alerts : []);
+    } catch (_) {
+      setAttendanceAlerts([]);
+    }
+  }, [apiUrl]);
+
+  useEffect(() => {
+    if (activeSection === 'overview') {
+      loadAttendanceAlerts();
+    }
+  }, [activeSection, loadAttendanceAlerts]);
 
   // Load data when section changes
   useEffect(() => {
@@ -1592,6 +1716,9 @@ const AdminDashboard = ({ user, onLogout }) => {
       }
       // For modules, always load all batches since they might need to select one
       if (type === 'module') {
+        loadBatches();
+      }
+      if (type === 'liveClass') {
         loadBatches();
       }
     } else {
@@ -1716,7 +1843,7 @@ const AdminDashboard = ({ user, onLogout }) => {
       mentor: { name: '', title: '', company: '', experience: '', skills: [], bio: '', email: '', password: '', domain: '', linkedin: '' },
       content: { type: 'announcement', title: '', content: '', targetAudience: 'all', priority: 'normal' },
       classroom: { title: '', date: '', instructor: '', duration: '', zoomUrl: '', zoomPasscode: '', driveId: '', course: '', batchId: '', domain: '', type: 'Lecture', videoSource: 'firebase' },
-      liveClass: { title: '', course: 'Data Science & AI', scheduledDate: '', scheduledTime: '', duration: '60 mins', instructor: '', meetingType: 'auto', status: 'scheduled', description: '' }
+      liveClass: { title: '', batchId: '', scheduledDate: '', scheduledTime: '', duration: '60 mins', status: 'scheduled', description: '' }
     };
     return defaults[type] || {};
   };
@@ -2086,8 +2213,10 @@ const AdminDashboard = ({ user, onLogout }) => {
           return;
         }
         formData.course = resolvedCourse;
-        formData.batchType = formData.batchType === 'one-to-one' ? 'one-to-one' : 'regular';
-        formData.programLabel = formData.batchType === 'one-to-one'
+        formData.batchType = ['one-to-one', 'project'].includes(formData.batchType)
+          ? formData.batchType
+          : 'regular';
+        formData.programLabel = formData.batchType !== 'regular'
           ? (formData.programLabel || resolvedCourse)
           : (formData.programLabel || '');
       } else if (modalType === 'module') {
@@ -2192,51 +2321,51 @@ const AdminDashboard = ({ user, onLogout }) => {
         }
       }
 
-      // Validate live class fields
+      // Validate / create Google Meet live class
       if (modalType === 'liveClass') {
-        if (!formData.title || !formData.course || !formData.scheduledDate || !formData.scheduledTime) {
-          showToast('Please fill in required fields (Title, Course, Date, Time)', 'warning');
+        if (!formData.title || !formData.batchId || !formData.scheduledDate || !formData.scheduledTime) {
+          showToast('Please fill in required fields (Title, Batch, Date, Time)', 'warning');
           return;
         }
-        
-        // Create Zoom meeting if not editing
+
         if (!editingItem) {
           try {
-            // Combine date and time to ISO format for Zoom
-            const startTime = new Date(`${formData.scheduledDate}T${formData.scheduledTime}`).toISOString();
-            const duration = parseInt(formData.duration) || 60;
-            
             const token = localStorage.getItem('token');
-            const zoomResponse = await fetch('/api/zoom/meetings', {
+            const apiUrl = getApiBaseUrl();
+            const durationRaw = String(formData.duration || '60');
+            const durationMatch = durationRaw.match(/(\d+)/);
+            const durationMinutes = durationMatch ? durationMatch[1] : '60';
+
+            const meetResponse = await fetch(`${apiUrl}/api/meetings`, {
               method: 'POST',
               headers: {
                 'Content-Type': 'application/json',
                 'Authorization': `Bearer ${token}`
               },
               body: JSON.stringify({
-                topic: formData.title,
-                startTime: startTime,
-                duration: duration,
-                agenda: formData.description || '',
-                courseId: formData.course,
+                title: formData.title,
+                batchId: formData.batchId,
+                scheduledDate: formData.scheduledDate,
+                scheduledTime: formData.scheduledTime,
+                duration: durationMinutes,
+                description: formData.description || '',
                 timezone: 'Asia/Kolkata'
               })
             });
-            
-            const zoomData = await zoomResponse.json();
-            
-            if (zoomData.success) {
-              showToast('Zoom meeting created successfully!', 'success');
+
+            const meetData = await meetResponse.json();
+
+            if (meetResponse.ok && meetData.success) {
+              showToast('Google Meet class scheduled!', 'success');
               closeModal();
               await refreshData('liveClasses');
               return;
-            } else {
-              showToast('Error creating Zoom meeting: ' + zoomData.message, 'error');
-              return;
             }
+            showToast('Error scheduling Meet: ' + (meetData.message || 'Unknown error'), 'error');
+            return;
           } catch (error) {
-            console.error('Error creating Zoom meeting:', error);
-            showToast('Failed to create Zoom meeting. Please try again.', 'error');
+            console.error('Error creating Meet class:', error);
+            showToast('Failed to schedule Meet class. Please try again.', 'error');
             return;
           }
         }
@@ -2932,17 +3061,18 @@ const AdminDashboard = ({ user, onLogout }) => {
     }
   }, [fetchAnalyticsData, activeSection]);
 
-  const handleDownloadReport = useCallback(async () => {
-    try {
-      const studentId = selectedStudentDetails?.id || selectedStudentDetails?._id;
-      if (!studentId) {
-        showToast('No student selected', 'warning');
-        return;
-      }
+  const handleDownloadReport = useCallback(async (studentOverride = null, periodOverride = null) => {
+    const student = studentOverride || selectedStudentDetails;
+    const studentId = student?.id || student?._id;
+    if (!studentId) {
+      showToast('No student selected', 'warning');
+      return;
+    }
 
+    try {
       let startDate;
       let endDate;
-      const period = reportPeriod || '30days';
+      const period = periodOverride || reportPeriod || '30days';
 
       if (period === 'custom') {
         startDate = customDateRange.start;
@@ -2959,6 +3089,7 @@ const AdminDashboard = ({ user, onLogout }) => {
         startDate = start.toISOString().split('T')[0];
       }
 
+      showToast('Generating PDF report…', 'info');
       const token = localStorage.getItem('token');
       const apiUrl = getApiBaseUrl();
       const params = new URLSearchParams({ startDate, endDate, period });
@@ -2977,7 +3108,7 @@ const AdminDashboard = ({ user, onLogout }) => {
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `sky-states-report-${String(selectedStudentDetails?.name || 'student')
+      a.download = `sky-states-report-${String(student?.name || 'student')
         .replace(/\s+/g, '-')
         .slice(0, 40)}-${startDate}-to-${endDate}.pdf`;
       document.body.appendChild(a);
@@ -2998,35 +3129,9 @@ const AdminDashboard = ({ user, onLogout }) => {
     }
   }, [showStudentDetailsModal, selectedStudentDetails, activeProfileTab, loadStudentActivities, activityFilter]);
 
-  // Sync Zoom recordings to classroom
+  // Zoom recording sync retired — Meet classes use Calendar links; recordings stay YouTube/Classroom
   const handleSyncRecordings = async () => {
-    try {
-      setSaving(true);
-      showToast('Syncing Zoom recordings...', 'info');
-
-      const response = await fetch('/api/zoom/sync-recordings', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`,
-          'Content-Type': 'application/json'
-        }
-      });
-
-      const data = await response.json();
-
-      if (data.success) {
-        showToast(`✅ ${data.message}`, 'success');
-        // Reload classroom data to show new recordings
-        await refreshData('classroom');
-      } else {
-        showToast(`❌ ${data.message}`, 'error');
-      }
-    } catch (error) {
-      console.error('Error syncing recordings:', error);
-      showToast('Failed to sync recordings. Please try again.', 'error');
-    } finally {
-      setSaving(false);
-    }
+    showToast('Zoom recording sync is disabled. Upload recordings to Classroom via YouTube URL.', 'info');
   };
 
   const handleInputChange = useCallback((field, value) => {
@@ -3043,10 +3148,10 @@ const AdminDashboard = ({ user, onLogout }) => {
 
   if (loading) {
     return (
-      <div className="loading-container">
-        <div className="loader"></div>
-        <p>Loading admin dashboard...</p>
-      </div>
+      <SkyLoadingScreen
+        message="Loading admin dashboard"
+        subtext="Syncing students, batches, and classroom data"
+      />
     );
   }
 
@@ -3070,24 +3175,6 @@ const AdminDashboard = ({ user, onLogout }) => {
       </div>
     );
   }
-
-  const adminNavItems = [
-    { id: 'overview', label: 'Overview' },
-    { id: 'students', label: 'Students' },
-    { id: 'studentsActivity', label: 'Candidate Activity' },
-    { id: 'batches', label: 'Batches' },
-    { id: 'oneToOne', label: 'One-to-One' },
-    { id: 'classroom', label: 'Classroom' },
-    { id: 'teachers', label: 'Teachers' },
-    { id: 'assessment-studio', label: 'Assessment Studio' },
-    { id: 'modules', label: 'Modules' },
-    { id: 'projects', label: 'Projects' },
-    { id: 'assessments', label: 'Assessments' },
-    { id: 'jobs', label: 'Jobs' },
-    { id: 'mentors', label: 'Mentors' },
-    { id: 'content', label: 'Content' },
-    { id: 'account', label: 'My Account' }
-  ];
 
   return (
     <div className="admin-dashboard admin-dashboard-horizontal ss-shell">
@@ -3124,18 +3211,12 @@ const AdminDashboard = ({ user, onLogout }) => {
             />
           </div>
         </div>
-        <nav className="ss-shell-nav" aria-label="Admin">
-          {adminNavItems.map(({ id, label }) => (
-            <button
-              key={id}
-              type="button"
-              className={`ss-shell-nav__btn ${activeSection === id ? 'is-active' : ''}`}
-              onClick={() => setActiveSection(id)}
-            >
-              {label}
-            </button>
-          ))}
-        </nav>
+        <ResponsiveShellNav
+          items={ADMIN_NAV_ITEMS}
+          activeId={activeSection}
+          onSelect={setActiveSection}
+          ariaLabel="Admin"
+        />
       </header>
 
       {/* Main Content - Full Width */}
@@ -3156,6 +3237,39 @@ const AdminDashboard = ({ user, onLogout }) => {
               />
               
               <StatsCards stats={stats} />
+
+              {attendanceAlerts.length > 0 && (
+                <div className="live-admin-alerts">
+                  <h3>Attendance & engagement alerts</h3>
+                  <p className="live-lobby__muted" style={{ marginTop: 0 }}>
+                    Streak alerts, engagement nudges, and weekly digests.
+                  </p>
+                  <ul className="live-admin-alerts__list">
+                    {attendanceAlerts.map((a) => (
+                      <li key={a.id} className="live-admin-alerts__item">
+                        <span>
+                          <strong>{a.studentName || a.studentEmail || a.studentId || 'System'}</strong>
+                          {a.engagement ? ` · ${a.engagement}` : ''}
+                          {a.batchName ? ` · ${a.batchName}` : ''}
+                          {a.consecutiveAbsent != null
+                            ? ` · ${a.consecutiveAbsent} consecutive miss(es)`
+                            : ''}
+                          {a.joinRate != null ? ` · join ${a.joinRate}%` : ''}
+                          {a.type === 'ENGAGEMENT_DIGEST' ? ' · weekly digest' : ''}
+                          {a.type === 'ENGAGEMENT_NUDGE' ? ' · nudged' : ''}
+                        </span>
+                        <span className="live-lobby__muted">
+                          {a.timestamp
+                            ? new Date(a.timestamp).toLocaleString('en-IN', {
+                                timeZone: 'Asia/Kolkata'
+                              })
+                            : ''}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
 
               <div className="quick-actions">
                 <h3>Quick Actions</h3>
@@ -3273,9 +3387,17 @@ const AdminDashboard = ({ user, onLogout }) => {
                             <span className="never-login">Never</span>
                           }
                         </td>
-                        <td>
-                          <button onClick={() => openModal('student', student)} className="btn-edit">✏️</button>
-                          <button onClick={() => handleDelete(COLLECTIONS.USERS, student.id)} className="btn-delete">🗑️</button>
+                        <td className="student-row-actions">
+                          <button
+                            type="button"
+                            onClick={() => handleDownloadReport(student, '30days')}
+                            className="btn-create-report"
+                            title="Create PDF report"
+                          >
+                            Create Report
+                          </button>
+                          <button onClick={() => openModal('student', student)} className="btn-edit" title="Edit student">✏️</button>
+                          <button onClick={() => handleDelete(COLLECTIONS.USERS, student.id)} className="btn-delete" title="Delete student">🗑️</button>
                         </td>
                       </tr>
                     ))}
@@ -3411,6 +3533,7 @@ const AdminDashboard = ({ user, onLogout }) => {
                       <th>Domain</th>
                       <th>Experience</th>
                       <th>Phone</th>
+                      <th>Availability</th>
                       <th>Status</th>
                       <th>Actions</th>
                     </tr>
@@ -3445,6 +3568,18 @@ const AdminDashboard = ({ user, onLogout }) => {
                       </td>
                         <td>{teacher.experience || 'N/A'}</td>
                         <td>{teacher.phone || 'N/A'}</td>
+                        <td>
+                          <span
+                            className={`status-badge ${teacher.isAvailable ? 'active' : 'inactive'}`}
+                            title={
+                              teacher.availabilityUpdatedAt
+                                ? `Updated ${formatDateForComponent(teacher.availabilityUpdatedAt)}`
+                                : 'Not set'
+                            }
+                          >
+                            {teacher.isAvailable ? 'Available' : 'Unavailable'}
+                          </span>
+                        </td>
                         <td>
                           <span className={`status-badge ${teacher.status}`}>
                             {teacher.status}
@@ -3518,7 +3653,7 @@ const AdminDashboard = ({ user, onLogout }) => {
                             </button>
                           </td>
                           <td>{batch.course}</td>
-                          <td>{batch.startDate || 'N/A'}</td>
+                          <td>{batch.startDate ? formatDateForComponent(batch.startDate) : 'N/A'}</td>
                           <td>
                             {batch.teacherName || batch.teacherId ? (
                               <button
@@ -3913,11 +4048,7 @@ const AdminDashboard = ({ user, onLogout }) => {
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredOneToOneBatches.map(batch => {
-                      const actualStudentCount = (students || []).filter(student =>
-                        student.role === 'student' && student.batchId === (batch.id || batch._id)
-                      ).length;
-                      return (
+                    {filteredOneToOneBatches.map(batch => (
                         <tr key={batch.id || batch._id}>
                           <td>
                             <button
@@ -3943,7 +4074,9 @@ const AdminDashboard = ({ user, onLogout }) => {
                               'N/A'
                             )}
                           </td>
-                          <td>{actualStudentCount}</td>
+                          <td title={formatBatchStudentNames(batch)}>
+                            {formatBatchStudentNames(batch)}
+                          </td>
                           <td>
                             <span className={`status-badge ${batch.status}`}>
                               {batch.status}
@@ -3959,12 +4092,154 @@ const AdminDashboard = ({ user, onLogout }) => {
                             <button onClick={() => handleDelete('batches', batch.id || batch._id)} className="btn-delete">Delete</button>
                           </td>
                         </tr>
-                      );
-                    })}
+                    ))}
                   </tbody>
                 </table>
                 {filteredOneToOneBatches.length === 0 && (
                   <p className="no-data">No one-to-one batches match these filters.</p>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Project Class Section — unified Batch with batchType project */}
+          {activeSection === 'projectClass' && (
+            <div className="admin-section">
+              <div className="section-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '12px' }}>
+                <div>
+                  <h2 style={{ margin: 0 }}>Project Classes</h2>
+                  <p className="section-description" style={{ margin: '4px 0 0', color: '#5a6d76' }}>
+                    Project cohorts with the same classroom, trainer, and student assignment flow as one-to-one
+                  </p>
+                </div>
+                <button
+                  onClick={() => {
+                    setModalType('batch');
+                    setEditingItem(null);
+                    setFormData({
+                      ...getDefaultFormData('batch'),
+                      batchType: 'project',
+                      customProgram: false
+                    });
+                    setShowModal(true);
+                  }}
+                  className="btn-add"
+                >
+                  + Create Project Class
+                </button>
+              </div>
+
+              <div className="batch-filter-section" style={{ marginBottom: '16px' }}>
+                <div className="batch-filter-row">
+                  <div className="batch-course-filters" style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center' }}>
+                    <button
+                      type="button"
+                      className={`batch-course-btn ${projectProgramFilter === 'all' ? 'active' : ''}`}
+                      onClick={() => setProjectProgramFilter('all')}
+                    >
+                      All programs
+                    </button>
+                    {BATCH_PROGRAM_OPTIONS.filter((opt) => opt.value !== 'all').map((opt) => (
+                      <button
+                        key={opt.value}
+                        type="button"
+                        className={`batch-course-btn ${projectProgramFilter === opt.value ? 'active' : ''}`}
+                        onClick={() => setProjectProgramFilter(opt.value)}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div className="batch-filter-row" style={{ marginTop: '10px' }}>
+                  <div className="batch-course-filters" style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center' }}>
+                    <span style={{ fontSize: '0.8rem', fontWeight: 650, color: '#5a6d76', marginRight: '4px' }}>Teachers:</span>
+                    <button
+                      type="button"
+                      className={`batch-course-btn ${projectTeacherFilter === 'all' ? 'active' : ''}`}
+                      onClick={() => setProjectTeacherFilter('all')}
+                    >
+                      All teachers
+                    </button>
+                    {projectTeacherOptions.map((name) => (
+                      <button
+                        key={name}
+                        type="button"
+                        className={`batch-course-btn ${projectTeacherFilter === name ? 'active' : ''}`}
+                        onClick={() => setProjectTeacherFilter(name)}
+                      >
+                        {name}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <p style={{ margin: '10px 0 0', fontSize: '0.85rem', color: '#5a6d76' }}>
+                  Showing {filteredProjectBatches.length} project class{filteredProjectBatches.length === 1 ? '' : 'es'}
+                </p>
+              </div>
+
+              <div className="data-table-container">
+                <table className="data-table">
+                  <thead>
+                    <tr>
+                      <th>Class Name</th>
+                      <th>Program</th>
+                      <th>Trainer</th>
+                      <th>Students</th>
+                      <th>Status</th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredProjectBatches.map(batch => (
+                      <tr key={batch.id || batch._id}>
+                        <td>
+                          <button
+                            onClick={() => handleBatchClick(batch)}
+                            className="btn-link"
+                            title="View Project Class Details"
+                          >
+                            {batch.name}
+                          </button>
+                        </td>
+                        <td>{batch.programLabel || batch.course}</td>
+                        <td>
+                          {batch.teacherName || batch.teacherId ? (
+                            <button
+                              type="button"
+                              onClick={() => openTeacherDetails(batch)}
+                              className="btn-link"
+                              title="View Teacher Details"
+                            >
+                              {batch.teacherName || 'View teacher'}
+                            </button>
+                          ) : (
+                            'N/A'
+                          )}
+                        </td>
+                        <td title={formatBatchStudentNames(batch)}>
+                          {formatBatchStudentNames(batch)}
+                        </td>
+                        <td>
+                          <span className={`status-badge ${batch.status}`}>
+                            {batch.status}
+                          </span>
+                        </td>
+                        <td>
+                          <button onClick={() => openModal('batch', {
+                            ...batch,
+                            batchType: 'project',
+                            customProgram: !PROGRAM_OPTIONS.includes(batch.course),
+                            programLabel: batch.programLabel || batch.course
+                          })} className="btn-edit">Edit</button>
+                          <button onClick={() => handleDelete('batches', batch.id || batch._id)} className="btn-delete">Delete</button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {filteredProjectBatches.length === 0 && (
+                  <p className="no-data">No project classes match these filters.</p>
                 )}
               </div>
             </div>
@@ -4152,25 +4427,21 @@ const AdminDashboard = ({ user, onLogout }) => {
             </div>
           )}
 
-          {/* Live Classes Section */}
+          {/* Live Classes Section — Google Meet */}
           {activeSection === 'liveClasses' && (
             <div className="admin-section">
               <div className="section-header">
-                <h2>Schedule Live Classes</h2>
+                <h2>Schedule Live Classes (Google Meet)</h2>
                 <div>
-                  <button onClick={handleSyncRecordings} className="btn-sync" style={{marginRight: '10px'}}>
-                    ☁️ Sync Zoom Recordings
-                  </button>
                   <button onClick={() => openModal('liveClass')} className="btn-add">
-                    ➕ Schedule Live Class
+                    Schedule Meet Class
                   </button>
                 </div>
               </div>
 
               <div className="info-box">
-                <p>📡 Schedule live Zoom classes for your students. Zoom meetings are automatically created via API integration.</p>
-                <p><strong>✨ Auto-Generated:</strong> No manual Zoom link needed! Just fill in the details and the system will create a unique Zoom meeting for each class.</p>
-                <p><strong>☁️ Cloud Recordings:</strong> After classes end, click "Sync Zoom Recordings" to automatically fetch and add recordings to the Classroom section.</p>
+                <p>Schedule a live class for a batch. A Google Calendar event with a Meet link is created automatically.</p>
+                <p><strong>Recordings:</strong> Upload session recordings to Classroom via YouTube URL (Zoom sync is disabled).</p>
               </div>
 
               <div className="data-table">
@@ -4179,7 +4450,7 @@ const AdminDashboard = ({ user, onLogout }) => {
                     <tr>
                       <th>Date & Time</th>
                       <th>Topic</th>
-                      <th>Instructor</th>
+                      <th>Trainer</th>
                       <th>Duration</th>
                       <th>Course</th>
                       <th>Status</th>
@@ -4190,27 +4461,35 @@ const AdminDashboard = ({ user, onLogout }) => {
                     {liveClasses.length === 0 ? (
                       <tr>
                         <td colSpan="7" style={{textAlign: 'center', padding: '40px', color: '#888'}}>
-                          No live classes scheduled yet. Click "Schedule Live Class" to add your first session.
+                          No Meet classes scheduled yet. Click &quot;Schedule Meet Class&quot; to add one.
                         </td>
                       </tr>
                     ) : (
                       (liveClasses || [])
-                        .sort((a, b) => new Date(a.scheduledDate + ' ' + a.scheduledTime) - new Date(b.scheduledDate + ' ' + b.scheduledTime))
+                        .filter((lc) => lc.status !== 'cancelled' && (lc.meetLink || lc.scheduledStart || lc.batchId))
+                        .sort((a, b) => {
+                          const ta = a.scheduledStart ? new Date(a.scheduledStart) : new Date(`${a.scheduledDate} ${a.scheduledTime}`);
+                          const tb = b.scheduledStart ? new Date(b.scheduledStart) : new Date(`${b.scheduledDate} ${b.scheduledTime}`);
+                          return ta - tb;
+                        })
                         .map(liveClass => {
-                          const classDateTime = new Date(liveClass.scheduledDate + ' ' + liveClass.scheduledTime);
+                          const classDateTime = liveClass.scheduledStart
+                            ? new Date(liveClass.scheduledStart)
+                            : new Date(`${liveClass.scheduledDate} ${liveClass.scheduledTime}`);
                           const isUpcoming = classDateTime > new Date();
                           const isPast = classDateTime < new Date();
-                          
+                          const meetUrl = liveClass.meetLink || liveClass.zoomLink;
+
                           return (
                             <tr key={liveClass.id}>
                               <td>
                                 <strong>{liveClass.scheduledDate}</strong>
                                 <br />
-                                <span style={{fontSize: '0.85em', color: '#666'}}>{liveClass.scheduledTime}</span>
+                                <span style={{fontSize: '0.85em', color: '#666'}}>{liveClass.scheduledTime} IST</span>
                               </td>
                               <td><strong>{liveClass.title}</strong></td>
                               <td>
-                                <span className="instructor-badge">{liveClass.instructor}</span>
+                                <span className="instructor-badge">{liveClass.instructor || liveClass.teacherName}</span>
                               </td>
                               <td>{liveClass.duration}</td>
                               <td>
@@ -4220,22 +4499,49 @@ const AdminDashboard = ({ user, onLogout }) => {
                               </td>
                               <td>
                                 <span className={`status-badge ${isPast ? 'completed' : isUpcoming ? 'active' : ''}`}>
-                                  {isPast ? '✅ Completed' : '🔴 Live'}
+                                  {liveClass.status === 'cancelled' ? 'Cancelled' : isPast ? 'Completed' : 'Scheduled'}
                                 </span>
                               </td>
                               <td>
                                 <div className="action-btns">
-                                  <button onClick={() => openModal('liveClass', liveClass)} className="btn-edit" title="Edit">✏️</button>
-                                  <button onClick={() => handleDelete(COLLECTIONS.LIVE_CLASSES, liveClass.id)} className="btn-delete" title="Delete">🗑️</button>
-                                  <a 
-                                    href={liveClass.zoomLink} 
-                                    target="_blank" 
-                                    rel="noopener noreferrer"
-                                    className="btn-view"
-                                    title="Join Zoom"
+                                  {meetUrl ? (
+                                    <a
+                                      href={meetUrl}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="btn-view"
+                                      title="Open Meet"
+                                    >
+                                      Meet
+                                    </a>
+                                  ) : null}
+                                  <button
+                                    type="button"
+                                    onClick={async () => {
+                                      if (!window.confirm('Cancel this Meet class?')) return;
+                                      try {
+                                        const token = localStorage.getItem('token');
+                                        const apiUrl = getApiBaseUrl();
+                                        const res = await fetch(`${apiUrl}/api/meetings/${liveClass.id}/cancel`, {
+                                          method: 'POST',
+                                          headers: { Authorization: `Bearer ${token}` }
+                                        });
+                                        const data = await res.json().catch(() => ({}));
+                                        if (!res.ok) {
+                                          showToast(data.message || 'Cancel failed', 'error');
+                                          return;
+                                        }
+                                        showToast('Class cancelled', 'success');
+                                        await refreshData('liveClasses');
+                                      } catch (err) {
+                                        showToast('Cancel failed', 'error');
+                                      }
+                                    }}
+                                    className="btn-delete"
+                                    title="Cancel"
                                   >
-                                    📡
-                                  </a>
+                                    Cancel
+                                  </button>
                                 </div>
                               </td>
                             </tr>
@@ -4926,47 +5232,44 @@ const AdminDashboard = ({ user, onLogout }) => {
 
               {modalType === 'batch' && (
                 <>
-                  <div style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
-                    <button
-                      type="button"
-                      className={`btn-secondary ${formData.batchType !== 'one-to-one' ? 'active' : ''}`}
-                      onClick={() => {
-                        handleInputChange('batchType', 'regular');
-                        handleInputChange('customProgram', false);
-                      }}
-                      style={{
-                        flex: 1,
-                        border: formData.batchType !== 'one-to-one' ? '2px solid #147a7a' : '1px solid #d5dee3',
-                        background: formData.batchType !== 'one-to-one' ? 'rgba(20,122,122,0.1)' : '#fff',
-                        color: '#102a33',
-                        padding: '10px',
-                        borderRadius: '8px',
-                        cursor: 'pointer',
-                        fontWeight: 600
-                      }}
-                    >
-                      Regular batch
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleInputChange('batchType', 'one-to-one')}
-                      style={{
-                        flex: 1,
-                        border: formData.batchType === 'one-to-one' ? '2px solid #147a7a' : '1px solid #d5dee3',
-                        background: formData.batchType === 'one-to-one' ? 'rgba(20,122,122,0.1)' : '#fff',
-                        color: '#102a33',
-                        padding: '10px',
-                        borderRadius: '8px',
-                        cursor: 'pointer',
-                        fontWeight: 600
-                      }}
-                    >
-                      One-to-One
-                    </button>
+                  <div style={{ display: 'flex', gap: '8px', marginBottom: '8px', flexWrap: 'wrap' }}>
+                    {[
+                      { value: 'regular', label: 'Regular batch' },
+                      { value: 'one-to-one', label: 'One-to-One' },
+                      { value: 'project', label: 'Project Class' }
+                    ].map((opt) => {
+                      const active = (formData.batchType || 'regular') === opt.value;
+                      return (
+                        <button
+                          key={opt.value}
+                          type="button"
+                          className={`btn-secondary ${active ? 'active' : ''}`}
+                          onClick={() => {
+                            handleInputChange('batchType', opt.value);
+                            if (opt.value === 'regular') {
+                              handleInputChange('customProgram', false);
+                            }
+                          }}
+                          style={{
+                            flex: 1,
+                            minWidth: '120px',
+                            border: active ? '2px solid #147a7a' : '1px solid #d5dee3',
+                            background: active ? 'rgba(20,122,122,0.1)' : '#fff',
+                            color: '#102a33',
+                            padding: '10px',
+                            borderRadius: '8px',
+                            cursor: 'pointer',
+                            fontWeight: 600
+                          }}
+                        >
+                          {opt.label}
+                        </button>
+                      );
+                    })}
                   </div>
                   <input
                     type="text"
-                    placeholder="Batch Name *"
+                    placeholder={formData.batchType === 'project' ? 'Project Class Name *' : 'Batch Name *'}
                     value={formData.name || ''}
                     onChange={(e) => handleInputChange('name', e.target.value)}
                     required
@@ -4993,11 +5296,11 @@ const AdminDashboard = ({ user, onLogout }) => {
                     {PROGRAM_OPTIONS.map(p => (
                       <option key={p} value={p}>{p}</option>
                     ))}
-                    {formData.batchType === 'one-to-one' && (
+                    {(formData.batchType === 'one-to-one' || formData.batchType === 'project') && (
                       <option value="__custom__">Custom program</option>
                     )}
                   </select>
-                  {formData.customProgram && formData.batchType === 'one-to-one' && (
+                  {formData.customProgram && (formData.batchType === 'one-to-one' || formData.batchType === 'project') && (
                     <input
                       type="text"
                       placeholder="Custom program label *"
@@ -5026,7 +5329,7 @@ const AdminDashboard = ({ user, onLogout }) => {
                     required
                   >
                     <option value="">
-                      {formData.batchType === 'one-to-one' || formData.course
+                      {formData.batchType === 'one-to-one' || formData.batchType === 'project' || formData.course
                         ? 'Select Trainer *'
                         : 'Select Program First *'}
                     </option>
@@ -5706,16 +6009,18 @@ const AdminDashboard = ({ user, onLogout }) => {
                     required
                   />
                   <select
-                    value={formData.course || 'Data Science & AI'}
-                    onChange={(e) => handleInputChange('course', e.target.value)}
+                    value={formData.batchId || ''}
+                    onChange={(e) => handleInputChange('batchId', e.target.value)}
+                    required
                   >
-                    <option value="">Select Course *</option>
-                    <option value="Data Science & AI">Data Science & AI</option>
-                    <option value="Cyber Security & Ethical Hacking">Cyber Security & Ethical Hacking</option>
-                    <option value="Cybersecurity & AI">Cybersecurity & AI</option>
-                    <option value="DevOps & AI">DevOps & AI</option>
-                    <option value="DevOps & Cloud">DevOps & Cloud</option>
-                    <option value="One-to-One">One-to-One</option>
+                    <option value="">Select batch *</option>
+                    {(batches || []).map((b) => (
+                      <option key={b.id || b._id} value={b.id || b._id}>
+                        {b.name}
+                        {b.teacherName ? ` · ${b.teacherName}` : ''}
+                        {b.course ? ` · ${b.course}` : ''}
+                      </option>
+                    ))}
                   </select>
                   <input
                     type="date"
@@ -5726,7 +6031,7 @@ const AdminDashboard = ({ user, onLogout }) => {
                   />
                   <input
                     type="time"
-                    placeholder="Scheduled Time *"
+                    placeholder="Scheduled Time (IST) *"
                     value={formData.scheduledTime || ''}
                     onChange={(e) => handleInputChange('scheduledTime', e.target.value)}
                     required
@@ -5741,20 +6046,14 @@ const AdminDashboard = ({ user, onLogout }) => {
                     <option value="90 mins">90 mins</option>
                     <option value="120 mins">2 hours</option>
                   </select>
-                  <input
-                    type="text"
-                    placeholder="Instructor Name"
-                    value={formData.instructor || ''}
-                    onChange={(e) => handleInputChange('instructor', e.target.value)}
-                  />
                   <textarea
                     placeholder="Description / Agenda (optional)"
                     value={formData.description || ''}
                     onChange={(e) => handleInputChange('description', e.target.value)}
                     rows="3"
                   />
-                  <small style={{color: '#28a745', marginTop: '-10px', display: 'block', fontWeight: 'bold'}}>
-                    ✅ Zoom meeting link will be auto-generated when you save
+                  <small style={{ color: '#027a48', display: 'block', fontWeight: 600 }}>
+                    Google Meet link will be created on the Workspace host calendar when you save.
                   </small>
                 </>
               )}
@@ -6099,6 +6398,14 @@ const AdminDashboard = ({ user, onLogout }) => {
                   </div>
                 </div>
                 <div className="modal-header-actions">
+                  <button
+                    type="button"
+                    className="btn-create-report btn-create-report--header"
+                    onClick={() => handleDownloadReport(s, '30days')}
+                    title="Create PDF report (last 30 days)"
+                  >
+                    Create Report
+                  </button>
                   {activeProfileTab === 'profile' && !editMode && (
                     <button type="button" className="btn-edit-profile" onClick={handleEditProfile}>
                       Edit profile
@@ -6175,6 +6482,10 @@ const AdminDashboard = ({ user, onLogout }) => {
                             <div className="detail-item">
                               <label>Enrollment no.</label>
                               <span>{s.enrollmentNumber || '—'}</span>
+                            </div>
+                            <div className="detail-item">
+                              <label>Form no.</label>
+                              <span>{s.formNumber || '—'}</span>
                             </div>
                             <div className="detail-item wide-detail">
                               <label>Address</label>
@@ -6896,7 +7207,11 @@ const AdminDashboard = ({ user, onLogout }) => {
                   className={`header-tab-btn ${activeTeacherTab === 'batches' ? 'active' : ''}`}
                   onClick={() => setActiveTeacherTab('batches')}
                 >
-                  Batches ({teacherAssignedBatches.regular.length + teacherAssignedBatches.oneToOne.length})
+                  Batches ({
+                    teacherAssignedBatches.regular.length +
+                    teacherAssignedBatches.oneToOne.length +
+                    (teacherAssignedBatches.project || []).length
+                  })
                 </button>
               </div>
             </div>
@@ -6904,6 +7219,45 @@ const AdminDashboard = ({ user, onLogout }) => {
             <div className="fullscreen-modal-content">
               {activeTeacherTab === 'profile' && (
                 <div className="profile-tab-content">
+                  {teacherSessionStats?.stats && (
+                    <div className="live-admin-alerts" style={{ marginBottom: '1rem' }}>
+                      <h3>Live class sessions</h3>
+                      <div className="dossier-kpis">
+                        <div className="dossier-kpi">
+                          <strong>{teacherSessionStats.stats.sessionsCompleted}</strong>
+                          <span>Completed</span>
+                        </div>
+                        <div className="dossier-kpi">
+                          <strong>{teacherSessionStats.stats.sessionsScheduled}</strong>
+                          <span>Scheduled</span>
+                        </div>
+                        <div className="dossier-kpi">
+                          <strong>{teacherSessionStats.stats.recordingsUploaded}</strong>
+                          <span>Recordings</span>
+                        </div>
+                        <div className="dossier-kpi">
+                          <strong>{teacherSessionStats.stats.avgAttendanceRate}%</strong>
+                          <span>Avg attendance</span>
+                        </div>
+                        <div className="dossier-kpi">
+                          <strong>{teacherSessionStats.stats.hoursTaught}h</strong>
+                          <span>Hours taught</span>
+                        </div>
+                      </div>
+                      {Array.isArray(teacherSessionStats.teacher?.weeklyAvailability) &&
+                        teacherSessionStats.teacher.weeklyAvailability.length > 0 && (
+                          <p className="live-lobby__muted" style={{ marginTop: '0.65rem' }}>
+                            Weekly windows:{' '}
+                            {teacherSessionStats.teacher.weeklyAvailability
+                              .map((w) => {
+                                const labels = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+                                return `${labels[w.day] || w.day} ${w.startTime}-${w.endTime}`;
+                              })
+                              .join(' · ')}
+                          </p>
+                        )}
+                    </div>
+                  )}
                   <div className="dossier-kpis">
                     <div className="dossier-kpi">
                       <strong>{teacherAssignedBatches.regular.length}</strong>
@@ -6914,9 +7268,16 @@ const AdminDashboard = ({ user, onLogout }) => {
                       <span>One-to-one</span>
                     </div>
                     <div className="dossier-kpi">
+                      <strong>{(teacherAssignedBatches.project || []).length}</strong>
+                      <span>Project class</span>
+                    </div>
+                    <div className="dossier-kpi">
                       <strong>
-                        {[...teacherAssignedBatches.regular, ...teacherAssignedBatches.oneToOne]
-                          .reduce((sum, b) => sum + (b.studentCount || 0), 0)}
+                        {[
+                          ...teacherAssignedBatches.regular,
+                          ...teacherAssignedBatches.oneToOne,
+                          ...(teacherAssignedBatches.project || [])
+                        ].reduce((sum, b) => sum + (b.studentCount || 0), 0)}
                       </strong>
                       <span>Students</span>
                     </div>
@@ -7039,7 +7400,7 @@ const AdminDashboard = ({ user, onLogout }) => {
                     )}
                   </div>
 
-                  <div className="profile-card">
+                  <div className="profile-card" style={{ marginBottom: '16px' }}>
                     <h3>One-to-one batches</h3>
                     {teacherAssignedBatches.oneToOne.length === 0 ? (
                       <p className="no-data">No one-to-one batches assigned.</p>
@@ -7056,6 +7417,51 @@ const AdminDashboard = ({ user, onLogout }) => {
                           </thead>
                           <tbody>
                             {teacherAssignedBatches.oneToOne.map((batch) => (
+                              <tr key={batch.id || batch._id}>
+                                <td>
+                                  <button
+                                    type="button"
+                                    className="btn-link"
+                                    onClick={() => {
+                                      setShowTeacherDetailsModal(false);
+                                      handleBatchClick(batch);
+                                    }}
+                                  >
+                                    {batch.name}
+                                  </button>
+                                </td>
+                                <td>{batch.programLabel || batch.course || '—'}</td>
+                                <td>{batch.studentCount}</td>
+                                <td>
+                                  <span className={`dossier-status ${batch.status || 'active'}`}>
+                                    {batch.status || '—'}
+                                  </span>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="profile-card">
+                    <h3>Project classes</h3>
+                    {(teacherAssignedBatches.project || []).length === 0 ? (
+                      <p className="no-data">No project classes assigned.</p>
+                    ) : (
+                      <div className="data-table-container">
+                        <table className="data-table">
+                          <thead>
+                            <tr>
+                              <th>Class</th>
+                              <th>Program</th>
+                              <th>Students</th>
+                              <th>Status</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {(teacherAssignedBatches.project || []).map((batch) => (
                               <tr key={batch.id || batch._id}>
                                 <td>
                                   <button

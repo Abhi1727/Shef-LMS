@@ -1,0 +1,196 @@
+/* Sky States — professional loading screen */
+
+.sky-load {
+  --sky-ink: #102a33;
+  --sky-deep: #0b3d4a;
+  --sky-accent: #147a7a;
+  --sky-accent-soft: #3a9898;
+  --sky-muted: #5a6d76;
+  --sky-line: #d5dee3;
+  --sky-surface: #f4f6f7;
+
+  position: relative;
+  min-height: 100vh;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 32px 20px;
+  box-sizing: border-box;
+  overflow: hidden;
+  background: var(--sky-surface);
+  font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+  color: var(--sky-ink);
+}
+
+.sky-load--compact {
+  min-height: 60vh;
+  background: transparent;
+}
+
+.sky-load__atmosphere {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(900px 480px at 12% 8%, rgba(20, 122, 122, 0.14), transparent 58%),
+    radial-gradient(700px 420px at 92% 18%, rgba(11, 61, 74, 0.1), transparent 55%),
+    linear-gradient(180deg, #eef5f5 0%, #f4f6f7 45%, #eef2f3 100%);
+  animation: sky-load-fade 0.55s ease both;
+}
+
+.sky-load__panel {
+  position: relative;
+  z-index: 1;
+  width: min(380px, 100%);
+  text-align: center;
+  padding: 8px 4px;
+  animation: sky-load-rise 0.65s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.sky-load__brand {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin-bottom: 28px;
+}
+
+.sky-load__mark {
+  width: 42px;
+  height: 42px;
+  color: var(--sky-accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.sky-load__mark svg {
+  width: 100%;
+  height: 100%;
+}
+
+.sky-load__wordmark {
+  display: flex;
+  align-items: baseline;
+  gap: 0.28em;
+  letter-spacing: 0.04em;
+  line-height: 1;
+}
+
+.sky-load__sky {
+  font-size: 1.55rem;
+  font-weight: 700;
+  color: var(--sky-accent-soft);
+}
+
+.sky-load__states {
+  font-size: 1.55rem;
+  font-weight: 800;
+  color: var(--sky-ink);
+}
+
+.sky-load__spinner {
+  position: relative;
+  width: 52px;
+  height: 52px;
+  margin: 0 auto 22px;
+}
+
+.sky-load__ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  box-sizing: border-box;
+}
+
+.sky-load__ring--outer {
+  border-top-color: var(--sky-accent);
+  border-right-color: rgba(20, 122, 122, 0.25);
+  animation: sky-load-spin 0.9s linear infinite;
+}
+
+.sky-load__ring--inner {
+  inset: 8px;
+  border-bottom-color: var(--sky-deep);
+  border-left-color: rgba(11, 61, 74, 0.2);
+  animation: sky-load-spin-rev 1.15s linear infinite;
+}
+
+.sky-load__message {
+  margin: 0 0 6px;
+  font-size: 1.05rem;
+  font-weight: 650;
+  color: var(--sky-ink);
+  letter-spacing: -0.01em;
+}
+
+.sky-load__subtext {
+  margin: 0 0 22px;
+  font-size: 0.875rem;
+  color: var(--sky-muted);
+  line-height: 1.45;
+}
+
+.sky-load__bar {
+  width: min(220px, 70%);
+  height: 3px;
+  margin: 0 auto;
+  border-radius: 999px;
+  background: var(--sky-line);
+  overflow: hidden;
+}
+
+.sky-load__bar-fill {
+  display: block;
+  height: 100%;
+  width: 42%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--sky-deep), var(--sky-accent), var(--sky-accent-soft));
+  animation: sky-load-shimmer 1.35s ease-in-out infinite;
+}
+
+@keyframes sky-load-spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes sky-load-spin-rev {
+  to { transform: rotate(-360deg); }
+}
+
+@keyframes sky-load-shimmer {
+  0% { transform: translateX(-120%); }
+  100% { transform: translateX(280%); }
+}
+
+@keyframes sky-load-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes sky-load-rise {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sky-load__atmosphere,
+  .sky-load__panel,
+  .sky-load__ring,
+  .sky-load__bar-fill {
+    animation: none !important;
+  }
+
+  .sky-load__bar-fill {
+    width: 55%;
+    transform: none;
+  }
+}

@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { oneToOneBatchService } from '../services/oneToOneBatchService';
 import { formatDateForComponent } from '../utils/dateUtils';
 import { showToast } from './Toast';
+import SkyLoadingScreen from './SkyLoadingScreen';
 import './BatchDetailsPage.css';
 
 // Helper function to extract YouTube video ID from different URL formats
@@ -825,10 +826,10 @@ const OneToOneBatchManagement = () => {
 
   if (loading) {
     return (
-      <div className="batch-management-loading">
-        <div className="loader"></div>
-        <p>Loading batch details...</p>
-      </div>
+      <SkyLoadingScreen
+        message="Loading batch details"
+        subtext="Preparing your Sky States workspace"
+      />
     );
   }
 

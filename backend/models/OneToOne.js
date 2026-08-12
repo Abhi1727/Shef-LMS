@@ -44,4 +44,7 @@ oneToOneSchema.virtual('student', {
   foreignField: 'studentId'
 });
 
-module.exports = mongoose.model('OneToOne', oneToOneSchema);
+const __mongoOneToOne = mongoose.models.OneToOne || mongoose.model('OneToOne', oneToOneSchema);
+module.exports = String(process.env.USE_FIRESTORE || '').toLowerCase() === 'true'
+  ? require('../firestore/models').OneToOne
+  : __mongoOneToOne;

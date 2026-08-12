@@ -14,12 +14,18 @@ const Module = require('../models/Module');
 const Classroom = require('../models/Classroom');
 const OneToOne = require('../models/OneToOne');
 const OneToOneBatch = require('../models/OneToOneBatch');
+const LiveClass = require('../models/LiveClass');
 const { sendEmail } = require('../services/emailService');
 const {
   allocateEnrollmentNumber,
   planBackfill,
 } = require('../utils/enrollmentNumber');
 const { buildStudentReportPdf } = require('../utils/studentReportPdf');
+const {
+  allocateFormNumber,
+  ensureStudentFormNumber,
+  planFormNumberBackfill,
+} = require('../utils/reportFormNumber');
 
 // Content-Type mapping for proper file download headers
 const contentTypes = {
@@ -266,6 +272,12 @@ router.post('/users', async (req, res) => {
       finalEnrollment = allocated.enrollmentNumber;
     }
 
+    let finalFormNumber;
+    if (resolvedRole === 'student') {
+      const allocatedForm = await allocateFormNumber(User);
+      finalFormNumber = allocatedForm.formNumber;
+    }
+
     if (finalEnrollment) {
       const clash = await User.findOne({ enrollmentNumber: finalEnrollment }).select('_id email').lean();
       if (clash) {
@@ -280,6 +292,7 @@ router.post('/users', async (req, res) => {
       email: normalizedEmail,
       password: finalPassword,
       enrollmentNumber: finalEnrollment || undefined,
+      formNumber: finalFormNumber || undefined,
       course: course || '',
       batchId: batchId || null,
       status: status || 'active',
@@ -308,13 +321,54 @@ router.post('/users', async (req, res) => {
     res.json({
       id: String(saved._id),
       enrollmentNumber: saved.enrollmentNumber || null,
+      formNumber: saved.formNumber || null,
       message: 'User created successfully',
     });
   } catch (err) {
     console.error('Error creating user:', err);
     if (err && err.code === 11000) {
-      return res.status(400).json({ message: 'Duplicate email or enrollment number' });
+      return res.status(400).json({ message: 'Duplicate email, enrollment number, or form number' });
     }
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// @route   POST /api/admin/form-numbers/backfill
+// @desc    Assign SS_US_##### form numbers to students (persistent, one per student)
+router.post('/form-numbers/backfill', async (req, res) => {
+  try {
+    const dryRun = Boolean(req.body?.dryRun);
+    const forceResequence = req.body?.forceResequence !== false; // default: full series from 11001
+    const students = await User.find({ role: 'student' })
+      .select('name email formNumber createdAt joiningDate')
+      .lean();
+
+    const { assignments, nextSeries } = planFormNumberBackfill(students, { forceResequence });
+    const toWrite = assignments.filter((a) => !a.skipped);
+
+    if (!dryRun) {
+      for (const row of toWrite) {
+        await User.findByIdAndUpdate(row.id, {
+          $set: { formNumber: row.formNumber },
+        });
+      }
+    }
+
+    res.json({
+      dryRun,
+      forceResequence,
+      totalStudents: students.length,
+      updated: dryRun ? 0 : toWrite.length,
+      wouldUpdate: toWrite.length,
+      skipped: assignments.filter((a) => a.skipped).length,
+      nextSeries,
+      sample: assignments.slice(0, 10),
+      message: dryRun
+        ? 'Dry run complete — no changes written'
+        : `Assigned form numbers to ${toWrite.length} student(s)`,
+    });
+  } catch (err) {
+    console.error('Error backfilling form numbers:', err);
     res.status(500).json({ message: 'Server error' });
   }
 });
@@ -541,8 +595,114 @@ router.get('/debug-ip', async (req, res) => {
   }
 });
 
+// @route   GET /api/admin/liveClasses (and /live-classes)
+// @desc    List Google Meet / live classes for admin UI
+async function listAdminLiveClasses(req, res) {
+  try {
+    const includeCancelled = String(req.query.includeCancelled || '') === 'true';
+    const query = includeCancelled ? {} : { status: { $ne: 'cancelled' } };
+    const docs = await LiveClass.find(query).sort({ scheduledStart: 1 }).lean().exec();
+    const items = docs.map((o) => {
+      const start = o.scheduledStart ? new Date(o.scheduledStart) : null;
+      const tz = o.timezone || 'Asia/Kolkata';
+      return {
+        id: String(o._id),
+        title: o.title,
+        description: o.description || '',
+        batchId: o.batchId || '',
+        teacherId: o.teacherId || '',
+        teacherName: o.teacherName || o.instructor || '',
+        instructor: o.teacherName || o.instructor || '',
+        course: o.course || '',
+        scheduledStart: start ? start.toISOString() : null,
+        scheduledEnd: o.scheduledEnd || null,
+        scheduledDate: start
+          ? start.toLocaleDateString('en-CA', { timeZone: tz })
+          : o.scheduledDate || '',
+        scheduledTime: start
+          ? start.toLocaleTimeString('en-GB', {
+              timeZone: tz,
+              hour: '2-digit',
+              minute: '2-digit',
+              hour12: false
+            })
+          : o.scheduledTime || '',
+        duration: o.duration || '60 mins',
+        status: o.status || 'scheduled',
+        meetLink: o.meetLink || '',
+        zoomLink: o.meetLink || o.zoomLink || '',
+        calendarEventId: o.calendarEventId || '',
+        timezone: tz,
+        createdAt: o.createdAt
+      };
+    });
+    res.json(items);
+  } catch (err) {
+    console.error('Error listing admin live classes:', err);
+    res.status(500).json({ message: 'Server error' });
+  }
+}
+
+router.get('/liveClasses', listAdminLiveClasses);
+router.get('/live-classes', listAdminLiveClasses);
+
 // @route   GET /api/admin/activity
 // @desc    Get activity log (logins, video views, etc.) from ActivityLog + User fallback
+// @route   GET /api/admin/attendance-alerts
+// @desc    Recent consecutive no-join streak alerts for admin overview
+router.get('/attendance-alerts', roleAuth('admin'), async (req, res) => {
+  try {
+    const limit = Math.min(50, parseInt(req.query.limit || '20', 10) || 20);
+    const logs = await ActivityLog.find({
+      action: { $in: ['ATTENDANCE_STREAK_ALERT', 'ENGAGEMENT_NUDGE', 'ENGAGEMENT_DIGEST'] }
+    })
+      .sort({ timestamp: -1 })
+      .limit(limit)
+      .lean()
+      .exec();
+
+    const attendanceAnalytics = require('../services/attendanceAnalytics');
+    const alerts = [];
+    for (const l of logs) {
+      let engagement = null;
+      if (l.action === 'ATTENDANCE_STREAK_ALERT' && l.userId && l.path) {
+        try {
+          const summary = await attendanceAnalytics.getBatchAttendanceSummary(String(l.path));
+          const student = (summary.students || []).find((s) => s.studentId === String(l.userId));
+          engagement = student?.engagement || 'Unengaged';
+        } catch (_) {
+          engagement = 'Unengaged';
+        }
+      } else if (l.action === 'ENGAGEMENT_NUDGE') {
+        const title = String(l.videoTitle || '');
+        if (title.startsWith('Unengaged')) engagement = 'Unengaged';
+        else if (title.startsWith('Passive')) engagement = 'Passive';
+        else engagement = 'Passive';
+      }
+
+      alerts.push({
+        id: String(l._id),
+        type: l.action,
+        studentId: l.userId,
+        studentName: l.userName || '',
+        studentEmail: l.userEmail || '',
+        batchId: l.path || '',
+        batchName: l.assessmentTitle || '',
+        consecutiveAbsent: l.action === 'ATTENDANCE_STREAK_ALERT' ? l.score || null : null,
+        joinRate: l.action === 'ENGAGEMENT_NUDGE' ? l.score || null : null,
+        engagement,
+        lastSessionId: l.action === 'ATTENDANCE_STREAK_ALERT' ? l.videoId || '' : '',
+        lastSessionTitle: l.videoTitle || '',
+        timestamp: l.timestamp
+      });
+    }
+    res.json({ success: true, alerts });
+  } catch (error) {
+    console.error('GET /admin/attendance-alerts error:', error);
+    res.status(500).json({ success: false, message: 'Failed to load attendance alerts' });
+  }
+});
+
 router.get('/activity', async (req, res) => {
   try {
     const { role, action, limit = 200, source = 'all' } = req.query;
@@ -861,8 +1021,9 @@ router.get('/students/:studentId/report.pdf', async (req, res) => {
       periodLabel = `Last ${period} day(s)`;
     }
 
+    const formNo = await ensureStudentFormNumber(User, student);
     const pdfBuffer = await buildStudentReportPdf({
-      student: { ...student, id: String(student._id) },
+      student: { ...student, id: String(student._id), formNumber: formNo },
       batch: batch
         ? { ...batch, id: String(batch._id) }
         : null,
@@ -872,6 +1033,7 @@ router.get('/students/:studentId/report.pdf', async (req, res) => {
       period: { label: periodLabel, startDate, endDate },
       summary,
       activities: formattedActivities,
+      formNo,
       generatedAt: new Date(),
     });
 
@@ -983,6 +1145,69 @@ router.delete('/mentors/:id', async (req, res) => {
   } catch (err) {
     console.error('Error deleting mentor:', err);
     res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// @route   GET /api/admin/teachers/:id/session-stats
+router.get('/teachers/:id/session-stats', async (req, res) => {
+  try {
+    const teacherId = String(req.params.id);
+    const sessions = await LiveClass.find({ teacherId }).sort({ scheduledStart: -1 }).lean().exec();
+    let presentSum = 0;
+    let rosterSum = 0;
+    let hoursTaught = 0;
+    for (const s of sessions) {
+      if (s.status === 'cancelled') continue;
+      const att = Array.isArray(s.attendance) ? s.attendance : [];
+      const present = att.filter((a) => a.status === 'present' || a.status === 'late').length;
+      presentSum += present;
+      rosterSum += att.length || 0;
+      const mins = parseInt(String(s.duration || '60').match(/(\d+)/)?.[1] || '60', 10);
+      if (s.status === 'completed' || s.status === 'live') hoursTaught += mins / 60;
+    }
+    const stats = {
+      teacherId,
+      sessionsTotal: sessions.length,
+      sessionsScheduled: sessions.filter((s) => s.status === 'scheduled').length,
+      sessionsLive: sessions.filter((s) => s.status === 'live').length,
+      sessionsCompleted: sessions.filter((s) => s.status === 'completed').length,
+      sessionsCancelled: sessions.filter((s) => s.status === 'cancelled').length,
+      recordingsUploaded: sessions.filter((s) => s.driveFileId).length,
+      avgAttendanceRate: rosterSum > 0 ? Math.round((presentSum / rosterSum) * 100) : 0,
+      hoursTaught: Math.round(hoursTaught * 10) / 10,
+      recent: sessions.slice(0, 10).map((s) => ({
+        id: String(s._id),
+        title: s.title,
+        batchId: s.batchId,
+        status: s.status,
+        scheduledStart: s.scheduledStart,
+        attendanceCount: (s.attendance || []).filter(
+          (a) => a.status === 'present' || a.status === 'late'
+        ).length,
+        hasRecording: Boolean(s.driveFileId)
+      }))
+    };
+    const teacher = await User.findById(teacherId)
+      .select('name email isAvailable weeklyAvailability availabilityUpdatedAt')
+      .lean()
+      .exec();
+    res.json({
+      success: true,
+      stats,
+      teacher: teacher
+        ? {
+            id: String(teacher._id),
+            name: teacher.name,
+            email: teacher.email,
+            isAvailable: Boolean(teacher.isAvailable),
+            weeklyAvailability: teacher.weeklyAvailability || [],
+            availabilityUpdatedAt: teacher.availabilityUpdatedAt || null
+          }
+        : null
+    });
+  } catch (error) {
+    console.error('GET teacher session-stats error:', error);
+    res.status(500).json({ success: false, message: 'Failed to load session stats' });
   }
 });
 
@@ -1940,13 +2165,13 @@ router.post('/batches', async (req, res) => {
             return res.status(400).json({ message: 'Batch name, course, and teacher are required' });
         }
 
-        const resolvedType = batchType === 'one-to-one' ? 'one-to-one' : 'regular';
+        const resolvedType = ['one-to-one', 'project'].includes(batchType) ? batchType : 'regular';
         
         const batchData = {
           name,
           course,
           batchType: resolvedType,
-          programLabel: programLabel || (resolvedType === 'one-to-one' ? course : ''),
+          programLabel: programLabel || (resolvedType !== 'regular' ? course : ''),
           startDate: startDate || null,
           endDate: endDate || null,
           teacherId,
@@ -1990,7 +2215,7 @@ router.put('/batches/:id', async (req, res) => {
         if (teacherName !== undefined) updateData.teacherName = teacherName || '';
         if (status !== undefined) updateData.status = status || 'active';
         if (batchType !== undefined) {
-          updateData.batchType = batchType === 'one-to-one' ? 'one-to-one' : 'regular';
+          updateData.batchType = ['one-to-one', 'project'].includes(batchType) ? batchType : 'regular';
         }
         if (programLabel !== undefined) updateData.programLabel = programLabel || '';
         updateData.updatedAt = new Date();

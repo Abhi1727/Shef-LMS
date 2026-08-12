@@ -15,6 +15,7 @@
   z-index: 100;
   background: var(--ss-surface, #fff);
   border-bottom: 1px solid var(--ss-border, #d5dee3);
+  overflow: visible;
 }
 
 .ss-shell-header__row {
@@ -232,6 +233,110 @@
   box-sizing: border-box;
 }
 
+/* Single-row responsive nav (overflow → ☰ More) */
+.ss-shell-nav.ss-shell-nav--responsive {
+  position: relative;
+  flex-wrap: nowrap;
+  overflow-x: hidden;
+  overflow-y: visible;
+  min-height: 42px;
+  /* Prevent this row from ever creating page-level horizontal scroll */
+  max-width: 100%;
+}
+
+.ss-shell-nav__track {
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: inherit;
+  width: 100%;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.ss-shell-nav__more {
+  position: relative;
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
+.ss-shell-nav__more-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.ss-shell-nav__burger {
+  display: inline-flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 3px;
+  width: 14px;
+}
+
+.ss-shell-nav__burger span {
+  display: block;
+  height: 1.5px;
+  width: 100%;
+  border-radius: 1px;
+  background: currentColor;
+}
+
+.ss-shell-nav__more-btn.is-open {
+  border-color: var(--ss-primary-200, #a9d8d8);
+  background: var(--ss-primary-50, #eef7f7);
+  color: var(--ss-primary-800, #0b3d4a);
+}
+
+.ss-shell-nav__dropdown {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  min-width: 220px;
+  max-height: min(70vh, 420px);
+  overflow-y: auto;
+  background: #fff;
+  border: 1px solid var(--ss-border, #d5dee3);
+  border-radius: 10px;
+  box-shadow: 0 12px 32px rgba(15, 26, 31, 0.14);
+  padding: 0.35rem;
+  z-index: 1100;
+}
+
+/* Portaled More menu — escapes sticky header / overflow clipping */
+.ss-shell-nav__dropdown--portal {
+  position: fixed;
+  top: auto;
+  right: auto;
+  z-index: 13000;
+}
+
+.ss-shell-nav__dropdown .nav-more-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 0.7rem 0.85rem;
+  border: none;
+  background: transparent;
+  border-radius: 8px;
+  font-size: 0.875rem;
+  font-weight: 550;
+  color: var(--ss-text, #0f1a1f);
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.ss-shell-nav__dropdown .nav-more-item:hover {
+  background: var(--ss-primary-50, #eef7f7);
+  color: var(--ss-primary-800, #0b3d4a);
+}
+
+.ss-shell-nav__dropdown .nav-more-item.active {
+  background: var(--ss-primary-500, #147a7a);
+  color: #fff;
+  font-weight: 650;
+}
+
 .ss-shell-nav__btn {
   height: 34px;
   padding: 0 0.9rem;
@@ -373,6 +478,223 @@
 
 .ss-shell-nav .nav-more-wrapper {
   position: relative;
+}
+
+/* Teacher My batches — admin-aligned professional list */
+.teacher-batches-pro__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.25rem;
+}
+
+.teacher-batches-pro__filters {
+  margin-bottom: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+
+.teacher-batches-pro__search-input {
+  width: 100%;
+  box-sizing: border-box;
+  height: 40px;
+  padding: 0 0.9rem;
+  border: 1px solid var(--ss-border, #d5dee3);
+  border-radius: 8px;
+  font-size: 0.875rem;
+  font-family: inherit;
+  color: var(--ss-text, #0f1a1f);
+  background: #fff;
+}
+
+.teacher-batches-pro__search-input:focus {
+  outline: none;
+  border-color: var(--ss-primary-300, #6fbaba);
+  box-shadow: 0 0 0 3px rgba(20, 122, 122, 0.12);
+}
+
+.teacher-batches-pro__filter-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.teacher-batches-pro__filter-label {
+  flex: 0 0 64px;
+  padding-top: 0.4rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ss-text-muted, #5a6d76);
+}
+
+.teacher-batches-pro__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  flex: 1;
+  min-width: 0;
+}
+
+.teacher-batches-pro__chip {
+  height: 32px;
+  padding: 0 0.75rem;
+  border: 1px solid var(--ss-border, #d5dee3);
+  border-radius: 6px;
+  background: #fff;
+  color: var(--ss-text-secondary, #3d5059);
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+  white-space: nowrap;
+}
+
+.teacher-batches-pro__chip:hover {
+  border-color: var(--ss-primary-300, #6fbaba);
+  color: var(--ss-primary-800, #0b3d4a);
+  background: var(--ss-primary-50, #eef7f7);
+}
+
+.teacher-batches-pro__chip.is-active {
+  background: var(--ss-primary-500, #147a7a);
+  border-color: var(--ss-primary-500, #147a7a);
+  color: #fff;
+}
+
+.teacher-batches-pro__table-wrap {
+  padding: 0;
+  overflow: hidden;
+}
+
+.teacher-batches-pro__table-scroll {
+  width: 100%;
+  overflow-x: auto;
+}
+
+.teacher-batches-pro__table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 860px;
+}
+
+.teacher-batches-pro__table th,
+.teacher-batches-pro__table td {
+  padding: 0.85rem 1rem;
+  text-align: left;
+  border-bottom: 1px solid var(--ss-border, #d5dee3);
+  font-size: 0.875rem;
+  vertical-align: middle;
+}
+
+.teacher-batches-pro__table th {
+  background: var(--ss-neutral-50, #f4f6f7);
+  color: var(--ss-text-muted, #5a6d76);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.teacher-batches-pro__table tbody tr:hover {
+  background: rgba(20, 122, 122, 0.04);
+}
+
+.teacher-batches-pro__table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.teacher-batches-pro__link {
+  border: none;
+  background: none;
+  padding: 0;
+  color: var(--ss-primary-700, #0b4f4f);
+  font-weight: 650;
+  font-size: inherit;
+  font-family: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+
+.teacher-batches-pro__link:hover {
+  color: var(--ss-primary-500, #147a7a);
+  text-decoration: underline;
+}
+
+.teacher-batches-pro__type {
+  display: inline-flex;
+  align-items: center;
+  height: 24px;
+  padding: 0 0.55rem;
+  border-radius: 4px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  background: var(--ss-neutral-50, #f4f6f7);
+  color: var(--ss-text-secondary, #3d5059);
+  border: 1px solid var(--ss-border, #d5dee3);
+  white-space: nowrap;
+}
+
+.teacher-batches-pro__type--oto {
+  background: rgba(20, 122, 122, 0.08);
+  border-color: rgba(20, 122, 122, 0.22);
+  color: var(--ss-primary-800, #0b3d4a);
+}
+
+.teacher-batches-pro__type--project {
+  background: rgba(11, 61, 74, 0.08);
+  border-color: rgba(11, 61, 74, 0.2);
+  color: var(--ss-primary-900, #102a33);
+}
+
+.teacher-batches-pro__status {
+  display: inline-flex;
+  align-items: center;
+  height: 24px;
+  padding: 0 0.55rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: capitalize;
+}
+
+.teacher-batches-pro__status--active {
+  background: rgba(16, 185, 129, 0.12);
+  color: #047857;
+}
+
+.teacher-batches-pro__status--completed {
+  background: rgba(100, 116, 139, 0.14);
+  color: #475569;
+}
+
+.teacher-batches-pro__status--inactive {
+  background: rgba(245, 158, 11, 0.14);
+  color: #b45309;
+}
+
+.teacher-batches-pro__empty {
+  padding: 2.5rem 1.5rem;
+  text-align: center;
+}
+
+.teacher-batches-pro__empty h3 {
+  margin: 0 0 0.35rem;
+  font-size: 1.05rem;
+  color: var(--ss-primary-900, #102a33);
+}
+
+.teacher-batches-pro__empty p {
+  margin: 0;
+  color: var(--ss-text-muted, #5a6d76);
+  font-size: 0.9rem;
 }
 
 @media (max-width: 768px) {

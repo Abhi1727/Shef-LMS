@@ -631,6 +631,17 @@ router.post('/attempts/submit', auth, async (req, res) => {
 
     await attempt.save();
 
+    // Auto-issue certificate when criteria met
+    try {
+      const assessment = await Assessment.findById(attempt.assessmentId).select('batchId').lean();
+      if (assessment?.batchId) {
+        const certificateService = require('../services/certificateService');
+        await certificateService.maybeAutoIssue(String(attempt.studentId), String(assessment.batchId));
+      }
+    } catch (certErr) {
+      console.warn('[certificates] auto-issue after submit:', certErr.message || certErr);
+    }
+
     res.json({
       message: 'Assessment submitted and scored successfully',
       attempt

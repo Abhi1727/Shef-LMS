@@ -33,8 +33,18 @@ const studentBookmarkSchema = new mongoose.Schema({
   createdAt: { type: Date, default: Date.now }
 });
 
-module.exports = {
-  StudentQuestion: mongoose.model('StudentQuestion', studentQuestionSchema),
-  StudentNote: mongoose.model('StudentNote', studentNoteSchema),
-  StudentBookmark: mongoose.model('StudentBookmark', studentBookmarkSchema)
+const __mongoInteraction = {
+  StudentQuestion:
+    mongoose.models.StudentQuestion || mongoose.model('StudentQuestion', studentQuestionSchema),
+  StudentNote: mongoose.models.StudentNote || mongoose.model('StudentNote', studentNoteSchema),
+  StudentBookmark:
+    mongoose.models.StudentBookmark || mongoose.model('StudentBookmark', studentBookmarkSchema)
 };
+module.exports =
+  String(process.env.USE_FIRESTORE || '').toLowerCase() === 'true'
+    ? {
+        StudentQuestion: require('../firestore/models').StudentQuestion,
+        StudentNote: require('../firestore/models').StudentNote,
+        StudentBookmark: require('../firestore/models').StudentBookmark
+      }
+    : __mongoInteraction;

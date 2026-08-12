@@ -115,4 +115,7 @@ const resourceSchema = new mongoose.Schema({
     updatedAt: { type: Date, default: Date.now }
 });
 
-module.exports = mongoose.model('Resource', resourceSchema);
+const __mongoResource = mongoose.models.Resource || mongoose.model('Resource', resourceSchema);
+module.exports = String(process.env.USE_FIRESTORE || '').toLowerCase() === 'true'
+  ? require('../firestore/models').Resource
+  : __mongoResource;

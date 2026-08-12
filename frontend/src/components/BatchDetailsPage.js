@@ -7,6 +7,8 @@ import { formatDateForComponent } from '../utils/dateUtils';
 import CustomVideoPlayer from './CustomVideoPlayer';
 import ActivityTimelineChart from './charts/ActivityTimelineChart';
 import { processActivityData, exportToCSV } from '../utils/activityDataProcessor';
+import { getApiBaseUrl } from '../utils/apiBase';
+import SkyLoadingScreen from './SkyLoadingScreen';
 import './BatchDetailsPage.css';
 
 const DAYS_OF_WEEK = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -713,8 +715,8 @@ const BatchDetailsPage = () => {
     const from = location.state?.from;
     
     if (from === 'admin-batches') {
-      // Navigate back to admin dashboard batches section
-      navigate('/admin', { state: { activeSection: 'batches' } });
+      const section = location.state?.activeSection || 'batches';
+      navigate('/admin', { state: { activeSection: section } });
     } else if (from === 'teacher-batches') {
       // Navigate back to teacher dashboard batches section
       navigate('/teacher', { state: { activeSection: 'batches' } });
@@ -1082,7 +1084,7 @@ const BatchDetailsPage = () => {
   };
 
   // Download full student dossier PDF
-  const handleDownloadReport = async () => {
+  const handleDownloadReport = async (periodOverride = null) => {
     try {
       if (!selectedStudentDetails?.id && !selectedStudentDetails?._id) {
         showToast('No student selected', 'warning');
@@ -1091,8 +1093,9 @@ const BatchDetailsPage = () => {
 
       let startDate;
       let endDate;
+      const period = periodOverride != null ? String(periodOverride) : reportPeriod;
 
-      if (reportPeriod === 'custom') {
+      if (period === 'custom') {
         startDate = customDateRange.start;
         endDate = customDateRange.end;
         if (!startDate || !endDate) {
@@ -1100,20 +1103,21 @@ const BatchDetailsPage = () => {
           return;
         }
       } else {
-        const days = parseInt(reportPeriod, 10) || 30;
+        const days = parseInt(String(period).replace(/\D/g, ''), 10) || 30;
         endDate = new Date().toISOString().split('T')[0];
         const start = new Date();
         start.setDate(start.getDate() - days);
         startDate = start.toISOString().split('T')[0];
       }
 
+      showToast('Generating PDF report…', 'info');
       const token = localStorage.getItem('token');
-      const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
+      const apiUrl = getApiBaseUrl();
       const studentId = selectedStudentDetails.id || selectedStudentDetails._id;
       const params = new URLSearchParams({
         startDate,
         endDate,
-        period: reportPeriod === 'custom' ? 'custom' : String(reportPeriod),
+        period: period === 'custom' ? 'custom' : String(period),
       });
 
       const response = await fetch(
@@ -2043,9 +2047,11 @@ const BatchDetailsPage = () => {
 
   if (loading) {
     return (
-      <div className="teacher-batch-details-page">
-        <div className="loading">Loading batch details...</div>
-      </div>
+      <SkyLoadingScreen
+        message="Loading batch"
+        subtext="Fetching videos, students, and schedule"
+        compact
+      />
     );
   }
 
@@ -2146,6 +2152,9 @@ const BatchDetailsPage = () => {
               </span>
               {(selectedBatch.batchType === 'one-to-one' || (selectedBatch.course || '').toLowerCase().includes('one-to-one')) && (
                 <span className="sky-badge sky-badge-type">One-to-One</span>
+              )}
+              {selectedBatch.batchType === 'project' && (
+                <span className="sky-badge sky-badge-type">Project Class</span>
               )}
               <span className={`sky-badge sky-badge-status ${selectedBatch.status}`}>
                 {selectedBatch.status}
@@ -2258,12 +2267,27 @@ const BatchDetailsPage = () => {
               <div className="videos-header">
                 <h2>Videos in {selectedBatch.name}</h2>
                 <button
+                  type="button"
                   className="sky-btn sky-btn-primary"
-                  onClick={() => {
-                    const emptyFormData = { title: '', youtubeVideoUrl: '', description: '', date: '', time: '', notesAvailable: false, notesFile: null };
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setEditingVideo(null);
+                    const emptyFormData = {
+                      title: '',
+                      youtubeVideoUrl: '',
+                      description: '',
+                      date: '',
+                      time: '',
+                      notesAvailable: false,
+                      notesFile: null,
+                    };
                     setVideoFormData(emptyFormData);
                     setInitialVideoFormData(emptyFormData);
                     setHasUnsavedVideoChanges(false);
+                    setUploadedFileInfo(null);
+                    setFileValidationError('');
+                    setIsDragOver(false);
                     setShowAddVideoModal(true);
                   }}
                 >
@@ -2933,21 +2957,33 @@ const BatchDetailsPage = () => {
       />
     )}
 
-    {showAddVideoModal && createPortal(
-      <div className="modal-overlay" onClick={handleVideoModalClose}>
-        <div className="modal" onClick={(e) => e.stopPropagation()}>
-          <div className="modal-header">
-            <h3>{editingVideo ? 'Edit Video' : 'Add Video'} to {selectedBatch.name}</h3>
+    {showAddVideoModal && selectedBatch && createPortal(
+      <div className="batch-portal-modal-overlay" onClick={handleVideoModalClose} role="presentation">
+        <div
+          className="batch-portal-modal"
+          onClick={(e) => e.stopPropagation()}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="batch-add-video-title"
+        >
+          <div className="batch-portal-modal-header">
+            <h3 id="batch-add-video-title">
+              {editingVideo ? 'Edit Video' : 'Add Video'} to {selectedBatch.name}
+            </h3>
             <button
-              className="modal-close"
+              type="button"
+              className="batch-portal-modal-close"
               onClick={handleVideoModalClose}
+              aria-label="Close"
             >
               ×
             </button>
           </div>
 
-          <div className="modal-content">
-            <p className="modal-subtitle">Paste a YouTube video URL to add it for this batch only. Each video can only be added once per batch.</p>
+          <div className="batch-portal-modal-content">
+            <p className="batch-portal-modal-subtitle">
+              Paste a YouTube video URL to add it for this batch only. Each video can only be added once per batch.
+            </p>
 
             <input
               type="text"
@@ -3079,16 +3115,17 @@ const BatchDetailsPage = () => {
             </div>
           </div>
 
-          <div className="modal-actions">
-                        <button
-                          type="button"
-                          className="btn-email-cancel"
-                          onClick={handleVideoModalClose}
+          <div className="batch-portal-modal-actions">
+            <button
+              type="button"
+              className="sky-btn sky-btn-secondary"
+              onClick={handleVideoModalClose}
             >
               Cancel
             </button>
             <button
-              className="btn-save"
+              type="button"
+              className="sky-btn sky-btn-primary"
               onClick={handleAddVideoToBatch}
             >
               Save Video
@@ -3101,31 +3138,39 @@ const BatchDetailsPage = () => {
 
     {/* Video Modal Confirmation Dialog */}
     {showVideoConfirmDialog && createPortal(
-      <div className="modal-overlay">
-        <div className="modal confirm-dialog" onClick={(e) => e.stopPropagation()}>
-          <div className="modal-header">
+      <div className="batch-portal-modal-overlay" role="presentation">
+        <div
+          className="batch-portal-modal batch-portal-confirm"
+          onClick={(e) => e.stopPropagation()}
+          role="dialog"
+          aria-modal="true"
+        >
+          <div className="batch-portal-modal-header">
             <h3>Unsaved Changes</h3>
           </div>
           
-          <div className="modal-content">
+          <div className="batch-portal-modal-content">
             <p>You have unsaved changes in the video form. What would you like to do?</p>
           </div>
           
-          <div className="modal-actions confirm-actions">
+          <div className="batch-portal-modal-actions confirm-actions">
             <button
-              className="btn-save"
+              type="button"
+              className="sky-btn sky-btn-primary"
               onClick={handleVideoConfirmSave}
             >
               Save & Close
             </button>
             <button
-              className="btn-cancel"
+              type="button"
+              className="sky-btn sky-btn-secondary"
               onClick={handleVideoConfirmDiscard}
             >
               Close without Saving
             </button>
             <button
-              className="btn-secondary"
+              type="button"
+              className="sky-btn sky-btn-ghost"
               onClick={handleVideoConfirmCancel}
             >
               Cancel
@@ -3365,61 +3410,100 @@ const BatchDetailsPage = () => {
     {showStudentDetailsModal && createPortal(
       <div className="fullscreen-modal-overlay" onClick={() => setShowStudentDetailsModal(false)}>
         <div className="fullscreen-modal student-profile-modal" onClick={(e) => e.stopPropagation()}>
-          {/* Modal Header */}
+          {(() => {
+            const s = selectedStudentDetails || {};
+            const batchLabel = selectedBatch?.name || s.batchName || 'No batch assigned';
+            const lastLoginAt = s.lastLogin?.timestamp
+              ? new Date(s.lastLogin.timestamp).toLocaleString()
+              : s.lastLoginTimestamp
+                ? new Date(s.lastLoginTimestamp).toLocaleString()
+                : 'Never';
+            const lastIp = s.lastLoginIP || s.lastLogin?.ipAddress || '—';
+            const lastLocation = [s.lastLogin?.city, s.lastLogin?.country].filter(Boolean).join(', ') || '—';
+            const joinedAt = s.createdAt || s.joinedAt || s.enrolledAt || s.joiningDate;
+            return (
+              <>
           <div className="fullscreen-modal-header">
-            <div className="student-header-info">
-              <div className="student-avatar">
-                <span className="avatar-text">
-                  {selectedStudentDetails?.name?.charAt(0).toUpperCase() || 'S'}
-                </span>
-              </div>
-              <div className="student-basic-info">
-                <h2>{selectedStudentDetails?.name || 'Student Name'}</h2>
-                <p className="student-email">{selectedStudentDetails?.email || 'email@example.com'}</p>
-                <div className="student-badges">
-                  <span className="badge badge-primary">{selectedStudentDetails?.course || 'No Course'}</span>
-                  <span className={`status-badge ${selectedStudentDetails?.status || 'inactive'}`}>
-                    {selectedStudentDetails?.status || 'Unknown'}
+            <div className="dossier-header-top">
+              <div className="student-header-info">
+                <div className="student-avatar">
+                  <span className="avatar-text">
+                    {(s.name || 'S').charAt(0).toUpperCase()}
                   </span>
                 </div>
+                <div className="student-basic-info">
+                  <p className="dossier-eyebrow">Candidate profile</p>
+                  <h2>{s.name || 'Student'}</h2>
+                  <p className="student-email">{s.email || '—'}</p>
+                  <div className="student-badges">
+                    <span className={`badge ${s.status || 'active'}`}>
+                      {s.status || 'Active'}
+                    </span>
+                    <span className="badge">{s.course || 'No course'}</span>
+                    <span className="badge">{batchLabel}</span>
+                  </div>
+                </div>
+              </div>
+              <div className="modal-header-actions">
+                <button
+                  type="button"
+                  className="btn-create-report btn-create-report--header"
+                  onClick={() => handleDownloadReport('30')}
+                  title="Create PDF report (last 30 days)"
+                >
+                  Create Report
+                </button>
+                {activeProfileTab === 'profile' && (
+                  <button
+                    type="button"
+                    className="btn-edit-profile"
+                    onClick={() => {
+                      if (editMode) {
+                        handleCancelEdit();
+                      } else {
+                        setEditMode(true);
+                      }
+                    }}
+                  >
+                    {editMode ? 'View profile' : 'Edit profile'}
+                  </button>
+                )}
+                <button
+                  type="button"
+                  className="modal-close-fullscreen"
+                  onClick={() => setShowStudentDetailsModal(false)}
+                  aria-label="Close"
+                >
+                  ×
+                </button>
               </div>
             </div>
-            <div className="modal-header-actions">
-              <button 
-                className="btn-edit-profile"
-                onClick={() => setEditMode(!editMode)}
+            <div className="header-tab-buttons dossier-tabs">
+              <button
+                type="button"
+                className={`header-tab-btn ${activeProfileTab === 'profile' ? 'active' : ''}`}
+                onClick={() => setActiveProfileTab('profile')}
               >
-                {editMode ? '👁️ View Mode' : '✏️ Edit Profile'}
+                Profile
               </button>
-              <button className="modal-close-fullscreen" onClick={() => setShowStudentDetailsModal(false)}>×</button>
+              <button
+                type="button"
+                className={`header-tab-btn ${activeProfileTab === 'activity' ? 'active' : ''}`}
+                onClick={() => setActiveProfileTab('activity')}
+              >
+                Activity
+              </button>
+              <button
+                type="button"
+                className={`header-tab-btn ${activeProfileTab === 'reports' ? 'active' : ''}`}
+                onClick={() => setActiveProfileTab('reports')}
+              >
+                Reports
+              </button>
             </div>
           </div>
 
-          {/* Tab Navigation */}
-          <div className="profile-tabs-nav">
-            <button 
-              className={`tab-btn ${activeProfileTab === 'profile' ? 'active' : ''}`}
-              onClick={() => setActiveProfileTab('profile')}
-            >
-              👤 Profile
-            </button>
-            <button 
-              className={`tab-btn ${activeProfileTab === 'activity' ? 'active' : ''}`}
-              onClick={() => setActiveProfileTab('activity')}
-            >
-              📊 Activity Log
-            </button>
-            <button 
-              className={`tab-btn ${activeProfileTab === 'reports' ? 'active' : ''}`}
-              onClick={() => setActiveProfileTab('reports')}
-            >
-              📈 Reports
-            </button>
-          </div>
-
-          {/* Tab Content */}
           <div className="fullscreen-modal-content">
-            {/* Profile Tab */}
             {activeProfileTab === 'profile' && (
               <div className="profile-tab-content">
                 {editMode ? (
@@ -3475,96 +3559,133 @@ const BatchDetailsPage = () => {
                       />
                     </div>
                     <div className="form-actions compact-form-actions">
-                      <button className="btn-save" onClick={handleSaveProfile}>
-                        💾 Save Changes
+                      <button type="button" className="btn-save" onClick={handleSaveProfile}>
+                        Save changes
                       </button>
-                      <button className="btn-cancel" onClick={handleCancelEdit}>
-                        ❌ Cancel
+                      <button type="button" className="btn-cancel" onClick={handleCancelEdit}>
+                        Cancel
                       </button>
                     </div>
                   </div>
                 ) : (
-                  <div className="profile-dense-grid">
-                    <div className="profile-card profile-card-personal">
-                      <h3>📝 Personal Information</h3>
-                      <div className="profile-details compact-details">
-                        <div className="detail-item">
-                          <label>Full Name</label>
-                          <span>{selectedStudentDetails?.name || 'N/A'}</span>
-                        </div>
-                        <div className="detail-item">
-                          <label>Email Address</label>
-                          <span className="truncate-value">{selectedStudentDetails?.email || 'N/A'}</span>
-                        </div>
-                        <div className="detail-item">
-                          <label>Phone Number</label>
-                          <span>{selectedStudentDetails?.phone || 'N/A'}</span>
-                        </div>
-                        <div className="detail-item wide-detail">
-                          <label>Address</label>
-                          <span>{selectedStudentDetails?.address || 'N/A'}</span>
-                        </div>
+                  <>
+                    <div className="dossier-kpis">
+                      <div className="dossier-kpi">
+                        <strong>{batchLabel}</strong>
+                        <span>Batch</span>
+                      </div>
+                      <div className="dossier-kpi">
+                        <strong>{s.course || '—'}</strong>
+                        <span>Program</span>
+                      </div>
+                      <div className="dossier-kpi">
+                        <strong>{lastLoginAt}</strong>
+                        <span>Last login</span>
+                      </div>
+                      <div className="dossier-kpi">
+                        <strong>{lastIp}</strong>
+                        <span>Last IP</span>
                       </div>
                     </div>
 
-                    <div className="profile-card profile-card-academic">
-                      <h3>🎓 Academic Information</h3>
-                      <div className="profile-details compact-details">
-                        <div className="detail-item">
-                          <label>Course</label>
-                          <span>{selectedStudentDetails?.course || 'N/A'}</span>
-                        </div>
-                        <div className="detail-item">
-                          <label>Status</label>
-                          <span>
-                            <span className={`status-badge ${(selectedStudentDetails?.status || 'active').toLowerCase()}`}>
-                              {selectedStudentDetails?.status || 'Active'}
-                            </span>
-                          </span>
-                        </div>
-                        <div className="detail-item">
-                          <label>Batch Name</label>
-                          <span>{selectedBatch?.name || 'N/A'}</span>
-                        </div>
-                        <div className="detail-item">
-                          <label>Student ID</label>
-                          <span className="truncate-value mono-id" title={selectedStudentDetails?.id || ''}>
-                            {selectedStudentDetails?.id || 'N/A'}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="profile-card profile-card-login">
-                      <h3>📍 Login Activity</h3>
-                      {(selectedStudentDetails?.lastLogin || selectedStudentDetails?.lastLoginIP) ? (
+                    <div className="profile-dense-grid">
+                      <div className="profile-card profile-card-personal">
+                        <h3>Personal information</h3>
                         <div className="profile-details compact-details">
+                          <div className="detail-item">
+                            <label>Full name</label>
+                            <span>{s.name || '—'}</span>
+                          </div>
+                          <div className="detail-item">
+                            <label>Email</label>
+                            <span className="truncate-value">{s.email || '—'}</span>
+                          </div>
+                          <div className="detail-item">
+                            <label>Phone</label>
+                            <span>{s.phone || '—'}</span>
+                          </div>
+                          <div className="detail-item">
+                            <label>Enrollment no.</label>
+                            <span>{s.enrollmentNumber || '—'}</span>
+                          </div>
+                          <div className="detail-item">
+                            <label>Form no.</label>
+                            <span>{s.formNumber || '—'}</span>
+                          </div>
                           <div className="detail-item wide-detail">
-                            <label>Last Login</label>
-                            <span>{selectedStudentDetails?.lastLogin?.timestamp ? new Date(selectedStudentDetails.lastLogin.timestamp).toLocaleString() : selectedStudentDetails?.lastLoginTimestamp ? new Date(selectedStudentDetails.lastLoginTimestamp).toLocaleString() : 'Never'}</span>
-                          </div>
-                          <div className="detail-item">
-                            <label>Last IP</label>
-                            <span className="ip-address">{selectedStudentDetails?.lastLoginIP || selectedStudentDetails?.lastLogin?.ipAddress || 'N/A'}</span>
-                          </div>
-                          <div className="detail-item">
-                            <label>Location</label>
-                            <span>{[selectedStudentDetails?.lastLogin?.city, selectedStudentDetails?.lastLogin?.country].filter(Boolean).join(', ') || 'N/A'}</span>
+                            <label>Address</label>
+                            <span>{s.address || '—'}</span>
                           </div>
                         </div>
-                      ) : (
-                        <p className="no-activity">No login activity recorded yet.</p>
-                      )}
+                      </div>
+
+                      <div className="profile-card profile-card-academic">
+                        <h3>Academic information</h3>
+                        <div className="profile-details compact-details">
+                          <div className="detail-item">
+                            <label>Program</label>
+                            <span>{s.course || '—'}</span>
+                          </div>
+                          <div className="detail-item">
+                            <label>Status</label>
+                            <span>
+                              <span className={`dossier-status ${s.status || 'inactive'}`}>
+                                {s.status || '—'}
+                              </span>
+                            </span>
+                          </div>
+                          <div className="detail-item">
+                            <label>Batch</label>
+                            <span>{batchLabel}</span>
+                          </div>
+                          <div className="detail-item">
+                            <label>Role</label>
+                            <span style={{ textTransform: 'capitalize' }}>{s.role || 'student'}</span>
+                          </div>
+                          <div className="detail-item">
+                            <label>Student ID</label>
+                            <span className="truncate-value">{s.id || s._id || '—'}</span>
+                          </div>
+                          <div className="detail-item">
+                            <label>Joined</label>
+                            <span>{joinedAt ? new Date(joinedAt).toLocaleDateString() : '—'}</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="profile-card profile-card-login">
+                        <h3>Login & location</h3>
+                        {(s.lastLogin || s.lastLoginIP || s.lastLoginTimestamp) ? (
+                          <div className="profile-details compact-details">
+                            <div className="detail-item">
+                              <label>Last login</label>
+                              <span>{lastLoginAt}</span>
+                            </div>
+                            <div className="detail-item">
+                              <label>IP address</label>
+                              <span className="ip-address">{lastIp}</span>
+                            </div>
+                            <div className="detail-item">
+                              <label>Location</label>
+                              <span>{lastLocation}</span>
+                            </div>
+                            <div className="detail-item">
+                              <label>ISP</label>
+                              <span>{s.lastLogin?.isp || '—'}</span>
+                            </div>
+                          </div>
+                        ) : (
+                          <p className="no-activity">No login activity recorded yet.</p>
+                        )}
+                      </div>
                     </div>
-                  </div>
+                  </>
                 )}
               </div>
             )}
 
-            {/* Activity Tab */}
             {activeProfileTab === 'activity' && (
               <div className="activity-tab-content">
-                {/* Graph Controls */}
                 <div className="graph-controls">
                   <div className="control-row">
                     <div className="control-group">
@@ -3611,17 +3732,17 @@ const BatchDetailsPage = () => {
                       </div>
                     </div>
                     <div className="control-actions">
-                      <button 
+                      <button
+                        type="button"
                         className="btn-download-csv"
                         onClick={handleDownloadGraphCSV}
                       >
-                        📥 Download CSV
+                        Download CSV
                       </button>
                     </div>
                   </div>
                 </div>
 
-                {/* Activity Timeline Chart */}
                 <div className="activity-graph-section">
                   {loadingActivity ? (
                     <div className="chart-loading">Loading activity data...</div>
@@ -3635,10 +3756,9 @@ const BatchDetailsPage = () => {
                   )}
                 </div>
 
-                {/* Detailed Activity List */}
                 <div className="detailed-activity-section">
                   <div className="section-header">
-                    <h4>📋 Detailed Activity Log</h4>
+                    <h4>Detailed activity log</h4>
                     <div className="legacy-filters">
                       <select
                         value={activityFilter.action || ''}
@@ -3651,15 +3771,15 @@ const BatchDetailsPage = () => {
                         <option value="assessment_submit">Assessment Submit</option>
                         <option value="page_view">Page View</option>
                       </select>
-                      <button className="btn-filter" onClick={handleFilterActivity}>
-                        🔍 Apply Filters
+                      <button type="button" className="btn-filter" onClick={handleFilterActivity}>
+                        Apply filters
                       </button>
-                      <button className="btn-clear" onClick={handleClearActivityFilter}>
-                        🔄 Clear
+                      <button type="button" className="btn-clear" onClick={handleClearActivityFilter}>
+                        Clear
                       </button>
                     </div>
                   </div>
-                  
+
                   {studentActivities.length > 0 ? (
                     <>
                       <div className="activity-list compact">
@@ -3708,7 +3828,7 @@ const BatchDetailsPage = () => {
                     </>
                   ) : (
                     <div className="no-activity-data">
-                      <p>📊 No activity data found for this student.</p>
+                      <p>No activity data found for this student.</p>
                       <small>Try adjusting the filters or date range.</small>
                     </div>
                   )}
@@ -3716,14 +3836,13 @@ const BatchDetailsPage = () => {
               </div>
             )}
 
-            {/* Reports Tab */}
             {activeProfileTab === 'reports' && (
               <div className="reports-tab-content">
                 <div className="reports-header">
-                  <h3>📈 Student Activity Reports</h3>
+                  <h3>Student activity reports</h3>
                   <div className="report-actions">
                     <div className="date-range-selector">
-                      <label>Report Period:</label>
+                      <label>Report period</label>
                       <select
                         value={reportPeriod}
                         onChange={(e) => setReportPeriod(e.target.value)}
@@ -3752,11 +3871,12 @@ const BatchDetailsPage = () => {
                         />
                       </div>
                     )}
-                    <button 
+                    <button
+                      type="button"
                       className="btn-generate-report"
                       onClick={handleGenerateReport}
                     >
-                      📊 Generate Report
+                      Generate summary
                     </button>
                   </div>
                 </div>
@@ -3783,23 +3903,27 @@ const BatchDetailsPage = () => {
                         </div>
                       </div>
                       <div className="report-actions-bottom">
-                        <button 
-                          className="btn-download-report"
-                          onClick={handleDownloadReport}
+                        <button
+                          type="button"
+                          className="btn-create-report btn-create-report--header"
+                          onClick={() => handleDownloadReport()}
                         >
-                          📥 Download Full Report (PDF)
+                          Download full report (PDF)
                         </button>
                       </div>
                     </div>
                   ) : (
                     <div className="no-report">
-                      <p>📊 Select a time period and generate a report to see student activity summary.</p>
+                      <p>Select a time period and generate a summary, or use Create Report for a PDF dossier.</p>
                     </div>
                   )}
                 </div>
               </div>
             )}
           </div>
+              </>
+            );
+          })()}
         </div>
       </div>,
       document.body

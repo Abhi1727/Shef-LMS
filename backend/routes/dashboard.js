@@ -5,6 +5,7 @@ const User = require('../models/User');
 const Classroom = require('../models/Classroom');
 const Batch = require('../models/Batch');
 const logger = require('../utils/logger');
+const lessonPath = require('../services/lessonPath');
 
 // Apply auth middleware to all dashboard routes
 router.use(auth);
@@ -109,7 +110,26 @@ router.get('/classroom', async (req, res) => {
       return false;
     });
 
-    // Sort videos by class date (newest first)
+    // Lesson path order + unlock annotations for students
+    if (tokenUser.role === 'student' && userBatchId) {
+      const path = await lessonPath.buildLessonPath({
+        batchId: userBatchId,
+        studentId: tokenUser.id
+      });
+      return res.json(
+        path.map((lesson) => ({
+          ...lesson,
+          // Keep legacy field names used by Dashboard player
+          notesFilePath: lesson.notesAvailable ? true : undefined
+        }))
+      );
+    }
+
+    if (tokenUser.role === 'student') {
+      return res.json([]);
+    }
+
+    // Non-students: newest first (legacy)
     const sortedVideos = filteredVideos.sort((a, b) => {
       const getVideoDate = (v) => {
         if (v.isOneToOne && v.classDate) {
@@ -123,7 +143,7 @@ router.get('/classroom', async (req, res) => {
       };
       const dateA = getVideoDate(a);
       const dateB = getVideoDate(b);
-      return dateB - dateA; // Newest first (descending order)
+      return dateB - dateA;
     });
 
     res.json(sortedVideos);
@@ -132,7 +152,6 @@ router.get('/classroom', async (req, res) => {
     res.status(500).json({ message: 'Error fetching classroom videos' });
   }
 });
-
 // @route   GET /api/dashboard/stats
 // @desc    Honest dashboard stats for the current student
 router.get('/stats', async (req, res) => {
@@ -154,12 +173,17 @@ router.get('/stats', async (req, res) => {
         })
       : [];
 
+    const Certificate = require('../models/Certificate');
+    const certificatesEarned = userId
+      ? await Certificate.countDocuments({ studentId: String(userId) })
+      : 0;
+
     res.json({
       enrolledCourses: batchId ? 1 : 0,
       completedCourses: 0,
       inProgressCourses: batchId ? 1 : 0,
       totalLearningHours: null,
-      certificatesEarned: 0,
+      certificatesEarned,
       upcomingClasses: 0,
       totalVideos,
       watchedVideos: Math.min(watchedIds.length, totalVideos || watchedIds.length),

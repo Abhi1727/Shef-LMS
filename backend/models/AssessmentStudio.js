@@ -70,6 +70,7 @@ const assessmentSchema = new mongoose.Schema({
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   batchId: { type: mongoose.Schema.Types.ObjectId, refPath: 'batchType' }, // Link to a batch/classroom
   batchType: { type: String, enum: ['Batch', 'OneToOneBatch'], default: 'Batch' },
+  classroomLectureId: { type: String, default: '', index: true },
   status: { type: String, enum: ['draft', 'published', 'archived'], default: 'draft' },
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now }
@@ -121,11 +122,27 @@ const generatedNotesSchema = new mongoose.Schema({
   createdAt: { type: Date, default: Date.now }
 });
 
-module.exports = {
-  KnowledgeSource: mongoose.model('KnowledgeSource', knowledgeSourceSchema),
-  KnowledgeChunk: mongoose.model('KnowledgeChunk', knowledgeChunkSchema),
-  Question: mongoose.model('Question', questionSchema),
-  Assessment: mongoose.model('Assessment', assessmentSchema),
-  AssessmentAttempt: mongoose.model('AssessmentAttempt', assessmentAttemptSchema),
-  GeneratedNotes: mongoose.model('GeneratedNotes', generatedNotesSchema)
+const __mongoAssessment = {
+  KnowledgeSource:
+    mongoose.models.KnowledgeSource || mongoose.model('KnowledgeSource', knowledgeSourceSchema),
+  KnowledgeChunk:
+    mongoose.models.KnowledgeChunk || mongoose.model('KnowledgeChunk', knowledgeChunkSchema),
+  Question: mongoose.models.Question || mongoose.model('Question', questionSchema),
+  Assessment: mongoose.models.Assessment || mongoose.model('Assessment', assessmentSchema),
+  AssessmentAttempt:
+    mongoose.models.AssessmentAttempt ||
+    mongoose.model('AssessmentAttempt', assessmentAttemptSchema),
+  GeneratedNotes:
+    mongoose.models.GeneratedNotes || mongoose.model('GeneratedNotes', generatedNotesSchema)
 };
+module.exports =
+  String(process.env.USE_FIRESTORE || '').toLowerCase() === 'true'
+    ? {
+        KnowledgeSource: require('../firestore/models').KnowledgeSource,
+        KnowledgeChunk: require('../firestore/models').KnowledgeChunk,
+        Question: require('../firestore/models').Question,
+        Assessment: require('../firestore/models').Assessment,
+        AssessmentAttempt: require('../firestore/models').AssessmentAttempt,
+        GeneratedNotes: require('../firestore/models').GeneratedNotes
+      }
+    : __mongoAssessment;

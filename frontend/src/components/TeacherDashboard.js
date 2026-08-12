@@ -6,13 +6,22 @@ import axios from 'axios';
 import AssessmentStudio from './AssessmentStudio';
 import ChangePasswordPanel from './ChangePasswordPanel';
 import AccountMenu from './AccountMenu';
+import SkyLoadingScreen from './SkyLoadingScreen';
+import DirectChatPanel from './DirectChatPanel';
+import MeetLiveClassesPanel from './MeetLiveClassesPanel';
+import TeacherAttendanceHub from './TeacherAttendanceHub';
+import TeacherAvailabilityPanel from './TeacherAvailabilityPanel';
+import { formatDateForComponent } from '../utils/dateUtils';
 import './Dashboard.css';
+import './MeetLiveClasses.css';
 import { getApiBaseUrl } from '../utils/apiBase';
 
 const TeacherDashboard = ({ user, onLogout }) => {
   const navigate = useNavigate();
   const location = useLocation();
   const [activeSection, setActiveSection] = useState('overview');
+  const [isAvailable, setIsAvailable] = useState(false);
+  const [availabilitySaving, setAvailabilitySaving] = useState(false);
   const [courses, setCourses] = useState(() => {
     try {
       const cached = sessionStorage.getItem('teacher_courses_cache');
@@ -61,6 +70,8 @@ const TeacherDashboard = ({ user, onLogout }) => {
   });
   const [teacherStudents, setTeacherStudents] = useState([]);
   const [studentSearch, setStudentSearch] = useState('');
+  const [studentCourseFilter, setStudentCourseFilter] = useState('all');
+  const [studentBatchFilter, setStudentBatchFilter] = useState('all');
   const [studentsLoading, setStudentsLoading] = useState(false);
   const [studentName, setStudentName] = useState('');
   const [batchName, setBatchName] = useState('');
@@ -114,32 +125,99 @@ const TeacherDashboard = ({ user, onLogout }) => {
     }
   };
 
+  const isOneToOneBatch = (batch) => {
+    if (!batch) return false;
+    if (batch.batchType === 'one-to-one') return true;
+    const course = (batch.course || '').toLowerCase();
+    return course.includes('one-to-one') || course === 'one to one';
+  };
+
+  const isProjectBatch = (batch) => Boolean(batch && batch.batchType === 'project');
+
+  // Filter batches based on search and filters
+  const filteredTeacherStudents = React.useMemo(() => {
+    const q = studentSearch.trim().toLowerCase();
+    return teacherStudents.filter((s) => {
+      if (studentCourseFilter !== 'all') {
+        const course = String(s.course || '').toLowerCase();
+        if (course !== String(studentCourseFilter).toLowerCase()) return false;
+      }
+      if (studentBatchFilter !== 'all') {
+        const bid = String(s.batchId || '');
+        const bname = String(s.batchName || '').toLowerCase();
+        if (bid !== String(studentBatchFilter) && bname !== String(studentBatchFilter).toLowerCase()) {
+          return false;
+        }
+      }
+      if (!q) return true;
+      return [s.name, s.enrollmentNumber]
+        .filter(Boolean)
+        .some((v) => String(v).toLowerCase().includes(q));
+    });
+  }, [teacherStudents, studentSearch, studentCourseFilter, studentBatchFilter]);
+
+  const studentCourseOptions = React.useMemo(() => {
+    const set = new Set();
+    teacherStudents.forEach((s) => {
+      if (s.course) set.add(String(s.course));
+    });
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [teacherStudents]);
+
+  const studentBatchOptions = React.useMemo(() => {
+    const map = new Map();
+    teacherStudents.forEach((s) => {
+      const id = String(s.batchId || s.batchName || '');
+      if (!id) return;
+      if (!map.has(id)) {
+        map.set(id, s.batchName || s.batchId || id);
+      }
+    });
+    return Array.from(map.entries())
+      .map(([id, name]) => ({ id, name }))
+      .sort((a, b) => String(a.name).localeCompare(String(b.name)));
+  }, [teacherStudents]);
+
   // Filter batches based on search and filters
   const filteredBatches = React.useMemo(() => {
     let filtered = batches;
-    
+
     // Apply search filter
     if (batchSearch.trim()) {
       filtered = filtered.filter(batch => 
         batch.name?.toLowerCase().includes(batchSearch.toLowerCase()) ||
-        batch.course?.toLowerCase().includes(batchSearch.toLowerCase())
+        batch.course?.toLowerCase().includes(batchSearch.toLowerCase()) ||
+        (batch.programLabel || '').toLowerCase().includes(batchSearch.toLowerCase())
       );
     }
     
-    // Apply course filter
+    // Apply course / type filter (use batchType for 1:1 and project)
     if (courseFilter !== 'all') {
       filtered = filtered.filter(batch => {
-        const course = batch.course?.toLowerCase() || '';
+        if (courseFilter === 'one-to-one') {
+          return isOneToOneBatch(batch);
+        }
+        if (courseFilter === 'project') {
+          return isProjectBatch(batch);
+        }
+
+        // Program chips: exclude private class types so they only show under their own chips
+        if (isOneToOneBatch(batch) || isProjectBatch(batch)) {
+          return false;
+        }
+
+        const course = (batch.course || batch.programLabel || '').toLowerCase();
         if (courseFilter === 'data-science') {
           return course.includes('data science') || course.includes('ds&ai');
-        } else if (courseFilter === 'cyber-security') {
+        }
+        if (courseFilter === 'cyber-security') {
           return course.includes('cyber') || course.includes('security') || course.includes('cs&eh');
-        } else if (courseFilter === 'devops-ai') {
+        }
+        if (courseFilter === 'devops-ai') {
           return course.includes('devops') && course.includes('ai');
-        } else if (courseFilter === 'devops-cloud') {
+        }
+        if (courseFilter === 'devops-cloud') {
           return course.includes('devops') && course.includes('cloud');
-        } else if (courseFilter === 'one-to-one') {
-          return course.includes('one-to-one');
         }
         return true;
       });
@@ -161,25 +239,6 @@ const TeacherDashboard = ({ user, onLogout }) => {
     setStatusFilter('all');
   };
 
-  const getCourseIcon = (course) => {
-    const courseLower = (course || '').toLowerCase();
-    if (courseLower.includes('data science') || courseLower.includes('ds&ai')) return '📊';
-    if (courseLower.includes('cyber') || courseLower.includes('security') || courseLower.includes('cs&eh')) return '🔒';
-    if (courseLower.includes('devops') && courseLower.includes('ai')) return '🚀';
-    if (courseLower.includes('devops') && courseLower.includes('cloud')) return '☁️';
-    if (courseLower.includes('one-to-one')) return '👥';
-    return '📚';
-  };
-
-  const getStatusColor = (status) => {
-    switch ((status || 'active').toLowerCase()) {
-      case 'active': return '#10b981';
-      case 'completed': return '#6b7280';
-      case 'upcoming': return '#f59e0b';
-      default: return '#64748b';
-    }
-  };
-
   const handleViewBatchDetail = (batchOrId) => {
     const id =
       typeof batchOrId === 'object' && batchOrId
@@ -193,6 +252,57 @@ const TeacherDashboard = ({ user, onLogout }) => {
   };
 
   const getApiUrl = () => getApiBaseUrl();
+
+  const loadAvailability = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch(`${getApiUrl()}/api/teacher/availability`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setIsAvailable(Boolean(data.isAvailable));
+      }
+    } catch (err) {
+      console.warn('Failed to load availability', err);
+    }
+  };
+
+  const toggleAvailability = async () => {
+    if (availabilitySaving) return;
+    setAvailabilitySaving(true);
+    const next = !isAvailable;
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch(`${getApiUrl()}/api/teacher/availability`, {
+        method: 'PATCH',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ isAvailable: next })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        showToast(data.message || 'Could not update availability', 'error');
+        return;
+      }
+      setIsAvailable(Boolean(data.isAvailable));
+      showToast(
+        data.isAvailable ? 'Marked available for admins' : 'Marked unavailable for admins',
+        'success'
+      );
+    } catch (err) {
+      showToast('Could not update availability', 'error');
+    } finally {
+      setAvailabilitySaving(false);
+    }
+  };
+
+  useEffect(() => {
+    loadAvailability();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const loadTeacherStudents = async () => {
     setStudentsLoading(true);
@@ -346,13 +456,7 @@ const TeacherDashboard = ({ user, onLogout }) => {
 
   const formatDate = (dateString) => {
     if (!dateString) return 'N/A';
-    return new Date(dateString).toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
+    return formatDateForComponent(dateString);
   };
 
   const loadLectures = async (courseId) => {
@@ -655,115 +759,10 @@ const TeacherDashboard = ({ user, onLogout }) => {
 
   if (loading) {
     return (
-      <div className="dashboard">
-        <div className="premium-loading-container">
-          <div className="loading-backdrop">
-            {/* Animated Background Elements */}
-            <div className="loading-particles" id="loading-particles-container"></div>
-            <div className="loading-geometric" id="loading-geometric-container"></div>
-            
-            <div className="loading-content">
-              <div className="loading-animation">
-                {/* Advanced Multi-Ring Spinner */}
-                <div className="loading-spinner-advanced">
-                  <div className="spinner-ring ring-1"></div>
-                  <div className="spinner-ring ring-2"></div>
-                  <div className="spinner-ring ring-3"></div>
-                  <div className="spinner-core">
-                    <div className="core-icon">📚</div>
-                  </div>
-                </div>
-                
-                {/* SVG Progress Ring */}
-                <svg className="progress-ring" width="120" height="120">
-                  <circle
-                    className="progress-ring-background"
-                    cx="60"
-                    cy="60"
-                    r="54"
-                    fill="none"
-                    stroke="rgba(79, 70, 229, 0.1)"
-                    strokeWidth="4"
-                  />
-                  <circle
-                    className="progress-ring-fill"
-                    cx="60"
-                    cy="60"
-                    r="54"
-                    fill="none"
-                    stroke="url(#gradient)"
-                    strokeWidth="4"
-                    strokeLinecap="round"
-                    strokeDasharray={`${2 * Math.PI * 54}`}
-                    strokeDashoffset={`${2 * Math.PI * 54 * (1 - loadingProgress / 100)}`}
-                    style={{
-                      transition: 'stroke-dashoffset 0.3s ease'
-                    }}
-                  />
-                  <defs>
-                    <linearGradient id="gradient" x1="0%" y1="0%" x2="100%" y2="100%">
-                      <stop offset="0%" stopColor="#4F46E5" />
-                      <stop offset="50%" stopColor="#7C3AED" />
-                      <stop offset="100%" stopColor="#06B6D4" />
-                    </linearGradient>
-                  </defs>
-                </svg>
-              </div>
-              
-              <div className="loading-text">
-                <h3 className="loading-title">Setting up your dashboard</h3>
-                <p className="loading-status">{loadingState}</p>
-                <div className="progress-bar">
-                  <div 
-                    className="progress-fill" 
-                    style={{ width: `${loadingProgress}%` }}
-                  ></div>
-                </div>
-                <div className="progress-percentage">{loadingProgress}%</div>
-              </div>
-              
-              {/* Skeleton Cards representing dashboard sections */}
-              <div className="loading-skeleton">
-                <div className="skeleton-card skeleton-overview">
-                  <div className="skeleton-header">
-                    <div className="skeleton-title"></div>
-                    <div className="skeleton-subtitle"></div>
-                  </div>
-                  <div className="skeleton-stats">
-                    <div className="skeleton-stat"></div>
-                    <div className="skeleton-stat"></div>
-                    <div className="skeleton-stat"></div>
-                  </div>
-                </div>
-                
-                <div className="skeleton-card skeleton-batches">
-                  <div className="skeleton-header">
-                    <div className="skeleton-title"></div>
-                    <div className="skeleton-badge"></div>
-                  </div>
-                  <div className="skeleton-content">
-                    <div className="skeleton-row"></div>
-                    <div className="skeleton-row"></div>
-                    <div className="skeleton-row"></div>
-                  </div>
-                </div>
-                
-                <div className="skeleton-card skeleton-students">
-                  <div className="skeleton-header">
-                    <div className="skeleton-title"></div>
-                  </div>
-                  <div className="skeleton-grid">
-                    <div className="skeleton-item"></div>
-                    <div className="skeleton-item"></div>
-                    <div className="skeleton-item"></div>
-                    <div className="skeleton-item"></div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
+      <SkyLoadingScreen
+        message="Loading teacher dashboard"
+        subtext={loadingState || 'Preparing your Sky States workspace'}
+      />
     );
   }
 
@@ -776,6 +775,21 @@ const TeacherDashboard = ({ user, onLogout }) => {
             <p className="ss-shell-brand__role">Teacher</p>
           </div>
           <div className="ss-shell-actions">
+            <label
+              className={`ss-toggle ${isAvailable ? 'is-on' : ''}`}
+              title="Visible to admins only — students do not see this"
+            >
+              <input
+                type="checkbox"
+                checked={isAvailable}
+                disabled={availabilitySaving}
+                onChange={toggleAvailability}
+              />
+              <span className="ss-toggle__track" aria-hidden="true" />
+              <span className="ss-toggle__label">
+                {availabilitySaving ? 'Saving…' : isAvailable ? 'Available' : 'Unavailable'}
+              </span>
+            </label>
             <AccountMenu
               user={user}
               onLogout={onLogout}
@@ -800,6 +814,13 @@ const TeacherDashboard = ({ user, onLogout }) => {
           </button>
           <button
             type="button"
+            className={`ss-shell-nav__btn ${activeSection === 'attendance' ? 'is-active' : ''}`}
+            onClick={() => setActiveSection('attendance')}
+          >
+            Attendance
+          </button>
+          <button
+            type="button"
             className={`ss-shell-nav__btn ${activeSection === 'students' ? 'is-active' : ''}`}
             onClick={() => {
               setActiveSection('students');
@@ -810,10 +831,31 @@ const TeacherDashboard = ({ user, onLogout }) => {
           </button>
           <button
             type="button"
+            className={`ss-shell-nav__btn ${activeSection === 'availability' ? 'is-active' : ''}`}
+            onClick={() => setActiveSection('availability')}
+          >
+            Availability
+          </button>
+          <button
+            type="button"
+            className={`ss-shell-nav__btn ${activeSection === 'messages' ? 'is-active' : ''}`}
+            onClick={() => setActiveSection('messages')}
+          >
+            Messages
+          </button>
+          <button
+            type="button"
             className={`ss-shell-nav__btn ${activeSection === 'lectures' ? 'is-active' : ''}`}
             onClick={() => setActiveSection('lectures')}
           >
             Lectures
+          </button>
+          <button
+            type="button"
+            className={`ss-shell-nav__btn ${activeSection === 'meet' ? 'is-active' : ''}`}
+            onClick={() => setActiveSection('meet')}
+          >
+            Live class
           </button>
           <button
             type="button"
@@ -836,7 +878,11 @@ const TeacherDashboard = ({ user, onLogout }) => {
         {activeSection === 'overview' && (
           <div className="dashboard-section">
             <h1 className="ss-page-title">Welcome back, {user?.name}</h1>
-            <p className="ss-page-sub">Manage your batches, lectures, and student rosters.</p>
+            <p className="ss-page-sub">
+              Run cohort sessions, track attendance, and keep materials current. Your availability
+              toggle is for <strong>admins only</strong> — currently{' '}
+              <strong>{isAvailable ? 'Available' : 'Unavailable'}</strong>.
+            </p>
 
             <div className="ss-stat-row">
               <div className="ss-stat">
@@ -851,7 +897,11 @@ const TeacherDashboard = ({ user, onLogout }) => {
               </div>
               <div className="ss-stat">
                 <div className="ss-stat__value">{lectures.length || '—'}</div>
-                <div className="ss-stat__label">Lectures loaded</div>
+                <div className="ss-stat__label">Lectures</div>
+              </div>
+              <div className="ss-stat">
+                <div className="ss-stat__value">{isAvailable ? 'On' : 'Off'}</div>
+                <div className="ss-stat__label">Admin availability</div>
               </div>
             </div>
 
@@ -861,199 +911,247 @@ const TeacherDashboard = ({ user, onLogout }) => {
                 <button type="button" className="ss-shell-btn ss-shell-btn--primary" onClick={() => setActiveSection('courses')}>
                   Open batches
                 </button>
-                <button type="button" className="ss-shell-btn" onClick={() => setActiveSection('lectures')}>
-                  Add lecture
+                <button type="button" className="ss-shell-btn" onClick={() => setActiveSection('attendance')}>
+                  Attendance
                 </button>
-                <button
-                  type="button"
-                  className="ss-shell-btn"
-                  onClick={() => {
-                    setActiveSection('students');
-                    loadTeacherStudents();
-                  }}
-                >
-                  View students
+                <button type="button" className="ss-shell-btn" onClick={() => setActiveSection('meet')}>
+                  Live class
+                </button>
+                <button type="button" className="ss-shell-btn" onClick={() => setActiveSection('availability')}>
+                  Weekly windows
                 </button>
               </div>
+            </div>
+
+            {batches.length === 0 ? (
+              <div className="ss-panel" style={{ marginTop: '1rem' }}>
+                <h2 style={{ margin: '0 0 0.35rem', fontSize: '1.05rem' }}>Getting started</h2>
+                <p className="ss-page-sub" style={{ margin: 0 }}>
+                  No batches assigned yet. Once an admin adds you to a cohort, they will appear under
+                  Batches — then you can schedule Meet sessions and upload Classroom materials.
+                </p>
+              </div>
+            ) : (
+              <div className="ss-panel" style={{ marginTop: '1rem' }}>
+                <h2 style={{ margin: '0 0 0.5rem', fontSize: '1.05rem' }}>Your batches</h2>
+                <ul style={{ margin: 0, paddingLeft: '1.1rem', lineHeight: 1.6 }}>
+                  {batches.slice(0, 6).map((b) => (
+                    <li key={String(b.id || b._id)}>
+                      <strong>{b.name || 'Batch'}</strong>
+                      {b.course ? ` · ${b.course}` : ''}
+                      {b.schedule?.days
+                        ? ` · ${b.schedule.days}${b.schedule?.time ? ` @ ${b.schedule.time}` : ''}`
+                        : ''}
+                    </li>
+                  ))}
+                </ul>
+                {batches.length > 6 && (
+                  <button
+                    type="button"
+                    className="ss-shell-btn"
+                    style={{ marginTop: '0.75rem' }}
+                    onClick={() => setActiveSection('courses')}
+                  >
+                    View all {batches.length}
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
+        {activeSection === 'attendance' && (
+          <div className="dashboard-section">
+            <TeacherAttendanceHub />
+          </div>
+        )}
+
+        {activeSection === 'availability' && (
+          <div className="dashboard-section">
+            <TeacherAvailabilityPanel />
+          </div>
+        )}
+
+        {activeSection === 'meet' && (
+          <div className="dashboard-section">
+            <div className="ss-panel">
+              <MeetLiveClassesPanel
+                batches={batches.map((b) => ({
+                  id: String(b.id || b._id),
+                  name: `${b.name || 'Batch'}${b.course ? ` · ${b.course}` : ''}`
+                }))}
+                title="Live class studio"
+              />
             </div>
           </div>
         )}
 
 
         {activeSection === 'courses' && (
-          <div className="dashboard-section">
-            <div className="section-header">
-              <h1 className="ss-page-title">My batches</h1>
-              <div className="batch-stats">
-                <span className="stat-item">
-                  <span className="stat-number">{filteredBatches.length}</span>
-                  <span className="stat-label">of {batches.length} batches</span>
-                </span>
-                {(batchSearch || courseFilter !== 'all' || statusFilter !== 'all') && (
-                  <button className="clear-filters-btn" onClick={clearFilters}>
-                    ✕ Clear Filters
-                  </button>
-                )}
+          <div className="dashboard-section teacher-batches-pro">
+            <div className="teacher-batches-pro__head">
+              <div>
+                <h1 className="ss-page-title">My batches</h1>
+                <p className="ss-page-sub">
+                  Showing {filteredBatches.length} of {batches.length} batch{batches.length === 1 ? '' : 'es'}
+                </p>
               </div>
+              {(batchSearch || courseFilter !== 'all' || statusFilter !== 'all') && (
+                <button type="button" className="ss-shell-btn" onClick={clearFilters}>
+                  Clear filters
+                </button>
+              )}
             </div>
 
-            {/* Search and Filter Controls */}
-            <div className="batch-controls">
-              <div className="search-container">
-                <div className="search-input-wrapper">
-                  <span className="search-icon">🔍</span>
-                  <input
-                    type="text"
-                    placeholder="Search batches by name or course..."
-                    value={batchSearch}
-                    onChange={(e) => setBatchSearch(e.target.value)}
-                    className="search-input-modern"
-                  />
+            <div className="ss-panel teacher-batches-pro__filters">
+              <div className="teacher-batches-pro__search">
+                <input
+                  type="search"
+                  placeholder="Search batches by name or course..."
+                  value={batchSearch}
+                  onChange={(e) => setBatchSearch(e.target.value)}
+                  className="teacher-batches-pro__search-input"
+                />
+              </div>
+
+              <div className="teacher-batches-pro__filter-row">
+                <span className="teacher-batches-pro__filter-label">Program</span>
+                <div className="teacher-batches-pro__chips">
+                  {[
+                    { id: 'all', label: 'All' },
+                    { id: 'data-science', label: 'Data Science' },
+                    { id: 'cyber-security', label: 'Cyber Security' },
+                    { id: 'devops-ai', label: 'DevOps & AI' },
+                    { id: 'devops-cloud', label: 'DevOps & Cloud' },
+                    { id: 'one-to-one', label: 'One-to-One' },
+                    { id: 'project', label: 'Project Class' }
+                  ].map((opt) => (
+                    <button
+                      key={opt.id}
+                      type="button"
+                      className={`teacher-batches-pro__chip ${courseFilter === opt.id ? 'is-active' : ''}`}
+                      onClick={() => setCourseFilter(opt.id)}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
                 </div>
               </div>
-              
-              <div className="filter-container">
-                <div className="filter-group">
-                  <label>Course Type:</label>
-                  <div className="filter-buttons">
-                    <button 
-                      className={`filter-btn ${courseFilter === 'all' ? 'active' : ''}`}
-                      onClick={() => setCourseFilter('all')}
+
+              <div className="teacher-batches-pro__filter-row">
+                <span className="teacher-batches-pro__filter-label">Status</span>
+                <div className="teacher-batches-pro__chips">
+                  {[
+                    { id: 'all', label: 'All' },
+                    { id: 'active', label: 'Active' },
+                    { id: 'completed', label: 'Completed' }
+                  ].map((opt) => (
+                    <button
+                      key={opt.id}
+                      type="button"
+                      className={`teacher-batches-pro__chip ${statusFilter === opt.id ? 'is-active' : ''}`}
+                      onClick={() => setStatusFilter(opt.id)}
                     >
-                      All Courses
+                      {opt.label}
                     </button>
-                    <button 
-                      className={`filter-btn ${courseFilter === 'data-science' ? 'active' : ''}`}
-                      onClick={() => setCourseFilter('data-science')}
-                    >
-                      📊 Data Science
-                    </button>
-                    <button 
-                      className={`filter-btn ${courseFilter === 'cyber-security' ? 'active' : ''}`}
-                      onClick={() => setCourseFilter('cyber-security')}
-                    >
-                      🔒 Cyber Security
-                    </button>
-                    <button 
-                      className={`filter-btn ${courseFilter === 'devops-ai' ? 'active' : ''}`}
-                      onClick={() => setCourseFilter('devops-ai')}
-                    >
-                      🚀 DevOps & AI
-                    </button>
-                    <button 
-                      className={`filter-btn ${courseFilter === 'devops-cloud' ? 'active' : ''}`}
-                      onClick={() => setCourseFilter('devops-cloud')}
-                    >
-                      ☁️ DevOps & Cloud
-                    </button>
-                    <button 
-                      className={`filter-btn ${courseFilter === 'one-to-one' ? 'active' : ''}`}
-                      onClick={() => setCourseFilter('one-to-one')}
-                    >
-                      👥 One-to-One
-                    </button>
-                  </div>
-                </div>
-                
-                <div className="filter-group">
-                  <label>Status:</label>
-                  <div className="filter-buttons">
-                    <button 
-                      className={`filter-btn ${statusFilter === 'all' ? 'active' : ''}`}
-                      onClick={() => setStatusFilter('all')}
-                    >
-                      All Status
-                    </button>
-                    <button 
-                      className={`filter-btn ${statusFilter === 'active' ? 'active' : ''}`}
-                      onClick={() => setStatusFilter('active')}
-                    >
-                      ● Active
-                    </button>
-                    <button 
-                      className={`filter-btn ${statusFilter === 'completed' ? 'active' : ''}`}
-                      onClick={() => setStatusFilter('completed')}
-                    >
-                      ✓ Completed
-                    </button>
-                  </div>
+                  ))}
                 </div>
               </div>
             </div>
 
-            {/* Modern Batch Grid */}
-            <div className="batches-grid-modern">
+            <div className="ss-panel teacher-batches-pro__table-wrap">
               {filteredBatches.length > 0 ? (
-                filteredBatches.map(batch => (
-                  <div key={batch.id} className="batch-card-modern">
-                    <div className="batch-header">
-                      <div className="batch-title-section">
-                        <span className="course-icon">{getCourseIcon(batch.course)}</span>
-                        <h3>{batch.name}</h3>
-                      </div>
-                      <div className="batch-status">
-                        <span 
-                          className="status-badge" 
-                          style={{ backgroundColor: getStatusColor(batch.status) }}
-                        >
-                          {(batch.status || 'active').charAt(0).toUpperCase() + (batch.status || 'active').slice(1)}
-                        </span>
-                      </div>
-                    </div>
-                    
-                    <div className="batch-content">
-                      <div className="batch-info-row">
-                        <span className="info-label">Course:</span>
-                        <span className="info-value">{batch.course || 'General Course'}</span>
-                      </div>
-                      <div className="batch-info-row">
-                        <span className="info-label">Students:</span>
-                        <div className="student-count">
-                          <span className="count-number">{batch.studentCount || batch.students?.length || 0}</span>
-                          <span className="count-label">enrolled</span>
-                        </div>
-                      </div>
-                      <div className="batch-info-row">
-                        <span className="info-label">Type:</span>
-                        <span className="batch-type">
-                          {batch.batchType === 'one-to-one' ? '👥 One-to-One' : '📚 Regular Batch'}
-                        </span>
-                      </div>
-                      {batch.startDate && (
-                        <div className="batch-info-row">
-                          <span className="info-label">Started:</span>
-                          <span className="info-value">{formatDate(batch.startDate)}</span>
-                        </div>
-                      )}
-                    </div>
-                    
-                    <div className="batch-actions-modern">
-                      <button 
-                        className="action-btn primary-btn" 
-                        onClick={() => handleViewBatchDetail(batch)}
-                      >
-                        <span className="btn-icon">👁</span>
-                        View Details
-                      </button>
-                      {/* Commented out - Delete batch functionality disabled for teachers */}
-                      {/* <button 
-                        className="action-btn secondary-btn" 
-                        onClick={() => handleDeleteBatch(batch.id)}
-                      >
-                        <span className="btn-icon">🗑️</span>
-                        Delete
-                      </button> */}
-                    </div>
-                  </div>
-                ))
+                <div className="teacher-batches-pro__table-scroll">
+                  <table className="teacher-batches-pro__table">
+                    <thead>
+                      <tr>
+                        <th>Batch</th>
+                        <th>Program</th>
+                        <th>Type</th>
+                        <th>Students</th>
+                        <th>Started</th>
+                        <th>Status</th>
+                        <th>Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredBatches.map((batch) => {
+                        const typeLabel = isProjectBatch(batch)
+                          ? 'Project Class'
+                          : isOneToOneBatch(batch)
+                            ? 'One-to-One'
+                            : 'Regular';
+                        const status = (batch.status || 'active').toLowerCase();
+                        return (
+                          <tr key={batch.id || batch._id}>
+                            <td>
+                              <button
+                                type="button"
+                                className="teacher-batches-pro__link"
+                                onClick={() => handleViewBatchDetail(batch)}
+                              >
+                                {batch.name}
+                              </button>
+                            </td>
+                            <td>{batch.programLabel || batch.course || '—'}</td>
+                            <td>
+                              <span className={`teacher-batches-pro__type teacher-batches-pro__type--${isProjectBatch(batch) ? 'project' : isOneToOneBatch(batch) ? 'oto' : 'regular'}`}>
+                                {typeLabel}
+                              </span>
+                            </td>
+                            <td>{batch.studentCount || batch.students?.length || 0}</td>
+                            <td>{batch.startDate ? formatDate(batch.startDate) : '—'}</td>
+                            <td>
+                              <span className={`teacher-batches-pro__status teacher-batches-pro__status--${status}`}>
+                                {status.charAt(0).toUpperCase() + status.slice(1)}
+                              </span>
+                            </td>
+                            <td>
+                              <div className="ss-cta-row" style={{ flexWrap: 'wrap', gap: '0.35rem' }}>
+                                <button
+                                  type="button"
+                                  className="ss-shell-btn ss-shell-btn--primary"
+                                  onClick={() => handleViewBatchDetail(batch)}
+                                >
+                                  Workspace
+                                </button>
+                                <button
+                                  type="button"
+                                  className="ss-shell-btn"
+                                  onClick={() =>
+                                    navigate(`/teacher/batch/${batch.id || batch._id}`, {
+                                      state: { from: 'teacher-batches', activeView: 'meet' }
+                                    })
+                                  }
+                                >
+                                  Sessions
+                                </button>
+                                <button
+                                  type="button"
+                                  className="ss-shell-btn"
+                                  onClick={() =>
+                                    navigate(`/teacher/batch/${batch.id || batch._id}`, {
+                                      state: { from: 'teacher-batches', activeView: 'attendance' }
+                                    })
+                                  }
+                                >
+                                  Attendance
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
               ) : (
-                <div className="empty-state-modern">
-                  <div className="empty-icon">📚</div>
+                <div className="teacher-batches-pro__empty">
                   <h3>No batches found</h3>
                   <p>
-                    {batchSearch || courseFilter !== 'all' || statusFilter !== 'all' 
-                      ? 'Try adjusting your search or filters to find what you\'re looking for.'
-                      : 'No batches found. Create your first batch below!'}
+                    {batchSearch || courseFilter !== 'all' || statusFilter !== 'all'
+                      ? 'Try adjusting your search or filters.'
+                      : 'No batches are assigned to you yet.'}
                   </p>
                 </div>
               )}
@@ -1113,20 +1211,52 @@ const TeacherDashboard = ({ user, onLogout }) => {
               <input
                 type="search"
                 className="form-input-modern"
-                placeholder="Search by name, course, or batch…"
+                placeholder="Search by name or enrollment…"
                 value={studentSearch}
                 onChange={(e) => setStudentSearch(e.target.value)}
+                aria-label="Filter students by name"
               />
+              <select
+                className="form-input-modern"
+                value={studentCourseFilter}
+                onChange={(e) => setStudentCourseFilter(e.target.value)}
+                aria-label="Filter by course"
+              >
+                <option value="all">All courses</option>
+                {studentCourseOptions.map((c) => (
+                  <option key={c} value={c}>
+                    {c}
+                  </option>
+                ))}
+              </select>
+              <select
+                className="form-input-modern"
+                value={studentBatchFilter}
+                onChange={(e) => setStudentBatchFilter(e.target.value)}
+                aria-label="Filter by batch"
+              >
+                <option value="all">All batches</option>
+                {studentBatchOptions.map((b) => (
+                  <option key={b.id} value={b.id}>
+                    {b.name}
+                  </option>
+                ))}
+              </select>
+              {(studentSearch || studentCourseFilter !== 'all' || studentBatchFilter !== 'all') && (
+                <button
+                  type="button"
+                  className="btn-secondary btn-sm"
+                  onClick={() => {
+                    setStudentSearch('');
+                    setStudentCourseFilter('all');
+                    setStudentBatchFilter('all');
+                  }}
+                >
+                  Clear
+                </button>
+              )}
               <span className="stat-item">
-                <span className="stat-number">
-                  {teacherStudents.filter((s) => {
-                    const q = studentSearch.trim().toLowerCase();
-                    if (!q) return true;
-                    return [s.name, s.course, s.batchName, s.enrollmentNumber]
-                      .filter(Boolean)
-                      .some((v) => String(v).toLowerCase().includes(q));
-                  }).length}
-                </span>
+                <span className="stat-number">{filteredTeacherStudents.length}</span>
                 <span className="stat-label">students</span>
               </span>
             </div>
@@ -1147,15 +1277,7 @@ const TeacherDashboard = ({ user, onLogout }) => {
                     </tr>
                   </thead>
                   <tbody>
-                    {teacherStudents
-                      .filter((s) => {
-                        const q = studentSearch.trim().toLowerCase();
-                        if (!q) return true;
-                        return [s.name, s.course, s.batchName, s.enrollmentNumber]
-                          .filter(Boolean)
-                          .some((v) => String(v).toLowerCase().includes(q));
-                      })
-                      .map((student) => (
+                    {filteredTeacherStudents.map((student) => (
                         <tr key={student.id}>
                           <td>
                             <div className="teacher-student-name">
@@ -1190,6 +1312,9 @@ const TeacherDashboard = ({ user, onLogout }) => {
                 </table>
                 {teacherStudents.length === 0 && (
                   <p className="no-data">No students enrolled in your batches yet.</p>
+                )}
+                {teacherStudents.length > 0 && filteredTeacherStudents.length === 0 && (
+                  <p className="no-data">No students match these filters.</p>
                 )}
               </div>
             )}
@@ -1392,6 +1517,15 @@ const TeacherDashboard = ({ user, onLogout }) => {
           </div>
         )}
 
+        {activeSection === 'messages' && (
+          <div className="dashboard-section">
+            <h1 className="ss-page-title">Messages</h1>
+            <p className="ss-page-sub">
+              Chat with students assigned to your batches. Availability in the header is for admins only — students do not see it.
+            </p>
+            <DirectChatPanel role="teacher" currentUserId={String(user?.id || user?._id || '')} />
+          </div>
+        )}
 
         {activeSection === 'account' && (
           <div className="dashboard-section">

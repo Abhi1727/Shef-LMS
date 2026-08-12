@@ -50,6 +50,7 @@ const CustomVideoPlayer = ({ video, onClose, resumePosition = 0, onProgressUpdat
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [firebaseVideoUrl, setFirebaseVideoUrl] = useState(null);
   const [youtubeVideoUrl, setYoutubeVideoUrl] = useState(null);
+  const [driveEmbedUrl, setDriveEmbedUrl] = useState(null);
   const [youtubePlayer, setYoutubePlayer] = useState(null);
   const [playerReady, setPlayerReady] = useState(false);
   const [hasStartedPlaying, setHasStartedPlaying] = useState(false);
@@ -73,6 +74,7 @@ const CustomVideoPlayer = ({ video, onClose, resumePosition = 0, onProgressUpdat
 
   const detectVideoSource = (video) => {
     if (video.videoSource) return video.videoSource;
+    if (video.driveId) return 'drive';
     if (video.youtubeVideoUrl) {
       if (video.youtubeVideoUrl.includes('youtu.be/')) return 'youtube-url';
       if (video.youtubeVideoUrl.includes('youtube.com/watch')) return 'youtube';
@@ -81,6 +83,7 @@ const CustomVideoPlayer = ({ video, onClose, resumePosition = 0, onProgressUpdat
       if (video.videoUrl.includes('youtu.be/')) return 'youtube-url';
       if (video.videoUrl.includes('youtube.com/watch')) return 'youtube';
       if (video.videoUrl.includes('youtube.com/embed')) return 'youtube';
+      if (video.videoUrl.includes('drive.google.com')) return 'drive';
     }
     return 'firebase';
   };
@@ -235,6 +238,7 @@ const CustomVideoPlayer = ({ video, onClose, resumePosition = 0, onProgressUpdat
   // Video Initializer
   useEffect(() => {
     const videoSource = detectVideoSource(video);
+    setDriveEmbedUrl(null);
     if (videoSource === 'youtube-url') {
       const embedUrl = video.youtubeEmbedUrl || convertToEmbedUrl(video.youtubeVideoUrl || video.videoUrl);
       if (embedUrl) {
@@ -247,6 +251,16 @@ const CustomVideoPlayer = ({ video, onClose, resumePosition = 0, onProgressUpdat
     } else if (videoSource === 'youtube' && video.youtubeEmbedUrl) {
       setYoutubeVideoUrl(video.youtubeEmbedUrl);
       initializeYouTubePlayer(video.youtubeEmbedUrl);
+    } else if (videoSource === 'drive' || video.driveId) {
+      const id = video.driveId || (video.videoUrl || '').match(/\/d\/([^/]+)/)?.[1];
+      if (id) {
+        setDriveEmbedUrl(`https://drive.google.com/file/d/${id}/preview`);
+        setIsLoading(false);
+        setHasStartedPlaying(true);
+      } else {
+        setError('Missing Google Drive file id');
+        setIsLoading(false);
+      }
     } else if (videoSource === 'firebase' && video.id) {
       const fetchFirebaseUrl = async () => {
         try {
@@ -604,6 +618,17 @@ const CustomVideoPlayer = ({ video, onClose, resumePosition = 0, onProgressUpdat
             >
               <source src={firebaseVideoUrl} type="video/mp4" />
             </video>
+          )}
+
+          {driveEmbedUrl && (
+            <iframe
+              title={video.title || 'Drive recording'}
+              src={driveEmbedUrl}
+              className="firebase-video-player"
+              style={{ width: '100%', height: '100%', border: 0, background: '#000' }}
+              allow="autoplay"
+              allowFullScreen
+            />
           )}
 
           {youtubeVideoUrl && (

@@ -6,17 +6,21 @@ const batchSchema = new mongoose.Schema({
     courseId: { type: mongoose.Schema.Types.ObjectId, ref: 'Course' }, // Optional reference
     batchType: {
         type: String,
-        enum: ['regular', 'one-to-one'],
+        enum: ['regular', 'one-to-one', 'project'],
         default: 'regular'
     },
-    programLabel: { type: String, default: '' }, // Optional display label for custom 1:1 offerings
+    programLabel: { type: String, default: '' }, // Optional display label for custom 1:1 / project offerings
     startDate: { type: Date },
     endDate: { type: Date },
     teacherId: { type: String, required: true },
     teacherName: { type: String },
     status: { type: String, default: 'active', enum: ['active', 'inactive', 'completed'] },
-    students: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
-    recordings: [{
+  students: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
+  driveFolderId: { type: String, default: '' },
+  driveFolderLink: { type: String, default: '' },
+  /** When true, students in this batch can upload shares for the trainer to review */
+  studentUploadsEnabled: { type: Boolean, default: false },
+  recordings: [{
         _id: { type: mongoose.Schema.Types.ObjectId, required: true },
         topic: { type: String, required: true },
         url: { type: String, required: true },
@@ -37,4 +41,7 @@ const batchSchema = new mongoose.Schema({
     updatedAt: { type: Date, default: Date.now }
 });
 
-module.exports = mongoose.model('Batch', batchSchema);
+const __mongoBatch = mongoose.models.Batch || mongoose.model('Batch', batchSchema);
+module.exports = String(process.env.USE_FIRESTORE || '').toLowerCase() === 'true'
+  ? require('../firestore/models').Batch
+  : __mongoBatch;
