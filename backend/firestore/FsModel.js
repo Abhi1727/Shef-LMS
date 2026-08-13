@@ -419,9 +419,16 @@ function createFsModel(name, collectionName) {
     return Model.findOne({ _id: asString(id) });
   };
 
-  Model.countDocuments = async function countDocuments(filter = {}) {
-    const rows = await Model.find(filter).lean().exec();
-    return rows.length;
+  Model.countDocuments = function countDocuments(filter = {}) {
+    // Mongoose-compatible: await Model.countDocuments(filter) or .exec()
+    const promise = (async () => {
+      const rows = await Model.find(filter).lean().exec();
+      return rows.length;
+    })();
+    promise.exec = function exec() {
+      return promise;
+    };
+    return promise;
   };
 
   Model.create = async function create(data) {

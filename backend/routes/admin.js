@@ -156,10 +156,34 @@ const notesUpload = multer({
   }
 });
 
-// Generic dynamic models for collections that previously lived only in Firestore
+// Generic dynamic models — Firestore when USE_FIRESTORE=true, else Mongoose
 const genericSchema = new mongoose.Schema({}, { strict: false, timestamps: true });
 const dynamicModels = {};
+const FS_DYNAMIC_MAP = {
+  lessons: 'Lesson',
+  projects: 'Project',
+  assessments: 'Assessment',
+  jobs: 'Job',
+  content: 'Content',
+  courses: 'Course',
+  modules: 'Module',
+  classroom: 'Classroom'
+};
+function useFirestoreRuntime() {
+  return String(process.env.USE_FIRESTORE || '').toLowerCase() === 'true';
+}
 function getDynamicModel(collectionName) {
+  if (useFirestoreRuntime()) {
+    const fsModels = require('../firestore/models');
+    const mapped = FS_DYNAMIC_MAP[collectionName];
+    if (mapped && fsModels[mapped]) return fsModels[mapped];
+    const cacheKey = `fs:${collectionName}`;
+    if (!dynamicModels[cacheKey]) {
+      const { createFsModel } = require('../firestore/FsModel');
+      dynamicModels[cacheKey] = createFsModel(`Dyn_${collectionName}`, collectionName);
+    }
+    return dynamicModels[cacheKey];
+  }
   if (!dynamicModels[collectionName]) {
     dynamicModels[collectionName] = mongoose.model(
       `Dyn_${collectionName}`,
@@ -2124,10 +2148,12 @@ collections.forEach(collectionName => {
 // @desc    Get admin statistics
 router.get('/stats', async (req, res) => {
   try {
-    const studentsCount = await User.countDocuments({ role: 'student' }).exec();
-    const coursesCount = await Course.countDocuments({}).exec();
     const Jobs = getDynamicModel('jobs');
-    const activeJobs = await Jobs.countDocuments({ status: 'active' }).exec();
+    const [studentsCount, coursesCount, activeJobs] = await Promise.all([
+      User.countDocuments({ role: 'student' }),
+      Course.countDocuments({}),
+      Jobs.countDocuments({ status: 'active' })
+    ]);
 
     const stats = {
       totalStudents: studentsCount,

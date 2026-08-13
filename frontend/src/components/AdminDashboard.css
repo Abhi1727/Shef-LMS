@@ -4876,15 +4876,18 @@ body.modal-open {
   }
   
   .batch-course-filters {
-    justify-content: center;
+    justify-content: flex-start;
   }
   
   .batch-course-btn {
-    flex: 1;
-    min-width: 0;
+    /* Grow only when few chips; never shrink labels into overlapping piles */
+    flex: 0 1 auto;
+    min-width: max-content;
+    max-width: 100%;
     justify-content: center;
-    padding: 5px 8px;
+    padding: 5px 10px;
     font-size: 11px;
+    white-space: nowrap;
   }
   
   .batch-course-btn .btn-label {
