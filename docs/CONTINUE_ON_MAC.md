@@ -20,7 +20,7 @@ This repo includes an always-on Cursor rule:
 
 In a **new Agent chat** on the Mac, start with something like:
 
-> Read `.cursor/rules/sky-states-lms-handoff.mdc` and `docs/FIRESTORE_DEV_RUNTIME.md`. Continue from the DEV Firestore cutover — DEV uses Firestore, prod stays on Mongo.
+> Read `.cursor/rules/sky-states-lms-handoff.mdc` and `docs/FIRESTORE_DEV_RUNTIME.md`. PROD+DEV run on Firestore (`lms-prod` / `lms-dev`); Mongo Atlas is cold standby until soak is trusted, then removable.
 
 You can also **@**-mention those files in chat.
 
@@ -30,15 +30,15 @@ On the Linux server, agent transcripts live under Cursor’s project folder (not
 
 Useful docs already in git:
 
-- [`docs/FIRESTORE_DEV_RUNTIME.md`](FIRESTORE_DEV_RUNTIME.md) — DEV Firestore flag + rollback
+- [`docs/FIRESTORE_DEV_RUNTIME.md`](FIRESTORE_DEV_RUNTIME.md) — Firestore runtime (DEV+PROD) + Mongo rollback
 - [`docs/GOOGLE_MEET_DEV_SETUP.md`](GOOGLE_MEET_DEV_SETUP.md) — Meet/Drive OAuth
 
 ## 4. Secrets (not in git)
 
 Copy locally (do not commit):
 
-- `backend/.env` (prod)
-- `backend/.env.dev` (DEV, includes `USE_FIRESTORE` + Google OAuth tokens)
+- `backend/.env` (prod: `USE_FIRESTORE=true`, `FIRESTORE_DATABASE=lms-prod`, OAuth)
+- `backend/.env.dev` (DEV: `USE_FIRESTORE=true`, `FIRESTORE_DATABASE=lms-dev`, OAuth)
 
 Ask whoever has server access to securely transfer those files (scp / 1Password / etc.).
 
@@ -55,6 +55,7 @@ The server also keeps a legacy remote name `abhi` → `Abhi1727/Shef-LMS`; you d
 | Item | State |
 |------|--------|
 | Code on GitHub | `Sky-States/LMS` branch `develop` |
-| DEV data store | Firestore `skystateslms` when `USE_FIRESTORE=true` |
-| PROD data store | Mongo Atlas `lms` (unchanged) |
-| Meet/Drive | Working on DEV with manual recording upload |
+| DEV data store | Firestore `lms-dev` (primary) |
+| PROD data store | Firestore `lms-prod` (primary) |
+| Mongo Atlas | Cold standby until soak OK — then removable |
+| Meet/Drive | Working; recordings are manual upload |

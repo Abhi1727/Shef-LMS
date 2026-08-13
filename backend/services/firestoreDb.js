@@ -1,6 +1,7 @@
 /**
- * Firestore REST client for DEV runtime (USE_FIRESTORE=true).
+ * Firestore REST client (USE_FIRESTORE=true for DEV + PROD).
  * Auth: OAuth refresh token (org blocks SA keys) — same pattern as export scripts.
+ * Databases: lms-dev (DEV) / lms-prod (PROD) via FIRESTORE_DATABASE.
  */
 const https = require('https');
 const logger = require('../utils/logger');
@@ -100,22 +101,38 @@ async function getAccessToken() {
   }
 }
 
-async function firestoreJson(method, apiPath, body) {
-  const token = await getAccessToken();
-  const res = await httpsRequest(
-    method,
-    'firestore.googleapis.com',
-    apiPath,
-    { Authorization: `Bearer ${token}` },
-    body
-  );
-  if (res.status >= 200 && res.status < 300) return res.json;
-  const err = new Error(
-    `Firestore HTTP ${res.status}: ${typeof res.json === 'object' ? JSON.stringify(res.json) : res.text}`
-  );
-  err.statusCode = res.status;
-  err.body = res.json;
-  throw err;
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function firestoreJson(method, apiPath, body, { retries = 5 } = {}) {
+  let lastErr;
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    const token = await getAccessToken();
+    const res = await httpsRequest(
+      method,
+      'firestore.googleapis.com',
+      apiPath,
+      { Authorization: `Bearer ${token}` },
+      body
+    );
+    if (res.status >= 200 && res.status < 300) return res.json;
+    const err = new Error(
+      `Firestore HTTP ${res.status}: ${typeof res.json === 'object' ? JSON.stringify(res.json) : res.text}`
+    );
+    err.statusCode = res.status;
+    err.body = res.json;
+    lastErr = err;
+    // Retry transient quota / rate-limit responses with backoff
+    if (res.status === 429 || res.status === 503 || res.status === 500) {
+      const delay = Math.min(15000, 400 * 2 ** attempt + Math.floor(Math.random() * 200));
+      logger.warn('Firestore request retry', { status: res.status, attempt, delay, apiPath });
+      await sleep(delay);
+      continue;
+    }
+    throw err;
+  }
+  throw lastErr;
 }
 
 function basePath() {

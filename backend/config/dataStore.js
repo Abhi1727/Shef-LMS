@@ -1,5 +1,6 @@
 /**
- * Data store switch: Mongo (default) vs Firestore (DEV USE_FIRESTORE=true).
+ * Data store switch: Firestore when USE_FIRESTORE=true (DEV + PROD runtime);
+ * Mongo only for emergency rollback (USE_FIRESTORE=false).
  */
 const { isFirestoreEnabled } = require('../services/firestoreDb');
 

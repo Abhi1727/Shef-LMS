@@ -22,9 +22,10 @@ function parseArgs(argv) {
   const out = {
     dryRun: false,
     project: process.env.FIRESTORE_EXPORT_PROJECT || 'skystateslms',
+    database: process.env.FIRESTORE_DATABASE || '(default)',
     db: null,
     envFile: null,
-    prefix: '',
+    prefix: null, // null = auto; '' = no prefix (for dedicated DBs like lms-prod)
     meta: null,
     clear: false,
     both: false,
@@ -34,6 +35,7 @@ function parseArgs(argv) {
     else if (a === '--clear') out.clear = true;
     else if (a === '--both') out.both = true;
     else if (a.startsWith('--project=')) out.project = a.slice('--project='.length);
+    else if (a.startsWith('--database=')) out.database = a.slice('--database='.length);
     else if (a.startsWith('--db=')) out.db = a.slice('--db='.length);
     else if (a.startsWith('--env=')) out.envFile = a.slice('--env='.length);
     else if (a.startsWith('--prefix=')) out.prefix = a.slice('--prefix='.length);
@@ -68,7 +70,11 @@ function getAccessToken(projectId) {
   }).trim();
 }
 
-function httpsJson(method, urlPath, token, body) {
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function httpsJsonOnce(method, urlPath, token, body) {
   const payload = body ? JSON.stringify(body) : null;
   const opts = {
     hostname: 'firestore.googleapis.com',
@@ -107,6 +113,28 @@ function httpsJson(method, urlPath, token, body) {
     if (payload) req.write(payload);
     req.end();
   });
+}
+
+async function httpsJson(method, urlPath, token, body, { retries = 8 } = {}) {
+  let lastErr;
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      return await httpsJsonOnce(method, urlPath, token, body);
+    } catch (err) {
+      lastErr = err;
+      const msg = String(err.message || '');
+      const retryable =
+        err.statusCode === 429 ||
+        err.statusCode === 503 ||
+        err.statusCode === 500 ||
+        (err.statusCode === 403 && /billing/i.test(msg));
+      if (!retryable || attempt === retries) throw err;
+      const delay = Math.min(30000, 1000 * 2 ** attempt);
+      console.warn(`  retry ${attempt + 1}/${retries} after ${err.statusCode} (wait ${delay}ms)`);
+      await sleep(delay);
+    }
+  }
+  throw lastErr;
 }
 
 function toFirestoreFields(value, depth = 0) {
@@ -169,15 +197,19 @@ function docToFirestoreFields(doc, sourceTag) {
   return { id, fields: wrapped.mapValue.fields };
 }
 
-function docName(projectId, collection, docId) {
-  return `projects/${projectId}/databases/(default)/documents/${collection}/${docId}`;
+function dbPath(database) {
+  return encodeURIComponent(database || '(default)');
 }
 
-async function listDocumentNames(projectId, collection, token) {
+function docName(projectId, database, collection, docId) {
+  return `projects/${projectId}/databases/${database}/documents/${collection}/${docId}`;
+}
+
+async function listDocumentNames(projectId, database, collection, token) {
   const names = [];
   let pageToken = '';
   do {
-    let path = `/v1/projects/${projectId}/databases/(default)/documents/${encodeURIComponent(collection)}?pageSize=300`;
+    let path = `/v1/projects/${projectId}/databases/${dbPath(database)}/documents/${encodeURIComponent(collection)}?pageSize=300`;
     if (pageToken) path += `&pageToken=${encodeURIComponent(pageToken)}`;
     const res = await httpsJson('GET', path, token);
     for (const d of res.documents || []) names.push(d.name);
@@ -186,15 +218,15 @@ async function listDocumentNames(projectId, collection, token) {
   return names;
 }
 
-async function clearCollection(projectId, collection, token) {
-  const names = await listDocumentNames(projectId, collection, token);
+async function clearCollection(projectId, database, collection, token) {
+  const names = await listDocumentNames(projectId, database, collection, token);
   const CHUNK = 400;
   let deleted = 0;
   for (let i = 0; i < names.length; i += CHUNK) {
     const slice = names.slice(i, i + CHUNK);
     await httpsJson(
       'POST',
-      `/v1/projects/${projectId}/databases/(default)/documents:batchWrite`,
+      `/v1/projects/${projectId}/databases/${dbPath(database)}/documents:batchWrite`,
       token,
       { writes: slice.map((name) => ({ delete: name })) }
     );
@@ -203,8 +235,8 @@ async function clearCollection(projectId, collection, token) {
   return deleted;
 }
 
-async function writeDocs(projectId, collection, docs, token) {
-  const CHUNK = 400;
+async function writeDocs(projectId, database, collection, docs, token) {
+  const CHUNK = 100;
   let written = 0;
   for (let i = 0; i < docs.length; i += CHUNK) {
     const slice = docs.slice(i, i + CHUNK);
@@ -212,19 +244,21 @@ async function writeDocs(projectId, collection, docs, token) {
       const docId = id || `auto_${Date.now()}_${written}`;
       return {
         update: {
-          name: docName(projectId, collection, docId),
+          name: docName(projectId, database, collection, docId),
           fields,
         },
       };
     });
     await httpsJson(
       'POST',
-      `/v1/projects/${projectId}/databases/(default)/documents:batchWrite`,
+      `/v1/projects/${projectId}/databases/${dbPath(database)}/documents:batchWrite`,
       token,
       { writes }
     );
     written += slice.length;
     process.stdout.write(`  ${collection}: ${written}/${docs.length}\r`);
+    // Small pacing to avoid free/paid quota ramp limits
+    await sleep(150);
   }
   if (docs.length) process.stdout.write('\n');
   return written;
@@ -232,6 +266,7 @@ async function writeDocs(projectId, collection, docs, token) {
 
 async function exportOne({
   project,
+  database,
   db,
   envFile,
   prefix,
@@ -247,7 +282,7 @@ async function exportOne({
 
   console.log(`\n======== ${sourceTag} ========`);
   console.log(`Mongo: ${db} (env ${envFile})`);
-  console.log(`Firestore: ${project}${prefix ? ` prefix=${prefix}` : ''}`);
+  console.log(`Firestore: ${project} / ${database}${prefix ? ` prefix=${prefix}` : ''}`);
   console.log(`Mode: ${dryRun ? 'DRY RUN' : 'WRITE'}${clear ? ' (clear existing)' : ''}`);
 
   await mongoose.connect(mongoUri);
@@ -269,11 +304,11 @@ async function exportOne({
     }
 
     if (clear) {
-      const deleted = await clearCollection(project, fsName, token);
+      const deleted = await clearCollection(project, database, fsName, token);
       if (deleted) console.log(`  cleared ${deleted} existing Firestore docs`);
     }
 
-    const written = await writeDocs(project, fsName, docs, token);
+    const written = await writeDocs(project, database, fsName, docs, token);
     summary.push({ collection: fsName, mongo: docs.length, firestore: written });
   }
 
@@ -283,6 +318,7 @@ async function exportOne({
     const metaFields = toFirestoreFields({
       sourceDatabase: db,
       projectId: project,
+      firestoreDatabase: database,
       prefix: prefix || '',
       exportedAt: new Date(),
       collections: summary,
@@ -291,13 +327,13 @@ async function exportOne({
     }).mapValue.fields;
     await httpsJson(
       'POST',
-      `/v1/projects/${project}/databases/(default)/documents:batchWrite`,
+      `/v1/projects/${project}/databases/${dbPath(database)}/documents:batchWrite`,
       token,
       {
         writes: [
           {
             update: {
-              name: docName(project, '_meta', metaId),
+              name: docName(project, database, '_meta', metaId),
               fields: metaFields,
             },
           },
@@ -329,6 +365,7 @@ async function main() {
   if (args.both) {
     await exportOne({
       project: args.project,
+      database: args.database,
       db: 'shef-lms-dev',
       envFile: '.env.dev',
       prefix: '',
@@ -339,6 +376,7 @@ async function main() {
     });
     await exportOne({
       project: args.project,
+      database: args.database,
       db: 'lms',
       envFile: '.env',
       prefix: 'prod_',
@@ -353,12 +391,21 @@ async function main() {
 
   const db = args.db || 'shef-lms-dev';
   const envFile = args.envFile || (db === 'lms' ? '.env' : '.env.dev');
-  const prefix = args.prefix || (db === 'lms' ? 'prod_' : '');
+  // Dedicated Firestore DBs (lms-dev / lms-prod) should use unprefixed collection names.
+  const prefix =
+    args.prefix != null
+      ? args.prefix
+      : args.database && args.database !== '(default)'
+        ? ''
+        : db === 'lms'
+          ? 'prod_'
+          : '';
   const meta =
     args.meta || (prefix || db === 'lms' ? 'mongo_prod_export' : 'mongo_dev_export');
 
   await exportOne({
     project: args.project,
+    database: args.database,
     db,
     envFile,
     prefix,

@@ -46,3 +46,6 @@ Thumbs.db
 
 # Local credential dumps (never commit)
 backend/secrets/
+
+# Local prod/dev rollout backups (do not commit)
+backups/

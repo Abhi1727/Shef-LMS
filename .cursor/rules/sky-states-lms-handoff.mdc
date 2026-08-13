@@ -11,15 +11,14 @@ alwaysApply: true
 
 ## Stack
 - Frontend: React CRA (`frontend/`)
-- Backend: Express + Mongoose models (`backend/`)
-- Prod DB: MongoDB Atlas database `lms`
-- DEV DB historically: Mongo `shef-lms-dev`
-- DEV runtime (current): **Firestore** project `skystateslms` when `USE_FIRESTORE=true` in `backend/.env.dev`
+- Backend: Express + Firestore facades (`backend/firestore/`) when `USE_FIRESTORE=true`
+- **Runtime DB (current):** Firestore project `skystateslms` — DEV `lms-dev`, PROD `lms-prod`
+- Mongo Atlas (`lms` / `shef-lms-dev`) is cold standby for export/rollback only — app does not connect when Firestore is on
 
 ## Remotes / Git
 - Primary: `origin` → https://github.com/Sky-States/LMS.git (default branch `develop`)
 - Legacy personal: `abhi` → https://github.com/Abhi1727/Shef-LMS.git
-- Work on **`develop`**; do not push experimental DEV Firestore cutover to production deploy without approval.
+- Work on **`develop`**
 
 ## Environments (critical)
 - **DEV only** for experiments: Docker `shef-lms-backend-dev` port **5001**, frontend `/var/www/shef-lms-dev`
@@ -33,13 +32,12 @@ alwaysApply: true
 - Recordings: **manual upload** after class → Drive batch folder → Classroom lecture (not auto Meet→LMS sync)
 - Org policy blocks service-account JSON keys
 
-## Firestore cutover status
-- Data copy: DEV + PROD Mongo exported into `skystateslms` (PROD under `prod_*` collections)
-- Scripts: `backend/scripts/exportMongoToFirestore.js` (`--both --clear`)
-- DEV app can run on Firestore via `USE_FIRESTORE=true` + OAuth env vars (`FIRESTORE_OAUTH_*`)
+## Firestore runtime (cutover done)
+- **Primary:** Firestore — DEV `lms-dev`, PROD `lms-prod` (`USE_FIRESTORE=true`)
+- **Mongo Atlas:** cold standby until prod soak is trusted; then delete Atlas when you explicitly approve
+- Why dedicated DBs: `(default)` is free-tier capped at ~50k reads/day and hard-429s
 - Facades: `backend/firestore/`, client `backend/services/firestoreDb.js`, switch `backend/config/dataStore.js`
-- Rollback DEV to Mongo: set `USE_FIRESTORE=false`, recreate DEV container — see `docs/FIRESTORE_DEV_RUNTIME.md`
-- **Do not delete Atlas Mongo** or switch prod to Firestore until user approves after DEV soak
+- Rollback / remove-Mongo checklist: `docs/FIRESTORE_DEV_RUNTIME.md`
 
 ## Auth accounts (DEV)
 - Admin: `support@skystates.us` (name Upendra) — password is in server env/ops notes, not in git

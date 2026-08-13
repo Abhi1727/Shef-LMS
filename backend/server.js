@@ -237,7 +237,7 @@ app.use((error, req, res, next) => {
 
 const PORT = process.env.PORT || 5000;
 
-// Connect data store (Mongo by default; Firestore when USE_FIRESTORE=true on DEV)
+// Connect data store (Firestore when USE_FIRESTORE=true; Mongo only for rollback)
 connectDataStore()
   .then((store) => {
     app.listen(PORT, () => {
