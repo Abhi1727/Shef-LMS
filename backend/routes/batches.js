@@ -8,6 +8,10 @@ const Batch = require('../models/Batch');
 const User = require('../models/User');
 const Classroom = require('../models/Classroom');
 const { sanitizeStudentsForViewer, sanitizeStudentForViewer } = require('../utils/studentPrivacy');
+const {
+  enrollStudentInBatch,
+  unenrollStudentFromBatch
+} = require('../utils/studentEnrollment');
 
 // @route   POST /api/batches
 // @desc    Create a new batch
@@ -98,7 +102,7 @@ router.get('/', auth, async (req, res) => {
 });
 
 // @route   PUT /api/batches/:id/students
-// @desc    Add students to a batch (ensure single-batch membership)
+// @desc    Add students to a batch (multi-program allowed; each program gets its own SKY ID)
 // @access  Admin only
 router.put('/:id/students', isAdmin, async (req, res) => {
   try {
@@ -106,86 +110,48 @@ router.put('/:id/students', isAdmin, async (req, res) => {
     const { studentIds } = req.body;
 
     if (!studentIds || !Array.isArray(studentIds)) {
-      return res.status(400).json({ 
-        success: false, 
-        message: 'Student IDs array is required' 
+      return res.status(400).json({
+        success: false,
+        message: 'Student IDs array is required'
       });
     }
 
     const batchDoc = await Batch.findById(batchId).exec();
-    
+
     if (!batchDoc) {
-      return res.status(404).json({ 
-        success: false, 
-        message: 'Batch not found' 
+      return res.status(404).json({
+        success: false,
+        message: 'Batch not found'
       });
     }
 
-    // Remove these students from any other batches first so
-    // that no student ends up in multiple batches.
-    // Remove these students from any other batches first so
-    // that no student ends up in multiple batches.
-    const allBatches = await Batch.find({}).exec();
-
-    // Normalize provided student IDs to string form once for comparisons
-    const studentIdStrings = (studentIds || []).map(id => String(id));
-
-    await Promise.all(
-      allBatches
-        .filter(doc => String(doc._id) !== String(batchId))
-        .map(doc => {
-          const existingStudents = doc.students || [];
-          const existingStudentStrings = existingStudents.map(id => String(id));
-
-          const hasOverlap = existingStudentStrings.some(id => studentIdStrings.includes(id));
-          if (!hasOverlap) return Promise.resolve();
-
-          doc.students = existingStudents.filter(id => !studentIdStrings.includes(String(id)));
-          doc.updatedAt = new Date();
-          return doc.save();
-        })
-    );
-
-    // Now add students to the target batch (avoid duplicates)
-    const currentStudents = batchDoc.students || [];
-    const currentStudentStrings = currentStudents.map(id => String(id));
-    const mergedStudentStrings = Array.from(new Set([...currentStudentStrings, ...studentIdStrings]));
-
-    batchDoc.students = mergedStudentStrings.map(id => new mongoose.Types.ObjectId(id));
-    batchDoc.updatedAt = new Date();
-    await batchDoc.save();
-
-    // Update students with their new batchId and align course in Mongo
-    const batchCourse = batchDoc.course || null;
-    await Promise.all(
-      studentIds.map(async (studentId) => {
-        const user = await User.findOne({
-          $or: [
-            { _id: studentId },
-            { firestoreId: studentId }
-          ]
-        }).exec();
-
-        if (!user) return;
-
-        user.batchId = String(batchDoc._id);
-        if (batchCourse) {
-          user.course = batchCourse;
-        }
-        user.updatedAt = new Date();
-        await user.save();
-      })
-    );
+    const results = [];
+    for (const studentId of studentIds) {
+      try {
+        const { enrollment, created } = await enrollStudentInBatch(studentId, batchDoc);
+        results.push({
+          studentId: String(studentId),
+          enrollmentNumber: enrollment.enrollmentNumber,
+          created
+        });
+      } catch (err) {
+        results.push({
+          studentId: String(studentId),
+          error: err.message || 'Failed to enroll'
+        });
+      }
+    }
 
     res.json({
       success: true,
-      message: 'Students added to batch successfully'
+      message: 'Students enrolled in batch (multi-program supported)',
+      results
     });
   } catch (error) {
     console.error('Error adding students to batch:', error);
-    res.status(500).json({ 
-      success: false, 
-      message: 'Failed to add students to batch' 
+    res.status(500).json({
+      success: false,
+      message: 'Failed to add students to batch'
     });
   }
 });
@@ -206,24 +172,7 @@ router.delete('/:batchId/students/:studentId', isAdmin, async (req, res) => {
       });
     }
 
-    const currentStudents = batchDoc.students || [];
-    batchDoc.students = currentStudents.filter(id => String(id) !== String(studentId));
-    batchDoc.updatedAt = new Date();
-    await batchDoc.save();
-
-    // Clear batch assignment on the student document in Mongo, if it still exists
-    const user = await User.findOne({
-      $or: [
-        { _id: studentId },
-        { firestoreId: studentId }
-      ]
-    }).exec();
-
-    if (user) {
-      user.batchId = null;
-      user.updatedAt = new Date();
-      await user.save();
-    }
+    await unenrollStudentFromBatch(studentId, batchId);
 
     res.json({
       success: true,
@@ -424,7 +373,7 @@ router.get('/:id/students', auth, isBatchOwnerOrAdmin, async (req, res) => {
 });
 
 // @route   POST /api/batches/:id/students
-// @desc    Add a single student to a batch
+// @desc    Add a single student to a batch (multi-program: existing students keep other enrollments)
 // @access  Teacher/Admin
 router.post('/:id/students', auth, isBatchOwnerOrAdmin, async (req, res) => {
   try {
@@ -432,73 +381,67 @@ router.post('/:id/students', auth, isBatchOwnerOrAdmin, async (req, res) => {
     const { name, email } = req.body;
 
     if (!name || !email) {
-      return res.status(400).json({ 
-        success: false, 
-        message: 'Name and email are required' 
+      return res.status(400).json({
+        success: false,
+        message: 'Name and email are required'
       });
     }
 
-    // Find or create user
+    const batchDoc = await Batch.findById(batchId).exec();
+    if (!batchDoc) {
+      return res.status(404).json({
+        success: false,
+        message: 'Batch not found'
+      });
+    }
+
     let user = await User.findOne({ email }).exec();
-    
+
     if (!user) {
-      const { allocateEnrollmentNumber } = require('../utils/enrollmentNumber');
       const { allocateFormNumber } = require('../utils/reportFormNumber');
       const joinDate = new Date();
-      const { enrollmentNumber } = await allocateEnrollmentNumber(User, joinDate);
       const { formNumber } = await allocateFormNumber(User);
       user = new User({
         name,
         email,
         role: 'student',
-        batchId,
-        enrollmentNumber,
         formNumber,
         joiningDate: joinDate,
         createdAt: joinDate,
         updatedAt: joinDate,
+        enrollments: []
       });
+      // Password required by schema — set a temporary hash the student must reset,
+      // or generate random. Match prior behavior: teachers may create without password?
+      // User schema requires password — check prior code... prior code didn't set password!
+      // That might rely on Firestore not enforcing. Add a placeholder hashed password.
+      const bcrypt = require('bcryptjs');
+      const salt = await bcrypt.genSalt(10);
+      user.password = await bcrypt.hash(`Temp@${Date.now()}`, salt);
       await user.save();
-    } else {
-      // Update existing user
-      user.batchId = batchId;
-      user.updatedAt = new Date();
-      if (user.role === 'student' && !user.formNumber) {
-        const { allocateFormNumber } = require('../utils/reportFormNumber');
-        const { formNumber } = await allocateFormNumber(User);
-        user.formNumber = formNumber;
-      }
+    } else if (user.role === 'student' && !user.formNumber) {
+      const { allocateFormNumber } = require('../utils/reportFormNumber');
+      const { formNumber } = await allocateFormNumber(User);
+      user.formNumber = formNumber;
       await user.save();
     }
 
-    // Add student to batch
-    const batchDoc = await Batch.findById(batchId).exec();
-    if (!batchDoc) {
-      return res.status(404).json({ 
-        success: false, 
-        message: 'Batch not found' 
-      });
-    }
+    const { enrollment } = await enrollStudentInBatch(user, batchDoc);
 
-    const currentStudents = batchDoc.students || [];
-    const studentIdString = String(user._id);
-    
-    if (!currentStudents.some(id => String(id) === studentIdString)) {
-      batchDoc.students.push(user._id);
-      batchDoc.updatedAt = new Date();
-      await batchDoc.save();
-    }
+    // Reload for response
+    const refreshed = await User.findById(user._id).exec();
 
     res.json({
       success: true,
-      message: 'Student added to batch successfully',
-      student: sanitizeStudentForViewer(user, req.user?.role)
+      message: 'Student enrolled in batch successfully',
+      student: sanitizeStudentForViewer(refreshed, req.user?.role),
+      enrollment
     });
   } catch (error) {
     console.error('Error adding student to batch:', error);
-    res.status(500).json({ 
-      success: false, 
-      message: 'Failed to add student to batch' 
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to add student to batch'
     });
   }
 });
@@ -518,17 +461,7 @@ router.delete('/:id/students/:studentId', auth, isBatchOwnerOrAdmin, async (req,
       });
     }
 
-    batchDoc.students = batchDoc.students.filter(id => String(id) !== String(studentId));
-    batchDoc.updatedAt = new Date();
-    await batchDoc.save();
-
-    // Update user
-    const user = await User.findById(studentId).exec();
-    if (user) {
-      user.batchId = null;
-      user.updatedAt = new Date();
-      await user.save();
-    }
+    await unenrollStudentFromBatch(studentId, batchId);
 
     res.json({
       success: true,

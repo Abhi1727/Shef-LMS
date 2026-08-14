@@ -594,6 +594,8 @@ const Dashboard = ({ user, onLogout }) => {
   // Classroom videos from Firebase
   const [classroomVideos, setClassroomVideos] = useState([]);
   const [certificates, setCertificates] = useState([]);
+  const [enrollments, setEnrollments] = useState([]);
+  const [classroomProgramKey, setClassroomProgramKey] = useState('all');
   
   // Batches and enhanced video information
   const [batches, setBatches] = useState([]);
@@ -1030,6 +1032,20 @@ const Dashboard = ({ user, onLogout }) => {
   // Play video helper to immediately save lastPlayedVideo
   const handlePlayVideo = useCallback((video) => {
     if (!video) return;
+    if (video.locked) {
+      alert('Complete the previous lesson (watch the recording) to unlock this one.');
+      return;
+    }
+    const source = String(video.videoSource || '');
+    const hasPlayable =
+      Boolean(video.youtubeVideoId || video.youtubeEmbedUrl || video.youtubeVideoUrl) ||
+      Boolean(video.driveId) ||
+      (source === 'drive' && video.zoomUrl) ||
+      source === 'youtube-url' ||
+      source === 'firebase';
+    if (!hasPlayable && (source === 'meet-session' || source === 'pending')) {
+      return;
+    }
     setSelectedVideo(video);
     try {
       const coursePrefix = getCourseSlug();
@@ -1079,22 +1095,42 @@ const Dashboard = ({ user, onLogout }) => {
       }
       
       if (response && response.ok) {
+        const contentType = (response.headers.get('content-type') || '').toLowerCase();
+        if (contentType.includes('application/json')) {
+          const errBody = await response.json().catch(() => ({}));
+          throw new Error(errBody.message || 'Notes file is not available on the server');
+        }
         const blob = await response.blob();
+        if (!blob.size) {
+          throw new Error('Downloaded notes file is empty');
+        }
+        const header = new Uint8Array(await blob.slice(0, 4).arrayBuffer());
+        const looksZip = header[0] === 0x50 && header[1] === 0x4b;
+        const looksPdf = header[0] === 0x25 && header[1] === 0x50 && header[2] === 0x44 && header[3] === 0x46;
+        if (looksZip === false && /json|html|text\//.test(blob.type || contentType)) {
+          throw new Error('Server returned an error instead of the notes file');
+        }
+        if (/\.zip$/i.test(String(video.notesFileName || '')) && !looksZip) {
+          throw new Error('The notes zip is missing on the server. Ask your trainer to upload it again.');
+        }
+
         const url = window.URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        
-        // Try to get filename from response headers or use default
+
         const contentDisposition = response.headers.get('content-disposition');
-        let filename = video.notesFileName || `notes-${video.title.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.pdf`;
-        
+        let filename = video.notesFileName || '';
         if (contentDisposition) {
-          const filenameMatch = contentDisposition.match(/filename="(.+)"/);
-          if (filenameMatch) {
-            filename = filenameMatch[1];
-          }
+          const utf = contentDisposition.match(/filename\*=UTF-8''([^;]+)/i);
+          const plain = contentDisposition.match(/filename="([^"]+)"/i);
+          filename = decodeURIComponent((utf && utf[1]) || (plain && plain[1]) || filename);
         }
-        
+        if (!filename) {
+          const ext = looksZip ? 'zip' : looksPdf ? 'pdf' : 'bin';
+          filename = `notes-${String(video.title || 'class').replace(/[^a-z0-9]/gi, '_').toLowerCase()}.${ext}`;
+        }
+        if (looksZip && !/\.zip$/i.test(filename)) filename = `${filename}.zip`;
+
         a.download = filename;
         document.body.appendChild(a);
         a.click();
@@ -1116,48 +1152,15 @@ const Dashboard = ({ user, onLogout }) => {
         // Show success message
         showToast('Notes downloaded successfully!', 'success');
       } else {
-        // If no endpoint works, try to get notes from video object directly
-        if (video.notesFileUrl || video.notesUrl || video.notesFilePath) {
-          const notesUrl = video.notesFileUrl || video.notesUrl || video.notesFilePath;
-          const notesResponse = await fetch(`${apiUrl}${notesUrl}`, {
-            headers: {
-              'Authorization': `Bearer ${token}`
-            }
-          });
-          
-          if (notesResponse.ok) {
-            const blob = await notesResponse.blob();
-            const url = window.URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = video.notesFileName || `notes-${video.title.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.pdf`;
-            document.body.appendChild(a);
-            a.click();
-            window.URL.revokeObjectURL(url);
-            document.body.removeChild(a);
-
-            // Track notes downloaded as viewed file
-            setViewedFiles(prevViewed => {
-              const noteKey = `${video.id}_notes`;
-              if (!prevViewed.includes(noteKey)) {
-                const updatedViewed = [...prevViewed, noteKey];
-                const coursePrefix = getCourseSlug();
-                localStorage.setItem(`${coursePrefix}_viewedFiles`, JSON.stringify(updatedViewed));
-                return updatedViewed;
-              }
-              return prevViewed;
-            });
-
-            showToast('Notes downloaded successfully!', 'success');
-            return;
-          }
-        }
-        
-        showToast('Failed to download notes. The notes file may not be available yet.', 'error');
+        const errBody = await response?.json?.().catch?.(() => ({}));
+        throw new Error(
+          errBody.message ||
+            'Notes file is missing on the server. Ask your trainer to upload the zip again.'
+        );
       }
     } catch (error) {
       console.error('Error downloading notes:', error);
-      showToast('Error downloading notes. Please try again later.', 'error');
+      showToast(error.message || 'Error downloading notes. Please try again later.', 'error');
     } finally {
       // Remove download progress indicator
       const downloadButton = document.querySelector(`[title*="Download ${video.notesFileName || 'notes'} for ${video.title}"]`);
@@ -1220,10 +1223,23 @@ const Dashboard = ({ user, onLogout }) => {
             });
 
         // Hide support/utility Zoom rooms from students (e.g. personal meeting rooms)
-        const filteredVideos = sortedVideos.filter(v => {
+        const filteredVideos = sortedVideos.filter((v) => {
           const title = (v.title || '').toLowerCase();
-          return !title.includes("support's personal meeting room") &&
-                 !title.includes('support\'s personal meeting room');
+          if (
+            title.includes("support's personal meeting room") ||
+            title.includes('support\'s personal meeting room')
+          ) {
+            return false;
+          }
+          const source = String(v.videoSource || '');
+          const hasPlayable =
+            Boolean(v.youtubeVideoId || v.youtubeEmbedUrl || v.youtubeVideoUrl) ||
+            Boolean(v.driveId) ||
+            (source === 'drive' && v.zoomUrl) ||
+            source === 'youtube-url' ||
+            source === 'firebase';
+          if (source === 'meet-session' || source === 'pending') return hasPlayable;
+          return true;
         });
 
         setClassroomVideos(filteredVideos);
@@ -1237,6 +1253,57 @@ const Dashboard = ({ user, onLogout }) => {
       setClassroomVideos([]);
     }
   }, []);
+
+  const loadEnrollments = useCallback(async () => {
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch(`${getApiBaseUrl()}/api/dashboard/enrollments`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) return;
+      const list = Array.isArray(data.enrollments) ? data.enrollments : [];
+      setEnrollments(list);
+      if (list.length === 1) {
+        setClassroomProgramKey(String(list[0].batchId));
+      }
+    } catch (err) {
+      console.error('Error loading enrollments:', err);
+    }
+  }, []);
+
+  const programOptions = (() => {
+    const fromEnrollments = (enrollments || []).map((e) => ({
+      key: String(e.batchId),
+      label: e.course || e.batchName || 'Program',
+      sub: e.batchName || '',
+      enrollmentNumber: e.enrollmentNumber || ''
+    }));
+    if (fromEnrollments.length) return fromEnrollments;
+    // Fallback from classroom video metadata
+    const map = new Map();
+    (classroomVideos || []).forEach((v) => {
+      const key = String(v.batchId || '');
+      if (!key || map.has(key)) return;
+      map.set(key, {
+        key,
+        label: v.program || v.course || 'Program',
+        sub: v.batchName || '',
+        enrollmentNumber: ''
+      });
+    });
+    return Array.from(map.values());
+  })();
+
+  const visibleClassroomVideos = (() => {
+    if (classroomProgramKey === 'all' || !classroomProgramKey) return classroomVideos;
+    return classroomVideos.filter((v) => String(v.batchId) === String(classroomProgramKey));
+  })();
+
+  const activeEnrollment =
+    (enrollments || []).find((e) => String(e.batchId) === String(classroomProgramKey)) ||
+    enrollments?.[0] ||
+    null;
 
   const loadCertificates = useCallback(async () => {
     try {
@@ -1385,7 +1452,8 @@ const Dashboard = ({ user, onLogout }) => {
           loadBatches(),
           loadBatchInfo(),
           loadUpcomingMeetings(),
-          loadCertificates()
+          loadCertificates(),
+          loadEnrollments()
         ]);
       } catch (error) {
         console.error('Error loading initial dashboard data:', error);
@@ -1396,7 +1464,7 @@ const Dashboard = ({ user, onLogout }) => {
 
     // Always load classroom/batch data — many learners have `course`/`batchId` without currentCourse
     loadInitialData();
-  }, [user?.id, user?.batchId, user?.course, user?.currentCourse, loadClassroomVideos, loadBatches, loadBatchInfo, loadUpcomingMeetings, loadCertificates]);
+  }, [user?.id, user?.batchId, user?.course, user?.currentCourse, loadClassroomVideos, loadBatches, loadBatchInfo, loadUpcomingMeetings, loadCertificates, loadEnrollments]);
 
   // Load video enhancements when videos are loaded
   useEffect(() => {
@@ -2154,21 +2222,21 @@ const Dashboard = ({ user, onLogout }) => {
 
   return (
     <div className="dashboard ss-shell student-shell">
-      <header className="ss-shell-header">
+      <header className="ss-shell-header student-shell-header">
         <div className="ss-shell-header__row">
           <div className="ss-shell-brand">
-            <h1 className="ss-shell-brand__name">Sky States LMS</h1>
-            <p className="ss-shell-brand__role">Student</p>
+            <h1 className="ss-shell-brand__name">Sky States</h1>
+            <p className="ss-shell-brand__role">Learning workspace</p>
           </div>
           <div className="ss-shell-actions">
             <div className="student-header-search">
-              <span className="search-icon" aria-hidden="true">🔍</span>
               <input
                 type="search"
-                placeholder="Search lessons, videos, modules…"
+                placeholder="Search lessons…"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="student-header-search__input"
+                aria-label="Search lessons"
               />
               {searchQuery && (
                 <div className="search-results-dropdown" role="listbox">
@@ -2187,7 +2255,6 @@ const Dashboard = ({ user, onLogout }) => {
                           setSearchQuery('');
                         }}
                       >
-                        <span className="res-icon">{res.icon}</span>
                         <span className="res-title">{res.title}</span>
                         <span className="res-type">{res.type}</span>
                       </div>
@@ -2198,68 +2265,40 @@ const Dashboard = ({ user, onLogout }) => {
                 </div>
               )}
             </div>
-            <span className="student-streak-chip">
-              🔥 {Math.max(realTimeStats?.streak?.current || 0, getLocalStorageStreak())} days
-            </span>
             <AccountMenu user={user} onLogout={onLogout} />
           </div>
         </div>
-        <nav className="ss-shell-nav" aria-label="Student">
-          <button
-            type="button"
-            className={`ss-shell-nav__btn ${activeSection === 'overview' ? 'is-active' : ''}`}
-            onClick={() => setActiveSection('overview')}
-          >
-            Home
-          </button>
-          <button
-            type="button"
-            className={`ss-shell-nav__btn ${activeSection === 'classroom' ? 'is-active' : ''}`}
-            onClick={() => setActiveSection('classroom')}
-          >
-            Classroom{classroomVideos.length > 0 ? ` (${classroomVideos.length})` : ''}
-          </button>
-          <button
-            type="button"
-            className={`ss-shell-nav__btn ${activeSection === 'schedule' ? 'is-active' : ''}`}
-            onClick={() => setActiveSection('schedule')}
-          >
-            Schedule
-          </button>
-          <button
-            type="button"
-            className={`ss-shell-nav__btn ${activeSection === 'materials' ? 'is-active' : ''}`}
-            onClick={() => setActiveSection('materials')}
-          >
-            Materials
-          </button>
-          <button
-            type="button"
-            className={`ss-shell-nav__btn ${activeSection === 'assessments' ? 'is-active' : ''}`}
-            onClick={() => setActiveSection('assessments')}
-          >
-            Assessments{studentAssessments.length > 0 ? ` (${studentAssessments.length})` : ''}
-          </button>
-          <button
-            type="button"
-            className={`ss-shell-nav__btn ${activeSection === 'messages' ? 'is-active' : ''}`}
-            onClick={() => setActiveSection('messages')}
-          >
-            Messages
-          </button>
+        <nav className="ss-shell-nav student-shell-nav" aria-label="Student">
+          {[
+            { id: 'overview', label: 'Home' },
+            {
+              id: 'classroom',
+              label: `Classroom${visibleClassroomVideos.length ? ` (${visibleClassroomVideos.length})` : ''}`
+            },
+            { id: 'schedule', label: 'Schedule' },
+            { id: 'materials', label: 'Materials' },
+            {
+              id: 'assessments',
+              label: `Assessments${studentAssessments.length ? ` (${studentAssessments.length})` : ''}`
+            },
+            { id: 'messages', label: 'Messages' },
+            { id: 'profile', label: 'Profile' }
+          ].map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              className={`ss-shell-nav__btn ${activeSection === item.id ? 'is-active' : ''}`}
+              onClick={() => setActiveSection(item.id)}
+            >
+              {item.label}
+            </button>
+          ))}
           <button
             type="button"
             className="ss-shell-nav__btn"
             onClick={() => navigate('/resources')}
           >
             Resources
-          </button>
-          <button
-            type="button"
-            className={`ss-shell-nav__btn ${activeSection === 'profile' ? 'is-active' : ''}`}
-            onClick={() => setActiveSection('profile')}
-          >
-            Profile
           </button>
         </nav>
       </header>
@@ -2271,22 +2310,33 @@ const Dashboard = ({ user, onLogout }) => {
             <div className="ss-home animate-in">
               <section className="ss-home__hero">
                 <div>
-                  <p className="ss-home__eyebrow">Sky States LMS</p>
+                  <p className="ss-home__eyebrow">Sky States</p>
                   <h1>Welcome back, {user?.name?.split(' ')[0] || 'Student'}</h1>
                   <p>
-                    {user?.currentCourse || batchInfo?.course || 'Your program'}
-                    {batchInfo?.name ? ` · ${batchInfo.name}` : ''}
-                    {batchInfo?.schedule?.days
-                      ? ` · Cohort ${batchInfo.schedule.days}${
-                          batchInfo.schedule?.time
-                            ? ` @ ${
-                                formatScheduleForStudentUsZones(batchInfo.schedule.time) ||
-                                batchInfo.schedule.time
-                              }`
-                            : ''
-                        }`
-                      : ''}
+                    {(enrollments || []).length > 1
+                      ? `Enrolled in ${(enrollments || []).map((e) => e.course || e.batchName).filter(Boolean).join(' · ')}`
+                      : user?.currentCourse || batchInfo?.course || activeEnrollment?.course || 'Your program'}
+                    {batchInfo?.name && (enrollments || []).length <= 1 ? ` · ${batchInfo.name}` : ''}
                   </p>
+                  {(enrollments || []).length > 1 && (
+                    <div className="student-program-chips" style={{ marginTop: 12 }}>
+                      {(enrollments || []).map((e) => (
+                        <button
+                          key={e.batchId}
+                          type="button"
+                          className={`student-program-chip${
+                            String(classroomProgramKey) === String(e.batchId) ? ' is-active' : ''
+                          }`}
+                          onClick={() => {
+                            setClassroomProgramKey(String(e.batchId));
+                            setActiveSection('classroom');
+                          }}
+                        >
+                          {e.course || e.batchName || 'Program'}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                   <div className="ss-home__actions">
                     <button
                       type="button"
@@ -2300,7 +2350,7 @@ const Dashboard = ({ user, onLogout }) => {
                       className="ss-home__action"
                       onClick={() => setActiveSection('schedule')}
                     >
-                      Cohort calendar
+                      Schedule
                     </button>
                     <button
                       type="button"
@@ -2350,11 +2400,34 @@ const Dashboard = ({ user, onLogout }) => {
                         const coursePrefix = getCourseSlug();
                         const lastPlayed = localStorage.getItem(`${coursePrefix}_lastPlayedVideo`);
                         if (lastPlayed) videoToResume = JSON.parse(lastPlayed);
+                        const source = String(videoToResume?.videoSource || '');
+                        const playable =
+                          Boolean(
+                            videoToResume?.youtubeVideoId ||
+                              videoToResume?.youtubeEmbedUrl ||
+                              videoToResume?.youtubeVideoUrl
+                          ) ||
+                          Boolean(videoToResume?.driveId) ||
+                          source === 'youtube-url' ||
+                          source === 'firebase' ||
+                          source === 'drive';
+                        if (!playable) videoToResume = null;
                       } catch (_) {
                         videoToResume = null;
                       }
                       if (!videoToResume && classroomVideos.length > 0) {
-                        videoToResume = classroomVideos.find((v) => !v.locked) || classroomVideos[0];
+                        videoToResume =
+                          classroomVideos.find((v) => {
+                            if (v.locked) return false;
+                            const source = String(v.videoSource || '');
+                            const playable =
+                              Boolean(v.youtubeVideoId || v.youtubeEmbedUrl || v.youtubeVideoUrl) ||
+                              Boolean(v.driveId) ||
+                              source === 'youtube-url' ||
+                              source === 'firebase' ||
+                              source === 'drive';
+                            return playable;
+                          }) || null;
                       }
                       if (!videoToResume) {
                         return (
@@ -2514,39 +2587,83 @@ const Dashboard = ({ user, onLogout }) => {
               <div className="page-header">
                 <h1 className="page-title">Classroom</h1>
                 <p className="page-subtitle">
-                  Lesson path for your cohort — watch recordings, download notes, and take linked
-                  quizzes.
+                  {(enrollments || []).length > 1
+                    ? 'Choose a program to view its lesson path, recordings, and notes.'
+                    : 'Lesson path for your cohort — watch recordings, download notes, and take linked quizzes.'}
                 </p>
               </div>
 
-              {batchInfo && (
-                <div className="batch-details-banner glass-card">
-                  <div className="batch-banner-left">
-                    <span className="batch-banner-title">{batchInfo.name}</span>
-                    <span className="batch-banner-meta">Course: {batchInfo.course} | Instructor: {batchInfo.teacherName}</span>
-                  </div>
-                  <div className="batch-banner-right">
-                    <span className="schedule-label">Schedules (EST / CST / PST):</span>
-                    <span className="schedule-time">
-                      {batchInfo.schedule?.days || 'N/A'}
-                      {batchInfo.schedule?.time
-                        ? ` @ ${formatScheduleForStudentUsZones(batchInfo.schedule.time) || batchInfo.schedule.time}`
-                        : ''}
-                    </span>
-                  </div>
+              {programOptions.length > 1 && (
+                <div className="student-program-switcher">
+                  <button
+                    type="button"
+                    className={`student-program-chip${classroomProgramKey === 'all' ? ' is-active' : ''}`}
+                    onClick={() => setClassroomProgramKey('all')}
+                  >
+                    All programs
+                  </button>
+                  {programOptions.map((p) => (
+                    <button
+                      key={p.key}
+                      type="button"
+                      className={`student-program-chip${
+                        String(classroomProgramKey) === String(p.key) ? ' is-active' : ''
+                      }`}
+                      onClick={() => setClassroomProgramKey(String(p.key))}
+                      title={p.enrollmentNumber || p.sub || ''}
+                    >
+                      {p.label}
+                      {p.sub ? <span className="student-program-chip__sub"> · {p.sub}</span> : null}
+                    </button>
+                  ))}
                 </div>
               )}
 
-              {!batchInfo && (
+              {(batchInfo || activeEnrollment) && (
+                <div className="batch-details-banner glass-card">
+                  <div className="batch-banner-left">
+                    <span className="batch-banner-title">
+                      {classroomProgramKey !== 'all' && activeEnrollment?.batchName
+                        ? activeEnrollment.batchName
+                        : batchInfo?.name || activeEnrollment?.batchName || 'Your batch'}
+                    </span>
+                    <span className="batch-banner-meta">
+                      {classroomProgramKey !== 'all' && activeEnrollment?.course
+                        ? activeEnrollment.course
+                        : batchInfo?.course || activeEnrollment?.course || 'Program'}
+                      {activeEnrollment?.enrollmentNumber && classroomProgramKey !== 'all'
+                        ? ` · ${activeEnrollment.enrollmentNumber}`
+                        : ''}
+                      {batchInfo?.teacherName ? ` · ${batchInfo.teacherName}` : ''}
+                    </span>
+                  </div>
+                  {batchInfo?.schedule && (
+                    <div className="batch-banner-right">
+                      <span className="schedule-label">Schedule</span>
+                      <span className="schedule-time">
+                        {batchInfo.schedule?.days || 'N/A'}
+                        {batchInfo.schedule?.time
+                          ? ` · ${
+                              formatScheduleForStudentUsZones(batchInfo.schedule.time) ||
+                              batchInfo.schedule.time
+                            }`
+                          : ''}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {!batchInfo && !(enrollments || []).length && (
                 <div className="sky-empty-panel">
                   <h3>No batch assigned yet</h3>
                   <p>Once you are assigned to a batch, recordings and schedule details will appear here.</p>
                 </div>
               )}
 
-              {classroomVideos.length > 0 ? (
+              {visibleClassroomVideos.length > 0 ? (
                 <div className="videos-grid-layout">
-                  {classroomVideos.map((video, idx) => {
+                  {visibleClassroomVideos.map((video, idx) => {
                     const locked = Boolean(video.locked);
                     const steps = video.steps || {};
                     return (
@@ -2570,31 +2687,43 @@ const Dashboard = ({ user, onLogout }) => {
                               className="video-thumbnail-img"
                             />
                           ) : (
-                            <div className="video-thumbnail-fallback">🎥</div>
+                            <div className="video-thumbnail-fallback">Session</div>
                           )}
                           <span className="session-number-badge">
                             Lesson {video.order || idx + 1}
-                            {locked ? ' · Locked' : video.watchComplete ? ' · Done' : ''}
+                            {locked
+                              ? ' · Locked'
+                              : video.watchComplete
+                                ? ' · Done'
+                                : video.videoSource === 'meet-session' || video.videoSource === 'pending'
+                                  ? ' · Recording pending'
+                                  : ''}
                           </span>
                         </div>
                         <div className="video-card-details">
                           <h3 className="video-title">{video.title}</h3>
+                          {(video.batchName || video.program) && classroomProgramKey === 'all' && (
+                            <p className="video-meta-text" style={{ opacity: 0.85 }}>
+                              {video.program || 'Program'}
+                              {video.batchName ? ` · ${video.batchName}` : ''}
+                            </p>
+                          )}
                           <p className="video-meta-text">
-                            👤 {video.instructor || 'Staff'} • 📅{' '}
+                            {video.instructor || 'Staff'} ·{' '}
                             {formatDateForComponent(video.date || video.createdAt)}
                           </p>
                           <p className="video-meta-text" style={{ marginTop: 6 }}>
-                            <span>1. Watch{steps.watch === 'done' ? ' ✓' : locked ? ' 🔒' : ''}</span>
+                            <span>1. Watch{steps.watch === 'done' ? ' ✓' : locked ? ' · locked' : ''}</span>
                             {steps.notes !== 'skipped' && (
                               <span>
                                 {' '}
-                                → 2. Notes{steps.notes === 'available' ? '' : locked ? ' 🔒' : ''}
+                                → 2. Notes{steps.notes === 'available' ? '' : locked ? ' · locked' : ''}
                               </span>
                             )}
                             {video.linkedAssessment && (
                               <span>
                                 {' '}
-                                → 3. Quiz{steps.quiz === 'available' ? '' : ' 🔒'}
+                                → 3. Quiz{steps.quiz === 'available' ? '' : ' · locked'}
                               </span>
                             )}
                           </p>
@@ -2606,7 +2735,7 @@ const Dashboard = ({ user, onLogout }) => {
                                 handleDownloadNotes(video);
                               }}
                             >
-                              📥 Download Lecture Notes
+                              Download lecture notes
                             </button>
                           )}
                           {!locked && video.linkedAssessment && steps.quiz === 'available' && (
@@ -2618,7 +2747,7 @@ const Dashboard = ({ user, onLogout }) => {
                                 navigate(`/student/assessment/${video.linkedAssessment.id}`);
                               }}
                             >
-                              ▶ Take quiz: {video.linkedAssessment.title}
+                              Take quiz: {video.linkedAssessment.title}
                             </button>
                           )}
                         </div>
@@ -2628,9 +2757,12 @@ const Dashboard = ({ user, onLogout }) => {
                 </div>
               ) : (
                 <div className="empty-state-container glass-card">
-                  <span className="empty-icon">📺</span>
-                  <h3>No Recordings Yet</h3>
-                  <p>Your class replays will be posted here automatically within 24 hours.</p>
+                  <h3>No recordings yet</h3>
+                  <p>
+                    {(enrollments || []).length > 1 && classroomProgramKey !== 'all'
+                      ? 'No lessons for this program yet. Try another program tab, or check back after class.'
+                      : 'Your class replays will be posted here after your trainer publishes or uploads them.'}
+                  </p>
                 </div>
               )}
             </div>

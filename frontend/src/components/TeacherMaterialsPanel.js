@@ -223,9 +223,9 @@ export default function TeacherMaterialsPanel({ batchId, batchName = '' }) {
 
         {tab === 'library' && (
           <>
-            <div className="live-session__cta" style={{ marginBottom: '0.85rem', flexWrap: 'wrap' }}>
-              <label className="live-lobby__muted" style={{ display: 'grid', gap: '0.25rem' }}>
-                Type
+            <div className="live-lobby__toolbar">
+              <label className="live-lobby__toolbar-field">
+                <span>Type</span>
                 <select value={kind} onChange={(e) => setKind(e.target.value)}>
                   {MATERIAL_KINDS.map((k) => (
                     <option key={k.value} value={k.value}>
@@ -235,7 +235,7 @@ export default function TeacherMaterialsPanel({ batchId, batchName = '' }) {
                 </select>
               </label>
               {kind === 'video' && (
-                <label className="live-lobby__muted" style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <label className="live-lobby__toolbar-check">
                   <input
                     type="checkbox"
                     checked={addAsLecture}
@@ -259,18 +259,21 @@ export default function TeacherMaterialsPanel({ batchId, batchName = '' }) {
               >
                 {uploading ? 'Uploading…' : 'Upload to Drive'}
               </button>
-              <select
-                value={kindFilter}
-                onChange={(e) => setKindFilter(e.target.value)}
-                aria-label="Filter materials"
-              >
-                <option value="all">All types</option>
-                {MATERIAL_KINDS.map((k) => (
-                  <option key={k.value} value={k.value}>
-                    {k.label}
-                  </option>
-                ))}
-              </select>
+              <label className="live-lobby__toolbar-field live-lobby__toolbar-field--filter">
+                <span>Filter</span>
+                <select
+                  value={kindFilter}
+                  onChange={(e) => setKindFilter(e.target.value)}
+                  aria-label="Filter materials"
+                >
+                  <option value="all">All types</option>
+                  {MATERIAL_KINDS.map((k) => (
+                    <option key={k.value} value={k.value}>
+                      {k.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
             </div>
             {error && <p className="live-lobby__alert live-lobby__alert--err">{error}</p>}
             {message && <p className="live-lobby__alert live-lobby__alert--ok">{message}</p>}

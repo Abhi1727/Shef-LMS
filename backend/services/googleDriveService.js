@@ -90,6 +90,25 @@ async function makeFileReadableWithLink(drive, fileId) {
   }
 }
 
+async function shareWithEmails(drive, fileId, emails, role = 'writer') {
+  const list = [...new Set((emails || []).filter(Boolean).map((e) => String(e).trim().toLowerCase()))];
+  for (const email of list) {
+    try {
+      await drive.permissions.create({
+        fileId,
+        sendNotificationEmail: false,
+        requestBody: {
+          type: 'user',
+          role,
+          emailAddress: email
+        }
+      });
+    } catch (err) {
+      console.warn(`[Drive] Could not share ${fileId} with ${email}:`, err?.message || err);
+    }
+  }
+}
+
 /**
  * Upload a recording file into the batch Drive folder.
  */
@@ -100,7 +119,8 @@ async function uploadRecordingFile({
   filePath,
   fileName,
   mimeType,
-  title
+  title,
+  shareWithEmails: shareEmails = []
 }) {
   const drive = await getDriveClient();
   let parentId = folderId;
@@ -124,6 +144,10 @@ async function uploadRecordingFile({
 
   const file = res.data;
   await makeFileReadableWithLink(drive, file.id);
+  await shareWithEmails(drive, file.id, shareEmails, 'writer');
+  if (parentId && shareEmails.length) {
+    await shareWithEmails(drive, parentId, shareEmails, 'writer');
+  }
 
   // Refresh links after permission change
   const meta = await drive.files.get({
@@ -148,6 +172,148 @@ async function uploadBatchFile(opts) {
   return uploadRecordingFile(opts);
 }
 
+function extractDriveFileId(raw) {
+  const value = String(raw || '').trim();
+  if (!value) return '';
+  const fromPath = value.match(/\/d\/([a-zA-Z0-9_-]+)/);
+  if (fromPath) return fromPath[1];
+  const fromQuery = value.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+  if (fromQuery) return fromQuery[1];
+  const fromApi = value.match(/drive\/v3\/files\/([a-zA-Z0-9_-]+)/);
+  if (fromApi) return fromApi[1];
+  const fromResource = value.match(/driveFiles\/([a-zA-Z0-9_-]+)/);
+  if (fromResource) return fromResource[1];
+  if (/^[a-zA-Z0-9_-]{10,}$/.test(value)) return value;
+  return '';
+}
+
+/**
+ * Copy a Drive file the host already owns (e.g. a Meet recording) into the batch folder.
+ */
+async function copyFileToBatchFolder({
+  sourceFileId,
+  batchId,
+  batchName,
+  folderId,
+  fileName,
+  shareWithEmails: shareEmails = []
+}) {
+  const drive = await getDriveClient();
+  let parentId = folderId;
+  if (!parentId) {
+    const ensured = await ensureBatchFolder({ batchId, batchName });
+    parentId = ensured.folderId;
+  }
+
+  const copied = await drive.files.copy({
+    fileId: sourceFileId,
+    supportsAllDrives: true,
+    requestBody: {
+      name: fileName || 'Class recording',
+      parents: [parentId]
+    },
+    fields: 'id, name, webViewLink, webContentLink'
+  });
+
+  const file = copied.data;
+  await makeFileReadableWithLink(drive, file.id);
+  await shareWithEmails(drive, file.id, shareEmails, 'writer');
+  if (parentId && shareEmails.length) {
+    await shareWithEmails(drive, parentId, shareEmails, 'writer');
+  }
+
+  const meta = await drive.files.get({
+    fileId: file.id,
+    fields: 'id, name, webViewLink, webContentLink, mimeType, size',
+    supportsAllDrives: true
+  });
+
+  return {
+    folderId: parentId,
+    driveFileId: meta.data.id,
+    driveLink: meta.data.webViewLink || `https://drive.google.com/file/d/${meta.data.id}/view`,
+    driveName: meta.data.name,
+    webContentLink: meta.data.webContentLink || '',
+    mimeType: meta.data.mimeType || '',
+    size: Number(meta.data.size || 0),
+    copiedFrom: sourceFileId
+  };
+}
+
+async function getFileMeta(fileId) {
+  if (!fileId) return null;
+  const drive = await getDriveClient();
+  const meta = await drive.files.get({
+    fileId,
+    fields: 'id, name, mimeType, size, webViewLink, webContentLink, trashed',
+    supportsAllDrives: true
+  });
+  return {
+    driveFileId: meta.data.id,
+    driveName: meta.data.name,
+    mimeType: meta.data.mimeType || '',
+    size: Number(meta.data.size || 0),
+    driveLink: meta.data.webViewLink || `https://drive.google.com/file/d/${meta.data.id}/view`,
+    webContentLink: meta.data.webContentLink || '',
+    trashed: Boolean(meta.data.trashed)
+  };
+}
+
+const MIN_PLAYABLE_VIDEO_BYTES = 1024 * 1024;
+
+function isPlayableVideoFile(meta) {
+  if (!meta || meta.trashed) return false;
+  const mime = String(meta.mimeType || '');
+  const name = String(meta.driveName || meta.name || '');
+  const looksVideo = /^video\//.test(mime) || /\.(mp4|webm|mov|mkv|m4v)$/i.test(name);
+  return looksVideo && Number(meta.size || 0) >= MIN_PLAYABLE_VIDEO_BYTES;
+}
+
+async function streamFileToResponse(res, fileId, downloadName) {
+  const drive = await getDriveClient();
+  const meta = await drive.files.get({
+    fileId,
+    fields: 'id, name, mimeType, size',
+    supportsAllDrives: true
+  });
+  const name = String(downloadName || meta.data.name || 'download').replace(/[/\\]/g, '_');
+  const ascii = name.replace(/[^\x20-\x7E]/g, '_').replace(/["\\]/g, '_');
+  const mime = meta.data.mimeType && meta.data.mimeType !== 'application/octet-stream'
+    ? meta.data.mimeType
+    : 'application/octet-stream';
+  res.setHeader('Content-Type', mime);
+  if (meta.data.size) res.setHeader('Content-Length', meta.data.size);
+  res.setHeader('Content-Disposition', `attachment; filename="${ascii}"; filename*=UTF-8''${encodeURIComponent(name)}`);
+  res.setHeader('Cache-Control', 'no-store');
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  const media = await drive.files.get(
+    { fileId, alt: 'media', supportsAllDrives: true },
+    { responseType: 'stream' }
+  );
+  return new Promise((resolve, reject) => {
+    media.data.on('error', reject);
+    media.data.on('end', resolve);
+    media.data.pipe(res);
+  });
+}
+
+async function listRecentHostVideos({ after, before, pageSize = 50 } = {}) {
+  const drive = await getDriveClient();
+  const clauses = ["mimeType contains 'video/'", 'trashed=false'];
+  if (after) clauses.push(`createdTime > '${new Date(after).toISOString()}'`);
+  if (before) clauses.push(`createdTime < '${new Date(before).toISOString()}'`);
+  const res = await drive.files.list({
+    q: clauses.join(' and '),
+    fields: 'files(id, name, createdTime, webViewLink, mimeType, size)',
+    orderBy: 'createdTime desc',
+    pageSize,
+    supportsAllDrives: true,
+    includeItemsFromAllDrives: true,
+    spaces: 'drive'
+  });
+  return res.data.files || [];
+}
+
 function getDriveStatus() {
   return {
     enabled: isMeetEnabled(),
@@ -161,6 +327,14 @@ module.exports = {
   ensureBatchFolder,
   uploadRecordingFile,
   uploadBatchFile,
+  copyFileToBatchFolder,
+  listRecentHostVideos,
+  extractDriveFileId,
+  makeFileReadableWithLink,
+  getFileMeta,
+  isPlayableVideoFile,
+  streamFileToResponse,
+  MIN_PLAYABLE_VIDEO_BYTES,
   getDriveStatus,
   getDriveClient
 };

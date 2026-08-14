@@ -3,8 +3,17 @@ const fs = require('fs');
 
 const CALENDAR_SCOPE = 'https://www.googleapis.com/auth/calendar.events';
 const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.file';
+const DRIVE_READONLY_SCOPE = 'https://www.googleapis.com/auth/drive.readonly';
+const MEET_SPACE_SCOPE = 'https://www.googleapis.com/auth/meetings.space.created';
+const MEET_READONLY_SCOPE = 'https://www.googleapis.com/auth/meetings.space.readonly';
 
-const ALL_SCOPES = [CALENDAR_SCOPE, DRIVE_SCOPE];
+const ALL_SCOPES = [
+  CALENDAR_SCOPE,
+  DRIVE_SCOPE,
+  DRIVE_READONLY_SCOPE,
+  MEET_SPACE_SCOPE,
+  MEET_READONLY_SCOPE
+];
 
 function getOAuthCredentials() {
   const clientId = process.env.GOOGLE_MEET_CLIENT_ID || process.env.GOOGLE_OAUTH_CLIENT_ID;
@@ -83,6 +92,9 @@ async function getGoogleAuth(extraScopes = []) {
 module.exports = {
   CALENDAR_SCOPE,
   DRIVE_SCOPE,
+  DRIVE_READONLY_SCOPE,
+  MEET_SPACE_SCOPE,
+  MEET_READONLY_SCOPE,
   ALL_SCOPES,
   isMeetEnabled,
   getAuthMode,

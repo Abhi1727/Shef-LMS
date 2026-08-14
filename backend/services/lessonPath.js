@@ -4,6 +4,12 @@ const { Assessment } = require('../models/AssessmentStudio');
 
 const WATCH_COMPLETE_THRESHOLD = 95;
 
+function isUnplayableLiveStub(lec) {
+  const source = String(lec?.videoSource || '');
+  if (source !== 'meet-session' && source !== 'pending') return false;
+  return !(lec.youtubeVideoId || lec.youtubeEmbedUrl || lec.youtubeVideoUrl || lec.driveId);
+}
+
 /**
  * Next order index for a batch (1-based).
  */
@@ -48,7 +54,7 @@ async function getWatchedVideoIds(userId) {
  */
 async function buildLessonPath({ batchId, studentId }) {
   const lectures = await Classroom.find({ batchId: String(batchId) }).lean().exec();
-  const ordered = sortLessons(lectures);
+  const ordered = sortLessons(lectures).filter((l) => !isUnplayableLiveStub(l));
   const watched = await getWatchedVideoIds(studentId);
 
   const assessmentIds = ordered
@@ -71,7 +77,7 @@ async function buildLessonPath({ batchId, studentId }) {
   let previousComplete = true;
   return ordered.map((lec, index) => {
     const id = String(lec._id);
-    const watchedOk = watched.has(id);
+    const watchedOk = watched.has(id) || isUnplayableLiveStub(lec);
     const unlockRule = lec.unlockRule === 'afterPrevious' ? 'afterPrevious' : 'open';
     const locked = unlockRule === 'afterPrevious' && index > 0 && !previousComplete;
     const linked = lec.linkedAssessmentId ? assessmentsById[String(lec.linkedAssessmentId)] : null;
@@ -149,12 +155,12 @@ async function annotateVideosWithPath(videos, studentId) {
   const out = [];
 
   for (const bid of Object.keys(byBatch)) {
-    const group = sortLessons(byBatch[bid]);
+    const group = sortLessons(byBatch[bid]).filter((v) => !isUnplayableLiveStub(v));
     let previousComplete = true;
     for (let i = 0; i < group.length; i++) {
       const v = group[i];
       const id = String(v.id || v._id);
-      const watchedOk = watched.has(id);
+      const watchedOk = watched.has(id) || isUnplayableLiveStub(v);
       const unlockRule = v.unlockRule === 'afterPrevious' ? 'afterPrevious' : 'open';
       const locked = unlockRule === 'afterPrevious' && i > 0 && !previousComplete;
       out.push({
@@ -184,6 +190,7 @@ async function annotateVideosWithPath(videos, studentId) {
 
 module.exports = {
   WATCH_COMPLETE_THRESHOLD,
+  isUnplayableLiveStub,
   nextOrderForBatch,
   sortLessons,
   getWatchedVideoIds,

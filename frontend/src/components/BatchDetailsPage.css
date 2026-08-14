@@ -5332,6 +5332,43 @@ body.modal-open {
   padding: 24px;
   max-width: 560px;
 }
+
+.sky-batch-embed {
+  padding: 12px 20px 36px;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+.sky-batch-embed .live-lobby,
+.sky-batch-embed .live-lobby__card,
+.sky-batch-embed .live-lobby__hero {
+  max-width: 100%;
+}
+
+.sky-batch-embed .live-lobby {
+  min-width: 0;
+}
+
+.sky-batch-embed .live-lobby__card {
+  overflow: hidden;
+}
+
+.sky-batch-embed .live-lobby__form--schedule {
+  min-width: 0;
+}
+
+.sky-batch-embed .live-session__cta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+.sky-batch-page.teacher-batch-details-page .sky-batch-embed {
+  padding-left: 20px;
+  padding-right: 20px;
+}
 .sky-timing-card h2 {
   font-family: var(--lms-display, Fraunces, Georgia, serif);
   margin: 0 0 8px;

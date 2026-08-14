@@ -70,9 +70,10 @@ async function getConnectionUri() {
   throw new Error('MongoDB config: set MONGODB_USERNAME, MONGODB_PASSWORD, MONGODB_CLUSTER, or MONGODB_URI (no placeholders) in .env');
 }
 
-async function connectMongo() {
-  // When Firestore runtime is enabled, skip Mongo entirely.
-  if (String(process.env.USE_FIRESTORE || '').toLowerCase() === 'true') {
+async function connectMongo(options = {}) {
+  const force = Boolean(options.force);
+  // When Firestore runtime is enabled, skip Mongo unless forced (login fallback).
+  if (!force && String(process.env.USE_FIRESTORE || '').toLowerCase() === 'true') {
     return null;
   }
   if (isConnected) {

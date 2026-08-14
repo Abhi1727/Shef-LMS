@@ -74,6 +74,10 @@ async function sendMeetReminders() {
 
   for (const cls of classes) {
     try {
+      if (!cls.batchId) {
+        skipped += 1;
+        continue;
+      }
       const { emails, batchName } = await getBatchStudentEmails(cls.batchId);
       if (!emails.length) {
         await LiveClass.updateOne(

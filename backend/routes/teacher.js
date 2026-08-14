@@ -17,6 +17,7 @@ const googleDriveService = require('../services/googleDriveService');
 const lessonPath = require('../services/lessonPath');
 const { Assessment } = require('../models/AssessmentStudio');
 const { logActivity } = require('../utils/activityLogger');
+const { attachPresence, findLiveClassForTeacher } = require('../utils/teacherPresence');
 
 const materialUpload = multer({
   dest: path.join(__dirname, '../uploads/tmp-materials'),
@@ -67,8 +68,7 @@ router.use(isTeacher);
 // ----- MongoDB-backed teacher routes -----
 
 // @route   GET /api/teacher/availability
-// @desc    Get current teacher's availability status
-// @access  Teacher only
+// @desc    Live presence: in class (from Meet) or available/unavailable toggle
 router.get('/availability', async (req, res) => {
   try {
     const teacher = await User.findById(req.user.id)
@@ -78,10 +78,11 @@ router.get('/availability', async (req, res) => {
     if (!teacher) {
       return res.status(404).json({ success: false, message: 'Teacher not found' });
     }
+    const live = await findLiveClassForTeacher(req.user.id);
+    const presence = attachPresence(teacher, live);
     res.json({
       success: true,
-      isAvailable: Boolean(teacher.isAvailable),
-      availabilityUpdatedAt: teacher.availabilityUpdatedAt || null,
+      ...presence,
       weeklyAvailability: Array.isArray(teacher.weeklyAvailability)
         ? teacher.weeklyAvailability
         : []
@@ -120,10 +121,11 @@ router.patch('/availability', async (req, res) => {
       return res.status(404).json({ success: false, message: 'Teacher not found' });
     }
 
+    const live = await findLiveClassForTeacher(req.user.id);
+    const presence = attachPresence(updated, live);
     res.json({
       success: true,
-      isAvailable: Boolean(updated.isAvailable),
-      availabilityUpdatedAt: updated.availabilityUpdatedAt || null,
+      ...presence,
       weeklyAvailability: updated.weeklyAvailability || []
     });
   } catch (error) {
@@ -843,7 +845,7 @@ router.delete('/batches/:id', async (req, res) => {
 });
 
 // Multer for teacher notes uploads
-const NOTES_MAX_FILE_SIZE = 10 * 1024 * 1024;
+const NOTES_MAX_FILE_SIZE = 100 * 1024 * 1024;
 const teacherNotesStorage = multer.diskStorage({
   destination: (req, file, cb) => {
     const notesDir = path.join(__dirname, '..', 'uploads', 'teacher-notes');
@@ -1064,15 +1066,31 @@ router.get('/students', async (req, res) => {
       .lean()
       .exec();
 
-    const students = users.map((u) => ({
-      id: String(u._id),
-      name: u.name,
-      enrollmentNumber: u.enrollmentNumber || '',
-      course: u.course || '',
-      status: u.status || 'active',
-      batchId: u.batchId || '',
-      batchName: batchNameByStudent[String(u._id)] || ''
-    }));
+    const students = users.map((u) => {
+      const id = String(u._id);
+      const memberBatches = batches.filter((b) =>
+        (b.students || []).some((sid) => String(sid) === id)
+      );
+      const primary =
+        memberBatches.find((b) => String(b._id) === String(u.batchId)) || memberBatches[0] || null;
+      const schedule = primary?.schedule || null;
+      const scheduleLabel = schedule
+        ? [schedule.days, schedule.time].filter(Boolean).join(' · ')
+        : '';
+      return {
+        id,
+        name: u.name,
+        enrollmentNumber: u.enrollmentNumber || '',
+        course: u.course || primary?.course || '',
+        status: u.status || 'active',
+        batchId: primary ? String(primary._id) : u.batchId || '',
+        batchName: primary?.name || batchNameByStudent[id] || '',
+        batchType: primary?.batchType || 'regular',
+        schedule,
+        scheduleLabel,
+        candidateName: u.name
+      };
+    });
 
     res.json({
       success: true,
@@ -1639,14 +1657,20 @@ router.post('/videos/:videoId/notes', teacherNotesUpload.single('notesFile'), as
 
     const notesFileName = req.file.originalname;
     const notesFilePath = `/uploads/teacher-notes/${req.file.filename}`;
+    const { persistNotesToDrive } = require('../services/notesStorage');
+    const driveNotes = await persistNotesToDrive({
+      file: req.file,
+      batchId: lecture.batchId,
+      lectureTitle: lecture.title
+    });
 
-    // Update the video with notes information
     const updatedLecture = await Classroom.findByIdAndUpdate(
       videoId,
       {
         notesAvailable: true,
-        notesFileName: notesFileName,
-        notesFilePath: notesFilePath,
+        notesFileName,
+        notesFilePath,
+        ...driveNotes,
         updatedAt: new Date()
       },
       { new: true }

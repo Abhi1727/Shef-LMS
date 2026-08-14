@@ -62,10 +62,18 @@ function DirectChatPanel({ role, currentUserId }) {
         if (incremental) {
           if (list.length) {
             setMessages((prev) => {
-              const seen = new Set(prev.map((m) => m.id));
+              const messageKey = (m) =>
+                m.id && m.id !== 'undefined'
+                  ? String(m.id)
+                  : `${m.senderId}|${m.createdAt}|${m.text}`;
+              const seen = new Set(prev.map(messageKey));
               const merged = [...prev];
               list.forEach((m) => {
-                if (!seen.has(m.id)) merged.push(m);
+                const key = messageKey(m);
+                if (!seen.has(key)) {
+                  seen.add(key);
+                  merged.push(m);
+                }
               });
               return merged;
             });
@@ -110,6 +118,17 @@ function DirectChatPanel({ role, currentUserId }) {
     }
   }, [peers, activePeerId, openPeer]);
 
+  // When a peer is open but conversation was created by the other side, attach it.
+  useEffect(() => {
+    if (!activePeerId) return;
+    const existing = conversations.find((c) => String(c.peerId) === String(activePeerId));
+    if (existing?.id && existing.id !== conversationId) {
+      setConversationId(existing.id);
+      sinceRef.current = null;
+      loadMessages(existing.id, { incremental: false });
+    }
+  }, [conversations, activePeerId, conversationId, loadMessages]);
+
   useEffect(() => {
     const timer = setInterval(() => {
       loadPeersAndInbox();
@@ -146,7 +165,11 @@ function DirectChatPanel({ role, currentUserId }) {
       setConversationId(data.conversationId || conversationId);
       if (data.message) {
         setMessages((prev) => {
-          if (prev.some((m) => m.id === data.message.id)) return prev;
+          const key = (m) =>
+            m.id && m.id !== 'undefined'
+              ? String(m.id)
+              : `${m.senderId}|${m.createdAt}|${m.text}`;
+          if (prev.some((m) => key(m) === key(data.message))) return prev;
           return [...prev, data.message];
         });
         sinceRef.current = data.message.createdAt;
@@ -255,7 +278,11 @@ function DirectChatPanel({ role, currentUserId }) {
                   const mine = String(m.senderId) === String(currentUserId);
                   return (
                     <div
-                      key={m.id}
+                      key={
+                        m.id && m.id !== 'undefined'
+                          ? m.id
+                          : `${m.senderId}-${m.createdAt}-${String(m.text || '').slice(0, 24)}`
+                      }
                       className={`dc-bubble ${mine ? 'dc-bubble--mine' : 'dc-bubble--theirs'}`}
                     >
                       <p>{m.text}</p>

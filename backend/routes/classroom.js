@@ -8,6 +8,7 @@ const { roleAuth } = require('../middleware/roleAuth');
 const classroomService = require('../services/classroomService');
 const { logActivity } = require('../utils/activityLogger');
 const Classroom = require('../models/Classroom');
+const { resolveNotesAbsolutePath, streamNotesFile } = require('../utils/notesDownload');
 
 // Content-Type mapping for proper file download headers
 const contentTypes = {
@@ -93,73 +94,10 @@ router.get('/:id/notes', async (req, res) => {
     
     console.log('Video found:', video.title, 'Notes available:', video.notesAvailable);
     
-    // Check if notes are available
-    if (!video.notesAvailable || !video.notesFilePath) {
-      console.log('No notes available for video:', id);
-      return res.status(404).json({ message: 'No notes available for this video' });
-    }
-    
-    // Construct file path - handle both relative and absolute paths
-    let notesPath;
-    if (video.notesFilePath.startsWith('/')) {
-      // Absolute path - remove leading slash and make relative to backend root
-      notesPath = path.join(__dirname, '..', video.notesFilePath.substring(1));
-    } else {
-      // Relative path - make relative to backend root
-      notesPath = path.join(__dirname, '..', video.notesFilePath);
-    }
-    
-    console.log('Constructed notes path:', notesPath);
-    
-    // Security check - prevent directory traversal
-    const normalizedPath = path.normalize(notesPath);
-    const uploadsDir = path.normalize(path.join(__dirname, '..', 'uploads'));
-    if (!normalizedPath.startsWith(uploadsDir)) {
-      console.error('Security violation - path traversal attempt:', normalizedPath);
-      return res.status(403).json({ message: 'Access denied' });
-    }
-    
-    // Check if file exists
-    if (!fs.existsSync(notesPath)) {
-      console.error('Notes file not found:', notesPath);
-      return res.status(404).json({ message: 'Notes file not found on server' });
-    }
-    
-    // Get file stats
-    const stats = fs.statSync(notesPath);
-    console.log('File stats:', { size: stats.size, modified: stats.mtime });
-    
-    // Set appropriate headers
-    const filename = video.notesFileName || path.basename(notesPath);
-    const contentType = getContentType(filename);
-    res.setHeader('Content-Type', contentType);
-    res.setHeader('Content-Length', stats.size);
-    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
-    res.setHeader('Cache-Control', 'no-cache');
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Headers', 'Authorization, Content-Type');
-    
-    // Create read stream and pipe to response
-    const fileStream = fs.createReadStream(notesPath);
-    
-    fileStream.on('error', (error) => {
-      console.error('Error reading notes file:', error);
-      if (!res.headersSent) {
-        res.status(500).json({ message: 'Error reading notes file' });
-      }
-    });
-    
-    fileStream.on('end', () => {
-      console.log('Notes file downloaded successfully:', {
-        videoId: id,
-        filename: filename,
-        size: stats.size,
-        userId: req.user?.id
-      });
-    });
-    
-    // Pipe the file to the response
-    fileStream.pipe(res);
+    const { sendLectureNotes } = require('../services/notesStorage');
+    await sendLectureNotes(res, video);
+    return;
+
     
   } catch (error) {
     console.error('Error downloading notes:', error);
@@ -539,49 +477,10 @@ router.get('/notes/:id', async (req, res) => {
       return res.status(404).json({ message: 'Video not found' });
     }
     
-    // Check if notes are available
-    if (!video.notesAvailable || !video.notesFilePath) {
-      return res.status(404).json({ message: 'No notes available for this video' });
-    }
-    
-    // Construct file path - handle both relative and absolute paths
-    let notesPath;
-    if (video.notesFilePath.startsWith('/')) {
-      // Absolute path - remove leading slash and make relative to backend root
-      notesPath = path.join(__dirname, '..', video.notesFilePath.substring(1));
-    } else {
-      // Relative path - make relative to backend root
-      notesPath = path.join(__dirname, '..', video.notesFilePath);
-    }
-    
-    // Security check - prevent directory traversal
-    const normalizedPath = path.normalize(notesPath);
-    const uploadsDir = path.normalize(path.join(__dirname, '..', 'uploads'));
-    if (!normalizedPath.startsWith(uploadsDir)) {
-      return res.status(403).json({ message: 'Access denied' });
-    }
-    
-    // Check if file exists
-    if (!fs.existsSync(notesPath)) {
-      return res.status(404).json({ message: 'Notes file not found on server' });
-    }
-    
-    // Get file stats
-    const stats = fs.statSync(notesPath);
-    
-    // Set appropriate headers
-    const filename = video.notesFileName || path.basename(notesPath);
-    const contentType = getContentType(filename);
-    res.setHeader('Content-Type', contentType);
-    res.setHeader('Content-Length', stats.size);
-    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
-    res.setHeader('Cache-Control', 'no-cache');
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Headers', 'Authorization, Content-Type');
-    
-    // Create read stream and pipe to response
-    const fileStream = fs.createReadStream(notesPath);
-    fileStream.pipe(res);
+    const { sendLectureNotes } = require('../services/notesStorage');
+    await sendLectureNotes(res, video);
+    return;
+
     
   } catch (error) {
     console.error('Error downloading notes (alternative endpoint):', error);

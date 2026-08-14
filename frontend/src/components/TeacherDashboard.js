@@ -12,6 +12,7 @@ import MeetLiveClassesPanel from './MeetLiveClassesPanel';
 import TeacherAttendanceHub from './TeacherAttendanceHub';
 import TeacherAvailabilityPanel from './TeacherAvailabilityPanel';
 import { formatDateForComponent } from '../utils/dateUtils';
+import { meetJoinUrl } from '../utils/meetJoinUrl';
 import './Dashboard.css';
 import './MeetLiveClasses.css';
 import { getApiBaseUrl } from '../utils/apiBase';
@@ -21,6 +22,8 @@ const TeacherDashboard = ({ user, onLogout }) => {
   const location = useLocation();
   const [activeSection, setActiveSection] = useState('overview');
   const [isAvailable, setIsAvailable] = useState(false);
+  const [inClass, setInClass] = useState(false);
+  const [liveClassTitle, setLiveClassTitle] = useState('');
   const [availabilitySaving, setAvailabilitySaving] = useState(false);
   const [courses, setCourses] = useState(() => {
     try {
@@ -251,6 +254,59 @@ const TeacherDashboard = ({ user, onLogout }) => {
     navigate(`/teacher/batch/${id}`, { state: { from: 'teacher-batches' } });
   };
 
+  const formatBatchSchedule = (batch) => {
+    const s = batch?.schedule;
+    if (!s) return '—';
+    const days = Array.isArray(s.days) ? s.days.join(', ') : s.days || '';
+    const time = s.time || '';
+    return [days, time].filter(Boolean).join(' · ') || '—';
+  };
+
+  const formatBatchCandidates = (batch) => {
+    const list = batch?.studentsList || batch?.students || [];
+    if (!list.length) return 'No candidates';
+    return list.map((s) => s.name || 'Student').filter(Boolean).join(', ');
+  };
+
+  const [startingBatchId, setStartingBatchId] = useState('');
+
+  const handleStartClassForBatch = async (batch) => {
+    const batchId = batch?.id || batch?._id;
+    if (!batchId) return;
+    try {
+      setStartingBatchId(String(batchId));
+      const token = localStorage.getItem('token');
+      const apiUrl = getApiBaseUrl();
+      const title = `${batch.name || 'Class'} · ${new Date().toLocaleDateString('en-GB')}`;
+      const res = await fetch(`${apiUrl}/api/meetings`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          title,
+          batchId: String(batchId),
+          startNow: true,
+          duration: '60',
+          timezone: 'Asia/Kolkata'
+        })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.message || 'Failed to start class');
+      const link = meetJoinUrl(data.meetLink || data.startUrl || data.meeting?.meetLink, {
+        host: true
+      });
+      if (link) window.open(link, '_blank', 'noopener,noreferrer');
+      showToast('Class started. Mic/camera muted on join.', 'success');
+      setActiveSection('live');
+    } catch (err) {
+      showToast(err.message || 'Failed to start class', 'error');
+    } finally {
+      setStartingBatchId('');
+    }
+  };
+
   const getApiUrl = () => getApiBaseUrl();
 
   const loadAvailability = async () => {
@@ -262,6 +318,8 @@ const TeacherDashboard = ({ user, onLogout }) => {
       if (res.ok) {
         const data = await res.json();
         setIsAvailable(Boolean(data.isAvailable));
+        setInClass(Boolean(data.inClass));
+        setLiveClassTitle(data.liveClass?.title || '');
       }
     } catch (err) {
       console.warn('Failed to load availability', err);
@@ -269,7 +327,7 @@ const TeacherDashboard = ({ user, onLogout }) => {
   };
 
   const toggleAvailability = async () => {
-    if (availabilitySaving) return;
+    if (availabilitySaving || inClass) return;
     setAvailabilitySaving(true);
     const next = !isAvailable;
     try {
@@ -288,8 +346,14 @@ const TeacherDashboard = ({ user, onLogout }) => {
         return;
       }
       setIsAvailable(Boolean(data.isAvailable));
+      setInClass(Boolean(data.inClass));
+      setLiveClassTitle(data.liveClass?.title || '');
       showToast(
-        data.isAvailable ? 'Marked available for admins' : 'Marked unavailable for admins',
+        data.inClass
+          ? `In class${data.liveClass?.title ? `: ${data.liveClass.title}` : ''}`
+          : data.isAvailable
+            ? 'Marked available for admins'
+            : 'Marked unavailable for admins',
         'success'
       );
     } catch (err) {
@@ -301,6 +365,8 @@ const TeacherDashboard = ({ user, onLogout }) => {
 
   useEffect(() => {
     loadAvailability();
+    const t = setInterval(loadAvailability, 20000);
+    return () => clearInterval(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -776,18 +842,28 @@ const TeacherDashboard = ({ user, onLogout }) => {
           </div>
           <div className="ss-shell-actions">
             <label
-              className={`ss-toggle ${isAvailable ? 'is-on' : ''}`}
-              title="Visible to admins only — students do not see this"
+              className={`ss-toggle ${inClass ? 'is-class' : isAvailable ? 'is-on' : ''}`}
+              title={
+                inClass
+                  ? `In class now${liveClassTitle ? ` · ${liveClassTitle}` : ''}. Admins see this automatically while Meet is live.`
+                  : 'Live status for admins. Turn on when you are free. Students do not see this.'
+              }
             >
               <input
                 type="checkbox"
-                checked={isAvailable}
-                disabled={availabilitySaving}
+                checked={inClass || isAvailable}
+                disabled={availabilitySaving || inClass}
                 onChange={toggleAvailability}
               />
               <span className="ss-toggle__track" aria-hidden="true" />
               <span className="ss-toggle__label">
-                {availabilitySaving ? 'Saving…' : isAvailable ? 'Available' : 'Unavailable'}
+                {availabilitySaving
+                  ? 'Saving…'
+                  : inClass
+                    ? 'In class'
+                    : isAvailable
+                      ? 'Available'
+                      : 'Unavailable'}
               </span>
             </label>
             <AccountMenu
@@ -881,7 +957,11 @@ const TeacherDashboard = ({ user, onLogout }) => {
             <p className="ss-page-sub">
               Run cohort sessions, track attendance, and keep materials current. Your availability
               toggle is for <strong>admins only</strong> — currently{' '}
-              <strong>{isAvailable ? 'Available' : 'Unavailable'}</strong>.
+              <strong>
+                {inClass ? 'In class' : isAvailable ? 'Available' : 'Unavailable'}
+              </strong>
+              {inClass && liveClassTitle ? ` (${liveClassTitle})` : ''}.
+              Starting a Meet marks you in class automatically.
             </p>
 
             <div className="ss-stat-row">
@@ -900,7 +980,9 @@ const TeacherDashboard = ({ user, onLogout }) => {
                 <div className="ss-stat__label">Lectures</div>
               </div>
               <div className="ss-stat">
-                <div className="ss-stat__value">{isAvailable ? 'On' : 'Off'}</div>
+                <div className="ss-stat__value">
+                  {inClass ? 'Class' : isAvailable ? 'On' : 'Off'}
+                </div>
                 <div className="ss-stat__label">Admin availability</div>
               </div>
             </div>
@@ -1065,11 +1147,14 @@ const TeacherDashboard = ({ user, onLogout }) => {
                   <table className="teacher-batches-pro__table">
                     <thead>
                       <tr>
-                        <th>Batch</th>
+                        <th>
+                          {courseFilter === 'one-to-one' || courseFilter === 'project'
+                            ? 'Candidates'
+                            : 'Batch'}
+                        </th>
                         <th>Program</th>
+                        <th>Schedule</th>
                         <th>Type</th>
-                        <th>Students</th>
-                        <th>Started</th>
                         <th>Status</th>
                         <th>Actions</th>
                       </tr>
@@ -1082,25 +1167,40 @@ const TeacherDashboard = ({ user, onLogout }) => {
                             ? 'One-to-One'
                             : 'Regular';
                         const status = (batch.status || 'active').toLowerCase();
+                        const special = isProjectBatch(batch) || isOneToOneBatch(batch);
                         return (
                           <tr key={batch.id || batch._id}>
                             <td>
-                              <button
-                                type="button"
-                                className="teacher-batches-pro__link"
-                                onClick={() => handleViewBatchDetail(batch)}
-                              >
-                                {batch.name}
-                              </button>
+                              {special ? (
+                                <div>
+                                  <button
+                                    type="button"
+                                    className="teacher-batches-pro__link"
+                                    onClick={() => handleViewBatchDetail(batch)}
+                                  >
+                                    {formatBatchCandidates(batch)}
+                                  </button>
+                                  <div className="ss-page-sub" style={{ marginTop: 2 }}>
+                                    {batch.name}
+                                  </div>
+                                </div>
+                              ) : (
+                                <button
+                                  type="button"
+                                  className="teacher-batches-pro__link"
+                                  onClick={() => handleViewBatchDetail(batch)}
+                                >
+                                  {batch.name}
+                                </button>
+                              )}
                             </td>
                             <td>{batch.programLabel || batch.course || '—'}</td>
+                            <td>{formatBatchSchedule(batch)}</td>
                             <td>
                               <span className={`teacher-batches-pro__type teacher-batches-pro__type--${isProjectBatch(batch) ? 'project' : isOneToOneBatch(batch) ? 'oto' : 'regular'}`}>
                                 {typeLabel}
                               </span>
                             </td>
-                            <td>{batch.studentCount || batch.students?.length || 0}</td>
-                            <td>{batch.startDate ? formatDate(batch.startDate) : '—'}</td>
                             <td>
                               <span className={`teacher-batches-pro__status teacher-batches-pro__status--${status}`}>
                                 {status.charAt(0).toUpperCase() + status.slice(1)}
@@ -1111,6 +1211,16 @@ const TeacherDashboard = ({ user, onLogout }) => {
                                 <button
                                   type="button"
                                   className="ss-shell-btn ss-shell-btn--primary"
+                                  disabled={startingBatchId === String(batch.id || batch._id)}
+                                  onClick={() => handleStartClassForBatch(batch)}
+                                >
+                                  {startingBatchId === String(batch.id || batch._id)
+                                    ? 'Starting…'
+                                    : 'Start class'}
+                                </button>
+                                <button
+                                  type="button"
+                                  className="ss-shell-btn"
                                   onClick={() => handleViewBatchDetail(batch)}
                                 >
                                   Workspace
@@ -1125,17 +1235,6 @@ const TeacherDashboard = ({ user, onLogout }) => {
                                   }
                                 >
                                   Sessions
-                                </button>
-                                <button
-                                  type="button"
-                                  className="ss-shell-btn"
-                                  onClick={() =>
-                                    navigate(`/teacher/batch/${batch.id || batch._id}`, {
-                                      state: { from: 'teacher-batches', activeView: 'attendance' }
-                                    })
-                                  }
-                                >
-                                  Attendance
                                 </button>
                               </div>
                             </td>
@@ -1270,7 +1369,7 @@ const TeacherDashboard = ({ user, onLogout }) => {
                     <tr>
                       <th>Name</th>
                       <th>Course</th>
-                      <th>Batch</th>
+                      <th>Schedule</th>
                       <th>Enrollment</th>
                       <th>Status</th>
                       <th></th>
@@ -1288,7 +1387,18 @@ const TeacherDashboard = ({ user, onLogout }) => {
                             </div>
                           </td>
                           <td>{student.course || '—'}</td>
-                          <td>{student.batchName || '—'}</td>
+                          <td>
+                            <div>
+                              {student.scheduleLabel || '—'}
+                              {student.batchName ? (
+                                <div className="ss-page-sub" style={{ marginTop: 2 }}>
+                                  {student.batchType === 'one-to-one' || student.batchType === 'project'
+                                    ? student.batchName
+                                    : student.batchName}
+                                </div>
+                              ) : null}
+                            </div>
+                          </td>
                           <td>{student.enrollmentNumber || '—'}</td>
                           <td>
                             <span className={`status-chip ${(student.status || 'active').toLowerCase()}`}>

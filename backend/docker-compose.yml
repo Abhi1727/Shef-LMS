@@ -1,5 +1,5 @@
-# Shef-LMS Backend — Firestore runtime (USE_FIRESTORE=true, FIRESTORE_DATABASE=lms-prod).
-# Mongo env vars optional (rollback / export scripts only).
+# Shef-LMS Backend — production. Default data store is Mongo.
+# Firestore only when USE_FIRESTORE=true in .env (after approved cutover).
 services:
   backend:
     build:
@@ -15,6 +15,8 @@ services:
       - USE_FIRESTORE=${USE_FIRESTORE:-true}
       - FIRESTORE_PROJECT=${FIRESTORE_PROJECT:-skystateslms}
       - FIRESTORE_DATABASE=${FIRESTORE_DATABASE:-lms-prod}
+      - FIRESTORE_IMPERSONATE_SA=${FIRESTORE_IMPERSONATE_SA:-firestore-lms-runtime@skystateslms.iam.gserviceaccount.com}
+      - FIRESTORE_OAUTH_QUOTA_PROJECT=${FIRESTORE_OAUTH_QUOTA_PROJECT:-47944521032}
     dns:
       - 8.8.8.8
       - 8.8.4.4
@@ -22,6 +24,7 @@ services:
       - ./logs:/app/logs
       - ./.env:/app/.env:ro
       - ../content:/app/content:ro
+      - ./uploads:/app/uploads
     restart: unless-stopped
     network_mode: host
 

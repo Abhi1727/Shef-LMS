@@ -19,12 +19,15 @@ That blocks downloading SA keys. **Use OAuth instead** (refresh token for one Wo
 ### 1) Google Cloud
 
 1. Create/select a GCP project
-2. Enable **Google Calendar API** and **Google Drive API**
+2. Enable **Google Calendar API**, **Google Drive API**, and **Google Meet API**
 3. **APIs & Services → OAuth consent screen**
    - User type: Internal (Workspace) if available, else External for testing
    - Add scopes:
      - `https://www.googleapis.com/auth/calendar.events`
      - `https://www.googleapis.com/auth/drive.file`
+     - `https://www.googleapis.com/auth/drive.readonly` (read Meet recordings created by Google)
+     - `https://www.googleapis.com/auth/meetings.space.created`
+     - `https://www.googleapis.com/auth/meetings.space.readonly`
 4. **Credentials → Create credentials → OAuth client ID**
    - Application type: **Desktop app** (simplest), or Web with redirect `http://localhost:5000/auth/google/callback`
    - Copy Client ID + Client Secret
@@ -73,7 +76,7 @@ docker compose -p shef-lms-dev -f docker-compose.dev.yml up -d --build
 - Admin/Teacher → Schedule Meet class → Meet link appears
 - Host calendar shows the event
 - Student in that batch sees **Join class**
-- After the session window ends → **Upload to Google Drive** → file appears under `Sky States LMS Recordings / <batch>`
+- After the session window ends → Meet recording is copied into `Sky States LMS Recordings / <batch>` (job every 10 minutes). Trainers can still **Upload file** if Meet did not record.
 - Students see the lecture in Classroom and can play via Drive preview
 
 ---
@@ -101,7 +104,8 @@ If both OAuth and SA are set, **OAuth wins**.
 - `POST /api/meetings/:id/join` — student join + attendance Present
 - `POST /api/meetings/:id/start` / `complete`
 - `GET|PATCH /api/meetings/:id/attendance`
-- `POST /api/meetings/:id/recording` — multipart `recording` → Drive upload + Classroom lecture
+- `POST /api/meetings/:id/recording` — multipart `recording` → Drive upload + Classroom lecture (manual fallback)
+- `POST /api/meetings/sync-recordings` — pull Meet recordings into the assigned batch Classroom
 - `GET /api/meetings/needing-recording`
 - `GET /api/meetings/status` — `{ enabled, configured, authMode: oauth|service_account|none }`
 

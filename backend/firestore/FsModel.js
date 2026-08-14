@@ -419,6 +419,16 @@ function createFsModel(name, collectionName) {
     return Model.findOne({ _id: asString(id) });
   };
 
+  function withExec(asyncFn) {
+    return function wrapped(...args) {
+      const promise = Promise.resolve(asyncFn.apply(this, args));
+      promise.exec = function exec() {
+        return promise;
+      };
+      return promise;
+    };
+  }
+
   Model.countDocuments = function countDocuments(filter = {}) {
     // Mongoose-compatible: await Model.countDocuments(filter) or .exec()
     const promise = (async () => {
@@ -444,7 +454,7 @@ function createFsModel(name, collectionName) {
     return wrapDoc(saved, false);
   };
 
-  Model.updateOne = async function updateOne(filter, update) {
+  Model.updateOne = withExec(async function updateOne(filter, update) {
     const doc = await Model.findOne(filter).lean().exec();
     if (!doc) return { acknowledged: true, matchedCount: 0, modifiedCount: 0 };
     const next = applyUpdate(doc, update);
@@ -452,9 +462,9 @@ function createFsModel(name, collectionName) {
     await firestoreDb.setDoc(collectionName, asString(doc._id), next);
     invalidate();
     return { acknowledged: true, matchedCount: 1, modifiedCount: 1 };
-  };
+  });
 
-  Model.updateMany = async function updateMany(filter, update) {
+  Model.updateMany = withExec(async function updateMany(filter, update) {
     const docs = await Model.find(filter).lean().exec();
     for (const doc of docs) {
       const next = applyUpdate(doc, update);
@@ -463,7 +473,7 @@ function createFsModel(name, collectionName) {
     }
     invalidate();
     return { acknowledged: true, matchedCount: docs.length, modifiedCount: docs.length };
-  };
+  });
 
   Model.findByIdAndUpdate = function findByIdAndUpdate(id, update, options = {}) {
     const q = {
@@ -562,22 +572,22 @@ function createFsModel(name, collectionName) {
     return q;
   };
 
-  Model.deleteOne = async function deleteOne(filter) {
+  Model.deleteOne = withExec(async function deleteOne(filter) {
     const doc = await Model.findOne(filter).lean().exec();
     if (!doc) return { acknowledged: true, deletedCount: 0 };
     await firestoreDb.deleteDoc(collectionName, asString(doc._id));
     invalidate();
     return { acknowledged: true, deletedCount: 1 };
-  };
+  });
 
-  Model.deleteMany = async function deleteMany(filter = {}) {
+  Model.deleteMany = withExec(async function deleteMany(filter = {}) {
     const docs = await Model.find(filter).lean().exec();
     for (const doc of docs) {
       await firestoreDb.deleteDoc(collectionName, asString(doc._id));
     }
     invalidate();
     return { acknowledged: true, deletedCount: docs.length };
-  };
+  });
 
   // Aggregate stub — return empty / simple match for Phase 1 safety
   Model.aggregate = async function aggregate(pipeline = []) {

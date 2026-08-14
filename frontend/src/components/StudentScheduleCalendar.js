@@ -137,9 +137,8 @@ export default function StudentScheduleCalendar({
   const [error, setError] = useState('');
   const [joinNote, setJoinNote] = useState('');
   const [joiningId, setJoiningId] = useState('');
-  const [weekStart, setWeekStart] = useState(() => startOfWeek(new Date()));
   const [monthCursor, setMonthCursor] = useState(() => startOfMonth(new Date()));
-  const [view, setView] = useState('week'); // week | month
+  // Month calendar only (week view removed)
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -172,11 +171,6 @@ export default function StudentScheduleCalendar({
     cohort.forEach((c) => days.push(...parseCohortDays(c.schedule)));
     return [...new Set(days)];
   }, [cohort]);
-
-  const weekDays = useMemo(
-    () => Array.from({ length: 7 }, (_, i) => addDays(weekStart, i)),
-    [weekStart]
-  );
 
   const monthCells = useMemo(() => {
     const first = startOfMonth(monthCursor);
@@ -330,77 +324,35 @@ export default function StudentScheduleCalendar({
 
       <section className="live-lobby__card">
         <div className="live-lobby__card-head">
-          <h3>{view === 'week' ? 'This week' : 'Month'}</h3>
+          <h3>
+            {monthCursor.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
+          </h3>
           <div className="live-session__cta">
-            <div className="live-lobby__chip-row">
-              <button
-                type="button"
-                className={`live-lobby__chip${view === 'week' ? ' is-active' : ''}`}
-                onClick={() => setView('week')}
-              >
-                Week
-              </button>
-              <button
-                type="button"
-                className={`live-lobby__chip${view === 'month' ? ' is-active' : ''}`}
-                onClick={() => setView('month')}
-              >
-                Month
-              </button>
-            </div>
-            {view === 'week' ? (
-              <>
-                <button
-                  type="button"
-                  className="live-lobby__btn live-lobby__btn--ghost live-lobby__btn--sm"
-                  onClick={() => setWeekStart((w) => addDays(w, -7))}
-                >
-                  Prev
-                </button>
-                <button
-                  type="button"
-                  className="live-lobby__btn live-lobby__btn--ghost live-lobby__btn--sm"
-                  onClick={() => setWeekStart(startOfWeek(new Date()))}
-                >
-                  Today
-                </button>
-                <button
-                  type="button"
-                  className="live-lobby__btn live-lobby__btn--ghost live-lobby__btn--sm"
-                  onClick={() => setWeekStart((w) => addDays(w, 7))}
-                >
-                  Next
-                </button>
-              </>
-            ) : (
-              <>
-                <button
-                  type="button"
-                  className="live-lobby__btn live-lobby__btn--ghost live-lobby__btn--sm"
-                  onClick={() =>
-                    setMonthCursor((m) => new Date(m.getFullYear(), m.getMonth() - 1, 1))
-                  }
-                >
-                  Prev
-                </button>
-                <button
-                  type="button"
-                  className="live-lobby__btn live-lobby__btn--ghost live-lobby__btn--sm"
-                  onClick={() => setMonthCursor(startOfMonth(new Date()))}
-                >
-                  Today
-                </button>
-                <button
-                  type="button"
-                  className="live-lobby__btn live-lobby__btn--ghost live-lobby__btn--sm"
-                  onClick={() =>
-                    setMonthCursor((m) => new Date(m.getFullYear(), m.getMonth() + 1, 1))
-                  }
-                >
-                  Next
-                </button>
-              </>
-            )}
+            <button
+              type="button"
+              className="live-lobby__btn live-lobby__btn--ghost live-lobby__btn--sm"
+              onClick={() =>
+                setMonthCursor((m) => new Date(m.getFullYear(), m.getMonth() - 1, 1))
+              }
+            >
+              Prev
+            </button>
+            <button
+              type="button"
+              className="live-lobby__btn live-lobby__btn--ghost live-lobby__btn--sm"
+              onClick={() => setMonthCursor(startOfMonth(new Date()))}
+            >
+              Today
+            </button>
+            <button
+              type="button"
+              className="live-lobby__btn live-lobby__btn--ghost live-lobby__btn--sm"
+              onClick={() =>
+                setMonthCursor((m) => new Date(m.getFullYear(), m.getMonth() + 1, 1))
+              }
+            >
+              Next
+            </button>
             <button
               type="button"
               className="live-lobby__btn live-lobby__btn--ghost live-lobby__btn--sm"
@@ -415,59 +367,8 @@ export default function StudentScheduleCalendar({
           <p className="live-lobby--empty">Loading schedule…</p>
         ) : error ? (
           <p className="live-lobby__alert live-lobby__alert--err">{error}</p>
-        ) : view === 'week' ? (
-          <div className="live-cal-week">
-            {weekDays.map((day) => {
-              const list = eventsByDay[day.toDateString()] || [];
-              const isToday = sameDay(day, new Date());
-              const isCohortDay = dayMatchesCohort(day, cohortDays);
-              return (
-                <div
-                  key={day.toISOString()}
-                  className={`live-cal-day ${isToday ? 'live-cal-day--today' : ''} ${
-                    isCohortDay ? 'live-cal-day--cohort' : ''
-                  }`}
-                >
-                  <div className="live-cal-day__label">
-                    {formatDayLabel(day)}
-                    {isCohortDay ? <span className="live-cal-day__cohort-tag">Cohort</span> : null}
-                  </div>
-                  {list.length === 0 ? (
-                    <p className="live-lobby__muted live-cal-day__empty">
-                      {isCohortDay ? 'Usual class day' : 'No sessions'}
-                    </p>
-                  ) : (
-                    <ul className="live-cal-day__list">
-                      {list.map((ev) => (
-                        <li key={ev.id} className={`live-cal-item live-cal-item--${ev.type}`}>
-                          <div className="live-cal-item__time">{formatTime(ev.start)}</div>
-                          <div className="live-cal-item__title">{ev.title}</div>
-                          <div className="live-cal-item__meta">
-                            {ev.type === 'live' || ev.type === 'live_past'
-                              ? 'Live class'
-                              : ev.videoSource === 'drive'
-                                ? 'Drive recording'
-                                : 'Recording'}
-                            {ev.batchName ? ` · ${ev.batchName}` : ''}
-                          </div>
-                          {renderEventActions(ev)}
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </div>
-              );
-            })}
-          </div>
         ) : (
           <div className="live-cal-month">
-            <p className="live-cal-month__title">
-              {monthCursor.toLocaleDateString('en-IN', {
-                month: 'long',
-                year: 'numeric',
-                timeZone: 'Asia/Kolkata'
-              })}
-            </p>
             <div className="live-cal-month__dow">
               {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((d) => (
                 <span key={d}>{d}</span>

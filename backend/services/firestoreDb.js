@@ -1,6 +1,9 @@
 /**
  * Firestore REST client (USE_FIRESTORE=true for DEV + PROD).
- * Auth: OAuth refresh token (org blocks SA keys) — same pattern as export scripts.
+ * Auth preference:
+ *   1) Impersonate FIRESTORE_IMPERSONATE_SA via OAuth refresh (GCP Blaze / no SA JSON keys)
+ *   2) Direct OAuth access token
+ *   3) gcloud CLI (host only)
  * Databases: lms-dev (DEV) / lms-prod (PROD) via FIRESTORE_DATABASE.
  */
 const https = require('https');
@@ -8,12 +11,60 @@ const logger = require('../utils/logger');
 
 const PROJECT = process.env.FIRESTORE_PROJECT || 'skystateslms';
 const DATABASE = process.env.FIRESTORE_DATABASE || '(default)';
+const IMPERSONATE_SA =
+  process.env.FIRESTORE_IMPERSONATE_SA ||
+  'firestore-lms-runtime@skystateslms.iam.gserviceaccount.com';
 
 let cachedToken = null;
 let tokenExpiresAt = 0;
+let authMode = null;
 
 function isFirestoreEnabled() {
   return String(process.env.USE_FIRESTORE || '').toLowerCase() === 'true';
+}
+
+/** True when error is expired/revoked OAuth or Firestore auth failure. */
+function isFirestoreAuthError(err) {
+  const msg = String(err?.message || err || '');
+  return /invalid_grant|invalid_rapt|OAuth refresh failed|insufficient.*(scope|auth)|UNAUTHENTICATED|401|impersonat/i.test(
+    msg
+  );
+}
+
+let lastAuthHealth = { ok: true, checkedAt: null, error: null, mode: null };
+
+async function checkAuthHealth() {
+  try {
+    cachedToken = null;
+    tokenExpiresAt = 0;
+    await getAccessToken();
+    lastAuthHealth = {
+      ok: true,
+      checkedAt: new Date().toISOString(),
+      error: null,
+      mode: authMode
+    };
+    return lastAuthHealth;
+  } catch (err) {
+    lastAuthHealth = {
+      ok: false,
+      checkedAt: new Date().toISOString(),
+      error: err.message || String(err),
+      mode: authMode
+    };
+    return lastAuthHealth;
+  }
+}
+
+function getAuthHealth() {
+  return { ...lastAuthHealth };
+}
+
+function oauthQuotaProject() {
+  if (process.env.FIRESTORE_OAUTH_QUOTA_PROJECT) return process.env.FIRESTORE_OAUTH_QUOTA_PROJECT;
+  const clientId = process.env.FIRESTORE_OAUTH_CLIENT_ID || '';
+  const prefix = clientId.split('-')[0];
+  return /^\d+$/.test(prefix) ? prefix : PROJECT;
 }
 
 function httpsRequest(method, hostname, path, headers, body) {
@@ -54,35 +105,94 @@ function httpsRequest(method, hostname, path, headers, body) {
   });
 }
 
+async function getUserAccessToken() {
+  const clientId = process.env.FIRESTORE_OAUTH_CLIENT_ID;
+  const clientSecret = process.env.FIRESTORE_OAUTH_CLIENT_SECRET;
+  const refreshToken = process.env.FIRESTORE_OAUTH_REFRESH_TOKEN;
+  if (!clientId || !clientSecret || !refreshToken) {
+    throw new Error('FIRESTORE_OAUTH_CLIENT_ID/SECRET/REFRESH_TOKEN required');
+  }
+  const form = new URLSearchParams({
+    client_id: clientId,
+    client_secret: clientSecret,
+    refresh_token: refreshToken,
+    grant_type: 'refresh_token'
+  }).toString();
+  const res = await httpsRequest(
+    'POST',
+    'oauth2.googleapis.com',
+    '/token',
+    { 'Content-Type': 'application/x-www-form-urlencoded', 'Content-Length': Buffer.byteLength(form) },
+    form
+  );
+  if (res.status >= 300 || !res.json?.access_token) {
+    throw new Error(
+      `Firestore OAuth refresh failed: ${res.status} ${JSON.stringify(res.json || res.text)}`
+    );
+  }
+  return {
+    accessToken: res.json.access_token,
+    expiresIn: Number(res.json.expires_in) || 3500
+  };
+}
+
+async function getImpersonatedAccessToken() {
+  const { OAuth2Client, Impersonated } = require('google-auth-library');
+  const clientId = process.env.FIRESTORE_OAUTH_CLIENT_ID;
+  const clientSecret = process.env.FIRESTORE_OAUTH_CLIENT_SECRET;
+  const refreshToken = process.env.FIRESTORE_OAUTH_REFRESH_TOKEN;
+  if (!clientId || !clientSecret || !refreshToken || !IMPERSONATE_SA) {
+    throw new Error('Impersonation requires OAuth env + FIRESTORE_IMPERSONATE_SA');
+  }
+
+  // IAM Credentials API is billed/quotad against the OAuth client project.
+  process.env.GOOGLE_CLOUD_QUOTA_PROJECT = oauthQuotaProject();
+
+  const oauth2 = new OAuth2Client(clientId, clientSecret);
+  oauth2.setCredentials({ refresh_token: refreshToken });
+  const imp = new Impersonated({
+    sourceClient: oauth2,
+    targetPrincipal: IMPERSONATE_SA,
+    lifetime: 3600,
+    delegates: [],
+    targetScopes: [
+      'https://www.googleapis.com/auth/cloud-platform',
+      'https://www.googleapis.com/auth/datastore'
+    ]
+  });
+  const res = await imp.getAccessToken();
+  const token = res?.token || res;
+  if (!token || typeof token !== 'string') {
+    throw new Error('SA impersonation returned no access token');
+  }
+  return { accessToken: token, expiresIn: 3500 };
+}
+
 async function getAccessToken() {
   const now = Date.now();
   if (cachedToken && now < tokenExpiresAt - 60_000) return cachedToken;
 
-  const clientId = process.env.FIRESTORE_OAUTH_CLIENT_ID;
-  const clientSecret = process.env.FIRESTORE_OAUTH_CLIENT_SECRET;
-  const refreshToken = process.env.FIRESTORE_OAUTH_REFRESH_TOKEN;
-
-  if (clientId && clientSecret && refreshToken) {
-    const form = new URLSearchParams({
-      client_id: clientId,
-      client_secret: clientSecret,
-      refresh_token: refreshToken,
-      grant_type: 'refresh_token'
-    }).toString();
-    const res = await httpsRequest(
-      'POST',
-      'oauth2.googleapis.com',
-      '/token',
-      { 'Content-Type': 'application/x-www-form-urlencoded', 'Content-Length': Buffer.byteLength(form) },
-      form
-    );
-    if (res.status >= 300 || !res.json?.access_token) {
-      throw new Error(
-        `Firestore OAuth refresh failed: ${res.status} ${JSON.stringify(res.json || res.text)}`
-      );
+  // Prefer GCP service-account impersonation (Blaze / no JSON keys).
+  if (IMPERSONATE_SA && process.env.FIRESTORE_OAUTH_REFRESH_TOKEN) {
+    try {
+      const { accessToken, expiresIn } = await getImpersonatedAccessToken();
+      cachedToken = accessToken;
+      tokenExpiresAt = now + expiresIn * 1000;
+      authMode = 'sa-impersonation';
+      return cachedToken;
+    } catch (err) {
+      logger.warn('SA impersonation failed; falling back to user OAuth token', {
+        error: err.message,
+        sa: IMPERSONATE_SA
+      });
     }
-    cachedToken = res.json.access_token;
-    tokenExpiresAt = now + (Number(res.json.expires_in) || 3500) * 1000;
+  }
+
+  if (process.env.FIRESTORE_OAUTH_CLIENT_ID && process.env.FIRESTORE_OAUTH_REFRESH_TOKEN) {
+    const { accessToken, expiresIn } = await getUserAccessToken();
+    cachedToken = accessToken;
+    tokenExpiresAt = now + expiresIn * 1000;
+    authMode = 'user-oauth';
     return cachedToken;
   }
 
@@ -93,10 +203,11 @@ async function getAccessToken() {
       encoding: 'utf8'
     }).trim();
     tokenExpiresAt = now + 3000 * 1000;
+    authMode = 'gcloud';
     return cachedToken;
   } catch (err) {
     throw new Error(
-      'Firestore auth missing. Set FIRESTORE_OAUTH_CLIENT_ID/SECRET/REFRESH_TOKEN or gcloud auth login.'
+      'Firestore auth missing. Set FIRESTORE_OAUTH_* (+ FIRESTORE_IMPERSONATE_SA) or gcloud auth login.'
     );
   }
 }
@@ -113,7 +224,10 @@ async function firestoreJson(method, apiPath, body, { retries = 5 } = {}) {
       method,
       'firestore.googleapis.com',
       apiPath,
-      { Authorization: `Bearer ${token}` },
+      {
+        Authorization: `Bearer ${token}`,
+        'x-goog-user-project': PROJECT
+      },
       body
     );
     if (res.status >= 200 && res.status < 300) return res.json;
@@ -320,12 +434,15 @@ async function ping() {
   } catch (err) {
     if (err.statusCode !== 404) throw err;
   }
-  logger.info('Firestore connected', { project: PROJECT });
+  logger.info('Firestore connected', { project: PROJECT, database: DATABASE, authMode });
   return true;
 }
 
 module.exports = {
   isFirestoreEnabled,
+  isFirestoreAuthError,
+  checkAuthHealth,
+  getAuthHealth,
   getAccessToken,
   getDoc,
   setDoc,

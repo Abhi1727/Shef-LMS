@@ -72,20 +72,44 @@ function buildEnrollmentNumber(joinDate, series) {
 }
 
 /**
- * Allocate the next enrollment number using a Mongo User model (or collection-like).
- * Uses a find of all SKY_* numbers to compute the next series.
+ * Allocate the next enrollment number using a User model (or collection-like).
+ * Scans primary enrollmentNumber and enrollments[].enrollmentNumber for series max.
  */
 async function allocateEnrollmentNumber(UserModel, joinDate = new Date()) {
   const existing = await UserModel.find({
-    enrollmentNumber: { $regex: /^SKY_\d{2}_\d{4}_\d{4}$/i },
+    $or: [
+      { enrollmentNumber: { $regex: /^SKY_\d{2}_\d{4}_\d{4}$/i } },
+      { 'enrollments.enrollmentNumber': { $regex: /^SKY_\d{2}_\d{4}_\d{4}$/i } }
+    ]
   })
-    .select('enrollmentNumber')
+    .select('enrollmentNumber enrollments.enrollmentNumber')
     .lean();
 
-  const series = nextSeriesFromExisting(existing.map((u) => u.enrollmentNumber));
+  const numbers = [];
+  for (const u of existing || []) {
+    if (u.enrollmentNumber) numbers.push(u.enrollmentNumber);
+    (u.enrollments || []).forEach((e) => {
+      if (e?.enrollmentNumber) numbers.push(e.enrollmentNumber);
+    });
+  }
+
+  // Firestore may not match nested regex well — also scan recent students if sparse
+  if (!numbers.length) {
+    const fallback = await UserModel.find({ role: 'student' })
+      .select('enrollmentNumber enrollments.enrollmentNumber')
+      .lean();
+    for (const u of fallback || []) {
+      if (u.enrollmentNumber) numbers.push(u.enrollmentNumber);
+      (u.enrollments || []).forEach((e) => {
+        if (e?.enrollmentNumber) numbers.push(e.enrollmentNumber);
+      });
+    }
+  }
+
+  const series = nextSeriesFromExisting(numbers);
   return {
     enrollmentNumber: buildEnrollmentNumber(joinDate, series),
-    series,
+    series
   };
 }
 

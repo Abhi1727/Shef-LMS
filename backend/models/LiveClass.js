@@ -55,11 +55,15 @@ const liveClassSchema = new mongoose.Schema({
   reminderSentAt: { type: Date, default: null },
   attendance: { type: [attendanceEntrySchema], default: [] },
   recordingPromptDismissedAt: { type: Date, default: null },
+  skipRecordingUpload: { type: Boolean, default: false },
   // Google Drive recording
   driveFileId: { type: String, default: '' },
   driveLink: { type: String, default: '' },
   driveFolderId: { type: String, default: '' },
   recordingUploadedAt: { type: Date, default: null },
+  meetRecordingId: { type: String, default: '' },
+  recordingSyncAt: { type: Date, default: null },
+  recordingSyncError: { type: String, default: '' },
   classroomLectureId: { type: String, default: '' },
 
   // Session handouts / materials (Google Drive)

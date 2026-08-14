@@ -14,20 +14,29 @@ const loadYouTubeAPI = () => {
       return;
     }
 
+    if (window.YT && window.YT.Player) {
+      youtubeAPIReady = true;
+      resolve();
+      return;
+    }
+
+    const prevReady = window.onYouTubeIframeAPIReady;
+    window.onYouTubeIframeAPIReady = () => {
+      youtubeAPIReady = true;
+      if (typeof prevReady === 'function') prevReady();
+      resolve();
+    };
+
     if (!youtubeAPILoading) {
       youtubeAPILoading = true;
       const tag = document.createElement('script');
       tag.src = 'https://www.youtube.com/iframe_api';
-      const firstScriptTag = document.getElementsByTagName('script')[0];
-      firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
-
-      window.onYouTubeIframeAPIReady = () => {
-        youtubeAPIReady = true;
-        resolve();
-      };
+      tag.async = true;
+      (document.head || document.body).appendChild(tag);
     } else {
       const checkReady = () => {
-        if (youtubeAPIReady) {
+        if (youtubeAPIReady || (window.YT && window.YT.Player)) {
+          youtubeAPIReady = true;
           resolve();
         } else {
           setTimeout(checkReady, 100);
@@ -35,6 +44,13 @@ const loadYouTubeAPI = () => {
       };
       checkReady();
     }
+
+    setTimeout(() => {
+      if (window.YT && window.YT.Player) {
+        youtubeAPIReady = true;
+        resolve();
+      }
+    }, 8000);
   });
 };
 
@@ -72,29 +88,36 @@ const CustomVideoPlayer = ({ video, onClose, resumePosition = 0, onProgressUpdat
   const controlsTimeoutRef = useRef(null);
   const videoViewLoggedRef = useRef(false);
 
-  const detectVideoSource = (video) => {
-    if (video.videoSource) return video.videoSource;
-    if (video.driveId) return 'drive';
-    if (video.youtubeVideoUrl) {
-      if (video.youtubeVideoUrl.includes('youtu.be/')) return 'youtube-url';
-      if (video.youtubeVideoUrl.includes('youtube.com/watch')) return 'youtube';
-    }
-    if (video.videoUrl) {
-      if (video.videoUrl.includes('youtu.be/')) return 'youtube-url';
-      if (video.videoUrl.includes('youtube.com/watch')) return 'youtube';
-      if (video.videoUrl.includes('youtube.com/embed')) return 'youtube';
-      if (video.videoUrl.includes('drive.google.com')) return 'drive';
-    }
-    return 'firebase';
+  const extractYouTubeId = (raw) => {
+    if (!raw) return null;
+    const value = String(raw).trim();
+    if (/^[a-zA-Z0-9_-]{11}$/.test(value)) return value;
+    const match = value.match(
+      /(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/|youtube\.com\/shorts\/)([a-zA-Z0-9_-]{11})/
+    );
+    return match ? match[1] : null;
   };
 
-  const convertToEmbedUrl = (url) => {
-    if (!url) return null;
-    const regex = /(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([^&\n?#]+)/;
-    const match = url.match(regex);
-    const videoId = match ? match[1] : null;
-    return videoId ? `https://www.youtube.com/embed/${videoId}` : null;
+  const resolveYouTubeEmbed = (v) => {
+    const id =
+      extractYouTubeId(v.youtubeVideoId) ||
+      extractYouTubeId(v.youtubeEmbedUrl) ||
+      extractYouTubeId(v.youtubeVideoUrl) ||
+      extractYouTubeId(v.videoUrl) ||
+      extractYouTubeId(v.zoomUrl);
+    return id ? `https://www.youtube.com/embed/${id}` : null;
   };
+
+  const detectVideoSource = (v) => {
+    if (resolveYouTubeEmbed(v)) return 'youtube-url';
+    if (v.driveId || /drive\.google\.com/.test(String(v.zoomUrl || v.videoUrl || ''))) return 'drive';
+    if (v.videoSource === 'firebase') return 'firebase';
+    if (v.videoSource === 'meet-session' || v.videoSource === 'pending') return 'pending';
+    if (v.videoSource) return v.videoSource;
+    return 'unknown';
+  };
+
+  const convertToEmbedUrl = (url) => resolveYouTubeEmbed({ youtubeVideoUrl: url });
 
   // Fetch Q&A, Notes, and Bookmarks on load
   useEffect(() => {
@@ -239,20 +262,19 @@ const CustomVideoPlayer = ({ video, onClose, resumePosition = 0, onProgressUpdat
   useEffect(() => {
     const videoSource = detectVideoSource(video);
     setDriveEmbedUrl(null);
-    if (videoSource === 'youtube-url') {
-      const embedUrl = video.youtubeEmbedUrl || convertToEmbedUrl(video.youtubeVideoUrl || video.videoUrl);
-      if (embedUrl) {
-        setYoutubeVideoUrl(embedUrl);
-        initializeYouTubePlayer(embedUrl);
-      } else {
-        setError('Invalid YouTube URL format');
-        setIsLoading(false);
-      }
-    } else if (videoSource === 'youtube' && video.youtubeEmbedUrl) {
-      setYoutubeVideoUrl(video.youtubeEmbedUrl);
-      initializeYouTubePlayer(video.youtubeEmbedUrl);
+    setError(null);
+    const youtubeEmbed = resolveYouTubeEmbed(video);
+    if (youtubeEmbed) {
+      setYoutubeVideoUrl(youtubeEmbed);
+      initializeYouTubePlayer(youtubeEmbed);
+    } else if (videoSource === 'youtube-url' || videoSource === 'youtube') {
+      setError('This lecture is missing a valid YouTube link.');
+      setIsLoading(false);
     } else if (videoSource === 'drive' || video.driveId) {
-      const id = video.driveId || (video.videoUrl || '').match(/\/d\/([^/]+)/)?.[1];
+      const id =
+        video.driveId ||
+        (video.videoUrl || video.zoomUrl || '').match(/\/d\/([^/]+)/)?.[1] ||
+        (video.videoUrl || video.zoomUrl || '').match(/[?&]id=([^&]+)/)?.[1];
       if (id) {
         setDriveEmbedUrl(`https://drive.google.com/file/d/${id}/preview`);
         setIsLoading(false);
@@ -283,11 +305,14 @@ const CustomVideoPlayer = ({ video, onClose, resumePosition = 0, onProgressUpdat
         }
       };
       fetchFirebaseUrl();
+    } else if (videoSource === 'pending' || videoSource === 'meet-session') {
+      setError('This lesson does not have a playable recording yet.');
+      setIsLoading(false);
     } else if (video.videoUrl && video.videoUrl.includes('youtube.com/embed')) {
       setYoutubeVideoUrl(video.videoUrl);
       initializeYouTubePlayer(video.videoUrl);
     } else {
-      setError('Unsupported video source');
+      setError('This lesson does not have a playable recording yet.');
       setIsLoading(false);
     }
   }, [video]);
@@ -362,6 +387,13 @@ const CustomVideoPlayer = ({ video, onClose, resumePosition = 0, onProgressUpdat
         }
       });
     } catch (error) {
+      const videoId = embedUrl.match(/\/embed\/([^?]+)/)?.[1];
+      if (videoId && youtubeContainerRef.current) {
+        youtubeContainerRef.current.innerHTML = `<iframe title="Lecture" src="https://www.youtube.com/embed/${videoId}?rel=0" allow="autoplay; encrypted-media" allowfullscreen style="width:100%;height:100%;border:0;background:#000"></iframe>`;
+        setIsLoading(false);
+        setHasStartedPlaying(true);
+        return;
+      }
       setError('Failed to load video player');
       setIsLoading(false);
     }

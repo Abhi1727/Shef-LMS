@@ -1,4 +1,5 @@
 const express = require('express');
+const crypto = require('crypto');
 const router = express.Router();
 const auth = require('../middleware/auth');
 const Conversation = require('../models/Conversation');
@@ -23,9 +24,14 @@ function normalizeText(text) {
   return String(text || '').trim().slice(0, 2000);
 }
 
+function newMessageId() {
+  return crypto.randomBytes(12).toString('hex');
+}
+
 function serializeMessage(m) {
+  const id = m._id || m.id;
   return {
-    id: String(m._id),
+    id: id ? String(id) : `${String(m.senderId || '')}-${new Date(m.createdAt || 0).getTime()}`,
     senderId: String(m.senderId),
     senderRole: m.senderRole,
     text: m.text,
@@ -224,6 +230,7 @@ router.post('/messages', async (req, res) => {
     }
 
     const msg = {
+      _id: newMessageId(),
       senderId: userId,
       senderRole: isStudentRole(role) ? 'student' : 'teacher',
       text,

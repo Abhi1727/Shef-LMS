@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { getApiBaseUrl } from '../utils/apiBase';
+import { meetJoinUrl } from '../utils/meetJoinUrl';
 import './MeetLiveClasses.css';
 
 function sessionPhase(meeting, now = Date.now()) {
@@ -89,12 +90,12 @@ export default function StudentLiveClassLobby({ compact = false }) {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.message || 'Failed to join');
-      const link = data.meetLink || data.joinUrl;
+      const link = meetJoinUrl(data.meetLink || data.joinUrl);
       if (!link) throw new Error('Meet link unavailable. Ask your trainer to start the class.');
       setJoinNote(
         data.markedPresent
-          ? 'You’re marked present for this session. Opening Google Meet…'
-          : 'Opening Google Meet…'
+          ? 'You’re marked present. Opening Meet with mic/camera muted on the pre-join screen…'
+          : 'Opening Google Meet with mic/camera muted…'
       );
       window.open(link, '_blank', 'noopener,noreferrer');
     } catch (err) {

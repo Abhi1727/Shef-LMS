@@ -1623,35 +1623,21 @@ const BatchDetailsPage = () => {
       }
 
       if (response && response.ok) {
-        // Get file info from response
         const contentDisposition = response.headers.get('content-disposition');
-        const contentType = response.headers.get('content-type');
-        const contentLength = response.headers.get('content-length');
-        
-        console.log('Download response:', {
-          contentDisposition,
-          contentType,
-          contentLength
-        });
-        
-        let filename = `notes-${video.title || 'untitled'}.pdf`;
-        
-        // Extract filename from Content-Disposition header
-        if (contentDisposition) {
-          const filenameMatch = contentDisposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
-          if (filenameMatch && filenameMatch[1]) {
-            filename = filenameMatch[1].replace(/['"]/g, '');
-          }
+        const contentType = (response.headers.get('content-type') || '').toLowerCase();
+        if (contentType.includes('application/json')) {
+          const errBody = await response.json().catch(() => ({}));
+          throw new Error(errBody.message || 'Notes file is not available on the server');
         }
-        
-        // Fallback to video's stored filename
-        if (!filename || filename === 'notes-untitled.pdf') {
-          if (video.notesFileName) {
-            filename = video.notesFileName;
-          } else if (video.notesFileUrl) {
-            const urlParts = video.notesFileUrl.split('/');
-            filename = urlParts[urlParts.length - 1] || `notes-${video.title || 'untitled'}.pdf`;
-          }
+
+        let filename = video.notesFileName || '';
+        if (contentDisposition) {
+          const utf = contentDisposition.match(/filename\*=UTF-8''([^;]+)/i);
+          const plain = contentDisposition.match(/filename="([^"]+)"/i);
+          filename = decodeURIComponent((utf && utf[1]) || (plain && plain[1]) || filename);
+        }
+        if (!filename) {
+          filename = `notes-${video.title || 'untitled'}`;
         }
         
         try {
@@ -1660,6 +1646,12 @@ const BatchDetailsPage = () => {
           // Validate blob
           if (blob.size === 0) {
             throw new Error('Downloaded file is empty');
+          }
+          const header = new Uint8Array(await blob.slice(0, 4).arrayBuffer());
+          const looksZip = header[0] === 0x50 && header[1] === 0x4b;
+          if (looksZip && !/\.zip$/i.test(filename)) filename = `${filename}.zip`;
+          if (/\.zip$/i.test(filename) && !looksZip) {
+            throw new Error('The notes zip is missing on the server. Ask your trainer to upload it again.');
           }
           
           // Create download link
@@ -1690,68 +1682,8 @@ const BatchDetailsPage = () => {
           showToast('Failed to process downloaded file. Please try again.', 'error');
         }
       } else {
-        // Enhanced fallback handling
-        console.log('All endpoints failed, trying fallback methods...');
-        
-        // Try direct file URL from video object
-        const possibleUrls = [
-          video.notesFileUrl,
-          video.notesUrl,
-          video.notesFilePath,
-          `${apiUrl}/uploads/notes/${video.notesFileName}`,
-          `${apiUrl}${video.notesFilePath}`,
-          `${apiUrl}${video.notesFileUrl}`
-        ].filter(Boolean);
-        
-        for (const url of possibleUrls) {
-          try {
-            console.log(`Trying direct URL: ${url}`);
-            const directResponse = await fetch(url, {
-              headers: {
-                'Authorization': `Bearer ${token}`
-              }
-            });
-            
-            if (directResponse.ok) {
-              const blob = await directResponse.blob();
-              if (blob.size > 0) {
-                const downloadUrl = window.URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = downloadUrl;
-                a.download = video.notesFileName || `notes-${video.title || 'untitled'}.pdf`;
-                document.body.appendChild(a);
-                a.click();
-                setTimeout(() => {
-                  document.body.removeChild(a);
-                  window.URL.revokeObjectURL(downloadUrl);
-                }, 100);
-                
-                showToast('Notes downloaded successfully!', 'success');
-                return;
-              }
-            }
-          } catch (urlError) {
-            console.warn(`Direct URL ${url} failed:`, urlError.message);
-            continue;
-          }
-        }
-        
-        // All methods failed
-        const errorMessage = response ? 
-          `Download failed with status ${response.status}` : 
-          'No download endpoints available';
-        
-        console.error('All download methods failed:', {
-          videoId: video.id,
-          videoTitle: video.title,
-          notesAvailable: video.notesAvailable,
-          notesFileName: video.notesFileName,
-          endpointsTried: endpoints.length,
-          lastStatus: response?.status
-        });
-        
         showToast(
-          'Unable to download notes. The file may not be available or has been moved. Please contact support.',
+          'Notes file is missing on the server. Upload the zip again so it is saved to Drive.',
           'error'
         );
       }

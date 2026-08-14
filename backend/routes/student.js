@@ -14,6 +14,7 @@ const path = require('path');
 const fs = require('fs');
 const multer = require('multer');
 const googleDriveService = require('../services/googleDriveService');
+const { resolveStudentBatchIds } = require('../utils/studentEnrollment');
 
 const shareUpload = multer({
   dest: path.join(__dirname, '../uploads/tmp-student-shares'),
@@ -36,19 +37,6 @@ try {
   fs.mkdirSync(path.join(__dirname, '../uploads/tmp-student-shares'), { recursive: true });
 } catch (_) {
   /* ignore */
-}
-
-async function resolveStudentBatchIds(userId) {
-  const userDoc = await User.findOne({
-    $or: [{ _id: userId }, { firestoreId: userId }]
-  })
-    .select('batchId oneToOneBatchId')
-    .lean()
-    .exec();
-  const batchIds = [userDoc?.batchId, userDoc?.oneToOneBatchId].filter(Boolean).map(String);
-  const memberBatches = await Batch.find({ students: userId }).select('_id').lean().exec();
-  memberBatches.forEach((b) => batchIds.push(String(b._id)));
-  return [...new Set(batchIds)];
 }
 
 // Apply auth and student role check to all student routes
@@ -90,15 +78,36 @@ router.get('/profile', async (req, res) => {
     }
     
     // Return only necessary profile information (exclude password)
+    const { activeEnrollments } = require('../utils/studentEnrollment');
+    const enrollments = activeEnrollments(userDoc);
+    const batchIds = enrollments.map((e) => e.batchId).filter(Boolean);
+    const batches = batchIds.length
+      ? await Batch.find({ _id: { $in: batchIds } }).select('name course programLabel').lean().exec()
+      : [];
+    const batchMap = new Map(batches.map((b) => [String(b._id), b]));
+
     const profileData = {
       id: String(userDoc._id),
       name: userDoc.name,
       email: userDoc.email,
       currentCourse: userDoc.course || userDoc.currentCourse,
+      enrollmentNumber: userDoc.enrollmentNumber || '',
+      batchId: userDoc.batchId || null,
       status: userDoc.status,
       role: userDoc.role,
       createdAt: userDoc.createdAt,
-      updatedAt: userDoc.updatedAt
+      updatedAt: userDoc.updatedAt,
+      enrollments: enrollments.map((e) => {
+        const b = batchMap.get(e.batchId) || {};
+        return {
+          batchId: e.batchId,
+          batchName: b.name || '',
+          course: e.course || b.course || b.programLabel || '',
+          enrollmentNumber: e.enrollmentNumber || '',
+          enrolledAt: e.enrolledAt || null,
+          status: e.status || 'active'
+        };
+      })
     };
 
     res.json(profileData);

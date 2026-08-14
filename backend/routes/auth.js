@@ -14,6 +14,12 @@ const auth = require('../middleware/auth');
 // Normalize email for consistent lookup (Firestore queries are case-sensitive)
 const normalizeEmail = (e) => (e || '').trim().toLowerCase();
 
+async function findUserByEmailForLogin(normalizedEmail) {
+  // Firestore-only runtime (no Mongo fallback).
+  await connectMongo();
+  return User.findOne({ email: normalizedEmail }).exec();
+}
+
 const isProduction = process.env.NODE_ENV === 'production';
 function getJwtSecret() {
   const secret = process.env.JWT_SECRET;
@@ -121,9 +127,8 @@ router.post('/login', async (req, res) => {
       isp: geo.isp
     };
 
-    // Look up user in Mongo only (students/teachers/admins/mentors)
-    await connectMongo();
-    const mongoUser = await User.findOne({ email: normalizedEmail }).exec();
+    // Look up user (Firestore primary; Mongo fallback if OAuth/quota fails)
+    const mongoUser = await findUserByEmailForLogin(normalizedEmail);
 
     if (!mongoUser) {
       return res.status(400).json({ message: 'User not found' });

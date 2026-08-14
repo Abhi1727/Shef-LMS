@@ -29,6 +29,8 @@ const classroomSchema = new mongoose.Schema({
   notesAvailable: { type: Boolean, default: false },
   notesFileName: { type: String },
   notesFilePath: { type: String },
+  notesDriveId: { type: String, default: '' },
+  notesDriveLink: { type: String, default: '' },
   // Lesson learning path
   order: { type: Number, default: 0, index: true },
   linkedAssessmentId: { type: String, default: '' },

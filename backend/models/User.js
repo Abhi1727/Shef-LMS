@@ -58,6 +58,23 @@ const UserSchema = new mongoose.Schema({
   oneToOneBatchId: {
     type: String,
   },
+  /**
+   * Multi-program enrollments. Same student can hold several programs,
+   * each with its own SKY enrollment number and batch.
+   * Primary denormalized fields: batchId, course, enrollmentNumber (first active).
+   */
+  enrollments: {
+    type: [
+      {
+        batchId: { type: String, required: true },
+        course: { type: String, default: '' },
+        enrollmentNumber: { type: String, default: '' },
+        enrolledAt: { type: Date, default: Date.now },
+        status: { type: String, enum: ['active', 'withdrawn'], default: 'active' }
+      }
+    ],
+    default: []
+  },
   domain: {
     type: String,
   },
@@ -153,6 +170,12 @@ UserSchema.index(
 );
 
 const __mongoUser = mongoose.models.User || mongoose.model('User', UserSchema);
-module.exports = String(process.env.USE_FIRESTORE || '').toLowerCase() === 'true'
-  ? require('../firestore/models').User
-  : __mongoUser;
+// Always keep a Mongo-backed model for auth fallback when Firestore OAuth dies.
+const __mongoUserFallback =
+  mongoose.models.UserMongo || mongoose.model('UserMongo', UserSchema, 'users');
+const __exported =
+  String(process.env.USE_FIRESTORE || '').toLowerCase() === 'true'
+    ? require('../firestore/models').User
+    : __mongoUser;
+__exported.MongoUser = __mongoUserFallback;
+module.exports = __exported;

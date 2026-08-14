@@ -34,10 +34,13 @@ alwaysApply: true
 
 ## Firestore runtime (cutover done)
 - **Primary:** Firestore — DEV `lms-dev`, PROD `lms-prod` (`USE_FIRESTORE=true`)
-- **Mongo Atlas:** cold standby until prod soak is trusted; then delete Atlas when you explicitly approve
+- **Auth:** SA impersonation `firestore-lms-runtime@skystateslms.iam.gserviceaccount.com` (org blocks SA JSON keys)
+- **Billing:** Blaze enabled on `skystateslms`
+- **Mongo Atlas:** not used at runtime; cold backup only until you explicitly approve delete
 - Why dedicated DBs: `(default)` is free-tier capped at ~50k reads/day and hard-429s
-- Facades: `backend/firestore/`, client `backend/services/firestoreDb.js`, switch `backend/config/dataStore.js`
-- Rollback / remove-Mongo checklist: `docs/FIRESTORE_DEV_RUNTIME.md`
+- Facades: `backend/firestore/`, client `backend/services/firestoreDb.js` (impersonation + OAuth)
+- Reauth if OAuth dies: `ENV_PATH=.env node scripts/setup-firestore-oauth.js --auth`
+- Rollback notes: `docs/FIRESTORE_DEV_RUNTIME.md`
 
 ## Auth accounts (DEV)
 - Admin: `support@skystates.us` (name Upendra) — password is in server env/ops notes, not in git

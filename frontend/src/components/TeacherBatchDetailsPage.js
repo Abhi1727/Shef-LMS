@@ -640,13 +640,12 @@ const TeacherBatchDetailsPage = () => {
           )}
 
           {activeView === 'meet' && (
-            <div className="sky-timing-panel">
-              <div className="sky-timing-card">
-                <MeetLiveClassesPanel
-                  batchId={selectedBatch.id}
-                  title={`Sessions · ${selectedBatch.name}`}
-                />
-              </div>
+            <div className="sky-batch-embed">
+              <MeetLiveClassesPanel
+                batchId={selectedBatch.id}
+                compact
+                title={`Sessions · ${selectedBatch.name}`}
+              />
             </div>
           )}
 
@@ -709,7 +708,9 @@ const TeacherBatchDetailsPage = () => {
           )}
 
           {activeView === 'materials' && (
-            <TeacherMaterialsPanel batchId={selectedBatch.id} batchName={selectedBatch.name} />
+            <div className="sky-batch-embed">
+              <TeacherMaterialsPanel batchId={selectedBatch.id} batchName={selectedBatch.name} />
+            </div>
           )}
 
           {activeView === 'timing' && (

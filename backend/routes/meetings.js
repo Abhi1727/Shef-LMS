@@ -7,12 +7,12 @@ const auth = require('../middleware/auth');
 const LiveClass = require('../models/LiveClass');
 const Batch = require('../models/Batch');
 const User = require('../models/User');
-const Classroom = require('../models/Classroom');
 const googleCalendarService = require('../services/googleCalendarService');
 const googleDriveService = require('../services/googleDriveService');
 const attendanceAnalytics = require('../services/attendanceAnalytics');
-const lessonPath = require('../services/lessonPath');
 const sessionSummary = require('../services/sessionSummary');
+const { ensureClassroomFromLiveClass } = require('../services/classroomFromLiveClass');
+const { syncMeetRecordings } = require('../services/meetRecordingSync');
 const { sendEmail } = require('../services/emailService');
 const { logActivity } = require('../utils/activityLogger');
 
@@ -92,9 +92,11 @@ function serializeMeeting(doc, { includeMeetLink = true } = {}) {
       })
     : o.scheduledTime || '';
 
+  const skipRecordingUpload = Boolean(o.skipRecordingUpload) || !o.batchId;
   const now = Date.now();
   const endMs = end ? end.getTime() : null;
   const needsRecording =
+    !skipRecordingUpload &&
     Boolean(o.meetLink) &&
     o.status !== 'cancelled' &&
     !o.recordingPromptDismissedAt &&
@@ -117,6 +119,8 @@ function serializeMeeting(doc, { includeMeetLink = true } = {}) {
     title: o.title,
     description: o.description || '',
     batchId: o.batchId || '',
+    unassigned: !o.batchId,
+    skipRecordingUpload,
     teacherId: o.teacherId || '',
     teacherName: o.teacherName || o.instructor || '',
     instructor: o.teacherName || o.instructor || '',
@@ -146,6 +150,8 @@ function serializeMeeting(doc, { includeMeetLink = true } = {}) {
     driveLink: o.driveLink || '',
     driveFolderId: o.driveFolderId || '',
     recordingUploadedAt: o.recordingUploadedAt || null,
+    recordingSyncAt: o.recordingSyncAt || null,
+    recordingSyncError: o.recordingSyncError || '',
     classroomLectureId: o.classroomLectureId || '',
     sessionSummary: o.sessionSummary || '',
     sessionSummaryStatus: o.sessionSummaryStatus || '',
@@ -211,14 +217,42 @@ async function getBatchRoster(batchId) {
   const allIds = [...new Set([...ids, ...extra.map((u) => String(u._id))])];
   if (!allIds.length) return [];
   const users = await User.find({ _id: { $in: allIds }, role: 'student' })
-    .select('name enrollmentNumber')
+    .select('name enrollmentNumber email')
     .lean()
     .exec();
   return users.map((u) => ({
     studentId: String(u._id),
     studentName: u.name || '',
-    enrollmentNumber: u.enrollmentNumber || ''
+    enrollmentNumber: u.enrollmentNumber || '',
+    email: u.email || ''
   }));
+}
+
+/** Student + trainer emails invited to the Calendar Meet (helps waiting room / join). */
+async function getMeetAttendeeEmails(batchId, teacherId) {
+  const emails = [];
+  const roster = await getBatchRoster(String(batchId));
+  roster.forEach((s) => {
+    if (s.email) emails.push(s.email);
+  });
+  if (teacherId) {
+    const teacher = await User.findById(teacherId).select('email').lean().exec();
+    if (teacher?.email) emails.push(teacher.email);
+  }
+  return [...new Set(emails.map((e) => String(e).trim().toLowerCase()).filter(Boolean))];
+}
+
+function withMeetJoinDefaults(link, { host = false } = {}) {
+  if (!link) return '';
+  try {
+    const url = new URL(String(link).trim());
+    if (!url.searchParams.has('audioMuted')) url.searchParams.set('audioMuted', 'true');
+    if (!url.searchParams.has('videoMuted')) url.searchParams.set('videoMuted', 'true');
+    if (host && !url.searchParams.has('hs')) url.searchParams.set('hs', '122');
+    return url.toString();
+  } catch {
+    return String(link);
+  }
 }
 
 async function findBatchForTeacher(batchId, teacherId) {
@@ -230,14 +264,9 @@ async function findBatchForTeacher(batchId, teacherId) {
 
 async function studentCanAccessBatch(userId, batchId) {
   if (!batchId) return false;
-  const user = await User.findById(userId).select('batchId oneToOneBatchId').lean().exec();
-  if (!user) return false;
-  if (String(user.batchId || '') === String(batchId)) return true;
-  if (String(user.oneToOneBatchId || '') === String(batchId)) return true;
-
-  const batch = await Batch.findById(batchId).select('students').lean().exec();
-  if (!batch) return false;
-  return (batch.students || []).some((s) => String(s) === String(userId));
+  const { resolveStudentBatchIds } = require('../utils/studentEnrollment');
+  const ids = await resolveStudentBatchIds(userId);
+  return ids.includes(String(batchId));
 }
 
 async function assertCanViewMeeting(user, meeting) {
@@ -282,6 +311,39 @@ router.get('/needing-recording', async (req, res) => {
   } catch (error) {
     console.error('GET /needing-recording error:', error);
     res.status(500).json({ success: false, message: 'Failed to list sessions needing recording' });
+  }
+});
+
+// @route   POST /api/meetings/sync-recordings
+// @desc    Pull Meet recordings from host Drive into assigned batch classrooms
+router.post('/sync-recordings', async (req, res) => {
+  try {
+    if (!isAdmin(req.user.role) && !isTeacherRole(req.user.role)) {
+      return res.status(403).json({ success: false, message: 'Access denied' });
+    }
+    const meetingId = String(req.body?.meetingId || '').trim();
+    const result = await syncMeetRecordings(meetingId ? { meetingId } : {});
+    if (meetingId && result.checked === 0) {
+      return res.json({
+        success: true,
+        message: 'This meeting is not assigned to a batch, so recordings are not imported.',
+        ...result
+      });
+    }
+    const n = (result.synced || []).length;
+    res.json({
+      success: true,
+      message: n
+        ? `Synced ${n} recording${n === 1 ? '' : 's'} into the assigned batch${n === 1 ? '' : 'es'}.`
+        : 'No new recordings yet. Meet usually finishes processing 15–60 minutes after class.',
+      ...result
+    });
+  } catch (error) {
+    console.error('POST /sync-recordings error:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to sync Meet recordings'
+    });
   }
 });
 
@@ -555,29 +617,51 @@ router.post('/', async (req, res) => {
       scheduledTime,
       duration,
       durationMinutes,
-      timezone
+      timezone,
+      startNow,
+      unassigned: unassignedRaw
     } = req.body || {};
 
-    if (!title || !batchId) {
+    const wantsStartNow = startNow === true || startNow === 'true' || startNow === 1;
+    const unassigned =
+      unassignedRaw === true ||
+      unassignedRaw === 'true' ||
+      unassignedRaw === 1 ||
+      (wantsStartNow && !batchId);
+
+    if (!title || !String(title).trim()) {
+      return res.status(400).json({ success: false, message: 'title is required' });
+    }
+    if (!unassigned && !batchId) {
       return res.status(400).json({ success: false, message: 'title and batchId are required' });
     }
+    if (unassigned && !wantsStartNow) {
+      return res.status(400).json({
+        success: false,
+        message: 'Unassigned meetings are instant-only. Use startNow without a batch.'
+      });
+    }
 
-    let batch;
-    if (isAdmin(role)) {
-      batch = await Batch.findById(batchId).lean().exec();
-      if (!batch) {
-        return res.status(404).json({ success: false, message: 'Batch not found' });
-      }
-    } else {
-      batch = await findBatchForTeacher(batchId, req.user.id);
-      if (!batch) {
-        return res.status(403).json({ success: false, message: 'You can only schedule classes for your own batches' });
+    let batch = null;
+    if (!unassigned) {
+      if (isAdmin(role)) {
+        batch = await Batch.findById(batchId).lean().exec();
+        if (!batch) {
+          return res.status(404).json({ success: false, message: 'Batch not found' });
+        }
+      } else {
+        batch = await findBatchForTeacher(batchId, req.user.id);
+        if (!batch) {
+          return res.status(403).json({ success: false, message: 'You can only schedule classes for your own batches' });
+        }
       }
     }
 
     const tz = timezone || 'Asia/Kolkata';
     let start;
-    if (scheduledStart) {
+    if (wantsStartNow) {
+      start = new Date();
+    } else if (scheduledStart) {
       start = new Date(scheduledStart);
     } else if (scheduledDate && scheduledTime) {
       // Interpret as local IST wall time when no offset provided
@@ -585,7 +669,7 @@ router.post('/', async (req, res) => {
     } else {
       return res.status(400).json({
         success: false,
-        message: 'Provide scheduledStart (ISO) or scheduledDate + scheduledTime'
+        message: 'Provide startNow, scheduledStart (ISO), or scheduledDate + scheduledTime'
       });
     }
 
@@ -596,8 +680,8 @@ router.post('/', async (req, res) => {
     const mins = parseDurationMinutes(durationMinutes ?? duration);
     const end = new Date(start.getTime() + mins * 60 * 1000);
 
-    const teacherId = String(batch.teacherId);
-    let teacherName = batch.teacherName || '';
+    const teacherId = unassigned ? String(req.user.id) : String(batch.teacherId);
+    let teacherName = unassigned ? req.user.name || 'Trainer' : batch.teacherName || '';
     if (!teacherName) {
       const teacher = await User.findById(teacherId).select('name').lean().exec();
       teacherName = teacher?.name || req.user.name || 'Trainer';
@@ -608,12 +692,20 @@ router.post('/', async (req, res) => {
     let meetSpaceId = '';
 
     try {
+      const attendeeEmails = unassigned
+        ? [req.user.email].filter(Boolean)
+        : await getMeetAttendeeEmails(batchId, teacherId);
       const created = await googleCalendarService.createMeetEvent({
         title: String(title).trim(),
-        description: description || `Live class for batch ${batch.name || batchId}`,
+        description:
+          description ||
+          (unassigned
+            ? 'Ad-hoc Meet (not assigned to a batch). Recording stays in Meet; not copied to Classroom.'
+            : `Live class for batch ${batch.name || batchId}`),
         start,
         end,
-        timezone: tz
+        timezone: tz,
+        attendeeEmails
       });
       calendarEventId = created.calendarEventId || '';
       meetLink = created.meetLink || '';
@@ -643,8 +735,7 @@ router.post('/', async (req, res) => {
       });
     }
 
-    // Seed full batch roster as absent; Join flips each student to present.
-    const roster = await getBatchRoster(String(batchId));
+    const roster = unassigned ? [] : await getBatchRoster(String(batchId));
     const seededAttendance = roster.map((s) => ({
       studentId: s.studentId,
       studentName: s.studentName,
@@ -656,12 +747,12 @@ router.post('/', async (req, res) => {
     const liveClass = await LiveClass.create({
       title: String(title).trim(),
       description: description || '',
-      batchId: String(batchId),
+      batchId: unassigned ? '' : String(batchId),
       teacherId,
       teacherName,
       instructor: teacherName,
-      course: batch.course || '',
-      courseId: batch.courseId ? String(batch.courseId) : '',
+      course: unassigned ? '' : batch.course || '',
+      courseId: unassigned ? '' : batch.courseId ? String(batch.courseId) : '',
       scheduledStart: start,
       scheduledEnd: end,
       timezone: tz,
@@ -677,17 +768,27 @@ router.post('/', async (req, res) => {
       meetLink,
       meetSpaceId,
       zoomLink: meetLink,
-      status: 'scheduled',
+      status: wantsStartNow ? 'live' : 'scheduled',
       attendance: seededAttendance,
+      skipRecordingUpload: Boolean(unassigned),
+      recordingPromptDismissedAt: unassigned ? new Date() : null,
       createdBy: String(req.user.id),
       createdAt: new Date(),
       updatedAt: new Date()
     });
 
+    const serialized = serializeMeeting(liveClass);
+    const hostJoin = withMeetJoinDefaults(meetLink, { host: true });
     res.status(201).json({
       success: true,
-      message: 'Meet class scheduled',
-      meeting: serializeMeeting(liveClass)
+      message: unassigned
+        ? 'Instant Meet created (no batch). Recording stays in Meet and is not uploaded to Classroom.'
+        : liveClass.status === 'live'
+          ? 'Instant Meet room created. Mic/camera muted on join; recording auto-starts when Workspace allows.'
+          : 'Meet class scheduled',
+      meeting: serialized,
+      meetLink: hostJoin,
+      startUrl: hostJoin
     });
   } catch (error) {
     console.error('POST /api/meetings error:', error);
@@ -758,16 +859,42 @@ router.post('/:id/start', async (req, res) => {
     if (!doc.meetLink) {
       return res.status(400).json({ success: false, message: 'No Meet link available' });
     }
-    if (doc.status === 'scheduled') {
+    if (isTeacherRole(req.user.role)) {
+      doc.teacherId = String(req.user.id);
+      if (req.user.name) doc.teacherName = req.user.name;
+    }
+    if (doc.status === 'scheduled' || doc.status === 'live') {
       doc.status = 'live';
       doc.updatedAt = new Date();
       await doc.save();
     }
+
+    try {
+      if (!doc.skipRecordingUpload && doc.batchId) {
+        await ensureClassroomFromLiveClass(doc);
+      }
+    } catch (pubErr) {
+      console.warn('[meetings] classroom publish on start:', pubErr.message || pubErr);
+    }
+
+    // Best-effort: open waiting room / auto-record on existing space
+    if (doc.meetSpaceId) {
+      try {
+        await googleCalendarService.configureMeetSpaceOpen(doc.meetSpaceId);
+      } catch (_) {
+        /* optional */
+      }
+    }
+
+    const hostJoin = withMeetJoinDefaults(doc.meetLink, { host: true });
     res.json({
       success: true,
       meeting: serializeMeeting(doc),
-      startUrl: doc.meetLink,
-      meetLink: doc.meetLink
+      startUrl: hostJoin,
+      meetLink: hostJoin,
+      joinDefaults: { audioMuted: true, videoMuted: true, autoRecordRequested: true },
+      message:
+        'Class started. Join opens with mic/camera muted. Start Meet recording if it does not begin automatically.'
     });
   } catch (error) {
     console.error('POST /meetings/:id/start error:', error);
@@ -786,6 +913,12 @@ router.post('/:id/join', async (req, res) => {
     if (!doc.meetLink) {
       return res.status(400).json({ success: false, message: 'No Meet link available' });
     }
+    if (isStudentRole(req.user.role) && (!doc.batchId || doc.skipRecordingUpload)) {
+      return res.status(403).json({
+        success: false,
+        message: 'This is an internal Meet and is not assigned to a class batch.'
+      });
+    }
 
     const allowed = await assertCanViewMeeting(req.user, doc);
     if (!allowed) {
@@ -796,16 +929,11 @@ router.post('/:id/join', async (req, res) => {
     if (isStudentRole(req.user.role)) {
       const studentId = String(req.user.id);
       const user = await User.findById(studentId).select('name').lean().exec();
-      // Whoever joins via LMS is Present (overrides prior absent/late).
       markStudentPresent(doc, {
         studentId,
         studentName: user?.name || req.user.name || ''
       });
       markedPresent = true;
-      if (doc.status === 'scheduled') doc.status = 'live';
-      doc.updatedAt = new Date();
-      await doc.save();
-
       try {
         const certificateService = require('../services/certificateService');
         if (doc.batchId) {
@@ -815,11 +943,23 @@ router.post('/:id/join', async (req, res) => {
         console.warn('[certificates] auto-issue after join:', certErr.message || certErr);
       }
     }
+    if (isTeacherRole(req.user.role)) {
+      doc.teacherId = String(req.user.id);
+      if (req.user.name) doc.teacherName = req.user.name;
+    }
+    if (doc.status === 'scheduled' || isStudentRole(req.user.role) || isTeacherRole(req.user.role)) {
+      if (doc.status === 'scheduled') doc.status = 'live';
+      doc.updatedAt = new Date();
+      await doc.save();
+    }
 
+    const joinLink = withMeetJoinDefaults(doc.meetLink, {
+      host: isTeacherRole(req.user.role) || isAdmin(req.user.role)
+    });
     res.json({
       success: true,
-      meetLink: doc.meetLink,
-      joinUrl: doc.meetLink,
+      meetLink: joinLink,
+      joinUrl: joinLink,
       markedPresent,
       meeting: serializeMeeting(doc, { includeMeetLink: !isStudentRole(req.user.role) })
     });
@@ -842,6 +982,21 @@ router.post('/:id/complete', async (req, res) => {
     if (dismissPrompt) doc.recordingPromptDismissedAt = new Date();
     doc.updatedAt = new Date();
     await doc.save();
+
+    try {
+      if (!doc.skipRecordingUpload && doc.batchId) {
+        await ensureClassroomFromLiveClass(doc);
+      }
+    } catch (pubErr) {
+      console.warn('[meetings] classroom publish on complete:', pubErr.message || pubErr);
+    }
+
+    if (!doc.skipRecordingUpload && doc.batchId) {
+      syncMeetRecordings({ meetingId: String(doc._id) }).catch((err) =>
+        console.warn('[meetings] recording sync on complete:', err.message || err)
+      );
+    }
+
     res.json({ success: true, meeting: serializeMeeting(doc) });
   } catch (error) {
     console.error('POST /meetings/:id/complete error:', error);
@@ -858,6 +1013,12 @@ router.post('/:id/materials', sessionMaterialUpload.single('file'), async (req, 
     if (!doc) return res.status(404).json({ success: false, message: 'Meeting not found' });
     if (!(await assertTeacherOrAdminOwns(req.user, doc))) {
       return res.status(403).json({ success: false, message: 'Access denied' });
+    }
+    if (doc.skipRecordingUpload || !doc.batchId) {
+      return res.status(400).json({
+        success: false,
+        message: 'This meeting is not assigned to a batch, so files are not uploaded to Drive.'
+      });
     }
     if (!req.file) {
       return res.status(400).json({ success: false, message: 'file is required' });
@@ -885,6 +1046,11 @@ router.post('/:id/materials', sessionMaterialUpload.single('file'), async (req, 
       }
     }
 
+    const teacher = doc.teacherId
+      ? await User.findById(doc.teacherId).select('email').lean().exec()
+      : null;
+    const shareEmails = [teacher?.email, req.user?.email].filter(Boolean);
+
     const uploaded = await googleDriveService.uploadBatchFile({
       batchId: doc.batchId,
       batchName: batch?.name || '',
@@ -892,7 +1058,8 @@ router.post('/:id/materials', sessionMaterialUpload.single('file'), async (req, 
       filePath: req.file.path,
       fileName: req.file.originalname || `session-material-${Date.now()}`,
       mimeType: req.file.mimetype,
-      title: req.body?.name || doc.title
+      title: req.body?.name || doc.title,
+      shareWithEmails: shareEmails
     });
 
     const entry = {
@@ -1135,8 +1302,20 @@ router.post('/:id/recording', recordingUpload.single('recording'), async (req, r
     if (!(await assertTeacherOrAdminOwns(req.user, doc))) {
       return res.status(403).json({ success: false, message: 'Access denied' });
     }
+    if (doc.skipRecordingUpload || !doc.batchId) {
+      return res.status(400).json({
+        success: false,
+        message: 'This meeting is not assigned to a batch. Recordings are not uploaded to Drive or Classroom.'
+      });
+    }
     if (!req.file) {
       return res.status(400).json({ success: false, message: 'recording file is required' });
+    }
+    if (Number(req.file.size || 0) < googleDriveService.MIN_PLAYABLE_VIDEO_BYTES) {
+      return res.status(400).json({
+        success: false,
+        message: 'That file is too small to be a class recording. Upload the real Meet video (mp4).'
+      });
     }
 
     const batch = await Batch.findById(doc.batchId).lean().exec();
@@ -1158,6 +1337,11 @@ router.post('/:id/recording', recordingUpload.single('recording'), async (req, r
       }
     }
 
+    const teacher = doc.teacherId
+      ? await User.findById(doc.teacherId).select('email').lean().exec()
+      : null;
+    const shareEmails = [teacher?.email, req.user?.email].filter(Boolean);
+
     const uploaded = await googleDriveService.uploadRecordingFile({
       batchId: doc.batchId,
       batchName: batch?.name || '',
@@ -1165,7 +1349,8 @@ router.post('/:id/recording', recordingUpload.single('recording'), async (req, r
       filePath: req.file.path,
       fileName: `${doc.title || 'class'}-${Date.now()}${path.extname(req.file.originalname) || '.mp4'}`,
       mimeType: req.file.mimetype,
-      title: doc.title
+      title: doc.title,
+      shareWithEmails: shareEmails
     });
 
     doc.driveFolderId = uploaded.folderId;
@@ -1175,29 +1360,14 @@ router.post('/:id/recording', recordingUpload.single('recording'), async (req, r
     doc.recordingPromptDismissedAt = new Date();
     doc.status = 'completed';
     doc.updatedAt = new Date();
+    await doc.save();
 
-    const order = await lessonPath.nextOrderForBatch(String(doc.batchId));
-
-    const lecture = await Classroom.create({
-      title: doc.title,
-      instructor: doc.teacherName || doc.instructor || '',
-      description: doc.description || `Recording for ${doc.title}`,
-      course: doc.course || batch?.course || '',
-      batchId: String(doc.batchId),
-      batchName: batch?.name || '',
-      duration: doc.duration || '',
-      date: doc.scheduledDate || new Date().toISOString().slice(0, 10),
+    const lecture = await ensureClassroomFromLiveClass(doc, {
       videoSource: 'drive',
-      driveId: uploaded.driveFileId,
-      zoomUrl: uploaded.driveLink,
-      order,
-      unlockRule: 'open',
-      uploadedBy: String(req.user.id),
-      createdAt: new Date(),
-      updatedAt: new Date()
+      driveFileId: uploaded.driveFileId,
+      driveLink: uploaded.driveLink
     });
 
-    doc.classroomLectureId = String(lecture._id);
     doc.sessionSummaryStatus = 'pending';
     await doc.save();
 
@@ -1213,7 +1383,7 @@ router.post('/:id/recording', recordingUpload.single('recording'), async (req, r
       driveLink: uploaded.driveLink,
       driveFileId: uploaded.driveFileId,
       folderLink,
-      lectureId: String(lecture._id)
+      lectureId: lecture ? String(lecture._id) : doc.classroomLectureId
     });
   } catch (error) {
     console.error('POST /meetings/:id/recording error:', error);

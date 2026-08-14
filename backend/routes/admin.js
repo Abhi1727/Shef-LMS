@@ -12,14 +12,26 @@ const ActivityLog = require('../models/ActivityLog');
 const Course = require('../models/Course');
 const Module = require('../models/Module');
 const Classroom = require('../models/Classroom');
+const { resolveNotesAbsolutePath, streamNotesFile } = require('../utils/notesDownload');
+const { persistNotesToDrive } = require('../services/notesStorage');
 const OneToOne = require('../models/OneToOne');
 const OneToOneBatch = require('../models/OneToOneBatch');
 const LiveClass = require('../models/LiveClass');
+const BatchMaterial = require('../models/BatchMaterial');
+const StudentShare = require('../models/StudentShare');
 const { sendEmail } = require('../services/emailService');
+const { attachPresence, findLiveClassForTeacher, findLiveClassesForTeachers } = require('../utils/teacherPresence');
 const {
   allocateEnrollmentNumber,
   planBackfill,
 } = require('../utils/enrollmentNumber');
+const {
+  enrollStudentInBatch,
+  unenrollStudentFromBatch,
+  activeEnrollments,
+  hydrateEnrollments,
+  serializeEnrollments
+} = require('../utils/studentEnrollment');
 const { buildStudentReportPdf } = require('../utils/studentReportPdf');
 const {
   allocateFormNumber,
@@ -107,7 +119,7 @@ const moduleUpload = multer({
 });
 
 // Configure multer for lecture notes uploads (PDF/Word/etc.) stored on disk
-const NOTES_MAX_FILE_SIZE = 10 * 1024 * 1024;
+const NOTES_MAX_FILE_SIZE = 100 * 1024 * 1024;
 const notesUploadStorage = multer.diskStorage({
   destination: (req, file, cb) => {
     const notesDir = path.join(__dirname, '..', 'uploads', 'notes');
@@ -232,7 +244,27 @@ const normalizeBatchId = (v) => (v != null && v !== '' ? String(v) : null);
 router.get('/users', async (req, res) => {
   try {
     const users = await User.find({ role: 'student' }).select('-password').lean().exec();
-    const mapped = users.map(u => ({ id: String(u._id), ...u, batchId: normalizeBatchId(u.batchId) }));
+    const allBatchIds = new Set();
+    users.forEach((u) => {
+      hydrateEnrollments(u).forEach((e) => allBatchIds.add(e.batchId));
+      if (u.batchId) allBatchIds.add(String(u.batchId));
+    });
+    const batches = allBatchIds.size
+      ? await Batch.find({ _id: { $in: [...allBatchIds] } }).select('name course').lean().exec()
+      : [];
+    const batchMap = new Map(batches.map((b) => [String(b._id), b]));
+
+    const mapped = users.map((u) => {
+      const enrollments = serializeEnrollments(u, batchMap);
+      return {
+        id: String(u._id),
+        ...u,
+        batchId: normalizeBatchId(u.batchId),
+        enrollments,
+        enrollmentNumbers: enrollments.map((e) => e.enrollmentNumber).filter(Boolean),
+        batchIds: enrollments.map((e) => e.batchId)
+      };
+    });
     res.json(mapped);
   } catch (err) {
     console.error('Error fetching users:', err);
@@ -323,6 +355,7 @@ router.post('/users', async (req, res) => {
       role: resolvedRole,
       joiningDate: joinDate,
       createdAt: new Date(),
+      enrollments: []
     };
 
     if (phone) userData.phone = String(phone).trim();
@@ -331,21 +364,29 @@ router.post('/users', async (req, res) => {
     const user = new User(userData);
     const saved = await user.save();
 
-    // Keep Batch.students in sync when enrolling directly into a batch
+    let enrollmentMeta = null;
+    // Multi-program enrollments array + Batch.students sync
     if (saved.role === 'student' && saved.batchId) {
       try {
-        await Batch.findByIdAndUpdate(saved.batchId, {
-          $addToSet: { students: saved._id },
-        });
+        const { enrollment } = await enrollStudentInBatch(saved, saved.batchId);
+        enrollmentMeta = enrollment;
       } catch (batchErr) {
-        console.error('Warning: student created but batch sync failed:', batchErr.message);
+        console.error('Warning: student created but enrollment sync failed:', batchErr.message);
+        try {
+          await Batch.findByIdAndUpdate(saved.batchId, {
+            $addToSet: { students: saved._id },
+          });
+        } catch (_) {
+          /* ignore */
+        }
       }
     }
 
     res.json({
       id: String(saved._id),
-      enrollmentNumber: saved.enrollmentNumber || null,
+      enrollmentNumber: enrollmentMeta?.enrollmentNumber || saved.enrollmentNumber || null,
       formNumber: saved.formNumber || null,
+      enrollments: enrollmentMeta ? [enrollmentMeta] : [],
       message: 'User created successfully',
     });
   } catch (err) {
@@ -354,6 +395,90 @@ router.post('/users', async (req, res) => {
       return res.status(400).json({ message: 'Duplicate email, enrollment number, or form number' });
     }
     res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// @route   POST /api/admin/users/:id/enrollments
+// @desc    Enroll an existing student into another program/batch (new SKY ID)
+router.post('/users/:id/enrollments', async (req, res) => {
+  try {
+    const studentId = req.params.id;
+    const { batchId } = req.body || {};
+    if (!batchId) {
+      return res.status(400).json({ message: 'batchId is required' });
+    }
+
+    const user = await User.findById(studentId).exec();
+    if (!user || user.role !== 'student') {
+      return res.status(404).json({ message: 'Student not found' });
+    }
+
+    const batch = await Batch.findById(batchId).exec();
+    if (!batch) {
+      return res.status(404).json({ message: 'Batch not found' });
+    }
+
+    const { enrollment, created } = await enrollStudentInBatch(user, batch);
+    const refreshed = await User.findById(studentId).select('-password').lean().exec();
+    const batchDocs = await Batch.find({
+      _id: { $in: activeEnrollments(refreshed).map((e) => e.batchId) }
+    })
+      .select('name course')
+      .lean()
+      .exec();
+    const batchMap = new Map(batchDocs.map((b) => [String(b._id), b]));
+    const enrollments = serializeEnrollments(refreshed, batchMap);
+    const sameProgramCount = enrollments.filter(
+      (e) =>
+        String(e.course || '').toLowerCase() ===
+        String(batch.course || enrollment.course || '').toLowerCase()
+    ).length;
+
+    res.status(created ? 201 : 200).json({
+      success: true,
+      message: created
+        ? `Enrolled in ${batch.course || batch.name} (${batch.name}) with enrollment ${enrollment.enrollmentNumber}`
+        : `Already enrolled in ${batch.name || batch.course}`,
+      warning:
+        sameProgramCount > 1
+          ? `Student already had another enrollment in the same program (${batch.course}). Multi-program is intended for different courses (e.g. Data Science + Cyber).`
+          : null,
+      enrollment,
+      enrollments,
+      student: {
+        id: String(refreshed._id),
+        name: refreshed.name,
+        email: refreshed.email,
+        batchId: refreshed.batchId,
+        enrollmentNumber: refreshed.enrollmentNumber,
+        course: refreshed.course
+      }
+    });
+  } catch (err) {
+    console.error('Error enrolling student in program:', err);
+    res.status(500).json({ message: err.message || 'Server error' });
+  }
+});
+
+// @route   DELETE /api/admin/users/:id/enrollments/:batchId
+// @desc    Remove a student from one program/batch only
+router.delete('/users/:id/enrollments/:batchId', async (req, res) => {
+  try {
+    const { id: studentId, batchId } = req.params;
+    const user = await User.findById(studentId).exec();
+    if (!user || user.role !== 'student') {
+      return res.status(404).json({ message: 'Student not found' });
+    }
+    await unenrollStudentFromBatch(user, batchId);
+    const refreshed = await User.findById(studentId).select('-password').lean().exec();
+    res.json({
+      success: true,
+      message: 'Removed from program',
+      enrollments: activeEnrollments(refreshed)
+    });
+  } catch (err) {
+    console.error('Error removing enrollment:', err);
+    res.status(500).json({ message: err.message || 'Server error' });
   }
 });
 
@@ -1215,6 +1340,8 @@ router.get('/teachers/:id/session-stats', async (req, res) => {
       .select('name email isAvailable weeklyAvailability availabilityUpdatedAt')
       .lean()
       .exec();
+    const live = await findLiveClassForTeacher(teacherId);
+    const presence = attachPresence(teacher || {}, live);
     res.json({
       success: true,
       stats,
@@ -1223,9 +1350,8 @@ router.get('/teachers/:id/session-stats', async (req, res) => {
             id: String(teacher._id),
             name: teacher.name,
             email: teacher.email,
-            isAvailable: Boolean(teacher.isAvailable),
             weeklyAvailability: teacher.weeklyAvailability || [],
-            availabilityUpdatedAt: teacher.availabilityUpdatedAt || null
+            ...presence
           }
         : null
     });
@@ -1240,7 +1366,11 @@ router.get('/teachers/:id/session-stats', async (req, res) => {
 router.get('/teachers', async (req, res) => {
   try {
     const teachers = await User.find({ role: 'teacher' }).select('-password').lean().exec();
-    const mapped = teachers.map(t => ({ id: String(t._id), ...t }));
+    const liveMap = await findLiveClassesForTeachers(teachers.map((t) => t._id));
+    const mapped = teachers.map((t) => {
+      const presence = attachPresence(t, liveMap[String(t._id)]);
+      return { id: String(t._id), ...t, ...presence };
+    });
     res.json(mapped);
   } catch (err) {
     console.error('Error fetching teachers:', err);
@@ -1635,7 +1765,7 @@ router.post('/classroom/youtube-url', notesUpload.single('notesFile'), async (re
           // Validate zip file size (reasonable limit for zip files)
           if (req.file.size > NOTES_MAX_FILE_SIZE) {
             return res.status(413).json({
-              message: 'Zip file too large. Maximum size is 10MB.',
+              message: 'Zip file too large. Maximum size is 100MB.',
               code: 'ZIP_FILE_TOO_LARGE'
             });
           }
@@ -1657,6 +1787,12 @@ router.post('/classroom/youtube-url', notesUpload.single('notesFile'), async (re
         }
         
         lectureData.notesFilePath = `/uploads/notes/${req.file.filename}`;
+        const driveNotes = await persistNotesToDrive({
+          file: req.file,
+          batchId: lectureData.batchId,
+          lectureTitle: lectureData.title
+        });
+        Object.assign(lectureData, driveNotes);
       }
     }
 
@@ -1748,6 +1884,14 @@ router.post('/classroom', notesUpload.single('notesFile'), async (req, res) => {
       videoData.notesFileName = (notesFileName || req.file?.originalname || '').trim() || undefined;
       if (req.file) {
         videoData.notesFilePath = `/uploads/notes/${req.file.filename}`;
+        Object.assign(
+          videoData,
+          await persistNotesToDrive({
+            file: req.file,
+            batchId: videoData.batchId,
+            lectureTitle: videoData.title
+          })
+        );
       }
     }
 
@@ -1857,6 +2001,14 @@ router.put('/classroom/:id', notesUpload.single('notesFile'), async (req, res) =
         videoData.notesFileName = (notesFileName || req.file?.originalname || '').trim() || undefined;
         if (req.file) {
           videoData.notesFilePath = `/uploads/notes/${req.file.filename}`;
+          Object.assign(
+            videoData,
+            await persistNotesToDrive({
+              file: req.file,
+              batchId: videoData.batchId || req.body.batchId,
+              lectureTitle: videoData.title || req.body.title
+            })
+          );
         }
       } else {
         // Explicitly clear notes when notesAvailable is false
@@ -1865,10 +2017,17 @@ router.put('/classroom/:id', notesUpload.single('notesFile'), async (req, res) =
         videoData.notesFilePath = null;
       }
     } else if (req.file) {
-      // If a new notes file is uploaded without explicit flag, assume notes are available
       videoData.notesAvailable = true;
       videoData.notesFileName = (notesFileName || req.file.originalname || '').trim() || undefined;
       videoData.notesFilePath = `/uploads/notes/${req.file.filename}`;
+      Object.assign(
+        videoData,
+        await persistNotesToDrive({
+          file: req.file,
+          batchId: videoData.batchId || req.body.batchId,
+          lectureTitle: videoData.title || req.body.title
+        })
+      );
     }
 
     await Classroom.findByIdAndUpdate(id, videoData, { new: true }).exec();
@@ -2295,28 +2454,34 @@ router.put('/batches/:id', async (req, res) => {
     });
 
 // @route   DELETE /api/admin/batches/:id
-// @desc    Delete a batch (cascade: clear User.batchId and Classroom.batchId for affected records)
+// @desc    Delete a batch (unenroll students, detach classroom, drop sessions/materials)
 router.delete('/batches/:id', async (req, res) => {
     try {
-        const batchId = req.params.id;
+        const batchId = String(req.params.id);
         const batchDoc = await Batch.findById(batchId).lean().exec();
         if (!batchDoc) {
             return res.status(404).json({ message: 'Batch not found' });
         }
 
-        // 1. Clear batchId for all users (students) who were in this batch
-        await User.updateMany(
-            { batchId: batchId },
-            { $unset: { batchId: '' } }
-        ).exec();
+        const users = await User.find({}).select('batchId oneToOneBatchId enrollments').lean().exec();
+        const enrolled = (users || []).filter((u) => {
+            if (String(u.batchId || '') === batchId) return true;
+            if (String(u.oneToOneBatchId || '') === batchId) return true;
+            return (u.enrollments || []).some((e) => String(e.batchId || '') === batchId);
+        });
+        for (const u of enrolled) {
+            await unenrollStudentFromBatch(u._id || u.id, batchId);
+        }
 
-        // 2. Clear batchId for all classroom videos assigned to this batch
         await Classroom.updateMany(
-            { batchId: batchId },
+            { batchId },
             { $set: { batchId: null, updatedAt: new Date() } }
         ).exec();
 
-        // 3. Delete the batch
+        await LiveClass.deleteMany({ batchId }).exec();
+        await BatchMaterial.deleteMany({ batchId }).exec();
+        await StudentShare.deleteMany({ batchId }).exec();
+
         await Batch.findByIdAndDelete(batchId).exec();
 
         res.json({
@@ -2662,74 +2827,8 @@ router.get('/classroom/:id/notes', roleAuth('admin'), async (req, res) => {
     
     console.log('Video found:', video.title, 'Notes available:', video.notesAvailable);
     
-    // Check if notes are available
-    if (!video.notesAvailable || !video.notesFilePath) {
-      console.log('No notes available for video:', id);
-      return res.status(404).json({ message: 'No notes available for this video' });
-    }
-    
-    // Construct file path - handle both relative and absolute paths
-    let notesPath;
-    if (video.notesFilePath.startsWith('/')) {
-      // Absolute path - remove leading slash and make relative to backend root
-      notesPath = path.join(__dirname, '..', video.notesFilePath.substring(1));
-    } else {
-      // Relative path - make relative to backend root
-      notesPath = path.join(__dirname, '..', video.notesFilePath);
-    }
-    
-    console.log('Constructed notes path:', notesPath);
-    
-    // Security check - prevent directory traversal
-    const normalizedPath = path.normalize(notesPath);
-    const uploadsDir = path.normalize(path.join(__dirname, '..', 'uploads'));
-    if (!normalizedPath.startsWith(uploadsDir)) {
-      console.error('Security violation - path traversal attempt:', normalizedPath);
-      return res.status(403).json({ message: 'Access denied' });
-    }
-    
-    // Check if file exists
-    if (!fs.existsSync(notesPath)) {
-      console.error('Notes file not found:', notesPath);
-      return res.status(404).json({ message: 'Notes file not found on server' });
-    }
-    
-    // Get file stats
-    const stats = fs.statSync(notesPath);
-    console.log('File stats:', { size: stats.size, modified: stats.mtime });
-    
-    // Set appropriate headers
-    const filename = video.notesFileName || path.basename(notesPath);
-    const contentType = getContentType(filename);
-    res.setHeader('Content-Type', contentType);
-    res.setHeader('Content-Length', stats.size);
-    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
-    res.setHeader('Cache-Control', 'no-cache');
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Headers', 'Authorization, Content-Type');
-    
-    // Create read stream and pipe to response
-    const fileStream = fs.createReadStream(notesPath);
-    
-    fileStream.on('error', (error) => {
-      console.error('Error reading notes file:', error);
-      if (!res.headersSent) {
-        res.status(500).json({ message: 'Error reading notes file' });
-      }
-    });
-    
-    fileStream.on('end', () => {
-      console.log('Admin notes file downloaded successfully:', {
-        videoId: id,
-        filename: filename,
-        size: stats.size,
-        adminId: req.user.id
-      });
-    });
-    
-    // Pipe the file to the response
-    fileStream.pipe(res);
-    
+    const { sendLectureNotes } = require('../services/notesStorage');
+    await sendLectureNotes(res, video);
   } catch (error) {
     console.error('Error downloading notes (admin endpoint):', error);
     if (!res.headersSent) {
@@ -2746,62 +2845,14 @@ router.get('/classroom/notes/:id', roleAuth('admin'), async (req, res) => {
     const { id } = req.params;
     console.log('Admin alternative download request received for video ID:', id);
     
-    // Find the classroom video
     const video = await Classroom.findById(id).exec();
     if (!video) {
       console.log('Video not found for ID:', id);
       return res.status(404).json({ message: 'Video not found' });
     }
     
-    // Check if notes are available
-    if (!video.notesAvailable || !video.notesFilePath) {
-      console.log('No notes available for video:', id);
-      return res.status(404).json({ message: 'No notes available for this video' });
-    }
-    
-    // Construct file path - handle both relative and absolute paths
-    let notesPath;
-    if (video.notesFilePath.startsWith('/')) {
-      // Absolute path - remove leading slash and make relative to backend root
-      notesPath = path.join(__dirname, '..', video.notesFilePath.substring(1));
-    } else {
-      // Relative path - make relative to backend root
-      notesPath = path.join(__dirname, '..', video.notesFilePath);
-    }
-    
-    console.log('Constructed notes path:', notesPath);
-    
-    // Security check - prevent directory traversal
-    const normalizedPath = path.normalize(notesPath);
-    const uploadsDir = path.normalize(path.join(__dirname, '..', 'uploads'));
-    if (!normalizedPath.startsWith(uploadsDir)) {
-      console.error('Security violation - path traversal attempt:', normalizedPath);
-      return res.status(403).json({ message: 'Access denied' });
-    }
-    
-    // Check if file exists
-    if (!fs.existsSync(notesPath)) {
-      console.error('Notes file not found:', notesPath);
-      return res.status(404).json({ message: 'Notes file not found on server' });
-    }
-    
-    // Get file stats
-    const stats = fs.statSync(notesPath);
-    
-    // Set appropriate headers
-    const filename = video.notesFileName || path.basename(notesPath);
-    const contentType = getContentType(filename);
-    res.setHeader('Content-Type', contentType);
-    res.setHeader('Content-Length', stats.size);
-    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
-    res.setHeader('Cache-Control', 'no-cache');
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Headers', 'Authorization, Content-Type');
-    
-    // Create read stream and pipe to response
-    const fileStream = fs.createReadStream(notesPath);
-    fileStream.pipe(res);
-    
+    const { sendLectureNotes } = require('../services/notesStorage');
+    await sendLectureNotes(res, video);
   } catch (error) {
     console.error('Error downloading notes (admin alternative endpoint):', error);
     if (!res.headersSent) {

@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { getApiBaseUrl } from '../utils/apiBase';
+import { meetJoinUrl } from '../utils/meetJoinUrl';
 import './MeetLiveClasses.css';
 
 function sessionPhase(meeting, now = Date.now()) {
@@ -9,7 +10,10 @@ function sessionPhase(meeting, now = Date.now()) {
   const end = meeting.scheduledEnd ? new Date(meeting.scheduledEnd).getTime() : start + 60 * 60 * 1000;
   if (Number.isNaN(start)) return { phase: 'unknown', minsUntil: null };
   const minsUntil = Math.round((start - now) / 60000);
-  if (meeting.needsRecording || (end < now && meeting.status !== 'completed' && meeting.status !== 'cancelled')) {
+  if (meeting.needsRecording) {
+    return { phase: 'needsRecording', minsUntil };
+  }
+  if (end < now && meeting.status !== 'completed' && meeting.status !== 'cancelled' && !meeting.skipRecordingUpload && meeting.batchId) {
     return { phase: 'needsRecording', minsUntil };
   }
   if (minsUntil <= 0 && end >= now) return { phase: 'live', minsUntil };
@@ -45,6 +49,7 @@ export default function MeetLiveClassesPanel({
   const [attendanceLoading, setAttendanceLoading] = useState(false);
   const [attendanceSaving, setAttendanceSaving] = useState(false);
   const [uploadingId, setUploadingId] = useState('');
+  const [syncingRecordings, setSyncingRecordings] = useState(false);
   const fileInputRef = React.useRef(null);
   const [uploadTargetId, setUploadTargetId] = useState('');
   const [summary, setSummary] = useState(null);
@@ -64,7 +69,8 @@ export default function MeetLiveClassesPanel({
     scheduledDate: '',
     scheduledTime: '',
     duration: '60',
-    description: ''
+    description: '',
+    unassigned: false
   });
 
   useEffect(() => {
@@ -193,7 +199,11 @@ export default function MeetLiveClassesPanel({
   const sessionList = visible
     .filter((m) => sessionPhase(m, now).phase !== 'needsRecording')
     .filter((m) => {
-      if (sessionBatchFilter && String(m.batchId) !== String(sessionBatchFilter)) return false;
+      if (sessionBatchFilter === 'unassigned') {
+        if (m.batchId) return false;
+      } else if (sessionBatchFilter && String(m.batchId) !== String(sessionBatchFilter)) {
+        return false;
+      }
       if (sessionFilter === 'completed') return m.status === 'completed';
       if (sessionFilter === 'upcoming') {
         const { phase } = sessionPhase(m, now);
@@ -225,7 +235,12 @@ export default function MeetLiveClassesPanel({
     e.preventDefault();
     setMessage('');
     setError('');
+    const adHoc = Boolean(form.unassigned);
     const targetBatch = form.batchId || batchId;
+    if (adHoc) {
+      setError('Unassigned rooms are instant-only. Use Start unassigned Meet.');
+      return;
+    }
     if (!form.title.trim() || !targetBatch || !form.scheduledDate || !form.scheduledTime) {
       setError('Title, batch, date, and time are required.');
       return;
@@ -264,6 +279,56 @@ export default function MeetLiveClassesPanel({
     }
   };
 
+  const handleInstantMeet = async ({ unassigned = false } = {}) => {
+    setMessage('');
+    setError('');
+    const adHoc = Boolean(unassigned || form.unassigned);
+    const targetBatch = adHoc ? '' : form.batchId || batchId;
+    const title = form.title.trim() || (adHoc ? 'Instant meeting' : '');
+    if (!title || (!adHoc && !targetBatch)) {
+      setError(
+        adHoc
+          ? 'Add a title (or leave it blank to use Instant meeting).'
+          : 'Title and batch are required for a batch instant meeting.'
+      );
+      return;
+    }
+    setSaving(true);
+    try {
+      const apiUrl = getApiBaseUrl();
+      const res = await fetch(`${apiUrl}/api/meetings`, {
+        method: 'POST',
+        headers: authHeaders(),
+        body: JSON.stringify({
+          title,
+          batchId: adHoc ? undefined : targetBatch,
+          unassigned: adHoc,
+          startNow: true,
+          duration: form.duration || '60',
+          description: form.description || '',
+          timezone: 'Asia/Kolkata'
+        })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.message || 'Failed to create instant Meet');
+      const link = meetJoinUrl(data.meetLink || data.startUrl || data.meeting?.meetLink, {
+        host: true
+      });
+      if (link) window.open(link, '_blank', 'noopener,noreferrer');
+      setMessage(
+        adHoc
+          ? 'Ad-hoc Meet started. Recording stays in Meet and is not uploaded to Classroom.'
+          : 'Instant room created. Mic/camera muted on join — start recording in Meet if it does not auto-start.'
+      );
+      setForm((f) => ({ ...f, title: '', description: '' }));
+      await loadMeetings();
+    } catch (err) {
+      setError(err.message || 'Failed to create instant meeting');
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const handleCancel = async (id) => {
     if (!window.confirm('Cancel this live class? Students will no longer see Join.')) return;
     try {
@@ -290,11 +355,14 @@ export default function MeetLiveClassesPanel({
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.message || 'Failed to start');
-      const link = data.meetLink || data.startUrl || m.meetLink;
+      const link = meetJoinUrl(data.meetLink || data.startUrl || m.meetLink, { host: true });
       if (link) window.open(link, '_blank', 'noopener,noreferrer');
       setExpandedId(m.id);
       await Promise.all([loadMeetings(), loadAttendance(m.id)]);
-      setMessage('Class started. Students who Join are marked Present automatically.');
+      setMessage(
+        data.message ||
+          'Class started with mic/camera muted. Students who Join are marked Present. Start recording in Meet if needed.'
+      );
     } catch (err) {
       setError(err.message || 'Failed to start class');
     }
@@ -477,6 +545,27 @@ export default function MeetLiveClassesPanel({
     }
   };
 
+  const syncRecordings = async (meetingId = '') => {
+    setSyncingRecordings(true);
+    setError('');
+    try {
+      const apiUrl = getApiBaseUrl();
+      const res = await fetch(`${apiUrl}/api/meetings/sync-recordings`, {
+        method: 'POST',
+        headers: authHeaders(),
+        body: JSON.stringify(meetingId ? { meetingId } : {})
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.message || 'Failed to sync recordings');
+      setMessage(data.message || 'Recording sync finished.');
+      await loadMeetings();
+    } catch (err) {
+      setError(err.message || 'Failed to sync recordings');
+    } finally {
+      setSyncingRecordings(false);
+    }
+  };
+
   return (
     <div className={`live-lobby ${compact ? 'live-lobby--compact' : ''}`}>
       <input
@@ -497,8 +586,17 @@ export default function MeetLiveClassesPanel({
         <p className="live-lobby__eyebrow">Sky States · Live class</p>
         <h2>{title}</h2>
         <p>
-          Schedule Meet, start the session, and watch attendance update as students join. Upload the
-          recording to Google Drive when class ends. Students get a reminder ~15 minutes before start.
+          Schedule Meet, start now with an instant room, and watch attendance update as students join.
+          Join opens with mic/camera muted. Meet recordings copy into the assigned batch Classroom
+          automatically after Google finishes processing (usually 15–60 minutes).{' '}
+          <button
+            type="button"
+            className="live-lobby__btn live-lobby__btn--ghost live-lobby__btn--sm"
+            disabled={syncingRecordings}
+            onClick={() => syncRecordings()}
+          >
+            {syncingRecordings ? 'Syncing…' : 'Sync recordings now'}
+          </button>
         </p>
       </div>
 
@@ -617,7 +715,20 @@ export default function MeetLiveClassesPanel({
 
       {needingRecording.length > 0 && (
         <section className="live-lobby__card live-lobby__card--recording">
-          <h3>Upload recording</h3>
+          <div className="live-lobby__card-head">
+            <h3>Recordings</h3>
+            <button
+              type="button"
+              className="live-lobby__btn live-lobby__btn--ghost live-lobby__btn--sm"
+              disabled={syncingRecordings}
+              onClick={() => syncRecordings()}
+            >
+              {syncingRecordings ? 'Syncing…' : 'Sync from Meet'}
+            </button>
+          </div>
+          <p className="live-lobby__muted">
+            Auto-import runs every 10 minutes. Manual upload is only needed if Meet did not record.
+          </p>
           <ul className="live-lobby__list">
             {needingRecording.map((m) => (
               <li key={`rec-${m.id}`} className="live-session">
@@ -633,11 +744,19 @@ export default function MeetLiveClassesPanel({
                 <div className="live-session__cta">
                   <button
                     type="button"
+                    className="live-lobby__btn live-lobby__btn--ghost"
+                    disabled={syncingRecordings}
+                    onClick={() => syncRecordings(m.id)}
+                  >
+                    Pull from Meet
+                  </button>
+                  <button
+                    type="button"
                     className="live-lobby__btn live-lobby__btn--primary"
                     disabled={uploadingId === m.id}
                     onClick={() => goUploadRecording(m)}
                   >
-                    {uploadingId === m.id ? 'Uploading to Drive…' : 'Upload to Google Drive'}
+                    {uploadingId === m.id ? 'Uploading to Drive…' : 'Upload file'}
                   </button>
                   <button
                     type="button"
@@ -683,9 +802,12 @@ export default function MeetLiveClassesPanel({
                   <label className="live-lobby__field--batch">
                     Batch
                     <select
-                      value={form.batchId}
-                      onChange={(e) => setForm((f) => ({ ...f, batchId: e.target.value }))}
-                      required
+                      value={form.unassigned ? '' : form.batchId}
+                      onChange={(e) =>
+                        setForm((f) => ({ ...f, batchId: e.target.value, unassigned: false }))
+                      }
+                      required={!form.unassigned}
+                      disabled={form.unassigned}
                     >
                       <option value="">Select batch</option>
                       {batches.map((b) => (
@@ -696,6 +818,14 @@ export default function MeetLiveClassesPanel({
                     </select>
                   </label>
                 )}
+                <label className="live-lobby__check">
+                  <input
+                    type="checkbox"
+                    checked={form.unassigned}
+                    onChange={(e) => setForm((f) => ({ ...f, unassigned: e.target.checked }))}
+                  />
+                  Instant Meet with no batch (recording stays in Meet; not uploaded)
+                </label>
                 <label>
                   Date (IST)
                   <input
@@ -740,9 +870,23 @@ export default function MeetLiveClassesPanel({
                   <button
                     type="submit"
                     className="live-lobby__btn live-lobby__btn--primary"
-                    disabled={saving}
+                    disabled={saving || form.unassigned}
+                    title={form.unassigned ? 'Unassigned rooms are instant-only' : undefined}
                   >
                     {saving ? 'Scheduling…' : 'Schedule class'}
+                  </button>
+                  <button
+                    type="button"
+                    className="live-lobby__btn live-lobby__btn--ghost"
+                    disabled={saving}
+                    onClick={() => handleInstantMeet({ unassigned: form.unassigned })}
+                    title="Create a Meet room that starts immediately"
+                  >
+                    {saving
+                      ? 'Creating…'
+                      : form.unassigned
+                        ? 'Start unassigned Meet'
+                        : 'Start instant meeting'}
                   </button>
                 </div>
               </form>
@@ -791,6 +935,7 @@ export default function MeetLiveClassesPanel({
                 aria-label="Filter by batch"
               >
                 <option value="">All batches</option>
+                <option value="unassigned">Unassigned (no batch)</option>
                 {batches.map((b) => (
                   <option key={b.id} value={b.id}>
                     {b.name || b.id}
@@ -836,13 +981,16 @@ export default function MeetLiveClassesPanel({
                           <h4 className="live-session__title">{m.title}</h4>
                           <p className="live-session__meta">
                             {m.scheduledDate} · {m.scheduledTime} IST · {m.duration}
-                            {m.batchId && batches.length
-                              ? ` · ${batches.find((b) => String(b.id) === String(m.batchId))?.name || ''}`
-                              : ''}
+                            {m.skipRecordingUpload || !m.batchId
+                              ? ' · No batch · recording not uploaded'
+                              : m.batchId && batches.length
+                                ? ` · ${batches.find((b) => String(b.id) === String(m.batchId))?.name || ''}`
+                                : ''}
                           </p>
                           <p className="live-session__countdown">
                             {formatCountdown(minsUntil, phase)}
                           </p>
+                          {!(!m.batchId || m.skipRecordingUpload) && (
                           <div className="live-session__stats">
                             <span className="live-stat live-stat--present">
                               {m.attendanceCount || 0} present
@@ -855,6 +1003,7 @@ export default function MeetLiveClassesPanel({
                               absent
                             </span>
                           </div>
+                          )}
                         </div>
                         <span className={`live-session__badge live-session__badge--${badge}`}>
                           {badgeLabel}

@@ -181,7 +181,19 @@ app.get('/api/uploads/notes/:filename', auth, (req, res) => {
 
 // Health check & API root
 app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', uptime: process.uptime() });
+  const payload = { status: 'ok', uptime: process.uptime() };
+  try {
+    const { isFirestoreEnabled, getAuthHealth } = require('./services/firestoreDb');
+    if (isFirestoreEnabled()) {
+      payload.dataStore = 'firestore';
+      payload.firestoreAuth = getAuthHealth();
+    } else {
+      payload.dataStore = 'mongo';
+    }
+  } catch {
+    /* ignore */
+  }
+  res.json(payload);
 });
 
 app.get('/api', (req, res) => {
@@ -257,6 +269,18 @@ connectDataStore()
         startAttendanceAlertJob();
       } catch (err) {
         logger.error('Failed to start attendance alert job', { error: err.message });
+      }
+      try {
+        const { startMeetRecordingSyncJob } = require('./jobs/meetRecordingSync');
+        startMeetRecordingSyncJob();
+      } catch (err) {
+        logger.error('Failed to start Meet recording sync job', { error: err.message });
+      }
+      try {
+        const { startFirestoreAuthWatchdog } = require('./jobs/firestoreAuthWatchdog');
+        startFirestoreAuthWatchdog();
+      } catch (err) {
+        logger.error('Failed to start Firestore auth watchdog', { error: err.message });
       }
     });
   })

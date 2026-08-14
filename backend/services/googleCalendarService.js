@@ -32,8 +32,84 @@ async function getCalendarClient() {
   return google.calendar({ version: 'v3', auth });
 }
 
+async function getMeetClient() {
+  assertConfigured();
+  const auth = await getGoogleAuth();
+  return google.meet({ version: 'v2', auth });
+}
+
 function calendarId() {
   return process.env.GOOGLE_CALENDAR_ID || 'primary';
+}
+
+/**
+ * Prefer Meet Spaces API so we can open access (no host waiting room knock)
+ * and request auto-recording when Workspace allows it.
+ * Falls back silently when scope/token is missing.
+ */
+async function createOpenMeetSpace({ title } = {}) {
+  try {
+    const meet = await getMeetClient();
+    const res = await meet.spaces.create({
+      requestBody: {
+        config: {
+          accessType: 'OPEN',
+          entryPointAccess: 'ALL',
+          artifactConfig: {
+            recordingConfig: {
+              autoRecordingGeneration: 'ON'
+            }
+          }
+        }
+      }
+    });
+    const space = res.data || {};
+    return {
+      meetLink: space.meetingUri || '',
+      meetSpaceId: space.name || '',
+      meetingCode: space.meetingCode || '',
+      raw: space
+    };
+  } catch (err) {
+    console.warn(
+      '[Meet] spaces.create unavailable (re-run setup-meet-oauth.js with meetings.space.created):',
+      err?.message || err
+    );
+    return null;
+  }
+}
+
+/**
+ * Best-effort: open access + auto-record on an existing Calendar-created Meet.
+ */
+async function configureMeetSpaceOpen(meetSpaceNameOrCode) {
+  if (!meetSpaceNameOrCode) return false;
+  const name = String(meetSpaceNameOrCode).startsWith('spaces/')
+    ? String(meetSpaceNameOrCode)
+    : `spaces/${meetSpaceNameOrCode}`;
+  try {
+    const meet = await getMeetClient();
+    await meet.spaces.patch({
+      name,
+      updateMask:
+        'config.accessType,config.entryPointAccess,config.artifactConfig.recordingConfig.autoRecordingGeneration',
+      requestBody: {
+        config: {
+          accessType: 'OPEN',
+          entryPointAccess: 'ALL',
+          artifactConfig: {
+            recordingConfig: {
+              autoRecordingGeneration: 'ON'
+            }
+          }
+        }
+      }
+    });
+    return true;
+  } catch (err) {
+    console.warn('[Meet] spaces.patch skipped:', err?.message || err);
+    return false;
+  }
 }
 
 /**
@@ -45,9 +121,21 @@ async function createMeetEvent(opts) {
   const timezone = opts.timezone || 'Asia/Kolkata';
   const requestId = randomUUID();
 
+  const attendeeEmails = Array.isArray(opts.attendeeEmails)
+    ? [...new Set(opts.attendeeEmails.filter(Boolean).map((e) => String(e).trim().toLowerCase()))].slice(
+        0,
+        50
+      )
+    : [];
+
+  // Prefer Meet Spaces API (OPEN + auto-record) when OAuth includes meetings.space.created
+  const space = await createOpenMeetSpace({ title: opts.title });
+
   const eventBody = {
     summary: opts.title,
-    description: opts.description || '',
+    description:
+      (opts.description || '') +
+      '\n\nMic and camera start muted on the pre-join screen. Host: start recording from Meet → Activities → Recording if it does not auto-start.',
     start: {
       dateTime: new Date(opts.start).toISOString(),
       timeZone: timezone
@@ -56,38 +144,69 @@ async function createMeetEvent(opts) {
       dateTime: new Date(opts.end).toISOString(),
       timeZone: timezone
     },
-    conferenceData: {
+    guestsCanModify: true,
+    guestsCanInviteOthers: false,
+    guestsCanSeeOtherGuests: true
+  };
+
+  if (space?.meetLink) {
+    eventBody.location = space.meetLink;
+    eventBody.description = `${eventBody.description}\n\nJoin: ${space.meetLink}`;
+    eventBody.conferenceData = {
+      conferenceId: space.meetingCode || undefined,
+      conferenceSolution: {
+        key: { type: 'hangoutsMeet' },
+        name: 'Google Meet'
+      },
+      entryPoints: [
+        {
+          entryPointType: 'video',
+          uri: space.meetLink,
+          label: space.meetingCode || 'Meet'
+        }
+      ]
+    };
+  } else {
+    eventBody.conferenceData = {
       createRequest: {
         requestId,
         conferenceSolutionKey: { type: 'hangoutsMeet' }
       }
-    }
-  };
+    };
+  }
 
-  if (Array.isArray(opts.attendeeEmails) && opts.attendeeEmails.length) {
-    eventBody.attendees = opts.attendeeEmails
-      .filter(Boolean)
-      .slice(0, 50)
-      .map((email) => ({ email }));
+  if (attendeeEmails.length) {
+    eventBody.attendees = attendeeEmails.map((email) => ({ email, responseStatus: 'needsAction' }));
   }
 
   const res = await calendar.events.insert({
     calendarId: calendarId(),
     conferenceDataVersion: 1,
+    sendUpdates: attendeeEmails.length ? 'all' : 'none',
     requestBody: eventBody
   });
 
   const event = res.data || {};
-  const meetLink =
+  let meetLink =
+    space?.meetLink ||
     event.hangoutLink ||
     event.conferenceData?.entryPoints?.find((e) => e.entryPointType === 'video')?.uri ||
     '';
 
+  let meetSpaceId =
+    space?.meetSpaceId || event.conferenceData?.conferenceId || '';
+
+  // Calendar-created Meet: try opening access / auto-record when Meet scope exists
+  if (!space?.meetLink && meetSpaceId) {
+    await configureMeetSpaceOpen(meetSpaceId);
+  }
+
   return {
     calendarEventId: event.id,
     meetLink,
-    meetSpaceId: event.conferenceData?.conferenceId || '',
+    meetSpaceId,
     htmlLink: event.htmlLink || '',
+    openAccess: Boolean(space?.meetLink),
     raw: event
   };
 }
@@ -98,7 +217,8 @@ async function cancelMeetEvent(calendarEventId) {
   try {
     await calendar.events.delete({
       calendarId: calendarId(),
-      eventId: calendarEventId
+      eventId: calendarEventId,
+      sendUpdates: 'all'
     });
     return { cancelled: true };
   } catch (error) {
@@ -162,5 +282,7 @@ module.exports = {
   getAuthMode,
   createMeetEvent,
   cancelMeetEvent,
-  updateMeetEvent
+  updateMeetEvent,
+  createOpenMeetSpace,
+  configureMeetSpaceOpen
 };

@@ -14,6 +14,8 @@ const DAYS = [
 
 export default function TeacherAvailabilityPanel() {
   const [isAvailable, setIsAvailable] = useState(false);
+  const [inClass, setInClass] = useState(false);
+  const [liveClassTitle, setLiveClassTitle] = useState('');
   const [windows, setWindows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -31,6 +33,8 @@ export default function TeacherAvailabilityPanel() {
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.message || 'Failed to load');
       setIsAvailable(Boolean(data.isAvailable));
+      setInClass(Boolean(data.inClass));
+      setLiveClassTitle(data.liveClass?.title || '');
       setWindows(Array.isArray(data.weeklyAvailability) ? data.weeklyAvailability : []);
     } catch (err) {
       setError(err.message || 'Failed to load');
@@ -41,6 +45,8 @@ export default function TeacherAvailabilityPanel() {
 
   useEffect(() => {
     load();
+    const t = setInterval(load, 20000);
+    return () => clearInterval(t);
   }, [load]);
 
   const windowFor = (day) => windows.find((w) => Number(w.day) === day);
@@ -89,6 +95,7 @@ export default function TeacherAvailabilityPanel() {
   };
 
   const togglePresence = async () => {
+    if (inClass) return;
     try {
       const token = localStorage.getItem('token');
       const res = await fetch(`${getApiBaseUrl()}/api/teacher/availability`, {
@@ -102,6 +109,8 @@ export default function TeacherAvailabilityPanel() {
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.message || 'Update failed');
       setIsAvailable(Boolean(data.isAvailable));
+      setInClass(Boolean(data.inClass));
+      setLiveClassTitle(data.liveClass?.title || '');
     } catch (err) {
       setError(err.message || 'Update failed');
     }
@@ -113,36 +122,50 @@ export default function TeacherAvailabilityPanel() {
         <p className="live-lobby__eyebrow">Sky States · Availability</p>
         <h2>When you teach</h2>
         <p>
-          Set your status and weekly teaching windows for admins. Students do not see this.
+          Live status for admins. Starting a Meet marks you <strong>In class</strong> automatically.
+          When you are not in a session, toggle Available / Unavailable anytime — you do not need to
+          set this in advance.
         </p>
       </div>
 
       <section className="live-lobby__card">
         <div className="live-lobby__card-head">
-          <h3>Availability (admin view)</h3>
-          <label className={`ss-toggle ${isAvailable ? 'is-on' : ''}`}>
-            <input type="checkbox" checked={isAvailable} onChange={togglePresence} />
+          <h3>Live now (admin view)</h3>
+          <label className={`ss-toggle ${inClass ? 'is-class' : isAvailable ? 'is-on' : ''}`}>
+            <input
+              type="checkbox"
+              checked={inClass || isAvailable}
+              disabled={inClass}
+              onChange={togglePresence}
+            />
             <span className="ss-toggle__track" aria-hidden="true" />
-            <span className="ss-toggle__label">{isAvailable ? 'Available' : 'Unavailable'}</span>
+            <span className="ss-toggle__label">
+              {inClass ? 'In class' : isAvailable ? 'Available' : 'Unavailable'}
+            </span>
           </label>
         </div>
         <p className="live-attendance__note" style={{ marginBottom: 0 }}>
-          Admins use this to know when you are free. Separate from weekly teaching windows below.
+          {inClass
+            ? `You are in Meet now${liveClassTitle ? ` · ${liveClassTitle}` : ''}. Admins see In class until you end the session.`
+            : 'Toggle anytime while you are not in Meet. This is live status — not a schedule you set before class.'}
         </p>
       </section>
 
       <section className="live-lobby__card" style={{ marginTop: '1rem' }}>
         <div className="live-lobby__card-head">
-          <h3>Weekly teaching windows (IST)</h3>
+          <h3>Usual teaching hours (optional)</h3>
           <button
             type="button"
             className="live-lobby__btn live-lobby__btn--primary"
             disabled={saving || loading}
             onClick={save}
           >
-            {saving ? 'Saving…' : 'Save schedule'}
+            {saving ? 'Saving…' : 'Save hours'}
           </button>
         </div>
+        <p className="live-attendance__note">
+          Optional reference only. Admins use the live toggle and In class from Meet, not these hours.
+        </p>
         {loading ? (
           <p className="live-lobby--empty">Loading…</p>
         ) : (

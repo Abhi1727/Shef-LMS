@@ -6,188 +6,134 @@ const Classroom = require('../models/Classroom');
 const Batch = require('../models/Batch');
 const logger = require('../utils/logger');
 const lessonPath = require('../services/lessonPath');
+const {
+  resolveStudentBatchIds,
+  activeEnrollments
+} = require('../utils/studentEnrollment');
 
 // Apply auth middleware to all dashboard routes
 router.use(auth);
 
 // @route   GET /api/dashboard/classroom
-// @desc    Get classroom videos for the student with course and batch filtering
+// @desc    Get classroom videos for all enrolled programs/batches
 router.get('/classroom', async (req, res) => {
   try {
     const tokenUser = req.user;
-    let userCourse = tokenUser.currentCourse || tokenUser.course || '';
-    let userBatchId = tokenUser.batchId || '';
-    const userEmail = tokenUser.email || '';
 
-    // Refresh course and batch from Mongo so that newly assigned batches
-    // take effect without requiring re-login.
-    try {
-      if (tokenUser.id && tokenUser.role === 'student') {
-        const mongoUser = await User.findOne({
-          $or: [
-            { _id: tokenUser.id },
-            { firestoreId: tokenUser.id },
-            { email: userEmail }
-          ]
-        }).exec();
-
-        if (mongoUser) {
-          if (mongoUser.course) {
-            userCourse = mongoUser.course;
-          }
-          if (typeof mongoUser.batchId !== 'undefined') {
-            userBatchId = mongoUser.batchId || '';
-          }
-        }
-      }
-    } catch (lookupError) {
-      logger.warn('Dashboard classroom: failed to refresh user from Mongo, using token values', { error: lookupError.message });
-    }
-    
-    // Normalize batch ID: treat null/undefined/"null"/"undefined"/empty as no batch
-    const normalizeId = (val) => {
-      if (!val) return '';
-      const str = String(val).trim();
-      if (!str || str === 'null' || str === 'undefined') return '';
-      return str;
-    };
-
-    userBatchId = normalizeId(userBatchId);
-
-    // Get all classroom videos from Mongo
-    const classroomDocs = await Classroom.find({}).lean().exec();
-    const allVideos = classroomDocs.map(doc => ({ id: String(doc._id), ...doc }));
-
-    // Load batches and build a set of valid batch IDs
-    const batchDocs = await Batch.find({}).lean().exec();
-    const validBatchIds = new Set(batchDocs.map(b => String(b._id)));
-
-    // If the student's batchId does not correspond to a real batch, treat as no batch
-    if (userBatchId && !validBatchIds.has(userBatchId)) {
-      userBatchId = '';
+    if (tokenUser.role === 'admin') {
+      const classroomDocs = await Classroom.find({}).lean().exec();
+      const allVideos = classroomDocs.map((doc) => ({ id: String(doc._id), ...doc }));
+      const sortedVideos = allVideos.sort((a, b) => {
+        return new Date(b.date || b.createdAt || 0) - new Date(a.date || a.createdAt || 0);
+      });
+      return res.json(sortedVideos);
     }
 
-    // Filter videos based on user's role, course, and batch (Mongo-only, no Firestore)
-    const courseMatches = (videoCourse, vidCourseType) => {
-      if (!userCourse) return false;
-      if (videoCourse && videoCourse === userCourse) return true;
-      if (vidCourseType && userCourse.includes(vidCourseType)) return true;
-      return false;
-    };
-
-    let filteredVideos = allVideos.filter(video => {
-      const videoCourse = video.courseId || video.course || video.courseType || '';
-
-      // Admin can see everything
-      if (tokenUser.role === 'admin') {
-        return true;
+    if (tokenUser.role === 'teacher' || tokenUser.role === 'instructor' || tokenUser.role === 'mentor') {
+      let userCourse = tokenUser.currentCourse || tokenUser.course || '';
+      try {
+        const mongoUser = await User.findById(tokenUser.id).select('course assignedCourses').lean().exec();
+        if (mongoUser?.course) userCourse = mongoUser.course;
+      } catch (_) {
+        /* keep token */
       }
-
-      // Teachers see videos for their course
-      if (tokenUser.role === 'teacher') {
-        return courseMatches(videoCourse, video.courseType);
-      }
-
-      // Students: show videos explicitly assigned to their batch. Batch assignment is source of truth.
-      // Course match is NOT required - if admin assigned video to batch, student in that batch sees it.
-      if (tokenUser.role === 'student') {
-        if (!userBatchId) {
-          return false;
-        }
-
-        // Only show videos explicitly tied to a valid batch that matches the student's batch.
-        if (!video.batchId) {
-          return false;
-        }
-        const videoBatchId = normalizeId(video.batchId);
-        if (!videoBatchId || !validBatchIds.has(videoBatchId)) {
-          return false;
-        }
-
-        return videoBatchId === userBatchId;
-      }
-
-      return false;
-    });
-
-    // Lesson path order + unlock annotations for students
-    if (tokenUser.role === 'student' && userBatchId) {
-      const path = await lessonPath.buildLessonPath({
-        batchId: userBatchId,
-        studentId: tokenUser.id
+      const classroomDocs = await Classroom.find({}).lean().exec();
+      const filtered = classroomDocs.filter((video) => {
+        const videoCourse = video.courseId || video.course || video.courseType || '';
+        if (!userCourse) return true;
+        if (videoCourse && videoCourse === userCourse) return true;
+        if (video.courseType && userCourse.includes(video.courseType)) return true;
+        return false;
       });
       return res.json(
-        path.map((lesson) => ({
-          ...lesson,
-          // Keep legacy field names used by Dashboard player
-          notesFilePath: lesson.notesAvailable ? true : undefined
-        }))
+        filtered
+          .map((doc) => ({ id: String(doc._id), ...doc }))
+          .sort((a, b) => new Date(b.date || b.createdAt || 0) - new Date(a.date || a.createdAt || 0))
       );
     }
 
-    if (tokenUser.role === 'student') {
+    // Students — union classrooms across all enrolled batches/programs
+    if (tokenUser.role !== 'student') {
       return res.json([]);
     }
 
-    // Non-students: newest first (legacy)
-    const sortedVideos = filteredVideos.sort((a, b) => {
-      const getVideoDate = (v) => {
-        if (v.isOneToOne && v.classDate) {
-          try {
-            return new Date(v.classDate.split('-').reverse().join('-'));
-          } catch (e) {
-            // fallback
-          }
-        }
-        return new Date(v.date || v.createdAt || v.addedAt || 0);
-      };
-      const dateA = getVideoDate(a);
-      const dateB = getVideoDate(b);
-      return dateB - dateA;
-    });
+    const batchIds = await resolveStudentBatchIds(tokenUser.id);
+    if (!batchIds.length) {
+      return res.json([]);
+    }
 
-    res.json(sortedVideos);
+    const batchDocs = await Batch.find({ _id: { $in: batchIds } })
+      .select('name course programLabel')
+      .lean()
+      .exec();
+    const batchMap = new Map(batchDocs.map((b) => [String(b._id), b]));
+
+    const merged = [];
+    for (const batchId of batchIds) {
+      const path = await lessonPath.buildLessonPath({
+        batchId,
+        studentId: tokenUser.id
+      });
+      const batch = batchMap.get(String(batchId)) || {};
+      path.forEach((lesson) => {
+        merged.push({
+          ...lesson,
+          batchId: String(batchId),
+          batchName: batch.name || '',
+          program: batch.course || batch.programLabel || lesson.course || '',
+          notesFilePath: lesson.notesAvailable ? true : undefined
+        });
+      });
+    }
+
+    return res.json(merged);
   } catch (error) {
     logger.error('Error fetching classroom videos', { error: error.message });
     res.status(500).json({ message: 'Error fetching classroom videos' });
   }
 });
+
 // @route   GET /api/dashboard/stats
 // @desc    Honest dashboard stats for the current student
 router.get('/stats', async (req, res) => {
   try {
-    const User = require('../models/User');
-    const Classroom = require('../models/Classroom');
     const ActivityLog = require('../models/ActivityLog');
-    const userId = req.user?.id;
-    const userDoc = userId
-      ? await User.findById(userId).select('batchId').lean().exec()
-      : null;
-    const batchId = userDoc?.batchId ? String(userDoc.batchId) : null;
-    const totalVideos = batchId ? await Classroom.countDocuments({ batchId }) : 0;
-    const watchedIds = batchId && userId
-      ? await ActivityLog.distinct('videoId', {
-          userId: String(userId),
-          action: 'video_view',
-          videoId: { $exists: true, $ne: null }
-        })
-      : [];
-
     const Certificate = require('../models/Certificate');
+    const userId = req.user?.id;
+    const batchIds = userId ? await resolveStudentBatchIds(userId) : [];
+    const classroomForStats = batchIds.length
+      ? await Classroom.find({ batchId: { $in: batchIds } })
+          .select('videoSource driveId youtubeVideoId youtubeEmbedUrl youtubeVideoUrl')
+          .lean()
+          .exec()
+      : [];
+    const totalVideos = classroomForStats.filter((d) => !lessonPath.isUnplayableLiveStub(d)).length;
+    const watchedIds =
+      batchIds.length && userId
+        ? await ActivityLog.distinct('videoId', {
+            userId: String(userId),
+            action: 'video_view',
+            videoId: { $exists: true, $ne: null }
+          })
+        : [];
+
     const certificatesEarned = userId
       ? await Certificate.countDocuments({ studentId: String(userId) })
       : 0;
 
+    const programCount = batchIds.length;
+
     res.json({
-      enrolledCourses: batchId ? 1 : 0,
+      enrolledCourses: programCount,
       completedCourses: 0,
-      inProgressCourses: batchId ? 1 : 0,
+      inProgressCourses: programCount,
       totalLearningHours: null,
       certificatesEarned,
       upcomingClasses: 0,
       totalVideos,
       watchedVideos: Math.min(watchedIds.length, totalVideos || watchedIds.length),
-      hasBatch: Boolean(batchId)
+      hasBatch: programCount > 0,
+      enrolledBatchIds: batchIds
     });
   } catch (err) {
     logger.error('Dashboard stats error', { error: err.message });
@@ -224,6 +170,46 @@ router.get('/activity', async (req, res) => {
   } catch (err) {
     logger.error('Dashboard activity error', { error: err.message });
     res.status(500).send('Server error');
+  }
+});
+
+// @route   GET /api/dashboard/enrollments
+// @desc    List current student's program enrollments (batch + SKY ID per program)
+router.get('/enrollments', async (req, res) => {
+  try {
+    if (req.user.role !== 'student') {
+      return res.json({ enrollments: [] });
+    }
+    const user = await User.findById(req.user.id)
+      .select('batchId course enrollmentNumber enrollments oneToOneBatchId')
+      .lean()
+      .exec();
+    if (!user) return res.status(404).json({ message: 'Student not found' });
+
+    const list = activeEnrollments(user);
+    const batchIds = list.map((e) => e.batchId);
+    const batches = batchIds.length
+      ? await Batch.find({ _id: { $in: batchIds } }).select('name course programLabel').lean().exec()
+      : [];
+    const batchMap = new Map(batches.map((b) => [String(b._id), b]));
+
+    res.json({
+      success: true,
+      enrollments: list.map((e) => {
+        const b = batchMap.get(e.batchId) || {};
+        return {
+          batchId: e.batchId,
+          batchName: b.name || '',
+          course: e.course || b.course || b.programLabel || '',
+          enrollmentNumber: e.enrollmentNumber || '',
+          enrolledAt: e.enrolledAt || null,
+          status: e.status || 'active'
+        };
+      })
+    });
+  } catch (err) {
+    logger.error('Dashboard enrollments error', { error: err.message });
+    res.status(500).json({ message: 'Server error' });
   }
 });
 
