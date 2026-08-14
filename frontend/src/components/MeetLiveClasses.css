@@ -20,6 +20,11 @@
 .live-lobby__hero {
   position: relative;
   overflow: hidden;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 1.1rem 1.5rem;
   border-radius: 16px;
   padding: 1.65rem 1.7rem 1.45rem;
   background:
@@ -36,6 +41,25 @@
   height: 150%;
   background: radial-gradient(circle, rgba(255, 255, 255, 0.1), transparent 58%);
   pointer-events: none;
+}
+
+.live-lobby__hero-copy,
+.live-lobby__hero-cta {
+  position: relative;
+  z-index: 1;
+}
+
+.live-lobby__hero-copy {
+  flex: 1 1 16rem;
+  min-width: 0;
+}
+
+.live-lobby__hero-cta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  flex: 0 1 auto;
 }
 
 .live-lobby__eyebrow {
@@ -55,16 +79,39 @@
   letter-spacing: -0.02em;
 }
 
-.live-lobby__hero p {
+.live-lobby__hero-copy > p:not(.live-lobby__eyebrow) {
   margin: 0.5rem 0 0;
-  max-width: 38rem;
-  font-size: 0.98rem;
+  max-width: 34rem;
+  font-size: 0.95rem;
   line-height: 1.5;
   opacity: 0.92;
 }
 
 .live-lobby__hero strong {
   font-weight: 700;
+}
+
+.live-lobby__btn--hero-primary {
+  background: #fff;
+  color: var(--ll-accent-deep);
+  border-color: #fff;
+  box-shadow: 0 8px 20px rgba(3, 27, 45, 0.22);
+}
+
+.live-lobby__btn--hero-primary:hover:not(:disabled) {
+  background: #f0f7fb;
+  transform: translateY(-1px);
+}
+
+.live-lobby__btn--hero-ghost {
+  background: transparent;
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.45);
+}
+
+.live-lobby__btn--hero-ghost:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.7);
 }
 
 .live-lobby__grid {
@@ -101,10 +148,8 @@
     grid-column: span 2;
   }
 
-  .live-lobby__form--schedule > .live-lobby__field--agenda {
-    grid-column: 1 / -1;
-  }
-
+  .live-lobby__form--schedule > .live-lobby__field--agenda,
+  .live-lobby__form--schedule > .live-lobby__check,
   .live-lobby__form--schedule > .live-lobby__actions {
     grid-column: 1 / -1;
   }
@@ -112,7 +157,7 @@
 
 @media (min-width: 1100px) {
   .live-lobby__form--schedule {
-    grid-template-columns: 1.4fr 1.1fr 0.85fr 0.7fr 0.75fr auto;
+    grid-template-columns: 1.4fr 1.1fr 0.85fr 0.7fr 0.75fr;
   }
 
   .live-lobby__form--schedule > .live-lobby__field--title,
@@ -120,14 +165,15 @@
     grid-column: auto;
   }
 
-  .live-lobby__form--schedule > .live-lobby__field--agenda {
-    grid-column: 1 / -2;
+  .live-lobby__form--schedule > .live-lobby__field--agenda,
+  .live-lobby__form--schedule > .live-lobby__check,
+  .live-lobby__form--schedule > .live-lobby__actions {
+    grid-column: 1 / -1;
   }
 
   .live-lobby__form--schedule > .live-lobby__actions {
-    grid-column: auto;
-    align-self: end;
-    margin: 0;
+    align-self: stretch;
+    margin-top: 0.15rem;
   }
 }
 
@@ -339,6 +385,19 @@
   font-size: 0.88rem;
   color: #4b6270;
   cursor: pointer;
+  text-transform: none;
+  letter-spacing: normal;
+  font-weight: 500;
+  align-self: start;
+}
+
+.live-lobby__form--schedule > .live-lobby__check {
+  grid-column: 1 / -1;
+}
+
+.live-lobby__form--schedule > .live-lobby__actions {
+  grid-column: 1 / -1;
+  width: 100%;
 }
 
 .live-lobby__check input {
@@ -1028,9 +1087,14 @@
   font-size: 1.35rem;
 }
 
-.live-lobby--compact .live-lobby__hero p:not(.live-lobby__eyebrow) {
+.live-lobby--compact .live-lobby__hero-copy > p:not(.live-lobby__eyebrow) {
   font-size: 0.9rem;
   max-width: 52rem;
+}
+
+.live-lobby--compact .live-lobby__hero-cta .live-lobby__btn {
+  padding: 0.45rem 0.8rem;
+  font-size: 0.85rem;
 }
 
 @media (min-width: 720px) {

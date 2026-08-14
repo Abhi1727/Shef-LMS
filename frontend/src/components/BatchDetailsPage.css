@@ -5646,6 +5646,56 @@ body.modal-open {
   color: var(--lms-muted, #5a6d76);
 }
 
+.sky-lecture-path {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 8px 10px;
+  margin-top: 10px;
+}
+
+.sky-lecture-path__field {
+  display: grid;
+  gap: 4px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--lms-muted, #5a6d76);
+}
+
+.sky-lecture-path__field input,
+.sky-lecture-path__field select {
+  min-height: 32px;
+  border: 1px solid var(--lms-border, #d5dee3);
+  border-radius: 8px;
+  padding: 4px 8px;
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 600;
+  letter-spacing: normal;
+  text-transform: none;
+  color: var(--lms-ink, #102a33);
+  background: #fff;
+}
+
+.sky-lecture-path__field input {
+  width: 64px;
+}
+
+.sky-lecture-path__field select {
+  min-width: 132px;
+}
+
+.sky-lecture-path__badge {
+  align-self: center;
+  margin: 0;
+}
+
+.sky-lecture-notes-input {
+  display: none;
+}
+
 .sky-lecture-actions.video-actions {
   display: flex;
   flex-wrap: wrap;
@@ -5657,6 +5707,7 @@ body.modal-open {
 .sky-lecture-actions .sky-btn {
   padding: 7px 12px;
   font-size: 0.8rem;
+  flex: 0 1 auto;
 }
 
 .sky-lectures-empty {
@@ -5689,6 +5740,29 @@ body.modal-open {
   .sky-lectures .video-search {
     width: 100%;
     min-width: 0;
+  }
+
+  .sky-lecture-path {
+    width: 100%;
+  }
+
+  .sky-lecture-path__field {
+    flex: 1 1 auto;
+  }
+
+  .sky-lecture-path__field select {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .sky-lecture-actions.video-actions {
+    gap: 6px;
+  }
+
+  .sky-lecture-actions .sky-btn {
+    flex: 1 1 calc(50% - 6px);
+    justify-content: center;
+    text-align: center;
   }
 }
 

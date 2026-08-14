@@ -859,14 +859,13 @@ const TeacherBatchDetailsPage = () => {
                           {video.notesAvailable ? (
                             <div className="notes-indicator">Notes available</div>
                           ) : null}
-                          <div className="sky-lecture-meta" style={{ marginTop: 8, gap: 8, display: 'flex', flexWrap: 'wrap' }}>
-                            <label style={{ fontSize: 12 }}>
-                              Order{' '}
+                          <div className="sky-lecture-path">
+                            <label className="sky-lecture-path__field">
+                              <span>Order</span>
                               <input
                                 type="number"
                                 min={1}
                                 value={video.order || ''}
-                                style={{ width: 56 }}
                                 onChange={(e) =>
                                   setClassroomVideos((videos) =>
                                     videos.map((v) =>
@@ -881,8 +880,8 @@ const TeacherBatchDetailsPage = () => {
                                 }
                               />
                             </label>
-                            <label style={{ fontSize: 12 }}>
-                              Unlock{' '}
+                            <label className="sky-lecture-path__field">
+                              <span>Unlock</span>
                               <select
                                 value={video.unlockRule === 'afterPrevious' ? 'afterPrevious' : 'open'}
                                 onChange={(e) =>
@@ -894,7 +893,7 @@ const TeacherBatchDetailsPage = () => {
                               </select>
                             </label>
                             {video.linkedAssessmentId ? (
-                              <span className="notes-indicator">Quiz linked</span>
+                              <span className="notes-indicator sky-lecture-path__badge">Quiz linked</span>
                             ) : null}
                           </div>
                         </div>
@@ -917,7 +916,7 @@ const TeacherBatchDetailsPage = () => {
                             type="file"
                             id={`notes-file-${video.id}`}
                             accept=".pdf,.doc,.docx"
-                            style={{ display: 'none' }}
+                            className="sky-lecture-notes-input"
                             onChange={(e) => {
                               setNotesFile(e.target.files?.[0] || null);
                               setNotesTargetVideoId(video.id);

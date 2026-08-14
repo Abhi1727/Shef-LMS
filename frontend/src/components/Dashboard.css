@@ -6501,21 +6501,53 @@ body.dark-mode .welcome-title span {
 
 .lectures-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
-  gap: 20px;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 16px;
 }
 
 .lecture-card {
   background: white;
-  border: 1px solid #e9ecef;
+  border: 1px solid #d5dee3;
   border-radius: 12px;
-  padding: 20px;
-  transition: all 0.3s ease;
+  padding: 16px;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
 }
 
 .lecture-card:hover {
-  box-shadow: 0 8px 25px rgba(102, 126, 234, 0.15);
-  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(16, 42, 51, 0.08);
+  transform: none;
+  border-color: #b7c4cb;
+}
+
+.sky-dash-lecture-card .lecture-header {
+  margin-bottom: 0;
+}
+
+.sky-dash-lecture-card .lecture-header h4 {
+  font-family: 'Manrope', 'Segoe UI', sans-serif;
+  font-weight: 650;
+  color: #102a33;
+}
+
+.sky-dash-lecture-card .lecture-meta {
+  margin-bottom: 0;
+}
+
+.sky-dash-lecture-card .lecture-actions {
+  margin-top: auto;
+  gap: 8px;
+}
+
+.sky-dash-lecture-card .watch-btn,
+.sky-dash-lecture-card .edit-btn,
+.sky-dash-lecture-card .delete-btn {
+  padding: 7px 12px;
+  font-size: 0.8rem;
+  border-radius: 8px;
 }
 
 .lecture-header {

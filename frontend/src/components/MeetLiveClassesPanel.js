@@ -279,18 +279,22 @@ export default function MeetLiveClassesPanel({
     }
   };
 
-  const handleInstantMeet = async ({ unassigned = false } = {}) => {
+  const handleInstantMeet = async ({ unassigned = false, fromHero = false } = {}) => {
     setMessage('');
     setError('');
-    const adHoc = Boolean(unassigned || form.unassigned);
+    const adHoc = Boolean(unassigned || (!fromHero && form.unassigned));
     const targetBatch = adHoc ? '' : form.batchId || batchId;
-    const title = form.title.trim() || (adHoc ? 'Instant meeting' : '');
-    if (!title || (!adHoc && !targetBatch)) {
-      setError(
-        adHoc
-          ? 'Add a title (or leave it blank to use Instant meeting).'
-          : 'Title and batch are required for a batch instant meeting.'
-      );
+    const title =
+      form.title.trim() ||
+      (adHoc ? 'Instant meeting' : fromHero || targetBatch ? 'Instant class' : '');
+    if (!adHoc && !targetBatch) {
+      setError('Select a batch first, or use Instant Meet with no batch.');
+      if (!scheduleOpen) setScheduleOpen(true);
+      return;
+    }
+    if (!title) {
+      setError('Add a class title to start.');
+      if (!scheduleOpen) setScheduleOpen(true);
       return;
     }
     setSaving(true);
@@ -583,21 +587,47 @@ export default function MeetLiveClassesPanel({
         onChange={onMaterialFilePicked}
       />
       <div className="live-lobby__hero">
-        <p className="live-lobby__eyebrow">Sky States · Live class</p>
-        <h2>{title}</h2>
-        <p>
-          Schedule Meet, start now with an instant room, and watch attendance update as students join.
-          Join opens with mic/camera muted. Meet recordings copy into the assigned batch Classroom
-          automatically after Google finishes processing (usually 15–60 minutes).{' '}
+        <div className="live-lobby__hero-copy">
+          <p className="live-lobby__eyebrow">Sky States · Live class</p>
+          <h2>{title}</h2>
+          <p>
+            Start a Meet room now, or schedule for later. Students who Join are marked Present.
+            Recordings land in Classroom after Google finishes processing.
+          </p>
+        </div>
+        <div className="live-lobby__hero-cta">
           <button
             type="button"
-            className="live-lobby__btn live-lobby__btn--ghost live-lobby__btn--sm"
+            className="live-lobby__btn live-lobby__btn--hero-primary"
+            disabled={saving}
+            onClick={() =>
+              handleInstantMeet({
+                fromHero: true,
+                unassigned: !batchId && !form.batchId
+              })
+            }
+          >
+            {saving ? 'Starting…' : 'Start instant meeting'}
+          </button>
+          {!batchId && (
+            <button
+              type="button"
+              className="live-lobby__btn live-lobby__btn--hero-ghost"
+              disabled={saving}
+              onClick={() => handleInstantMeet({ fromHero: true, unassigned: true })}
+            >
+              Instant · no batch
+            </button>
+          )}
+          <button
+            type="button"
+            className="live-lobby__btn live-lobby__btn--hero-ghost"
             disabled={syncingRecordings}
             onClick={() => syncRecordings()}
           >
-            {syncingRecordings ? 'Syncing…' : 'Sync recordings now'}
+            {syncingRecordings ? 'Syncing…' : 'Sync recordings'}
           </button>
-        </p>
+        </div>
       </div>
 
       {summaryBatchId && (
@@ -871,7 +901,7 @@ export default function MeetLiveClassesPanel({
                     type="submit"
                     className="live-lobby__btn live-lobby__btn--primary"
                     disabled={saving || form.unassigned}
-                    title={form.unassigned ? 'Unassigned rooms are instant-only' : undefined}
+                    title={form.unassigned ? 'Unassigned rooms are instant-only — use Start now' : undefined}
                   >
                     {saving ? 'Scheduling…' : 'Schedule class'}
                   </button>
@@ -880,13 +910,13 @@ export default function MeetLiveClassesPanel({
                     className="live-lobby__btn live-lobby__btn--ghost"
                     disabled={saving}
                     onClick={() => handleInstantMeet({ unassigned: form.unassigned })}
-                    title="Create a Meet room that starts immediately"
+                    title="Create a Meet room that starts immediately with the title above"
                   >
                     {saving
                       ? 'Creating…'
                       : form.unassigned
-                        ? 'Start unassigned Meet'
-                        : 'Start instant meeting'}
+                        ? 'Start now · no batch'
+                        : 'Start now'}
                   </button>
                 </div>
               </form>

@@ -1436,7 +1436,9 @@ const TeacherDashboard = ({ user, onLogout }) => {
             <div className="section-header">
               <div>
                 <h2>Lectures</h2>
-                <p className="section-subtitle">Add YouTube lectures to a batch. Students will see them in Classroom.</p>
+                <p className="section-subtitle">
+                  Add YouTube lectures to a batch. Open a batch for Order, Unlock, and notes controls.
+                </p>
               </div>
             </div>
             
@@ -1510,7 +1512,7 @@ const TeacherDashboard = ({ user, onLogout }) => {
 
             {/* Lectures List */}
             {selectedCourse && (
-              <div className="lectures-section">
+              <div className="lectures-section sky-dashboard-lectures">
                 <h3>
                   Lectures for{' '}
                   {batches.find((b) => b.id === selectedCourse)?.name || 'selected batch'}
@@ -1518,7 +1520,7 @@ const TeacherDashboard = ({ user, onLogout }) => {
                 {lectures.length > 0 ? (
                   <div className="lectures-grid">
                     {lectures.map(lecture => (
-                      <div key={lecture.id} className="lecture-card">
+                      <article key={lecture.id} className="lecture-card sky-dash-lecture-card">
                         <div className="lecture-header">
                           <h4>{lecture.title}</h4>
                           {lecture.duration && (
@@ -1528,9 +1530,10 @@ const TeacherDashboard = ({ user, onLogout }) => {
                         {lecture.description && <p>{lecture.description}</p>}
                         <div className="lecture-meta">
                           <span>Added {formatDate(lecture.createdAt)}</span>
+                          {lecture.notesAvailable ? <span>Notes available</span> : null}
                         </div>
-                        {(lecture.youtubeVideoUrl || lecture.youtubeUrl) && (
-                          <div className="youtube-info">
+                        <div className="lecture-actions">
+                          {(lecture.youtubeVideoUrl || lecture.youtubeUrl) && (
                             <button
                               type="button"
                               className="watch-btn"
@@ -1538,17 +1541,15 @@ const TeacherDashboard = ({ user, onLogout }) => {
                                 window.open(lecture.youtubeVideoUrl || lecture.youtubeUrl, '_blank')
                               }
                             >
-                              Watch on YouTube
+                              View
                             </button>
-                          </div>
-                        )}
-                        <div className="lecture-actions">
+                          )}
                           <button
                             type="button"
                             className="edit-btn"
                             onClick={() => handleEditLecture(lecture)}
                           >
-                            Edit details
+                            Edit
                           </button>
                           <button
                             type="button"
@@ -1558,7 +1559,7 @@ const TeacherDashboard = ({ user, onLogout }) => {
                             Remove
                           </button>
                         </div>
-                      </div>
+                      </article>
                     ))}
                   </div>
                 ) : (
