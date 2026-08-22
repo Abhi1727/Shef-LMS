@@ -228,20 +228,6 @@ async function getBatchRoster(batchId) {
   }));
 }
 
-/** Student + trainer emails invited to the Calendar Meet (helps waiting room / join). */
-async function getMeetAttendeeEmails(batchId, teacherId) {
-  const emails = [];
-  const roster = await getBatchRoster(String(batchId));
-  roster.forEach((s) => {
-    if (s.email) emails.push(s.email);
-  });
-  if (teacherId) {
-    const teacher = await User.findById(teacherId).select('email').lean().exec();
-    if (teacher?.email) emails.push(teacher.email);
-  }
-  return [...new Set(emails.map((e) => String(e).trim().toLowerCase()).filter(Boolean))];
-}
-
 function withMeetJoinDefaults(link, { host = false } = {}) {
   if (!link) return '';
   try {
@@ -692,9 +678,8 @@ router.post('/', async (req, res) => {
     let meetSpaceId = '';
 
     try {
-      const attendeeEmails = unassigned
-        ? [req.user.email].filter(Boolean)
-        : await getMeetAttendeeEmails(batchId, teacherId);
+      // Do not add batch students (or even trainer) as Calendar guests — Google limits
+      // mass invites long before API quotas. Students see/join classes via LMS only.
       const created = await googleCalendarService.createMeetEvent({
         title: String(title).trim(),
         description:
@@ -704,19 +689,21 @@ router.post('/', async (req, res) => {
             : `Live class for batch ${batch.name || batchId}`),
         start,
         end,
-        timezone: tz,
-        attendeeEmails
+        timezone: tz
       });
       calendarEventId = created.calendarEventId || '';
       meetLink = created.meetLink || '';
       meetSpaceId = created.meetSpaceId || '';
     } catch (calErr) {
       console.error('Google Calendar createMeetEvent failed:', calErr?.message || calErr);
+      const quota = googleCalendarService.isCalendarQuotaError(calErr);
       const code = calErr.code === 'MEET_DISABLED' || calErr.code === 'MEET_NOT_CONFIGURED' ? 503 : 502;
       return res.status(code).json({
         success: false,
-        message: calErr.message || 'Failed to create Google Meet event',
-        code: calErr.code || 'MEET_CREATE_FAILED'
+        message: quota
+          ? googleCalendarService.calendarQuotaMessage()
+          : calErr.message || 'Failed to create Google Meet event',
+        code: quota ? 'CALENDAR_QUOTA_EXCEEDED' : calErr.code || 'MEET_CREATE_FAILED'
       });
     }
 

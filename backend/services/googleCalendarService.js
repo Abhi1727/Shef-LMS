@@ -38,6 +38,33 @@ async function getMeetClient() {
   return google.meet({ version: 'v2', auth });
 }
 
+function hostWorkspaceDomain() {
+  const host = process.env.GOOGLE_MEET_HOST_EMAIL || '';
+  const at = host.indexOf('@');
+  return at > 0 ? host.slice(at + 1).toLowerCase() : '';
+}
+
+function isCalendarQuotaError(err) {
+  const msg = String(err?.message || err || '').toLowerCase();
+  const errors = err?.errors || err?.response?.data?.error?.errors || [];
+  return (
+    msg.includes('calendar usage limits exceeded') ||
+    msg.includes('quotaexceeded') ||
+    errors.some(
+      (e) =>
+        e?.reason === 'quotaExceeded' &&
+        (e?.domain === 'usageLimits' || String(e?.message || '').toLowerCase().includes('calendar'))
+    )
+  );
+}
+
+function calendarQuotaMessage() {
+  return (
+    'Google Calendar blocked sending more class invites today (Workspace anti-spam limit). ' +
+    'The Meet was not created. Wait about an hour and try again, or schedule without mass Calendar invites — students still see classes in the LMS.'
+  );
+}
+
 function calendarId() {
   return process.env.GOOGLE_CALENDAR_ID || 'primary';
 }
@@ -121,11 +148,21 @@ async function createMeetEvent(opts) {
   const timezone = opts.timezone || 'Asia/Kolkata';
   const requestId = randomUUID();
 
+  // Calendar invite spam limits hit quickly when emailing whole batches.
+  // Students join via LMS schedule + reminder emails — not Google Calendar invites.
+  const hostDomain = hostWorkspaceDomain();
   const attendeeEmails = Array.isArray(opts.attendeeEmails)
-    ? [...new Set(opts.attendeeEmails.filter(Boolean).map((e) => String(e).trim().toLowerCase()))].slice(
-        0,
-        50
-      )
+    ? [
+        ...new Set(
+          opts.attendeeEmails
+            .filter(Boolean)
+            .map((e) => String(e).trim().toLowerCase())
+            .filter((email) => {
+              if (!hostDomain) return true;
+              return email.endsWith(`@${hostDomain}`);
+            })
+        )
+      ].slice(0, 3)
     : [];
 
   // Prefer Meet Spaces API (OPEN + auto-record) when OAuth includes meetings.space.created
@@ -182,7 +219,7 @@ async function createMeetEvent(opts) {
   const res = await calendar.events.insert({
     calendarId: calendarId(),
     conferenceDataVersion: 1,
-    sendUpdates: attendeeEmails.length ? 'all' : 'none',
+    sendUpdates: 'none',
     requestBody: eventBody
   });
 
@@ -218,7 +255,7 @@ async function cancelMeetEvent(calendarEventId) {
     await calendar.events.delete({
       calendarId: calendarId(),
       eventId: calendarEventId,
-      sendUpdates: 'all'
+      sendUpdates: 'none'
     });
     return { cancelled: true };
   } catch (error) {
@@ -284,5 +321,7 @@ module.exports = {
   cancelMeetEvent,
   updateMeetEvent,
   createOpenMeetSpace,
-  configureMeetSpaceOpen
+  configureMeetSpaceOpen,
+  isCalendarQuotaError,
+  calendarQuotaMessage
 };
