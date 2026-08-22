@@ -70,6 +70,7 @@ const CustomVideoPlayer = ({ video, onClose, resumePosition = 0, onProgressUpdat
   const [youtubePlayer, setYoutubePlayer] = useState(null);
   const [playerReady, setPlayerReady] = useState(false);
   const [hasStartedPlaying, setHasStartedPlaying] = useState(false);
+  const durationReportedRef = useRef('');
 
   // Sidebar interaction states
   const [showSidebar, setShowSidebar] = useState(true);
@@ -271,18 +272,46 @@ const CustomVideoPlayer = ({ video, onClose, resumePosition = 0, onProgressUpdat
       setError('This lecture is missing a valid YouTube link.');
       setIsLoading(false);
     } else if (videoSource === 'drive' || video.driveId) {
-      const id =
-        video.driveId ||
-        (video.videoUrl || video.zoomUrl || '').match(/\/d\/([^/]+)/)?.[1] ||
-        (video.videoUrl || video.zoomUrl || '').match(/[?&]id=([^&]+)/)?.[1];
-      if (id) {
-        setDriveEmbedUrl(`https://drive.google.com/file/d/${id}/preview`);
-        setIsLoading(false);
-        setHasStartedPlaying(true);
-      } else {
-        setError('Missing Google Drive file id');
-        setIsLoading(false);
-      }
+      const fetchDriveStream = async () => {
+        try {
+          const token = localStorage.getItem('token');
+          const { getApiBaseUrl } = await import('../utils/apiBase');
+          const apiBase = getApiBaseUrl();
+          const response = await fetch(`${apiBase}/api/classroom/play/${video.id}`, {
+            headers: {
+              Authorization: `Bearer ${token}`
+            }
+          });
+          if (!response.ok) {
+            const errBody = await response.json().catch(() => ({}));
+            throw new Error(errBody.message || 'Failed to load recording');
+          }
+          const data = await response.json();
+          if (data.streamUrl) {
+            const src = String(data.streamUrl).startsWith('http')
+              ? data.streamUrl
+              : `${apiBase}${data.streamUrl}`;
+            setFirebaseVideoUrl(src);
+            setDriveEmbedUrl(null);
+            return;
+          }
+          const id =
+            video.driveId ||
+            (video.videoUrl || video.zoomUrl || '').match(/\/d\/([^/]+)/)?.[1] ||
+            (video.videoUrl || video.zoomUrl || '').match(/[?&]id=([^&]+)/)?.[1];
+          if (id) {
+            setDriveEmbedUrl(`https://drive.google.com/file/d/${id}/preview`);
+            setIsLoading(false);
+            setHasStartedPlaying(true);
+          } else {
+            throw new Error('Missing Google Drive file id');
+          }
+        } catch (loadErr) {
+          setError(loadErr.message || 'Failed to load Drive recording.');
+          setIsLoading(false);
+        }
+      };
+      fetchDriveStream();
     } else if (videoSource === 'firebase' && video.id) {
       const fetchFirebaseUrl = async () => {
         try {
@@ -455,10 +484,39 @@ const CustomVideoPlayer = ({ video, onClose, resumePosition = 0, onProgressUpdat
     return () => clearInterval(interval);
   }, [youtubePlayer, playerReady, firebaseVideoUrl]);
 
+  // Persist real video length once (replaces generic "60 mins" scheduled length)
+  useEffect(() => {
+    const lectureId = video?.id || video?._id;
+    if (!lectureId || !duration || !Number.isFinite(duration) || duration < 5) return;
+    const key = `${lectureId}:${Math.round(duration)}`;
+    if (durationReportedRef.current === key) return;
+    durationReportedRef.current = key;
+    const token = localStorage.getItem('token');
+    if (!token) return;
+    (async () => {
+      try {
+        const { getApiBaseUrl } = await import('../utils/apiBase');
+        await fetch(`${getApiBaseUrl()}/api/classroom-interaction/duration`, {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ classroomId: String(lectureId), durationSeconds: duration })
+        });
+      } catch (_) {
+        /* non-blocking */
+      }
+    })();
+  }, [duration, video?.id, video?._id]);
+
   const handlePlay = () => { setIsPlaying(true); setHasStartedPlaying(true); };
   const handlePause = () => { setIsPlaying(false); };
   const handleEnded = () => { setIsPlaying(false); setCurrentTime(0); };
-  const handleError = () => { setIsLoading(false); setError('Error serving video.'); };
+  const handleError = () => {
+    setIsLoading(false);
+    setError('Error serving video. Please refresh and try again.');
+  };
 
   const togglePlay = () => {
     if (youtubePlayer && playerReady) {
@@ -640,16 +698,23 @@ const CustomVideoPlayer = ({ video, onClose, resumePosition = 0, onProgressUpdat
               className="firebase-video-player"
               controls
               playsInline
-              preload="metadata"
-              onLoadedData={() => { setIsLoading(false); if (videoRef.current) setDuration(videoRef.current.duration); }}
+              preload="auto"
+              src={firebaseVideoUrl}
+              onLoadedMetadata={() => {
+                if (videoRef.current && Number.isFinite(videoRef.current.duration)) {
+                  setDuration(videoRef.current.duration);
+                }
+              }}
+              onCanPlay={() => {
+                setIsLoading(false);
+                setHasStartedPlaying(true);
+              }}
               onPlay={handlePlay}
               onPause={handlePause}
               onEnded={handleEnded}
               onError={handleError}
               key={firebaseVideoUrl}
-            >
-              <source src={firebaseVideoUrl} type="video/mp4" />
-            </video>
+            />
           )}
 
           {driveEmbedUrl && (

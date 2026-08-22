@@ -215,4 +215,49 @@ router.delete('/bookmarks/:id', auth, async (req, res) => {
   }
 });
 
+function formatDurationFromSeconds(totalSec) {
+  const sec = Math.round(Number(totalSec) || 0);
+  if (sec < 5) return '';
+  const h = Math.floor(sec / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  const s = sec % 60;
+  if (h > 0) return `${h}h ${m}m`;
+  if (m > 0) return s >= 30 ? `${m + 1} mins` : `${m} mins`;
+  return `${s}s`;
+}
+
+function isPlaceholderDuration(value) {
+  const v = String(value || '').trim();
+  if (!v) return true;
+  return /^\d+\s*mins?$/i.test(v);
+}
+
+// @route   POST /api/classroom-interaction/duration
+// @desc    Persist actual video length once the player knows it
+// @access  Private
+router.post('/duration', auth, async (req, res) => {
+  try {
+    const Classroom = require('../models/Classroom');
+    const { classroomId, durationSeconds } = req.body || {};
+    const label = formatDurationFromSeconds(durationSeconds);
+    if (!classroomId || !label) {
+      return res.status(400).json({ message: 'classroomId and durationSeconds are required' });
+    }
+    const lecture = await Classroom.findById(String(classroomId)).exec();
+    if (!lecture) return res.status(404).json({ message: 'Lecture not found' });
+
+    if (!isPlaceholderDuration(lecture.duration)) {
+      return res.json({ success: true, updated: false, duration: lecture.duration });
+    }
+
+    lecture.duration = label;
+    lecture.updatedAt = new Date();
+    await lecture.save();
+    return res.json({ success: true, updated: true, duration: label });
+  } catch (err) {
+    console.error('POST /classroom-interaction/duration:', err.message || err);
+    res.status(500).json({ message: 'Failed to save duration' });
+  }
+});
+
 module.exports = router;

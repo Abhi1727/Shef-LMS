@@ -52,18 +52,21 @@ async function getWatchedVideoIds(userId) {
 /**
  * Build lesson path for a batch with unlock + step state for a student.
  */
-async function buildLessonPath({ batchId, studentId }) {
-  const lectures = await Classroom.find({ batchId: String(batchId) }).lean().exec();
+async function buildLessonPath({ batchId, studentId, watchedSet, lecturesPreloaded, assessmentsByIdPreloaded }) {
+  const lectures =
+    lecturesPreloaded != null
+      ? lecturesPreloaded
+      : await Classroom.find({ batchId: String(batchId) }).lean().exec();
   const ordered = sortLessons(lectures).filter((l) => !isUnplayableLiveStub(l));
-  const watched = await getWatchedVideoIds(studentId);
+  const watched = watchedSet || (await getWatchedVideoIds(studentId));
 
   const assessmentIds = ordered
     .map((l) => l.linkedAssessmentId)
     .filter(Boolean)
     .map(String);
 
-  let assessmentsById = {};
-  if (assessmentIds.length) {
+  let assessmentsById = assessmentsByIdPreloaded || {};
+  if (!assessmentsByIdPreloaded && assessmentIds.length) {
     const assessments = await Assessment.find({
       _id: { $in: assessmentIds.filter((id) => /^[a-f\d]{24}$/i.test(id)) },
       status: 'published'
@@ -139,6 +142,58 @@ async function buildLessonPath({ batchId, studentId }) {
 }
 
 /**
+ * Build lesson paths for multiple batches with one classroom query + one watched-set fetch.
+ */
+async function buildLessonPathsForBatches({ batchIds, studentId }) {
+  const uniqueBatchIds = [...new Set((batchIds || []).map((id) => String(id)).filter(Boolean))];
+  if (!uniqueBatchIds.length) return new Map();
+
+  const allLectures = await Classroom.find({ batchId: { $in: uniqueBatchIds } }).lean().exec();
+  const lecturesByBatch = {};
+  for (const lec of allLectures) {
+    const bid = String(lec.batchId || '');
+    if (!bid) continue;
+    if (!lecturesByBatch[bid]) lecturesByBatch[bid] = [];
+    lecturesByBatch[bid].push(lec);
+  }
+
+  const watched = await getWatchedVideoIds(studentId);
+
+  const assessmentIds = [
+    ...new Set(
+      allLectures
+        .map((l) => l.linkedAssessmentId)
+        .filter(Boolean)
+        .map(String)
+    )
+  ];
+  let assessmentsById = {};
+  if (assessmentIds.length) {
+    const assessments = await Assessment.find({
+      _id: { $in: assessmentIds.filter((id) => /^[a-f\d]{24}$/i.test(id)) },
+      status: 'published'
+    })
+      .select('title status duration passingMarks')
+      .lean()
+      .exec();
+    assessmentsById = Object.fromEntries(assessments.map((a) => [String(a._id), a]));
+  }
+
+  const result = new Map();
+  for (const batchId of uniqueBatchIds) {
+    const path = await buildLessonPath({
+      batchId,
+      studentId,
+      watchedSet: watched,
+      lecturesPreloaded: lecturesByBatch[batchId] || [],
+      assessmentsByIdPreloaded: assessmentsById
+    });
+    result.set(batchId, path);
+  }
+  return result;
+}
+
+/**
  * Annotate flat video list (dashboard) with path metadata for a student.
  */
 async function annotateVideosWithPath(videos, studentId) {
@@ -195,5 +250,6 @@ module.exports = {
   sortLessons,
   getWatchedVideoIds,
   buildLessonPath,
+  buildLessonPathsForBatches,
   annotateVideosWithPath
 };

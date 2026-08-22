@@ -14,6 +14,12 @@ const {
 // Apply auth middleware to all dashboard routes
 router.use(auth);
 
+function sortVideosNewestFirst(videos) {
+  return videos.sort(
+    (a, b) => new Date(b.date || b.createdAt || 0) - new Date(a.date || a.createdAt || 0)
+  );
+}
+
 // @route   GET /api/dashboard/classroom
 // @desc    Get classroom videos for all enrolled programs/batches
 router.get('/classroom', async (req, res) => {
@@ -21,34 +27,44 @@ router.get('/classroom', async (req, res) => {
     const tokenUser = req.user;
 
     if (tokenUser.role === 'admin') {
-      const classroomDocs = await Classroom.find({}).lean().exec();
+      const classroomDocs = await Classroom.find({})
+        .sort({ date: -1 })
+        .limit(500)
+        .lean()
+        .exec();
       const allVideos = classroomDocs.map((doc) => ({ id: String(doc._id), ...doc }));
-      const sortedVideos = allVideos.sort((a, b) => {
-        return new Date(b.date || b.createdAt || 0) - new Date(a.date || a.createdAt || 0);
-      });
-      return res.json(sortedVideos);
+      return res.json(sortVideosNewestFirst(allVideos));
     }
 
     if (tokenUser.role === 'teacher' || tokenUser.role === 'instructor' || tokenUser.role === 'mentor') {
-      let userCourse = tokenUser.currentCourse || tokenUser.course || '';
-      try {
-        const mongoUser = await User.findById(tokenUser.id).select('course assignedCourses').lean().exec();
-        if (mongoUser?.course) userCourse = mongoUser.course;
-      } catch (_) {
-        /* keep token */
+      const teacherId = String(tokenUser.id);
+      const teacherBatches = await Batch.find({ teacherId }).select('_id course').lean().exec();
+      const teacherBatchIds = teacherBatches.map((b) => String(b._id));
+
+      let classroomDocs = [];
+      if (teacherBatchIds.length) {
+        classroomDocs = await Classroom.find({ batchId: { $in: teacherBatchIds } }).lean().exec();
+      } else {
+        let userCourse = tokenUser.currentCourse || tokenUser.course || '';
+        try {
+          const mongoUser = await User.findById(tokenUser.id).select('course assignedCourses').lean().exec();
+          if (mongoUser?.course) userCourse = mongoUser.course;
+        } catch (_) {
+          /* keep token */
+        }
+        if (userCourse) {
+          const courseBatches = await Batch.find({ course: userCourse }).select('_id').lean().exec();
+          const batchIds = courseBatches.map((b) => String(b._id));
+          if (batchIds.length) {
+            classroomDocs = await Classroom.find({ batchId: { $in: batchIds } }).lean().exec();
+          }
+        }
       }
-      const classroomDocs = await Classroom.find({}).lean().exec();
-      const filtered = classroomDocs.filter((video) => {
-        const videoCourse = video.courseId || video.course || video.courseType || '';
-        if (!userCourse) return true;
-        if (videoCourse && videoCourse === userCourse) return true;
-        if (video.courseType && userCourse.includes(video.courseType)) return true;
-        return false;
-      });
+
       return res.json(
-        filtered
-          .map((doc) => ({ id: String(doc._id), ...doc }))
-          .sort((a, b) => new Date(b.date || b.createdAt || 0) - new Date(a.date || a.createdAt || 0))
+        sortVideosNewestFirst(
+          classroomDocs.map((doc) => ({ id: String(doc._id), ...doc }))
+        )
       );
     }
 
@@ -68,12 +84,14 @@ router.get('/classroom', async (req, res) => {
       .exec();
     const batchMap = new Map(batchDocs.map((b) => [String(b._id), b]));
 
+    const pathsByBatch = await lessonPath.buildLessonPathsForBatches({
+      batchIds,
+      studentId: tokenUser.id
+    });
+
     const merged = [];
     for (const batchId of batchIds) {
-      const path = await lessonPath.buildLessonPath({
-        batchId,
-        studentId: tokenUser.id
-      });
+      const path = pathsByBatch.get(String(batchId)) || [];
       const batch = batchMap.get(String(batchId)) || {};
       path.forEach((lesson) => {
         merged.push({

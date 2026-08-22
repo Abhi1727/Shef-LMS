@@ -224,9 +224,10 @@ async function copyFileToBatchFolder({
 
   const meta = await drive.files.get({
     fileId: file.id,
-    fields: 'id, name, webViewLink, webContentLink, mimeType, size',
+    fields: 'id, name, webViewLink, webContentLink, mimeType, size, videoMediaMetadata',
     supportsAllDrives: true
   });
+  const durationMillis = Number(meta.data.videoMediaMetadata?.durationMillis || 0);
 
   return {
     folderId: parentId,
@@ -236,6 +237,8 @@ async function copyFileToBatchFolder({
     webContentLink: meta.data.webContentLink || '',
     mimeType: meta.data.mimeType || '',
     size: Number(meta.data.size || 0),
+    durationMillis,
+    durationLabel: formatVideoDurationLabel(durationMillis),
     copiedFrom: sourceFileId
   };
 }
@@ -245,9 +248,10 @@ async function getFileMeta(fileId) {
   const drive = await getDriveClient();
   const meta = await drive.files.get({
     fileId,
-    fields: 'id, name, mimeType, size, webViewLink, webContentLink, trashed',
+    fields: 'id, name, mimeType, size, webViewLink, webContentLink, trashed, videoMediaMetadata',
     supportsAllDrives: true
   });
+  const durationMillis = Number(meta.data.videoMediaMetadata?.durationMillis || 0);
   return {
     driveFileId: meta.data.id,
     driveName: meta.data.name,
@@ -255,11 +259,69 @@ async function getFileMeta(fileId) {
     size: Number(meta.data.size || 0),
     driveLink: meta.data.webViewLink || `https://drive.google.com/file/d/${meta.data.id}/view`,
     webContentLink: meta.data.webContentLink || '',
-    trashed: Boolean(meta.data.trashed)
+    trashed: Boolean(meta.data.trashed),
+    durationMillis: Number.isFinite(durationMillis) ? durationMillis : 0,
+    durationLabel: formatVideoDurationLabel(durationMillis)
   };
 }
 
+function formatVideoDurationLabel(durationMillis) {
+  const ms = Number(durationMillis || 0);
+  if (!Number.isFinite(ms) || ms < 1000) return '';
+  const totalSec = Math.round(ms / 1000);
+  const h = Math.floor(totalSec / 3600);
+  const m = Math.floor((totalSec % 3600) / 60);
+  const s = totalSec % 60;
+  if (h > 0) return `${h}h ${m}m`;
+  if (m > 0) return s >= 30 ? `${m + 1} mins` : `${m} mins`;
+  return `${s}s`;
+}
+
 const MIN_PLAYABLE_VIDEO_BYTES = 1024 * 1024;
+
+const videoMetaCache = new Map();
+const VIDEO_META_TTL_MS = 10 * 60 * 1000;
+
+async function getCachedVideoMeta(fileId) {
+  const cached = videoMetaCache.get(fileId);
+  if (cached && cached.expires > Date.now()) return cached.meta;
+  const drive = await getDriveClient();
+  const meta = await drive.files.get({
+    fileId,
+    fields: 'id, name, mimeType, size',
+    supportsAllDrives: true
+  });
+  const parsed = {
+    total: Number(meta.data.size || 0),
+    mime:
+      meta.data.mimeType && /^video\//.test(meta.data.mimeType)
+        ? meta.data.mimeType
+        : 'video/mp4'
+  };
+  videoMetaCache.set(fileId, { meta: parsed, expires: Date.now() + VIDEO_META_TTL_MS });
+  return parsed;
+}
+
+/** Short-lived Google CDN URL — browser reads bytes directly (fast start + seek). */
+async function getDirectVideoStreamUrl(fileId) {
+  if (!fileId) return null;
+  const auth = await getGoogleAuth();
+  const tokenResult = await auth.getAccessToken();
+  const accessToken =
+    typeof tokenResult === 'string' ? tokenResult : tokenResult?.token || tokenResult?.access_token;
+  if (!accessToken) return null;
+  const params = new URLSearchParams({ alt: 'media', access_token: accessToken });
+  return `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}?${params.toString()}`;
+}
+
+async function writeVideoHead(res, fileId) {
+  const { total, mime } = await getCachedVideoMeta(fileId);
+  res.setHeader('Accept-Ranges', 'bytes');
+  res.setHeader('Content-Type', mime);
+  if (total) res.setHeader('Content-Length', total);
+  res.setHeader('Cache-Control', 'private, max-age=3600');
+  res.status(200).end();
+}
 
 function isPlayableVideoFile(meta) {
   if (!meta || meta.trashed) return false;
@@ -286,6 +348,59 @@ async function streamFileToResponse(res, fileId, downloadName) {
   res.setHeader('Content-Disposition', `attachment; filename="${ascii}"; filename*=UTF-8''${encodeURIComponent(name)}`);
   res.setHeader('Cache-Control', 'no-store');
   res.setHeader('X-Content-Type-Options', 'nosniff');
+  const media = await drive.files.get(
+    { fileId, alt: 'media', supportsAllDrives: true },
+    { responseType: 'stream' }
+  );
+  return new Promise((resolve, reject) => {
+    media.data.on('error', reject);
+    media.data.on('end', resolve);
+    media.data.pipe(res);
+  });
+}
+
+/** Stream a Drive video through LMS (supports HTTP Range for seeking). */
+async function streamVideoToResponse(res, fileId, req = {}) {
+  if (req.method === 'HEAD') {
+    return writeVideoHead(res, fileId);
+  }
+
+  const { total, mime } = await getCachedVideoMeta(fileId);
+  const rangeHeader = req.headers?.range;
+
+  res.setHeader('Accept-Ranges', 'bytes');
+  res.setHeader('Cache-Control', 'private, max-age=3600');
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+
+  const drive = await getDriveClient();
+
+  if (rangeHeader && total > 0) {
+    const match = String(rangeHeader).match(/bytes=(\d*)-(\d*)/);
+    const start = match && match[1] ? parseInt(match[1], 10) : 0;
+    const end = match && match[2] ? parseInt(match[2], 10) : total - 1;
+    const safeEnd = Math.min(end, total - 1);
+    const safeStart = Math.min(start, safeEnd);
+    const chunkSize = safeEnd - safeStart + 1;
+    res.status(206);
+    res.setHeader('Content-Range', `bytes ${safeStart}-${safeEnd}/${total}`);
+    res.setHeader('Content-Length', chunkSize);
+    res.setHeader('Content-Type', mime);
+    const media = await drive.files.get(
+      { fileId, alt: 'media', supportsAllDrives: true },
+      {
+        responseType: 'stream',
+        headers: { Range: `bytes=${safeStart}-${safeEnd}` }
+      }
+    );
+    return new Promise((resolve, reject) => {
+      media.data.on('error', reject);
+      media.data.on('end', resolve);
+      media.data.pipe(res);
+    });
+  }
+
+  if (total) res.setHeader('Content-Length', total);
+  res.setHeader('Content-Type', mime);
   const media = await drive.files.get(
     { fileId, alt: 'media', supportsAllDrives: true },
     { responseType: 'stream' }
@@ -332,8 +447,11 @@ module.exports = {
   extractDriveFileId,
   makeFileReadableWithLink,
   getFileMeta,
+  getDirectVideoStreamUrl,
+  formatVideoDurationLabel,
   isPlayableVideoFile,
   streamFileToResponse,
+  streamVideoToResponse,
   MIN_PLAYABLE_VIDEO_BYTES,
   getDriveStatus,
   getDriveClient

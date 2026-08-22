@@ -9,6 +9,32 @@ const classroomService = require('../services/classroomService');
 const { logActivity } = require('../utils/activityLogger');
 const Classroom = require('../models/Classroom');
 const { resolveNotesAbsolutePath, streamNotesFile } = require('../utils/notesDownload');
+const { assertLectureAccess } = require('../utils/lectureAccess');
+const googleDriveService = require('../services/googleDriveService');
+
+function jwtSecret() {
+  return process.env.JWT_SECRET || (process.env.NODE_ENV === 'production' ? null : 'dev_only_fallback');
+}
+
+function resolveDriveId(lecture) {
+  return (
+    lecture?.driveId ||
+    googleDriveService.extractDriveFileId(lecture?.zoomUrl) ||
+    googleDriveService.extractDriveFileId(lecture?.videoUrl) ||
+    ''
+  );
+}
+
+async function verifyPlaybackToken(token, lectureId) {
+  if (!token) return null;
+  const jwt = require('jsonwebtoken');
+  const secret = jwtSecret();
+  if (!secret) throw new Error('Server auth misconfigured');
+  const decoded = jwt.verify(token, secret);
+  if (decoded.purpose !== 'lecture-stream') throw new Error('Invalid playback token');
+  if (String(decoded.lectureId) !== String(lectureId)) throw new Error('Token lecture mismatch');
+  return decoded;
+}
 
 // Content-Type mapping for proper file download headers
 const contentTypes = {
@@ -107,11 +133,58 @@ router.get('/:id/notes', async (req, res) => {
   }
 });
 
-// Apply authentication middleware to all routes EXCEPT download endpoints
+// @route   GET|HEAD /api/classroom/stream/:lectureId
+// @desc    Stream Drive recording through LMS (HTML5 video; supports Range)
+// @access  Private (playback token or Bearer)
+async function handleClassroomStream(req, res) {
+  try {
+    const { lectureId } = req.params;
+    const bearer =
+      req.header('x-auth-token') || req.header('Authorization')?.replace(/^Bearer\s+/i, '') || '';
+    const token = req.query.token || bearer;
+
+    let user = null;
+    if (req.query.token) {
+      const decoded = await verifyPlaybackToken(req.query.token, lectureId);
+      user = { id: decoded.userId, role: decoded.role || 'student' };
+    } else if (bearer) {
+      const jwt = require('jsonwebtoken');
+      const secret = jwtSecret();
+      if (!secret) return res.status(500).json({ message: 'Server auth misconfigured' });
+      const decoded = jwt.verify(bearer, secret);
+      user = decoded.user;
+    } else {
+      return res.status(401).json({ message: 'Authentication required' });
+    }
+
+    const lecture = await Classroom.findById(lectureId).lean().exec();
+    if (!lecture) return res.status(404).json({ message: 'Lecture not found' });
+
+    const allowed = await assertLectureAccess(user, lecture);
+    if (!allowed) return res.status(403).json({ message: 'Access denied' });
+
+    const driveId = resolveDriveId(lecture);
+    if (!driveId) return res.status(404).json({ message: 'No Drive recording for this lecture' });
+
+    await googleDriveService.streamVideoToResponse(res, driveId, req);
+  } catch (error) {
+    console.error('GET /classroom/stream error:', error.message || error);
+    if (!res.headersSent) {
+      res.status(error.name === 'JsonWebTokenError' ? 401 : 500).json({
+        message: error.name === 'JsonWebTokenError' ? 'Invalid playback token' : 'Failed to stream video'
+      });
+    }
+  }
+}
+
+router.get('/stream/:lectureId', handleClassroomStream);
+router.head('/stream/:lectureId', handleClassroomStream);
+
+// Apply authentication middleware to all routes EXCEPT download/stream endpoints
 // Download endpoints will have their own auth logic to handle multiple auth methods
 router.use((req, res, next) => {
   // Skip auth for download endpoints - they handle auth manually
-  if (req.path.includes('/notes')) {
+  if (req.path.includes('/notes') || req.path.includes('/stream/')) {
     return next();
   }
   // Apply auth to all other routes
@@ -268,20 +341,73 @@ router.get('/play/:lectureId', async (req, res) => {
     // Get lecture metadata
     const lecture = await classroomService.getLectureById(lectureId);
 
-    // Verify lecture is Firebase Storage based
-    if (lecture.videoSource !== 'firebase') {
-      return res.status(400).json({ 
-        message: 'This lecture is not available for streaming' 
+    const allowed = await assertLectureAccess(user, lecture);
+    if (!allowed) {
+      return res.status(403).json({
+        message: 'Access denied. You do not have permission to view this lecture'
       });
     }
 
-    // Check user access permissions
+    const driveId = resolveDriveId(lecture);
+    if (driveId || lecture.videoSource === 'drive') {
+      const jwt = require('jsonwebtoken');
+      const secret = jwtSecret();
+      if (!secret) {
+        return res.status(500).json({ message: 'Server auth misconfigured' });
+      }
+      const playbackToken = jwt.sign(
+        {
+          purpose: 'lecture-stream',
+          lectureId: String(lectureId),
+          userId: String(user.id),
+          role: user.role || 'student'
+        },
+        secret,
+        { expiresIn: '3h' }
+      );
+
+      try {
+        await logActivity({
+          action: 'video_view',
+          userId: user.id,
+          userName: user.name || '',
+          userEmail: user.email || '',
+          userRole: user.role || 'student',
+          videoId: lectureId,
+          videoTitle: lecture.title || null,
+          req
+        });
+      } catch (logErr) {
+        console.warn('ActivityLog video_view failed:', logErr.message);
+      }
+
+      const streamUrl = `/api/classroom/stream/${lectureId}?token=${encodeURIComponent(playbackToken)}`;
+
+      return res.json({
+        lectureId: lecture.id,
+        title: lecture.title,
+        description: lecture.description,
+        duration: lecture.duration,
+        videoSource: 'drive',
+        streamMode: 'proxy',
+        streamUrl
+      });
+    }
+
+    // Verify lecture is Firebase Storage based
+    if (lecture.videoSource !== 'firebase') {
+      return res.status(400).json({
+        message: 'This lecture is not available for streaming'
+      });
+    }
+
+    // Check user access permissions (legacy firebase path)
     const accessibleLectures = await classroomService.getAccessibleLectures(user);
-    const hasAccess = accessibleLectures.some(l => l.id === lectureId);
+    const hasAccess = accessibleLectures.some((l) => l.id === lectureId);
 
     if (!hasAccess) {
-      return res.status(403).json({ 
-        message: 'Access denied. You do not have permission to view this lecture' 
+      return res.status(403).json({
+        message: 'Access denied. You do not have permission to view this lecture'
       });
     }
 

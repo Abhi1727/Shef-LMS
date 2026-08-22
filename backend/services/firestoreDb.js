@@ -366,6 +366,86 @@ async function listCollection(collection, { pageSize = 300 } = {}) {
   return out;
 }
 
+function predicateToWhere(pred) {
+  if (!pred || !pred.field || !pred.op) return null;
+  const value =
+    pred.op === 'IN' || pred.op === 'NOT_IN' || pred.op === 'ARRAY_CONTAINS_ANY'
+      ? encodeValue(Array.isArray(pred.value) ? pred.value : [pred.value])
+      : encodeValue(pred.value);
+  if (!value) return null;
+  return {
+    fieldFilter: {
+      field: { fieldPath: pred.field },
+      op: pred.op,
+      value
+    }
+  };
+}
+
+function sortToOrderBy(sort) {
+  if (!sort) return [];
+  let entries = [];
+  if (typeof sort === 'string') {
+    for (const part of sort.split(/\s+/).filter(Boolean)) {
+      const desc = part.startsWith('-');
+      entries.push([desc ? part.slice(1) : part, desc ? -1 : 1]);
+    }
+  } else if (typeof sort === 'object') {
+    entries = Object.entries(sort);
+  }
+  return entries
+    .filter(([field]) => field && field !== '_id' && field !== 'id')
+    .map(([field, dir]) => ({
+      field: { fieldPath: field },
+      direction: Number(dir) < 0 ? 'DESCENDING' : 'ASCENDING'
+    }));
+}
+
+/**
+ * Field-filtered list. Reads only matching documents (plus index lookups),
+ * not the whole collection.
+ */
+async function queryCollection(collection, { where, orderBy, limit } = {}) {
+  const structuredQuery = {
+    from: [{ collectionId: collection }]
+  };
+  const whereClause = where && where.fieldFilter ? where : predicateToWhere(where);
+  if (whereClause) structuredQuery.where = whereClause;
+  const orders = Array.isArray(orderBy) ? orderBy : sortToOrderBy(orderBy);
+  if (orders.length) structuredQuery.orderBy = orders;
+  if (limit != null && Number(limit) > 0) {
+    structuredQuery.limit = Math.min(1000, Number(limit));
+  }
+
+  try {
+    const json = await firestoreJson('POST', `${basePath()}:runQuery`, { structuredQuery });
+    const rows = Array.isArray(json) ? json : [];
+    return rows.map((row) => docFromFirestore(row.document)).filter(Boolean);
+  } catch (err) {
+    const msg = String(err.message || '');
+    // Missing composite index or unsupported operator — caller should fall back.
+    err.indexRequired = /FAILED_PRECONDITION|requires an index|UNIMPLEMENTED/i.test(msg);
+    throw err;
+  }
+}
+
+async function countCollection(collection, { where } = {}) {
+  const structuredQuery = {
+    from: [{ collectionId: collection }]
+  };
+  const whereClause = where && where.fieldFilter ? where : predicateToWhere(where);
+  if (whereClause) structuredQuery.where = whereClause;
+  const json = await firestoreJson('POST', `${basePath()}:runAggregationQuery`, {
+    structuredAggregationQuery: {
+      structuredQuery,
+      aggregations: [{ alias: 'count', count: {} }]
+    }
+  });
+  const row = Array.isArray(json) ? json[0] : json;
+  const n = row?.result?.aggregateFields?.count?.integerValue;
+  return Number(n || 0);
+}
+
 async function setDoc(collection, docId, data, { merge = false } = {}) {
   const fields = toFields(data);
   fields._mongoId = encodeValue(String(docId));
@@ -448,6 +528,9 @@ module.exports = {
   setDoc,
   deleteDoc,
   listCollection,
+  queryCollection,
+  countCollection,
+  predicateToWhere,
   batchGet,
   encodeValue,
   decodeValue,

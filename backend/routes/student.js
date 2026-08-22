@@ -15,6 +15,8 @@ const fs = require('fs');
 const multer = require('multer');
 const googleDriveService = require('../services/googleDriveService');
 const { resolveStudentBatchIds } = require('../utils/studentEnrollment');
+const { findUserById } = require('../utils/findUserById');
+const lessonPath = require('../services/lessonPath');
 
 const shareUpload = multer({
   dest: path.join(__dirname, '../uploads/tmp-student-shares'),
@@ -66,12 +68,7 @@ router.get('/profile', async (req, res) => {
     }
     
     // Get student data from Mongo
-    const userDoc = await User.findOne({
-      $or: [
-        { _id: userId },
-        { firestoreId: userId }
-      ]
-    }).exec();
+    const userDoc = await findUserById(userId);
 
     if (!userDoc) {
       return res.status(404).json({ message: 'Student profile not found' });
@@ -172,12 +169,7 @@ router.put('/profile', async (req, res) => {
     }
 
     // Check if email is being changed and if new email already exists (Mongo)
-    const userDoc = await User.findOne({
-      $or: [
-        { _id: userId },
-        { firestoreId: userId }
-      ]
-    }).exec();
+    const userDoc = await findUserById(userId, null, { lean: false });
 
     if (!userDoc) {
       return res.status(404).json({ message: 'Student profile not found' });
@@ -267,12 +259,7 @@ router.put('/password', async (req, res) => {
     }
 
     // Get current student data from Mongo
-    const userDoc = await User.findOne({
-      $or: [
-        { _id: userId },
-        { firestoreId: userId }
-      ]
-    }).exec();
+    const userDoc = await findUserById(userId, null, { lean: false });
     
     if (!userDoc) {
       return res.status(404).json({ message: 'Student not found' });
@@ -318,16 +305,7 @@ router.put('/password', async (req, res) => {
 router.get('/batch-materials', async (req, res) => {
   try {
     const userId = String(req.user.id);
-    const userDoc = await User.findOne({
-      $or: [{ _id: userId }, { firestoreId: userId }]
-    })
-      .select('batchId oneToOneBatchId')
-      .lean()
-      .exec();
-    const batchIds = [userDoc?.batchId, userDoc?.oneToOneBatchId].filter(Boolean).map(String);
-    const memberBatches = await Batch.find({ students: userId }).select('_id').lean().exec();
-    memberBatches.forEach((b) => batchIds.push(String(b._id)));
-    const unique = [...new Set(batchIds)];
+    const unique = await resolveStudentBatchIds(userId);
     if (!unique.length) {
       return res.json({ success: true, materials: [] });
     }
@@ -488,17 +466,7 @@ router.post('/shares', shareUpload.single('file'), async (req, res) => {
 router.get('/schedule', async (req, res) => {
   try {
     const userId = String(req.user.id);
-    const userDoc = await User.findOne({
-      $or: [{ _id: userId }, { firestoreId: userId }]
-    })
-      .select('batchId oneToOneBatchId')
-      .lean()
-      .exec();
-
-    const batchIds = [userDoc?.batchId, userDoc?.oneToOneBatchId].filter(Boolean).map(String);
-    const memberBatches = await Batch.find({ students: userId }).select('_id').lean().exec();
-    memberBatches.forEach((b) => batchIds.push(String(b._id)));
-    const unique = [...new Set(batchIds)];
+    const unique = await resolveStudentBatchIds(userId);
 
     if (!unique.length) {
       return res.json({ success: true, events: [], cohort: [], batchIds: [] });
@@ -603,12 +571,7 @@ router.get('/batch-info', async (req, res) => {
     const userId = req.user.id;
     
     // Get student data to find batchId (Mongo)
-    const userDoc = await User.findOne({
-      $or: [
-        { _id: userId },
-        { firestoreId: userId }
-      ]
-    }).exec();
+    const userDoc = await findUserById(userId);
     
     if (!userDoc) {
       return res.status(404).json({ message: 'Student not found' });
@@ -744,27 +707,20 @@ const calculateLoginStreak = async (userId) => {
 };
 
 // Helper function to calculate video progress from batch classroom recordings
-const calculateVideoProgress = async (userId) => {
+const calculateVideoProgress = async (userId, batchIdsPreloaded) => {
   try {
-    const userDoc = await User.findOne({
-      $or: [
-        { _id: userId },
-        { firestoreId: userId }
-      ]
-    }).exec();
-
-    if (!userDoc) {
+    const batchIds = batchIdsPreloaded || (await resolveStudentBatchIds(userId));
+    if (!batchIds.length) {
       return { total: 0, watched: 0, progressPercentage: 0 };
     }
 
-    const batchId = userDoc.batchId ? String(userDoc.batchId) : null;
-    if (!batchId) {
-      return { total: 0, watched: 0, progressPercentage: 0 };
-    }
-
-    const batchVideos = await Classroom.find({ batchId }).select('_id').lean().exec();
-    const totalVideos = batchVideos.length;
-    const videoIds = batchVideos.map((v) => String(v._id));
+    const batchVideos = await Classroom.find({ batchId: { $in: batchIds } })
+      .select('_id videoSource driveId youtubeVideoId youtubeEmbedUrl youtubeVideoUrl')
+      .lean()
+      .exec();
+    const playableVideos = batchVideos.filter((v) => !lessonPath.isUnplayableLiveStub(v));
+    const totalVideos = playableVideos.length;
+    const videoIds = playableVideos.map((v) => String(v._id));
 
     if (totalVideos === 0) {
       return { total: 0, watched: 0, progressPercentage: 0 };
@@ -795,15 +751,8 @@ const calculateVideoProgress = async (userId) => {
 router.get('/progress-summary', async (req, res) => {
   try {
     const userId = req.user.id;
-    
-    // Get student data
-    const userDoc = await User.findOne({
-      $or: [
-        { _id: userId },
-        { firestoreId: userId }
-      ]
-    }).exec();
 
+    const userDoc = await findUserById(userId, 'batchId');
     if (!userDoc) {
       return res.status(404).json({ message: 'Student not found' });
     }
@@ -819,11 +768,11 @@ router.get('/progress-summary', async (req, res) => {
       });
     }
 
-    // Calculate login streak
-    const streak = await calculateLoginStreak(userId);
-    
-    // Calculate video progress from batch recordings
-    const videos = await calculateVideoProgress(userId);
+    const batchIds = await resolveStudentBatchIds(userId);
+    const [streak, videos] = await Promise.all([
+      calculateLoginStreak(userId),
+      calculateVideoProgress(userId, batchIds)
+    ]);
 
     const progressSummary = {
       modules: {
@@ -834,7 +783,7 @@ router.get('/progress-summary', async (req, res) => {
       videos,
       streak,
       overallProgress: videos.progressPercentage,
-      hasBatch: Boolean(userDoc.batchId)
+      hasBatch: batchIds.length > 0
     };
 
     res.json(progressSummary);
@@ -851,12 +800,7 @@ router.get('/analytics', async (req, res) => {
     const userId = req.user.id;
     
     // Get student data
-    const userDoc = await User.findOne({
-      $or: [
-        { _id: userId },
-        { firestoreId: userId }
-      ]
-    }).exec();
+    const userDoc = await findUserById(userId);
 
     if (!userDoc) {
       return res.status(404).json({ message: 'Student not found' });

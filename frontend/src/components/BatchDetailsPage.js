@@ -568,37 +568,26 @@ const BatchDetailsPage = () => {
       const normalizeId = (value) => (value != null ? String(value).trim() : '');
       const batchIdNorm = normalizeId(batchId);
 
-      // Load batch details
-      const batchesResponse = await fetch(`${apiUrl}/api/admin/batches`, {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      
-      if (batchesResponse.ok) {
-        const response = await batchesResponse.json();
-        const batches = response.batches || []; // Extract batches array from response
-        console.log('URL Batch ID:', batchId);
-        console.log('Available Batches:', batches);
-        
-        const batch = batches.find(b => {
-          const currentBatchId = normalizeId(b.id || b._id);
-          console.log('Checking batch:', {
-            batchName: b.name,
-            batchId: currentBatchId,
-            urlId: batchIdNorm,
-            matches: currentBatchId === batchIdNorm
-          });
-          return currentBatchId === batchIdNorm;
-        });
-        
-        if (batch) {
+      const [batchResponse, studentsResponse] = await Promise.all([
+        fetch(`${apiUrl}/api/batches/${encodeURIComponent(batchIdNorm)}`, {
+          headers: { Authorization: `Bearer ${token}` }
+        }),
+        fetch(`${apiUrl}/api/batches/${encodeURIComponent(batchIdNorm)}/students`, {
+          headers: { Authorization: `Bearer ${token}` }
+        })
+      ]);
+
+      if (batchResponse.ok) {
+        const response = await batchResponse.json();
+        const batch = response.batch || response;
+        if (batch && (batch.id || batch._id)) {
           foundBatch = batch;
           setSelectedBatch(batch);
           setBatchResourcesEnabled(batch.resourcesEnabled || false);
 
-          // Fetch all resources for assignment checklist
           try {
             const resListResp = await fetch(`${apiUrl}/api/resources/admin/list`, {
-              headers: { 'Authorization': `Bearer ${token}` }
+              headers: { Authorization: `Bearer ${token}` }
             });
             if (resListResp.ok) {
               const resList = await resListResp.json();
@@ -607,7 +596,7 @@ const BatchDetailsPage = () => {
           } catch (e) {
             console.error('Error fetching admin resources list:', e);
           }
-          
+
           if (batch.schedule) {
             const days = batch.schedule.days || '';
             const time = batch.schedule.time || '';
@@ -615,50 +604,19 @@ const BatchDetailsPage = () => {
             const parsedRange = parseIstRangeToTimeInputs(time);
             setTimeRange(parsedRange);
           }
-          
-          console.log('Found batch:', batch);
-          
-          // Load students
-          const studentsResponse = await fetch(`${apiUrl}/api/admin/users`, {
-            headers: { 'Authorization': `Bearer ${token}` }
-          });
-          
-          if (studentsResponse.ok) {
-            const allUsers = await studentsResponse.json();
-            const studentUsers = allUsers.filter(user => user.role === 'student');
-            // Store ALL students for the "Add Existing Students" modal
-            setAllStudents(studentUsers);
-
-            // Filter students by batchId for display (normalize IDs - handles ObjectId/string)
-            const norm = (v) => (v != null && v !== '' ? String(v).trim() : '');
-            const batchIdNorm = norm(batchId) || norm(foundBatch?.id || foundBatch?._id);
-            const batchStudents = studentUsers.filter(student => norm(student.batchId) === batchIdNorm);
-            console.log('🔍 BatchDetails Debug - Students for batch:', {
-              batchId,
-              totalStudents: studentUsers.length,
-              batchStudents: batchStudents.length,
-              batchStudentsArray: foundBatch?.students?.length || 0,
-              sampleStudentData: batchStudents.slice(0, 2).map(s => ({
-                id: s.id,
-                name: s.name,
-                phone: s.phone,
-                address: s.address,
-                hasPhone: !!s.phone,
-                hasAddress: !!s.address
-              })),
-              unassignedStudents: studentUsers.filter(s => !s.batchId).length,
-              cyberSecurityStudents: studentUsers.filter(s => 
-                s.course && (s.course.toLowerCase().includes('cyber') || s.course.toLowerCase().includes('security'))
-              ).length
-            });
-
-            setStudents(batchStudents);
-          }
         } else {
-          console.error('Batch not found. Available IDs:', batches.map(b => ({ name: b.name, id: b.id || b._id })));
           showToast('Batch not found', 'error');
           return;
         }
+      } else {
+        showToast('Batch not found', 'error');
+        return;
+      }
+
+      if (studentsResponse.ok) {
+        const studentsPayload = await studentsResponse.json();
+        const batchStudentList = studentsPayload.students || studentsPayload || [];
+        setStudents(Array.isArray(batchStudentList) ? batchStudentList : []);
       }
 
       // Load classroom videos
@@ -696,6 +654,29 @@ const BatchDetailsPage = () => {
     loadBatchData();
     loadCoursesAndBatches();
   }, [loadBatchData]);
+
+  // Load full student list only when adding existing students (avoids scanning all users on page load)
+  useEffect(() => {
+    if (!showAddStudentsModal || allStudents.length) return;
+
+    const loadAllStudentsForModal = async () => {
+      try {
+        const token = localStorage.getItem('token');
+        const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
+        const studentsResponse = await fetch(`${apiUrl}/api/admin/users`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        if (studentsResponse.ok) {
+          const allUsers = await studentsResponse.json();
+          setAllStudents(allUsers.filter((user) => user.role === 'student'));
+        }
+      } catch (err) {
+        console.error('Error loading students for add modal:', err);
+      }
+    };
+
+    loadAllStudentsForModal();
+  }, [showAddStudentsModal, allStudents.length]);
 
   // Update new student form when batch changes
   useEffect(() => {
@@ -2583,7 +2564,8 @@ const BatchDetailsPage = () => {
                 <div>
                   <h2>Email batch</h2>
                   <p className="sky-muted">
-                    Message students in {selectedBatch?.name || 'this batch'} from support@skystates.us
+                    Message students in {selectedBatch?.name || 'this batch'} from admin@lms.skystates.us
+                    (each student gets their own email)
                   </p>
                 </div>
                 <div className="sky-email-header-meta">
@@ -2731,7 +2713,7 @@ const BatchDetailsPage = () => {
 
                   <div className="sky-email-from">
                     <span className="sky-email-from__label">From</span>
-                    <span className="sky-email-from__value">support@skystates.us</span>
+                    <span className="sky-email-from__value">admin@lms.skystates.us</span>
                   </div>
 
                   <div className="sky-email-field">

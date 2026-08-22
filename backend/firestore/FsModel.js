@@ -189,6 +189,184 @@ function applyUpdate(doc, update) {
   return { ...out, ...update };
 }
 
+const SELECTIVE_FIELDS = [
+  'email',
+  'firestoreId',
+  'userId',
+  'studentId',
+  'teacherId',
+  'batchId',
+  'oneToOneBatchId',
+  'classroomLectureId',
+  'classroomId',
+  'meetSpaceId',
+  'videoId',
+  'enrollmentNumber',
+  'formNumber',
+  'action',
+  'students',
+  'userRole',
+  'role',
+  'status',
+  'meetLink'
+];
+
+const ARRAY_CONTAINS_FIELDS = new Set(['students']);
+
+function condToPredicate(field, cond) {
+  if (cond === undefined) return null;
+  if (ARRAY_CONTAINS_FIELDS.has(field)) {
+    if (cond && typeof cond === 'object' && !Array.isArray(cond) && !(cond instanceof Date) && !cond._bsontype && !('$eq' in (cond || {}))) {
+      if ('$in' in cond) {
+        const list = (cond.$in || []).slice(0, 10);
+        if (!list.length) return null;
+        return { field, op: 'ARRAY_CONTAINS_ANY', value: list.map(asString) };
+      }
+      return null;
+    }
+    return { field, op: 'ARRAY_CONTAINS', value: asString(cond) };
+  }
+  const isPlainObject =
+    cond &&
+    typeof cond === 'object' &&
+    !Array.isArray(cond) &&
+    !(cond instanceof Date) &&
+    !cond._bsontype &&
+    typeof cond.toHexString !== 'function';
+  if (!isPlainObject) {
+    const value =
+      cond instanceof Date ? cond : typeof cond === 'object' && cond != null ? asString(cond) : cond;
+    return { field, op: 'EQUAL', value };
+  }
+  if ('$eq' in cond) return { field, op: 'EQUAL', value: cond.$eq };
+  if ('$in' in cond) {
+    const list = (cond.$in || []).filter((v) => v !== undefined).slice(0, 10);
+    if (!list.length) return null;
+    if (list.length === 1) return { field, op: 'EQUAL', value: list[0] };
+    return { field, op: 'IN', value: list };
+  }
+  if ('$ne' in cond) return { field, op: 'NOT_EQUAL', value: cond.$ne };
+  if ('$gt' in cond) return { field, op: 'GREATER_THAN', value: cond.$gt };
+  if ('$gte' in cond) return { field, op: 'GREATER_THAN_OR_EQUAL', value: cond.$gte };
+  if ('$lt' in cond) return { field, op: 'LESS_THAN', value: cond.$lt };
+  if ('$lte' in cond) return { field, op: 'LESS_THAN_OR_EQUAL', value: cond.$lte };
+  return null;
+}
+
+function pickPredicate(filter) {
+  if (!filter || typeof filter !== 'object') return null;
+  for (const field of SELECTIVE_FIELDS) {
+    if (filter[field] === undefined) continue;
+    const pred = condToPredicate(field, filter[field]);
+    if (pred) return pred;
+  }
+  for (const [field, cond] of Object.entries(filter)) {
+    if (field.startsWith('$') || field === '_id' || field === 'id') continue;
+    const pred = condToPredicate(field, cond);
+    if (pred) return pred;
+  }
+  return null;
+}
+
+function filterKeyCount(filter) {
+  if (!filter) return 0;
+  return Object.keys(filter).filter((k) => k !== '$or' && k !== '$and').length;
+}
+
+async function queryWithPredicate(collectionName, pred, extras = {}) {
+  return firestoreDb.queryCollection(collectionName, {
+    where: pred,
+    ...extras
+  });
+}
+
+async function fetchMatchingDocs(collectionName, filter, loadAllFn) {
+  if (!filter || Object.keys(filter).length === 0) {
+    return loadAllFn();
+  }
+
+  // Fast path: { $or: [{ _id }, { firestoreId }] } — common user lookup (avoid full scan)
+  if (
+    filter.$or &&
+    Array.isArray(filter.$or) &&
+    filter.$or.length === 2 &&
+    Object.keys(filter).length === 1
+  ) {
+    const idBranch = filter.$or.find((b) => b && b._id != null);
+    const fsBranch = filter.$or.find((b) => b && b.firestoreId != null);
+    if (idBranch && fsBranch) {
+      const docId = asString(idBranch._id);
+      if (docId) {
+        let doc = await firestoreDb.getDoc(collectionName, docId);
+        if (!doc) {
+          const fsId = asString(fsBranch.firestoreId);
+          if (fsId) {
+            try {
+              const rows = await queryWithPredicate(
+                collectionName,
+                { field: 'firestoreId', op: 'EQUAL', value: fsId },
+                { limit: 1 }
+              );
+              doc = rows[0] || null;
+            } catch (err) {
+              if (!err.indexRequired) {
+                console.warn('[FsModel] firestoreId lookup fallback:', err.message);
+              }
+            }
+          }
+        }
+        return doc ? [doc] : [];
+      }
+    }
+  }
+
+  if (filter.$or && Array.isArray(filter.$or) && filter.$or.length && filter.$or.length <= 6) {
+    const rest = { ...filter };
+    delete rest.$or;
+    const merged = [];
+    try {
+      for (const branch of filter.$or) {
+        const part = await fetchMatchingDocs(collectionName, { ...rest, ...branch }, loadAllFn);
+        merged.push(...part);
+      }
+      const map = new Map();
+      for (const d of merged) map.set(asString(d._id || d.id), d);
+      return [...map.values()];
+    } catch (err) {
+      if (!err.indexRequired) console.warn('[FsModel] $or query fallback:', err.message);
+      return (await loadAllFn()).filter((d) => matchQuery(d, filter));
+    }
+  }
+
+  const pred = pickPredicate(filter);
+  if (!pred) {
+    return (await loadAllFn()).filter((d) => matchQuery(d, filter));
+  }
+
+  try {
+    const rawIn = pred && filter[pred.field] && filter[pred.field].$in;
+    if (Array.isArray(rawIn) && rawIn.length > 10) {
+      const merged = [];
+      for (let i = 0; i < rawIn.length; i += 10) {
+        const sliceFilter = { ...filter, [pred.field]: { $in: rawIn.slice(i, i + 10) } };
+        merged.push(...(await fetchMatchingDocs(collectionName, sliceFilter, loadAllFn)));
+      }
+      const map = new Map();
+      for (const d of merged) map.set(asString(d._id || d.id), d);
+      return [...map.values()].filter((d) => matchQuery(d, filter));
+    }
+    const extras = {};
+    if (filterKeyCount(filter) === 1) {
+      extras.limit = 1000;
+    }
+    const docs = await queryWithPredicate(collectionName, pred, extras);
+    return docs.filter((d) => matchQuery(d, filter));
+  } catch (err) {
+    console.warn('[FsModel] field query fallback to full scan', collectionName, pred.field, err.message);
+    return (await loadAllFn()).filter((d) => matchQuery(d, filter));
+  }
+}
+
 class Query {
   constructor(model, filter = {}) {
     this.model = model;
@@ -244,9 +422,20 @@ class Query {
   }
 }
 
+const CACHE_MS_BY_COLLECTION = {
+  classrooms: 120000,
+  batches: 120000,
+  courses: 300000,
+  modules: 120000,
+  resources: 120000,
+  resourcecategories: 300000,
+  users: 45000,
+  activitylogs: 20000
+};
+
 function createFsModel(name, collectionName) {
   const cache = { docs: null, loadedAt: 0 };
-  const CACHE_MS = 5000;
+  const CACHE_MS = CACHE_MS_BY_COLLECTION[collectionName] || 30000;
 
   async function loadAll(force = false) {
     if (!force && cache.docs && Date.now() - cache.loadedAt < CACHE_MS) {
@@ -327,9 +516,22 @@ function createFsModel(name, collectionName) {
     } else if (filter.id && typeof filter.id !== 'object') {
       const one = await firestoreDb.getDoc(collectionName, asString(filter.id));
       docs = one ? [one] : [];
+    } else if (!filter || Object.keys(filter).length === 0) {
+      if (q._limit != null && q._limit <= 500 && (q._skip || 0) + q._limit <= 500) {
+        try {
+          const take = (q._skip || 0) + q._limit;
+          docs = await firestoreDb.queryCollection(collectionName, {
+            orderBy: q._sort,
+            limit: take
+          });
+        } catch (err) {
+          docs = await loadAll();
+        }
+      } else {
+        docs = await loadAll();
+      }
     } else {
-      docs = await loadAll();
-      docs = docs.filter((d) => matchQuery(d, filter));
+      docs = await fetchMatchingDocs(collectionName, filter, loadAll);
     }
 
     docs = sortDocs(docs, q._sort);
@@ -432,6 +634,22 @@ function createFsModel(name, collectionName) {
   Model.countDocuments = function countDocuments(filter = {}) {
     // Mongoose-compatible: await Model.countDocuments(filter) or .exec()
     const promise = (async () => {
+      if (!filter || Object.keys(filter).length === 0) {
+        try {
+          return await firestoreDb.countCollection(collectionName);
+        } catch (err) {
+          console.warn('[FsModel] count fallback', collectionName, err.message);
+        }
+      } else {
+        const pred = pickPredicate(filter);
+        if (pred && filterKeyCount(filter) === 1 && !filter.$or && !filter.$and) {
+          try {
+            return await firestoreDb.countCollection(collectionName, { where: pred });
+          } catch (err) {
+            console.warn('[FsModel] filtered count fallback', collectionName, err.message);
+          }
+        }
+      }
       const rows = await Model.find(filter).lean().exec();
       return rows.length;
     })();
@@ -591,8 +809,15 @@ function createFsModel(name, collectionName) {
 
   // Aggregate stub — return empty / simple match for Phase 1 safety
   Model.aggregate = async function aggregate(pipeline = []) {
-    let docs = await loadAll();
-    for (const stage of pipeline) {
+    const stages = [...pipeline];
+    let docs;
+    if (stages[0] && stages[0].$match) {
+      docs = await fetchMatchingDocs(collectionName, stages[0].$match, loadAll);
+      stages.shift();
+    } else {
+      docs = await loadAll();
+    }
+    for (const stage of stages) {
       if (stage.$match) docs = docs.filter((d) => matchQuery(d, stage.$match));
       if (stage.$sort) docs = sortDocs(docs, stage.$sort);
       if (stage.$limit) docs = docs.slice(0, stage.$limit);

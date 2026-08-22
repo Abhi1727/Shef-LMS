@@ -8,6 +8,7 @@ const classroomSchema = new mongoose.Schema({
   course: { type: String },
   batchId: { type: String },
   batchName: { type: String },
+  liveClassId: { type: String, default: '', index: true },
   domain: { type: String },
   duration: { type: String },
   courseType: { type: String },

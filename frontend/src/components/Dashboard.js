@@ -849,7 +849,18 @@ const Dashboard = ({ user, onLogout }) => {
         console.error('Failed to fetch student assessments', err);
       }
     };
-    fetchStudentAssessments();
+
+    const deferHandle =
+      typeof window !== 'undefined' && window.requestIdleCallback
+        ? window.requestIdleCallback
+        : (cb) => setTimeout(cb, 1200);
+    const cancelHandle =
+      typeof window !== 'undefined' && window.cancelIdleCallback
+        ? window.cancelIdleCallback
+        : clearTimeout;
+
+    const idleId = deferHandle(fetchStudentAssessments);
+    return () => cancelHandle(idleId);
   }, []);
 
   // Student shell uses light theme (match teacher/admin)
@@ -924,33 +935,7 @@ const Dashboard = ({ user, onLogout }) => {
   }, [user?.currentCourse]);
 
   // Load user's progress from batch video views (server-backed)
-  const loadUserProgress = useCallback(async () => {
-    try {
-      const token = localStorage.getItem('token');
-      if (!token) {
-        setViewedFiles([]);
-        setVideoWatchHistory([]);
-        setProgressPercent(0);
-        return;
-      }
-      const response = await fetch(`${getApiBaseUrl()}/api/student/progress-summary`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      if (!response.ok) {
-        setViewedFiles([]);
-        setVideoWatchHistory([]);
-        return;
-      }
-      const data = await response.json();
-      setProgressPercent(data.overallProgress || 0);
-      setViewedFiles(Array.from({ length: data.videos?.watched || 0 }, (_, i) => `watched-${i}`));
-      setRealTimeStats(data);
-      // Keep local watch history for resume; do not wipe on load
-    } catch (err) {
-      console.error('Error loading progress:', err);
-      setViewedFiles([]);
-    }
-  }, []);
+  // Progress is loaded via loadRealTimeStats() — avoid duplicate /progress-summary calls.
 
   // Update video progress tracking (local resume + refresh server %)
   const updateVideoProgress = async (videoId, progress, position) => {
@@ -1449,7 +1434,6 @@ const Dashboard = ({ user, onLogout }) => {
       try {
         await Promise.all([
           loadClassroomVideos(),
-          loadBatches(),
           loadBatchInfo(),
           loadUpcomingMeetings(),
           loadCertificates(),
@@ -1464,7 +1448,7 @@ const Dashboard = ({ user, onLogout }) => {
 
     // Always load classroom/batch data — many learners have `course`/`batchId` without currentCourse
     loadInitialData();
-  }, [user?.id, user?.batchId, user?.course, user?.currentCourse, loadClassroomVideos, loadBatches, loadBatchInfo, loadUpcomingMeetings, loadCertificates, loadEnrollments]);
+  }, [user?.id, user?.batchId, user?.course, user?.currentCourse, loadClassroomVideos, loadBatchInfo, loadUpcomingMeetings, loadCertificates, loadEnrollments]);
 
   // Load video enhancements when videos are loaded
   useEffect(() => {
@@ -1473,19 +1457,11 @@ const Dashboard = ({ user, onLogout }) => {
     }
   }, [classroomVideos, loadVideoEnhancements]);
 
-  // Load user progress on mount and when user changes
-  useEffect(() => {
-    if (user?.id) {
-      loadUserProgress();
-      // Video watch history is now tracked only in local state
-      setVideoWatchHistory([]);
-    }
-  }, [user?.id, loadUserProgress]);
-
-  // Load real-time stats on mount and when user changes
+  // Load user progress + stats on mount (single /progress-summary request)
   useEffect(() => {
     if (user?.id) {
       loadRealTimeStats();
+      setVideoWatchHistory([]);
     }
   }, [user?.id, loadRealTimeStats]);
 
@@ -2710,7 +2686,8 @@ const Dashboard = ({ user, onLogout }) => {
                           )}
                           <p className="video-meta-text">
                             {video.instructor || 'Staff'} ·{' '}
-                            {formatDateForComponent(video.date || video.createdAt)}
+                            {formatDateForComponent(video.date || video.classDate || video.createdAt)}
+                            {video.duration ? ` · ${video.duration}` : ''}
                           </p>
                           <p className="video-meta-text" style={{ marginTop: 6 }}>
                             <span>1. Watch{steps.watch === 'done' ? ' ✓' : locked ? ' · locked' : ''}</span>

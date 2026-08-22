@@ -855,47 +855,14 @@ const TeacherBatchDetailsPage = () => {
                               {video.instructor || selectedBatch.teacherName || 'Trainer'}
                             </span>
                             {videoDate ? <span className="date">{videoDate}</span> : null}
+                            {video.duration ? <span className="duration">{video.duration}</span> : null}
                           </div>
                           {video.notesAvailable ? (
                             <div className="notes-indicator">Notes available</div>
                           ) : null}
-                          <div className="sky-lecture-path">
-                            <label className="sky-lecture-path__field">
-                              <span>Order</span>
-                              <input
-                                type="number"
-                                min={1}
-                                value={video.order || ''}
-                                onChange={(e) =>
-                                  setClassroomVideos((videos) =>
-                                    videos.map((v) =>
-                                      v.id === video.id
-                                        ? { ...v, order: Number(e.target.value) || 0 }
-                                        : v
-                                    )
-                                  )
-                                }
-                                onBlur={(e) =>
-                                  updateLessonPath(video.id, { order: Number(e.target.value) || 0 })
-                                }
-                              />
-                            </label>
-                            <label className="sky-lecture-path__field">
-                              <span>Unlock</span>
-                              <select
-                                value={video.unlockRule === 'afterPrevious' ? 'afterPrevious' : 'open'}
-                                onChange={(e) =>
-                                  updateLessonPath(video.id, { unlockRule: e.target.value })
-                                }
-                              >
-                                <option value="open">Open</option>
-                                <option value="afterPrevious">After previous</option>
-                              </select>
-                            </label>
-                            {video.linkedAssessmentId ? (
-                              <span className="notes-indicator sky-lecture-path__badge">Quiz linked</span>
-                            ) : null}
-                          </div>
+                          {video.linkedAssessmentId ? (
+                            <div className="notes-indicator">Quiz linked</div>
+                          ) : null}
                         </div>
                         <div className="video-actions sky-lecture-actions">
                           <button

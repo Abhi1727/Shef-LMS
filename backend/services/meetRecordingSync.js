@@ -76,8 +76,9 @@ async function listConferenceRecords(meet, doc) {
   return [];
 }
 
-async function firstGeneratedRecording(meet, conferenceRecords) {
-  for (const record of conferenceRecords) {
+async function firstGeneratedRecording(meet, conferenceRecords, doc = null) {
+  const ordered = pickConferencesNearSchedule(conferenceRecords, doc);
+  for (const record of ordered) {
     const parent = record.name;
     if (!parent) continue;
     try {
@@ -95,12 +96,24 @@ async function firstGeneratedRecording(meet, conferenceRecords) {
   return null;
 }
 
+function pickConferencesNearSchedule(records, doc) {
+  const rows = [...(records || [])];
+  const start = doc?.scheduledStart ? new Date(doc.scheduledStart).getTime() : 0;
+  if (!start) return rows;
+  return rows.sort((a, b) => {
+    const aStart = a.startTime ? new Date(a.startTime).getTime() : 0;
+    const bStart = b.startTime ? new Date(b.startTime).getTime() : 0;
+    return Math.abs(aStart - start) - Math.abs(bStart - start);
+  });
+}
+
 async function findDriveFallback(doc) {
   const start = doc.scheduledStart ? new Date(doc.scheduledStart) : null;
   const end = doc.scheduledEnd ? new Date(doc.scheduledEnd) : start;
   if (!start) return null;
   const after = new Date(start.getTime() - 30 * 60 * 1000);
-  const before = new Date((end || start).getTime() + 18 * 60 * 60 * 1000);
+  // Narrow window: Meet usually finishes processing within a few hours of class end.
+  const before = new Date((end || start).getTime() + 6 * 60 * 60 * 1000);
   let files = [];
   try {
     files = await googleDriveService.listRecentHostVideos({ after, before, pageSize: 50 });
@@ -110,28 +123,29 @@ async function findDriveFallback(doc) {
   }
   files = (files || []).filter((f) => Number(f.size || 0) >= googleDriveService.MIN_PLAYABLE_VIDEO_BYTES);
   const code = meetingCodeFromLink(doc.meetLink);
-  const exact = files.find((f) => {
-    const name = String(f.name || '').toLowerCase();
-    if (code && name.includes(code)) return true;
-    return namesLookRelated(f.name, doc.title);
-  });
-  if (exact) return exact;
-  if (files.length === 1) return files[0];
+  if (code) {
+    const byCode = files.find((f) => String(f.name || '').toLowerCase().includes(code));
+    if (byCode) return byCode;
+  }
+  const related = files.filter((f) => namesLookRelated(f.name, doc.title));
+  if (related.length === 1) return related[0];
+  // Never attach "the only video in a wide window" — that caused wrong-batch recordings.
   return null;
 }
 
 async function ensureBatchDriveFolder(doc) {
   const batch = doc.batchId ? await Batch.findById(doc.batchId).lean().exec() : null;
-  let folderId = batch?.driveFolderId || doc.driveFolderId || '';
+  // Always resolve folder from the meeting's batch — never reuse another meeting's folder id.
+  let folderId = batch?.driveFolderId || '';
   let folderLink = batch?.driveFolderLink || '';
-  if (!folderId && doc.batchId) {
+  if (doc.batchId) {
     const ensured = await googleDriveService.ensureBatchFolder({
       batchId: doc.batchId,
       batchName: batch?.name || doc.course || 'Batch'
     });
     folderId = ensured.folderId;
     folderLink = ensured.folderLink;
-    if (batch) {
+    if (batch && batch.driveFolderId !== folderId) {
       await Batch.updateOne(
         { _id: doc.batchId },
         { $set: { driveFolderId: folderId, driveFolderLink: folderLink, updatedAt: new Date() } }
@@ -150,8 +164,9 @@ async function shareTrainerEmails(doc) {
 
 async function attachSourceFile(doc, { sourceFileId, meetRecordingId, driveName }) {
   if (!sourceFileId) return { pending: true, reason: 'no-source-file' };
+  let sourceMeta = null;
   try {
-    const sourceMeta = await googleDriveService.getFileMeta(sourceFileId);
+    sourceMeta = await googleDriveService.getFileMeta(sourceFileId);
     if (!googleDriveService.isPlayableVideoFile(sourceMeta)) {
       return {
         pending: true,
@@ -164,7 +179,7 @@ async function attachSourceFile(doc, { sourceFileId, meetRecordingId, driveName 
   }
   const { batch, folderId } = await ensureBatchDriveFolder(doc);
   const shareEmails = await shareTrainerEmails(doc);
-  const stamp = new Date().toISOString().slice(0, 10);
+  const stamp = lectureDateStamp(doc);
   const safeTitle = String(doc.title || 'class').replace(/[\\/:*?"<>|]/g, ' ').slice(0, 80);
   let uploaded;
   try {
@@ -188,7 +203,9 @@ async function attachSourceFile(doc, { sourceFileId, meetRecordingId, driveName 
       folderId,
       driveFileId: sourceFileId,
       driveLink: `https://drive.google.com/file/d/${sourceFileId}/view`,
-      driveName: driveName || safeTitle
+      driveName: driveName || safeTitle,
+      durationLabel: sourceMeta?.durationLabel || '',
+      durationMillis: sourceMeta?.durationMillis || 0
     };
     try {
       const drive = await googleDriveService.getDriveClient();
@@ -197,6 +214,15 @@ async function attachSourceFile(doc, { sourceFileId, meetRecordingId, driveName 
       console.warn('[Meet recording sync] could not share original recording:', shareErr?.message || shareErr);
     }
   }
+
+  const durationLabel =
+    uploaded.durationLabel ||
+    sourceMeta?.durationLabel ||
+    (uploaded.durationMillis
+      ? googleDriveService.formatVideoDurationLabel(uploaded.durationMillis)
+      : '') ||
+    doc.duration ||
+    '';
 
   const live = await LiveClass.findById(doc._id || doc.id);
   if (!live) return null;
@@ -208,6 +234,7 @@ async function attachSourceFile(doc, { sourceFileId, meetRecordingId, driveName 
   live.meetRecordingId = meetRecordingId || sourceFileId;
   live.recordingSyncAt = new Date();
   live.recordingSyncError = '';
+  if (durationLabel) live.duration = durationLabel;
   live.status = live.status === 'cancelled' ? live.status : 'completed';
   live.updatedAt = new Date();
   await live.save();
@@ -215,7 +242,8 @@ async function attachSourceFile(doc, { sourceFileId, meetRecordingId, driveName 
   await ensureClassroomFromLiveClass(live, {
     videoSource: 'drive',
     driveFileId: uploaded.driveFileId,
-    driveLink: uploaded.driveLink
+    driveLink: uploaded.driveLink,
+    durationLabel
   });
 
   return {
@@ -226,11 +254,19 @@ async function attachSourceFile(doc, { sourceFileId, meetRecordingId, driveName 
   };
 }
 
+function lectureDateStamp(doc) {
+  const tz = doc.timezone || 'Asia/Kolkata';
+  if (doc.scheduledStart) {
+    return new Date(doc.scheduledStart).toLocaleDateString('en-CA', { timeZone: tz });
+  }
+  return new Date().toLocaleDateString('en-CA', { timeZone: tz });
+}
+
 async function syncOneLiveClass(doc) {
   if (doc.driveFileId) return { skipped: true, reason: 'already-has-recording' };
   const meet = await getMeetClient();
   const records = await listConferenceRecords(meet, doc);
-  const found = await firstGeneratedRecording(meet, records);
+  const found = await firstGeneratedRecording(meet, records, doc);
   if (found) {
     const sourceFileId = extractDriveIdFromRecording(found.recording);
     return attachSourceFile(doc, {
@@ -238,6 +274,10 @@ async function syncOneLiveClass(doc) {
       meetRecordingId: found.recording.name || sourceFileId,
       driveName: doc.title
     });
+  }
+  // Never guess from Drive when this meeting has its own Meet space — that caused wrong-batch videos.
+  if (spaceNameFromDoc(doc) || meetingCodeFromLink(doc.meetLink)) {
+    return { pending: true, reason: 'recording-not-ready' };
   }
   const driveFile = await findDriveFallback(doc);
   if (driveFile?.id) {
@@ -295,6 +335,49 @@ async function clearUnplayableRecording(doc) {
   return true;
 }
 
+async function driveFileSize(fileId) {
+  if (!fileId) return 0;
+  try {
+    const meta = await googleDriveService.getFileMeta(fileId);
+    return Number(meta.size || 0);
+  } catch (_) {
+    return 0;
+  }
+}
+
+/** Clear when LMS attached a different file than Meet API says belongs to this room. */
+async function clearMismatchedRecording(doc) {
+  if (!doc.driveFileId || (!doc.meetLink && !doc.meetSpaceId)) return false;
+  try {
+    const meet = await getMeetClient();
+    const records = await listConferenceRecords(meet, doc);
+    const found = await firstGeneratedRecording(meet, records, doc);
+    if (!found) return false;
+    const expectedId = extractDriveIdFromRecording(found.recording);
+    if (!expectedId) return false;
+    const [attachedSize, expectedSize] = await Promise.all([
+      driveFileSize(doc.driveFileId),
+      driveFileSize(expectedId)
+    ]);
+    if (!attachedSize || !expectedSize || attachedSize === expectedSize) return false;
+
+    const live = await LiveClass.findById(doc._id || doc.id);
+    if (!live) return false;
+    live.driveFileId = '';
+    live.driveLink = '';
+    live.recordingSyncError = 'Recording was linked to the wrong video. Re-syncing from Meet.';
+    live.updatedAt = new Date();
+    await live.save();
+    console.warn(
+      `[Meet recording sync] cleared mismatched recording ${doc.title}: attached=${attachedSize} expected=${expectedSize}`
+    );
+    return true;
+  } catch (err) {
+    console.warn('[Meet recording sync] mismatch check:', err?.message || err);
+    return false;
+  }
+}
+
 /**
  * Pull Meet recordings for recent live classes and attach them to the assigned batch Classroom.
  */
@@ -321,7 +404,8 @@ async function syncMeetRecordings({ meetingId } = {}) {
   for (const doc of candidates) {
     try {
       if (doc.driveFileId) {
-        const cleared = await clearUnplayableRecording(doc);
+        let cleared = await clearUnplayableRecording(doc);
+        if (!cleared) cleared = await clearMismatchedRecording(doc);
         if (!cleared) continue;
         doc.driveFileId = '';
         doc.driveLink = '';

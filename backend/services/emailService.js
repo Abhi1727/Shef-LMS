@@ -293,19 +293,32 @@ const sendTransactionalEmail = async ({ to, subject, text, html }) => {
   await transporter.verify();
 
   const senderEmail = process.env.EMAIL_FROM || process.env.EMAIL_USER || 'demo@learnwithus.sbs';
-  const info = await transporter.sendMail({
-    from: `"Sky States LMS" <${senderEmail}>`,
-    to,
-    subject,
-    text: text || undefined,
-    html: html || undefined,
-    headers: {
-      'X-Email-Type': 'transactional',
-      'X-Priority': '1'
-    }
-  });
+  // Always send one recipient per message so addresses stay private.
+  const recipients = String(to)
+    .split(/[,;]+/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (!recipients.length) {
+    throw new Error('Missing required fields: to');
+  }
 
-  return { success: true, messageId: info.messageId };
+  const messageIds = [];
+  for (const recipient of recipients) {
+    const info = await transporter.sendMail({
+      from: `"Sky States LMS" <${senderEmail}>`,
+      to: recipient,
+      subject,
+      text: text || undefined,
+      html: html || undefined,
+      headers: {
+        'X-Email-Type': 'transactional',
+        'X-Priority': '1'
+      }
+    });
+    messageIds.push(info.messageId);
+  }
+
+  return { success: true, messageId: messageIds[0], messageIds, recipientCount: recipients.length };
 };
 
 module.exports = {

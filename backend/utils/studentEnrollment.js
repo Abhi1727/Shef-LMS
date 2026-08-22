@@ -5,6 +5,7 @@
 const User = require('../models/User');
 const Batch = require('../models/Batch');
 const { allocateEnrollmentNumber } = require('./enrollmentNumber');
+const { findUserById } = require('./findUserById');
 
 function asString(v) {
   if (v == null) return '';
@@ -99,12 +100,10 @@ function collectEnrollmentNumbers(user) {
  * Resolve all batch IDs a student can access (enrollments + roster membership).
  */
 async function resolveStudentBatchIds(userId) {
-  const userDoc = await User.findOne({
-    $or: [{ _id: userId }, { firestoreId: userId }]
-  })
-    .select('batchId oneToOneBatchId enrollments')
-    .lean()
-    .exec();
+  const userDoc = await findUserById(
+    userId,
+    'batchId oneToOneBatchId enrollments'
+  );
 
   const batchIds = [];
   if (userDoc) {
