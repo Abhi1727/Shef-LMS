@@ -1187,7 +1187,31 @@ router.post('/:id/start', async (req, res) => {
       return res.status(400).json({ success: false, message: 'Class is cancelled' });
     }
     if (!doc.meetLink && !doc.zoomLink) {
-      return res.status(400).json({ success: false, message: 'No live class link available' });
+      if (getSessionProvider(doc) === 'zoom') {
+        const conf = await resolveConferenceForTeacher(doc.teacherId);
+        if (!conf.zoomUserId) {
+          return res.status(400).json({ success: false, message: 'No Zoom user configured for this trainer' });
+        }
+        const pmr = await zoomService.createMeeting({
+          zoomUserId: conf.zoomUserId,
+          topic: doc.title || 'Live Class',
+          startTime: doc.scheduledStart || new Date(),
+          duration: parseDurationMinutes(doc.duration) || SCHEDULED_JOIN_WINDOW_MINUTES,
+          timezone: doc.timezone || 'Asia/Kolkata',
+          usePMR: true
+        });
+        doc.zoomMeetingId = String(pmr.meeting.meetingId || pmr.meeting.id || '');
+        doc.zoomLink = pmr.meeting.joinUrl || '';
+        doc.zoomPassword = pmr.meeting.password || '';
+        doc.zoomIsPmr = true;
+        doc.zoomStartUrl = await zoomService.getHostStartUrl(conf.zoomUserId, doc.zoomMeetingId, {
+          password: doc.zoomPassword || ''
+        });
+        doc.conferenceProvider = 'zoom';
+        await doc.save();
+      } else {
+        return res.status(400).json({ success: false, message: 'No live class link available' });
+      }
     }
     const teacherIdForGuard = isTeacherRole(req.user.role) ? String(req.user.id) : String(doc.teacherId);
     await cleanupStaleSessions({ teacherId: teacherIdForGuard });

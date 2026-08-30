@@ -230,7 +230,11 @@ export default function MeetLiveClassesPanel({
   };
 
   const visible = meetings
-    .filter((m) => m.status !== 'cancelled' && (m.hasJoinLink || m.meetLink || m.zoomLink))
+    .filter((m) => {
+      if (m.status === 'cancelled') return false;
+      if (m.hasJoinLink || m.meetLink || m.zoomLink) return true;
+      return m.status === 'scheduled' || m.status === 'live';
+    })
     .filter((m) => {
       const { phase } = sessionPhase(m, now);
       return phase !== 'ended' || m.needsRecording || m.status === 'completed';
@@ -799,7 +803,7 @@ export default function MeetLiveClassesPanel({
                 className="live-lobby__btn live-lobby__btn--primary"
                 onClick={() => handleStart(nextSession)}
               >
-                {sessionPhase(nextSession, now).phase === 'live' ? 'Open class' : 'Start class'}
+                {sessionPhase(nextSession, now).phase === 'live' ? 'Open class' : 'Start class now'}
               </button>
             </div>
           </div>
@@ -830,10 +834,9 @@ export default function MeetLiveClassesPanel({
                     <button
                       type="button"
                       className="live-lobby__btn live-lobby__btn--primary"
-                      disabled={!m.hasJoinLink && !m.meetLink && !m.zoomLink}
                       onClick={() => handleStart(m)}
                     >
-                      Start class
+                      Start class now
                     </button>
                   </div>
                 </li>
@@ -1193,15 +1196,14 @@ export default function MeetLiveClassesPanel({
                           </span>
                       </div>
                       <div className="live-session__cta">
-                        {m.status !== 'completed' && (phase === 'live' || canStart) && (
+                        {m.status !== 'completed' && (phase === 'live' || canStart || phase === 'scheduled' || phase === 'soon') && (
                           <>
                             <button
                               type="button"
                               className="live-lobby__btn live-lobby__btn--primary"
-                              disabled={!m.hasJoinLink && !m.meetLink && !m.zoomLink}
                               onClick={() => handleStart(m)}
                             >
-                              {phase === 'live' ? 'Open in Zoom' : 'Start class'}
+                              {phase === 'live' ? 'Open in Zoom' : 'Start class now'}
                             </button>
                             {phase === 'live' && (
                               <button

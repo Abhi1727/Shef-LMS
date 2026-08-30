@@ -44,7 +44,11 @@ export function getLiveClassSessionPhase(meeting, now = Date.now(), options = {}
 
   const minsUntil = Math.round((start - now) / 60000);
   const linked = hasJoinLink(meeting);
-  const canStart = forTrainer && linked && meeting?.status === 'scheduled';
+  const canStart =
+    forTrainer &&
+    meeting?.status === 'scheduled' &&
+    meeting?.status !== 'completed' &&
+    meeting?.status !== 'cancelled';
 
   if (meeting?.needsRecording) {
     return { phase: 'needsRecording', minsUntil, canJoin: false, canStart: false };
