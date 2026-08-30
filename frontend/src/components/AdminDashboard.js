@@ -228,6 +228,10 @@ const AdminDashboard = ({ user, onLogout }) => {
   const [stats, setStats] = useState({});
   const [attendanceAlerts, setAttendanceAlerts] = useState([]);
   const [activities, setActivities] = useState([]);
+  const [zoomLiveEnabled, setZoomLiveEnabled] = useState(false);
+  const [meetLiveEnabled, setMeetLiveEnabled] = useState(false);
+  const [liveClassSettings, setLiveClassSettings] = useState(null);
+  const [savingMeetToggle, setSavingMeetToggle] = useState(false);
   
   // Student Profile Modal states
   const [showStudentDetailsModal, setShowStudentDetailsModal] = useState(false);
@@ -823,10 +827,58 @@ const AdminDashboard = ({ user, onLogout }) => {
 
   useEffect(() => {
     loadAllData();
+    const token = localStorage.getItem('token');
+    fetch(`${apiUrl}/api/meetings/status`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (data?.zoom?.configured) setZoomLiveEnabled(true);
+        if (typeof data?.enabled === 'boolean') setMeetLiveEnabled(data.enabled);
+        if (data?.liveClass) setLiveClassSettings(data.liveClass);
+      })
+      .catch(() => {
+        setZoomLiveEnabled(false);
+        setMeetLiveEnabled(false);
+      });
+    fetch(`${apiUrl}/api/admin/live-class-settings`, {
+      headers: { Authorization: `Bearer ${token}` }
+    })
+      .then((r) => r.json())
+      .then((data) => {
+        if (data?.settings) {
+          setLiveClassSettings(data.settings);
+          setMeetLiveEnabled(Boolean(data.settings.googleMeetEnabled));
+          if (data.settings.zoomConfigured) setZoomLiveEnabled(true);
+        }
+      })
+      .catch(() => {});
     // Intentionally run once on mount. Including `loadAllData` here can throw
     // at runtime because `loadAllData` is declared later in this file.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const toggleGoogleMeet = async (enabled) => {
+    setSavingMeetToggle(true);
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch(`${apiUrl}/api/admin/live-class-settings`, {
+        method: 'PATCH',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ googleMeetEnabled: Boolean(enabled) })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.message || 'Failed to update Meet setting');
+      setLiveClassSettings(data.settings || null);
+      setMeetLiveEnabled(Boolean(data.settings?.googleMeetEnabled));
+      showToast(data.message || (enabled ? 'Google Meet enabled' : 'Google Meet disabled'), 'success');
+    } catch (err) {
+      showToast(err.message || 'Failed to update Meet setting', 'error');
+    } finally {
+      setSavingMeetToggle(false);
+    }
+  };
 
   // Dynamic header height detection for dual sticky system
   useEffect(() => {
@@ -1346,6 +1398,41 @@ const AdminDashboard = ({ user, onLogout }) => {
     }
   }, [getCachedData, setCachedData]);
 
+  const handleClassroomVisibilityToggle = async (video) => {
+    const nextVisible = video.studentVisible === false;
+    try {
+      const token = localStorage.getItem('token');
+      const apiUrl = getApiBaseUrl();
+      const response = await fetch(`${apiUrl}/api/admin/classroom/${video.id}/visibility`, {
+        method: 'PATCH',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ studentVisible: nextVisible })
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        window.alert(data.message || 'Failed to update visibility');
+        return;
+      }
+      setClassroomVideos((videos) =>
+        (videos || []).map((v) =>
+          v.id === video.id ? { ...v, studentVisible: nextVisible } : v
+        )
+      );
+      setCachedData(
+        'classroom',
+        (classroomVideos || []).map((v) =>
+          v.id === video.id ? { ...v, studentVisible: nextVisible } : v
+        )
+      );
+    } catch (error) {
+      console.error('Error updating classroom visibility:', error);
+      window.alert('Failed to update visibility');
+    }
+  };
+
   const loadMentors = useCallback(async (forceRefresh = false) => {
     const cachedData = getCachedData('mentors');
     if (cachedData && !forceRefresh) {
@@ -1850,10 +1937,13 @@ const AdminDashboard = ({ user, onLogout }) => {
         // Ensure assignedCourses is properly set when editing a teacher
         const teacherFormData = {
           ...item,
-          // Ensure assignedCourses is an array, fallback to domain if needed
-          assignedCourses: item.assignedCourses && Array.isArray(item.assignedCourses) 
-            ? item.assignedCourses 
-            : (item.domain ? [item.domain] : [])
+          conferenceProvider: item.conferenceProvider || 'meet',
+          zoomUserId: item.zoomUserId || '',
+          assignedCourses: item.assignedCourses && Array.isArray(item.assignedCourses)
+            ? item.assignedCourses
+            : item.domain
+              ? [item.domain]
+              : []
         };
         console.log('🔍 Editing teacher formData:', teacherFormData);
         setFormData(teacherFormData);
@@ -1946,7 +2036,7 @@ const AdminDashboard = ({ user, onLogout }) => {
         additionalProgram: '',
         additionalBatchId: '',
       },
-      teacher: { name: '', email: '', password: '', age: '', domain: '', assignedCourses: [], experience: '', status: 'active', role: 'teacher', phone: '', address: '' },
+      teacher: { name: '', email: '', password: '', age: '', domain: '', assignedCourses: [], experience: '', status: 'active', role: 'teacher', phone: '', address: '', conferenceProvider: 'zoom', zoomUserId: '' },
       course: { title: '', description: '', duration: '', modules: 0, status: 'active', instructor: '', price: '' },
       batch: { name: '', course: '', startDate: '', teacherId: '', teacherName: '', status: 'active', batchType: 'regular', programLabel: '', customProgram: false },
       module: { name: '', courseId: '', batchId: '', duration: '', contentType: 'link', content: '', externalLink: '', fileUrl: '', fileName: '', fileSize: 0 },
@@ -2107,7 +2197,9 @@ const AdminDashboard = ({ user, onLogout }) => {
               phone: formData.phone || '',
               address: formData.address || '',
               status: formData.status || 'active',
-              role: 'teacher'
+              role: 'teacher',
+              conferenceProvider: formData.conferenceProvider || 'meet',
+              zoomUserId: formData.zoomUserId || ''
             };
 
             console.log('🔍 Teacher data being sent:', teacherData);
@@ -2156,7 +2248,9 @@ const AdminDashboard = ({ user, onLogout }) => {
             experience: formData.experience || '',
             phone: formData.phone || '',
             address: formData.address || '',
-            status: formData.status || 'active'
+            status: formData.status || 'active',
+            conferenceProvider: formData.conferenceProvider || 'meet',
+            zoomUserId: formData.zoomUserId || ''
           };
 
           console.log('🔍 Teacher update data being sent:', updateData);
@@ -3245,7 +3339,10 @@ const AdminDashboard = ({ user, onLogout }) => {
 
   // Zoom recording sync retired — Meet classes use Calendar links; recordings stay YouTube/Classroom
   const handleSyncRecordings = async () => {
-    showToast('Zoom recording sync is disabled. Upload recordings to Classroom via YouTube URL.', 'info');
+    showToast(
+      'Zoom recordings auto-sync to YouTube. Use Live Classes → Sync Zoom recordings if needed.',
+      'info'
+    );
   };
 
   const handleInputChange = useCallback((field, value) => {
@@ -3670,6 +3767,7 @@ const AdminDashboard = ({ user, onLogout }) => {
                     <tr>
                       <th>Name</th>
                       <th>Email</th>
+                      <th>Live</th>
                       <th>Age</th>
                       <th>Domain</th>
                       <th>Experience</th>
@@ -3693,6 +3791,13 @@ const AdminDashboard = ({ user, onLogout }) => {
                           </button>
                         </td>
                         <td>{teacher.email}</td>
+                        <td>
+                          {(teacher.conferenceProvider || 'meet') === 'zoom' ? (
+                            <span className="course-badge">Zoom</span>
+                          ) : (
+                            <span className="course-badge">Meet</span>
+                          )}
+                        </td>
                         <td>{teacher.age || 'N/A'}</td>
                         <td>
                         {teacher.assignedCourses && teacher.assignedCourses.length > 0 ? (
@@ -4432,13 +4537,14 @@ const AdminDashboard = ({ user, onLogout }) => {
                       <th>Duration</th>
                       <th>Course</th>
                       <th>Video Source</th>
+                      <th>Students</th>
                       <th>Actions</th>
                     </tr>
                   </thead>
                   <tbody>
                     {classroomVideos.length === 0 ? (
                       <tr>
-                        <td colSpan="6" style={{textAlign: 'center', padding: '40px', color: '#888'}}>
+                        <td colSpan="7" style={{textAlign: 'center', padding: '40px', color: '#888'}}>
                           No classroom videos added yet. Click "Add Video" to add your first recording.
                         </td>
                       </tr>
@@ -4485,7 +4591,25 @@ const AdminDashboard = ({ user, onLogout }) => {
                               </div>
                             </td>
                             <td>
+                              <span
+                                style={{
+                                  color: video.studentVisible === false ? '#b45309' : '#0f766e',
+                                  fontWeight: 600
+                                }}
+                              >
+                                {video.studentVisible === false ? 'Hidden' : 'Visible'}
+                              </span>
+                            </td>
+                            <td>
                               <div className="action-btns">
+                                <button
+                                  type="button"
+                                  onClick={() => handleClassroomVisibilityToggle(video)}
+                                  className="btn-edit"
+                                  title={video.studentVisible === false ? 'Show to students' : 'Hide from students'}
+                                >
+                                  {video.studentVisible === false ? '👁️' : '🙈'}
+                                </button>
                                 <button onClick={() => openModal('classroom', video)} className="btn-edit" title="Edit">✏️</button>
                                 <button onClick={() => handleDelete(COLLECTIONS.CLASSROOM, video.id)} className="btn-delete" title="Delete">🗑️</button>
                                 <a 
@@ -4593,21 +4717,77 @@ const AdminDashboard = ({ user, onLogout }) => {
             </div>
           )}
 
-          {/* Live Classes Section — Google Meet */}
+          {/* Live Classes Section */}
           {activeSection === 'liveClasses' && (
             <div className="admin-section">
               <div className="section-header">
-                <h2>Schedule Live Classes (Google Meet)</h2>
+                <h2>Live classes</h2>
                 <div>
                   <button onClick={() => openModal('liveClass')} className="btn-add">
-                    Schedule Meet Class
+                    Schedule class
                   </button>
                 </div>
               </div>
 
+              <div className="info-box" style={{ marginBottom: '1rem' }}>
+                <p>
+                  <strong>Primary platform:</strong> Zoom (cloud recording → Google Drive archive →
+                  YouTube for Classroom playback).
+                </p>
+                <p style={{ marginTop: '0.5rem' }}>
+                  Google Meet is optional. When Meet is off, trainers cannot start Meet sessions and
+                  Meet recording sync is paused.
+                </p>
+                <div
+                  style={{
+                    display: 'flex',
+                    flexWrap: 'wrap',
+                    alignItems: 'center',
+                    gap: '0.75rem',
+                    marginTop: '0.85rem'
+                  }}
+                >
+                  <span>
+                    Google Meet:{' '}
+                    <strong style={{ color: meetLiveEnabled ? '#1b7a4c' : '#b45309' }}>
+                      {meetLiveEnabled ? 'Enabled' : 'Disabled'}
+                    </strong>
+                    {liveClassSettings?.adminOverride ? ' (admin override)' : ' (from env)'}
+                  </span>
+                  <button
+                    type="button"
+                    className="btn-add"
+                    disabled={savingMeetToggle}
+                    onClick={() => toggleGoogleMeet(!meetLiveEnabled)}
+                    style={{
+                      background: meetLiveEnabled ? '#b45309' : '#1b7a4c',
+                      border: 'none'
+                    }}
+                  >
+                    {savingMeetToggle
+                      ? 'Saving…'
+                      : meetLiveEnabled
+                        ? 'Disable Google Meet'
+                        : 'Enable Google Meet'}
+                  </button>
+                  <span style={{ fontSize: '0.85rem', color: '#64748b' }}>
+                    Zoom recording sync:{' '}
+                    {liveClassSettings?.zoomRecordingSyncEnabled ? 'on' : 'off'} · YouTube:{' '}
+                    {liveClassSettings?.youtubeConfigured ? 'configured' : 'not configured'} · Drive:{' '}
+                    {liveClassSettings?.driveConfigured ? 'configured' : 'not configured'}
+                  </span>
+                </div>
+              </div>
+
               <div className="info-box">
-                <p>Schedule a live class for a batch. A Google Calendar event with a Meet link is created automatically.</p>
-                <p><strong>Recordings:</strong> Upload session recordings to Classroom via YouTube URL (Zoom sync is disabled).</p>
+                <p>
+                  Schedule a live class for a batch. Zoom trainers get a Zoom meeting; Meet trainers
+                  (only when Meet is enabled) get a Calendar Meet link.
+                </p>
+                <p>
+                  <strong>Recordings:</strong> Zoom sessions auto-sync to YouTube for the Classroom
+                  player. Meet sync runs only when Meet is enabled.
+                </p>
               </div>
 
               <div className="data-table">
@@ -4627,7 +4807,7 @@ const AdminDashboard = ({ user, onLogout }) => {
                     {liveClasses.length === 0 ? (
                       <tr>
                         <td colSpan="7" style={{textAlign: 'center', padding: '40px', color: '#888'}}>
-                          No Meet classes scheduled yet. Click &quot;Schedule Meet Class&quot; to add one.
+                          No live classes scheduled yet. Click &quot;Schedule class&quot; to add one.
                         </td>
                       </tr>
                     ) : (
@@ -5491,6 +5671,43 @@ const AdminDashboard = ({ user, onLogout }) => {
                       <small className="error-text">At least one course must be selected</small>
                     )}
                   </div>
+                  <div className="form-group">
+                    <label>Live class platform</label>
+                    <select
+                      value={
+                        formData.conferenceProvider ||
+                        (meetLiveEnabled ? 'meet' : 'zoom')
+                      }
+                      onChange={(e) => handleInputChange('conferenceProvider', e.target.value)}
+                    >
+                      {meetLiveEnabled && <option value="meet">Google Meet</option>}
+                      {zoomLiveEnabled && <option value="zoom">Zoom (recommended)</option>}
+                      {!meetLiveEnabled && !zoomLiveEnabled && (
+                        <option value="zoom">Zoom</option>
+                      )}
+                    </select>
+                    <small className="form-hint">
+                      {!meetLiveEnabled
+                        ? 'Google Meet is disabled in Live platforms. Sessions use Zoom.'
+                        : zoomLiveEnabled
+                          ? "Zoom requires the trainer's Zoom user ID from your Zoom admin console."
+                          : 'Zoom is available after ZOOM_ENABLED is turned on.'}
+                    </small>
+                  </div>
+                  {zoomLiveEnabled &&
+                    (formData.conferenceProvider || (meetLiveEnabled ? 'meet' : 'zoom')) ===
+                      'zoom' && (
+                    <input
+                      type="text"
+                      placeholder="Zoom user ID or licensed email *"
+                      value={formData.zoomUserId || ''}
+                      onChange={(e) => handleInputChange('zoomUserId', e.target.value)}
+                      required={
+                        (formData.conferenceProvider || (meetLiveEnabled ? 'meet' : 'zoom')) ===
+                        'zoom'
+                      }
+                    />
+                  )}
                   <input
                     type="text"
                     placeholder="Experience (e.g., 5 years, 3+ years in teaching)"

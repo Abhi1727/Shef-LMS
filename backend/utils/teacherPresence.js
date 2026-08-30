@@ -4,7 +4,8 @@ const LiveClass = require('../models/LiveClass');
 const STALE_LIVE_MS = 12 * 60 * 60 * 1000;
 
 function sessionStillLive(doc, now = Date.now()) {
-  if (!doc || doc.status !== 'live' || !doc.meetLink) return false;
+  if (!doc || doc.status !== 'live') return false;
+  if (!doc.meetLink && !doc.zoomLink) return false;
   const start = doc.scheduledStart ? new Date(doc.scheduledStart).getTime() : 0;
   const updated = doc.updatedAt ? new Date(doc.updatedAt).getTime() : 0;
   const anchor = Math.max(start, updated, 0);

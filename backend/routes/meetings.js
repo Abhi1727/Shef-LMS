@@ -8,13 +8,26 @@ const LiveClass = require('../models/LiveClass');
 const Batch = require('../models/Batch');
 const User = require('../models/User');
 const googleCalendarService = require('../services/googleCalendarService');
+const zoomService = require('../services/zoomService');
+const zoomConfig = require('../config/zoom');
 const googleDriveService = require('../services/googleDriveService');
 const attendanceAnalytics = require('../services/attendanceAnalytics');
 const sessionSummary = require('../services/sessionSummary');
 const { ensureClassroomFromLiveClass } = require('../services/classroomFromLiveClass');
 const { syncMeetRecordings } = require('../services/meetRecordingSync');
+const { syncZoomRecordings } = require('../services/zoomRecordingSync');
+const {
+  getLiveClassSettings,
+  isMeetLiveEnabled
+} = require('../services/liveClassSettings');
+const zoomMeetingSdk = require('../services/zoomMeetingSdk');
 const { sendEmail } = require('../services/emailService');
 const { logActivity } = require('../utils/activityLogger');
+const {
+  closePreviousLiveSessionsForTeacher,
+  cleanupStaleSessions,
+  reconcileZoomLiveSessions
+} = require('../utils/liveClassSessionGuard');
 
 const recordingUpload = multer({
   dest: path.join(__dirname, '../uploads/tmp-recordings'),
@@ -66,13 +79,74 @@ function isStudentRole(role) {
 }
 
 function parseDurationMinutes(duration) {
+  if (duration === null || duration === undefined || duration === '') {
+    return null;
+  }
   if (typeof duration === 'number' && Number.isFinite(duration)) {
     return Math.max(15, Math.min(480, Math.round(duration)));
   }
-  const raw = String(duration || '60').trim().toLowerCase();
+  const raw = String(duration || '').trim().toLowerCase();
+  if (!raw) return null;
   const match = raw.match(/(\d+)/);
-  const mins = match ? parseInt(match[1], 10) : 60;
+  const mins = match ? parseInt(match[1], 10) : null;
+  if (!mins) return null;
   return Math.max(15, Math.min(480, mins));
+}
+
+/** Join window for scheduled classes — not shown as session length; class ends when trainer ends it. */
+const SCHEDULED_JOIN_WINDOW_MINUTES = 480;
+
+function formatSessionDuration(minutes) {
+  const m = Math.max(1, Math.round(minutes));
+  if (m < 60) return `${m} min`;
+  const h = Math.floor(m / 60);
+  const rem = m % 60;
+  return rem ? `${h}h ${rem}m` : `${h}h`;
+}
+
+function getSessionProvider(o) {
+  if (o?.conferenceProvider === 'zoom' || o?.conferenceProvider === 'meet') {
+    return o.conferenceProvider;
+  }
+  if (o?.zoomMeetingId && !o?.meetLink) return 'zoom';
+  return 'meet';
+}
+
+async function resolveConferenceForTeacher(teacherId) {
+  const teacher = await User.findById(teacherId)
+    .select('conferenceProvider zoomUserId name email role')
+    .lean()
+    .exec();
+  if (!teacher) {
+    return { provider: 'zoom', zoomUserId: '', teacher: null };
+  }
+  const settings = await getLiveClassSettings();
+  let provider = teacher.conferenceProvider === 'zoom' ? 'zoom' : 'meet';
+  // When Meet is off (env/admin), all live sessions use Zoom
+  if (!settings.googleMeetEnabled) {
+    provider = 'zoom';
+  }
+  const trainerZoomId = String(teacher.zoomUserId || '').trim();
+  const zoomUserId =
+    trainerZoomId || (provider === 'zoom' ? zoomConfig.defaultUserId() : '');
+  return {
+    provider,
+    zoomUserId,
+    teacher
+  };
+}
+
+function getSessionJoinLink(doc, { host = false } = {}) {
+  const o = doc?.toObject ? doc.toObject() : doc || {};
+  const provider = getSessionProvider(o);
+  if (provider === 'zoom') {
+    let url = host ? o.zoomStartUrl || o.zoomLink || '' : o.zoomLink || '';
+    if (url && o.zoomPassword && !String(url).includes('pwd=')) {
+      url += `${String(url).includes('?') ? '&' : '?'}pwd=${encodeURIComponent(o.zoomPassword)}`;
+    }
+    return url;
+  }
+  return withMeetJoinDefaults(o.meetLink || '', { host });
 }
 
 function serializeMeeting(doc, { includeMeetLink = true } = {}) {
@@ -92,18 +166,20 @@ function serializeMeeting(doc, { includeMeetLink = true } = {}) {
       })
     : o.scheduledTime || '';
 
+  const conferenceProvider = getSessionProvider(o);
   const skipRecordingUpload = Boolean(o.skipRecordingUpload) || !o.batchId;
   const now = Date.now();
   const endMs = end ? end.getTime() : null;
+  const hasJoinLink = Boolean(o.meetLink || o.zoomLink);
+  const hasPlayableRecording = Boolean(o.youtubeVideoId || o.driveFileId);
   const needsRecording =
     !skipRecordingUpload &&
-    Boolean(o.meetLink) &&
+    hasJoinLink &&
     o.status !== 'cancelled' &&
     !o.recordingPromptDismissedAt &&
-    !o.driveFileId &&
+    !hasPlayableRecording &&
     endMs !== null &&
-    endMs < now &&
-    o.status !== 'completed';
+    endMs < now;
 
   const attendance = Array.isArray(o.attendance) ? o.attendance : [];
   const attendanceCount = attendance.filter(
@@ -113,7 +189,11 @@ function serializeMeeting(doc, { includeMeetLink = true } = {}) {
     (a) => String(a.status || '').toLowerCase() === 'absent'
   ).length;
 
-  const link = o.meetLink || '';
+  const meetLink = o.meetLink || '';
+  const zoomLink = o.zoomLink || '';
+  const publicJoinLink =
+    conferenceProvider === 'zoom' ? zoomLink : meetLink;
+
   return {
     id,
     title: o.title,
@@ -131,14 +211,19 @@ function serializeMeeting(doc, { includeMeetLink = true } = {}) {
     scheduledDate,
     scheduledTime,
     timezone: o.timezone || 'Asia/Kolkata',
-    duration: o.duration || '60 mins',
+    duration: o.duration || '',
     status: o.status || 'scheduled',
-    hasMeetLink: Boolean(link),
-    // Students only receive the Meet URL from POST /join (so join marks attendance).
-    meetLink: includeMeetLink ? link : '',
-    calendarEventId: includeMeetLink ? o.calendarEventId || '' : '',
-    meetSpaceId: includeMeetLink ? o.meetSpaceId || '' : '',
-    zoomLink: includeMeetLink ? o.zoomLink || link : '',
+    conferenceProvider,
+    hasJoinLink,
+    hasMeetLink: conferenceProvider === 'meet' ? Boolean(meetLink) : Boolean(zoomLink),
+    meetLink: includeMeetLink && conferenceProvider === 'meet' ? meetLink : '',
+    calendarEventId: includeMeetLink && conferenceProvider === 'meet' ? o.calendarEventId || '' : '',
+    meetSpaceId: includeMeetLink && conferenceProvider === 'meet' ? o.meetSpaceId || '' : '',
+    zoomMeetingId: includeMeetLink && conferenceProvider === 'zoom' ? o.zoomMeetingId || '' : '',
+    zoomLink: includeMeetLink && conferenceProvider === 'zoom' ? zoomLink : '',
+    zoomStartUrl: includeMeetLink && conferenceProvider === 'zoom' ? o.zoomStartUrl || '' : '',
+    zoomPassword: includeMeetLink && conferenceProvider === 'zoom' ? o.zoomPassword || '' : '',
+    joinLink: includeMeetLink ? publicJoinLink : '',
     createdBy: o.createdBy || '',
     reminderSentAt: o.reminderSentAt || null,
     recordingPromptDismissedAt: o.recordingPromptDismissedAt || null,
@@ -152,6 +237,11 @@ function serializeMeeting(doc, { includeMeetLink = true } = {}) {
     recordingUploadedAt: o.recordingUploadedAt || null,
     recordingSyncAt: o.recordingSyncAt || null,
     recordingSyncError: o.recordingSyncError || '',
+    recordingPipelineStatus: o.recordingPipelineStatus || '',
+    zoomRecordingId: o.zoomRecordingId || '',
+    youtubeVideoId: o.youtubeVideoId || '',
+    youtubeVideoUrl: o.youtubeVideoUrl || '',
+    youtubeEmbedUrl: o.youtubeEmbedUrl || '',
     classroomLectureId: o.classroomLectureId || '',
     sessionSummary: o.sessionSummary || '',
     sessionSummaryStatus: o.sessionSummaryStatus || '',
@@ -264,12 +354,96 @@ async function assertCanViewMeeting(user, meeting) {
   return false;
 }
 
+/** Build Meeting SDK join payload for in-LMS Zoom classroom. */
+async function buildZoomSdkPayload(doc, user, { wantHost = false } = {}) {
+  if (getSessionProvider(doc) !== 'zoom' || !zoomMeetingSdk.isEmbeddedEnabled() || !doc.zoomMeetingId) {
+    let sdkError = '';
+    if (getSessionProvider(doc) === 'zoom' && !zoomMeetingSdk.isEmbeddedEnabled()) {
+      sdkError = 'Zoom Meeting SDK is not configured on the server.';
+    } else if (getSessionProvider(doc) === 'zoom' && !doc.zoomMeetingId) {
+      sdkError = 'This Zoom class is missing a meeting ID.';
+    }
+    return { sdk: null, sdkError, embedded: false };
+  }
+
+  try {
+    const role = wantHost ? 1 : 0;
+    let signature = zoomMeetingSdk.generateSignature({
+      meetingNumber: doc.zoomMeetingId,
+      role
+    });
+    let zak = '';
+    let zakError = '';
+    if (role === 1) {
+      try {
+        const conf = await resolveConferenceForTeacher(doc.teacherId || user.id);
+        zak = await zoomService.getZakToken(conf.zoomUserId || zoomConfig.defaultUserId());
+      } catch (zakErr) {
+        zakError = zakErr.message || 'Failed to get Zoom host token (ZAK)';
+        console.warn('[meetings] ZAK token failed (continuing without host token):', zakError);
+      }
+    }
+    const sdk = {
+      sdkKey: zoomMeetingSdk.meetingSdkKey(),
+      signature,
+      meetingNumber: String(doc.zoomMeetingId).replace(/\s/g, ''),
+      password: doc.zoomPassword || '',
+      userName: user.name || (wantHost ? 'Trainer' : 'Student'),
+      userEmail: user.email || '',
+      role,
+      zak: zak || undefined,
+      zakMissing: role === 1 && !zak,
+      zakError: zakError || undefined
+    };
+    let sdkError = '';
+    if (sdk.zakMissing) {
+      sdkError =
+        'Host controls limited — reconnecting as participant. Ensure Zoom S2S scope user:read:token:admin is enabled.';
+      sdk.role = 0;
+      sdk.signature = zoomMeetingSdk.generateSignature({
+        meetingNumber: doc.zoomMeetingId,
+        role: 0
+      });
+    }
+    return { sdk, sdkError, embedded: true };
+  } catch (sdkErr) {
+    const sdkError = sdkErr.message || 'Failed to build Zoom SDK join payload';
+    console.warn('[meetings] SDK join payload failed:', sdkError);
+    return { sdk: null, sdkError, embedded: false };
+  }
+}
+
 // @route   GET /api/meetings/status
 router.get('/status', async (req, res) => {
   try {
-    res.json({ success: true, ...googleCalendarService.getMeetStatus() });
+    const liveSettings = await getLiveClassSettings();
+    const meetStatus = googleCalendarService.getMeetStatus();
+    const sdkStatus = zoomMeetingSdk.getStatus();
+    res.json({
+      success: true,
+      ...meetStatus,
+      // Admin/env override — authoritative for whether Meet sessions are offered
+      enabled: liveSettings.googleMeetEnabled,
+      envEnabled: liveSettings.envGoogleMeetEnabled,
+      adminOverride: liveSettings.adminOverride,
+      defaultConferenceProvider: liveSettings.defaultConferenceProvider,
+      drive: {
+        configured: liveSettings.driveConfigured
+      },
+      youtube: {
+        configured: liveSettings.youtubeConfigured,
+        privacy: liveSettings.youtubePrivacy
+      },
+      zoom: {
+        ...zoomService.getStatus(),
+        recordingSyncEnabled: liveSettings.zoomRecordingSyncEnabled,
+        embedded: sdkStatus.enabled,
+        meetingSdk: sdkStatus
+      },
+      liveClass: liveSettings
+    });
   } catch (error) {
-    res.status(500).json({ success: false, message: 'Failed to read Meet status' });
+    res.status(500).json({ success: false, message: 'Failed to read live class status' });
   }
 });
 
@@ -281,9 +455,11 @@ router.get('/needing-recording', async (req, res) => {
     }
     const query = {
       status: { $nin: ['cancelled', 'completed'] },
-      meetLink: { $ne: '' },
+      $or: [{ meetLink: { $ne: '' } }, { zoomLink: { $ne: '' } }],
       recordingPromptDismissedAt: null,
-      $or: [{ driveFileId: { $exists: false } }, { driveFileId: '' }, { driveFileId: null }],
+      $and: [
+        { $or: [{ driveFileId: { $exists: false } }, { driveFileId: '' }, { driveFileId: null }] }
+      ],
       scheduledEnd: { $lt: new Date() }
     };
     if (!isAdmin(req.user.role)) {
@@ -301,34 +477,86 @@ router.get('/needing-recording', async (req, res) => {
 });
 
 // @route   POST /api/meetings/sync-recordings
-// @desc    Pull Meet recordings from host Drive into assigned batch classrooms
+// @desc    Sync Zoom (→ Drive → YouTube) and/or Meet recordings into Classroom
 router.post('/sync-recordings', async (req, res) => {
   try {
     if (!isAdmin(req.user.role) && !isTeacherRole(req.user.role)) {
       return res.status(403).json({ success: false, message: 'Access denied' });
     }
     const meetingId = String(req.body?.meetingId || '').trim();
-    const result = await syncMeetRecordings(meetingId ? { meetingId } : {});
-    if (meetingId && result.checked === 0) {
+
+    if (meetingId) {
+      const doc = await LiveClass.findById(meetingId).lean().exec();
+      if (!doc) {
+        return res.status(404).json({ success: false, message: 'Meeting not found' });
+      }
+      if (!(await assertTeacherOrAdminOwns(req.user, doc))) {
+        return res.status(403).json({ success: false, message: 'Access denied' });
+      }
+      if (!doc.batchId || doc.skipRecordingUpload) {
+        return res.json({
+          success: true,
+          message: 'This meeting is not assigned to a batch, so recordings are not imported.',
+          checked: 0,
+          synced: []
+        });
+      }
+
+      if (getSessionProvider(doc) === 'zoom') {
+        const result = await syncZoomRecordings({ meetingId });
+        const n = (result.synced || []).length;
+        return res.json({
+          success: true,
+          pipeline: 'zoom',
+          message: n
+            ? `Synced ${n} Zoom recording${n === 1 ? '' : 's'} to YouTube.`
+            : result.errors?.[0]?.reason ||
+              'No new Zoom recording yet. Cloud processing usually finishes 15–60 minutes after class.',
+          ...result
+        });
+      }
+
+      if (!(await isMeetLiveEnabled())) {
+        return res.status(400).json({
+          success: false,
+          message:
+            'Google Meet recording sync is disabled. Enable Meet in Admin → Live platforms, or use Zoom.'
+        });
+      }
+      const result = await syncMeetRecordings({ meetingId });
+      const n = (result.synced || []).length;
       return res.json({
         success: true,
-        message: 'This meeting is not assigned to a batch, so recordings are not imported.',
+        pipeline: 'meet',
+        message: n
+          ? `Synced ${n} Meet recording${n === 1 ? '' : 's'} into the assigned batch.`
+          : 'No new Meet recordings yet. Meet usually finishes processing 15–60 minutes after class.',
         ...result
       });
     }
-    const n = (result.synced || []).length;
+
+    // Bulk: Zoom first (primary), Meet only when enabled
+    const zoomResult = await syncZoomRecordings();
+    let meetResult = { skipped: true, synced: [], checked: 0 };
+    if (await isMeetLiveEnabled()) {
+      meetResult = await syncMeetRecordings();
+    }
+    const n =
+      (zoomResult.synced || []).length + (meetResult.synced || []).length;
     res.json({
       success: true,
       message: n
-        ? `Synced ${n} recording${n === 1 ? '' : 's'} into the assigned batch${n === 1 ? '' : 'es'}.`
-        : 'No new recordings yet. Meet usually finishes processing 15–60 minutes after class.',
-      ...result
+        ? `Synced ${n} recording${n === 1 ? '' : 's'}.`
+        : 'No new recordings yet.',
+      zoom: zoomResult,
+      meet: meetResult,
+      synced: [...(zoomResult.synced || []), ...(meetResult.synced || [])]
     });
   } catch (error) {
     console.error('POST /sync-recordings error:', error);
     res.status(500).json({
       success: false,
-      message: error.message || 'Failed to sync Meet recordings'
+      message: error.message || 'Failed to sync recordings'
     });
   }
 });
@@ -523,6 +751,8 @@ router.get('/', async (req, res) => {
       if (batchIdFilter) query.batchId = batchIdFilter;
     } else if (isTeacherRole(role)) {
       query.teacherId = userId;
+      await cleanupStaleSessions({ teacherId: userId });
+      await reconcileZoomLiveSessions({ teacherId: userId });
       if (batchIdFilter) {
         const owned = await findBatchForTeacher(batchIdFilter, userId);
         if (!owned) {
@@ -663,7 +893,8 @@ router.post('/', async (req, res) => {
       return res.status(400).json({ success: false, message: 'Invalid start date/time' });
     }
 
-    const mins = parseDurationMinutes(durationMinutes ?? duration);
+    const parsedMins = parseDurationMinutes(durationMinutes ?? duration);
+    const mins = parsedMins ?? SCHEDULED_JOIN_WINDOW_MINUTES;
     const end = new Date(start.getTime() + mins * 60 * 1000);
 
     const teacherId = unassigned ? String(req.user.id) : String(batch.teacherId);
@@ -676,50 +907,132 @@ router.post('/', async (req, res) => {
     let calendarEventId = '';
     let meetLink = '';
     let meetSpaceId = '';
+    let zoomMeetingId = '';
+    let zoomLink = '';
+    let zoomStartUrl = '';
+    let zoomPassword = '';
+    let conferenceProvider = 'meet';
 
-    try {
-      // Do not add batch students (or even trainer) as Calendar guests — Google limits
-      // mass invites long before API quotas. Students see/join classes via LMS only.
-      const created = await googleCalendarService.createMeetEvent({
-        title: String(title).trim(),
-        description:
-          description ||
-          (unassigned
-            ? 'Ad-hoc Meet (not assigned to a batch). Recording stays in Meet; not copied to Classroom.'
-            : `Live class for batch ${batch.name || batchId}`),
-        start,
-        end,
-        timezone: tz
-      });
-      calendarEventId = created.calendarEventId || '';
-      meetLink = created.meetLink || '';
-      meetSpaceId = created.meetSpaceId || '';
-    } catch (calErr) {
-      console.error('Google Calendar createMeetEvent failed:', calErr?.message || calErr);
-      const quota = googleCalendarService.isCalendarQuotaError(calErr);
-      const code = calErr.code === 'MEET_DISABLED' || calErr.code === 'MEET_NOT_CONFIGURED' ? 503 : 502;
-      return res.status(code).json({
-        success: false,
-        message: quota
-          ? googleCalendarService.calendarQuotaMessage()
-          : calErr.message || 'Failed to create Google Meet event',
-        code: quota ? 'CALENDAR_QUOTA_EXCEEDED' : calErr.code || 'MEET_CREATE_FAILED'
-      });
+    const conf = await resolveConferenceForTeacher(teacherId);
+    const requestedProvider =
+      req.body?.conferenceProvider === 'zoom' || req.body?.conferenceProvider === 'meet'
+        ? req.body.conferenceProvider
+        : null;
+    const effectiveProvider =
+      requestedProvider && requestedProvider === conf.provider ? requestedProvider : conf.provider;
+    const classDescription =
+      description ||
+      (unassigned
+        ? 'Ad-hoc live class (not assigned to a batch).'
+        : `Live class for batch ${batch.name || batchId}`);
+
+    let closedPreviousSessions = [];
+    if (wantsStartNow) {
+      await cleanupStaleSessions({ teacherId });
+      closedPreviousSessions = await closePreviousLiveSessionsForTeacher(teacherId);
     }
 
-    if (!meetLink) {
-      // Clean up orphan calendar event if Meet link missing
-      if (calendarEventId) {
-        try {
-          await googleCalendarService.cancelMeetEvent(calendarEventId);
-        } catch (_) {
-          /* ignore */
-        }
+    let zoomIsPmr = false;
+
+    if (effectiveProvider === 'zoom') {
+      if (!zoomService.isConfigured()) {
+        return res.status(503).json({
+          success: false,
+          message: 'Zoom is selected for this trainer but Zoom API credentials are not configured on the server.',
+          code: 'ZOOM_NOT_CONFIGURED'
+        });
       }
-      return res.status(502).json({
-        success: false,
-        message: 'Calendar event created but no Meet link was returned. Check Workspace Meet licensing for the host user.'
-      });
+      if (!conf.zoomUserId) {
+        return res.status(400).json({
+          success: false,
+          message:
+            'This trainer is set to use Zoom but no Zoom user ID is configured. Set ZOOM_DEFAULT_USER_ID in env or add one in Admin → Teachers.',
+          code: 'ZOOM_USER_REQUIRED'
+        });
+      }
+      try {
+        // Always use the trainer PMI so students join the same Zoom room every class.
+        const usePMR = true;
+        const created = await zoomService.createMeeting({
+          zoomUserId: conf.zoomUserId,
+          topic: String(title).trim(),
+          agenda: classDescription,
+          startTime: start,
+          duration: mins,
+          timezone: tz,
+          instant: false,
+          usePMR
+        });
+        zoomMeetingId = String(created.meeting.meetingId || created.meeting.id || '');
+        zoomLink = created.meeting.joinUrl || '';
+        zoomPassword = created.meeting.password || '';
+        zoomIsPmr = Boolean(created.meeting.isPMR);
+        zoomStartUrl = await zoomService.getHostStartUrl(conf.zoomUserId, zoomMeetingId, {
+          password: zoomPassword
+        });
+        conferenceProvider = 'zoom';
+      } catch (zoomErr) {
+        console.error('Zoom createMeeting failed:', zoomErr?.message || zoomErr);
+        return res.status(502).json({
+          success: false,
+          message: zoomErr.message || 'Failed to create Zoom meeting',
+          code: zoomErr.code || 'ZOOM_CREATE_FAILED'
+        });
+      }
+      if (!zoomLink) {
+        return res.status(502).json({
+          success: false,
+          message: 'Zoom meeting created but no join link was returned.'
+        });
+      }
+    } else {
+      if (!(await isMeetLiveEnabled())) {
+        return res.status(503).json({
+          success: false,
+          message:
+            'Google Meet is disabled. Enable it in Admin → Live platforms, or set this trainer to Zoom.',
+          code: 'MEET_DISABLED'
+        });
+      }
+      try {
+        const created = await googleCalendarService.createMeetEvent({
+          title: String(title).trim(),
+          description: classDescription,
+          start,
+          end,
+          timezone: tz
+        });
+        calendarEventId = created.calendarEventId || '';
+        meetLink = created.meetLink || '';
+        meetSpaceId = created.meetSpaceId || '';
+      } catch (calErr) {
+        console.error('Google Calendar createMeetEvent failed:', calErr?.message || calErr);
+        const quota = googleCalendarService.isCalendarQuotaError(calErr);
+        const code = calErr.code === 'MEET_DISABLED' || calErr.code === 'MEET_NOT_CONFIGURED' ? 503 : 502;
+        return res.status(code).json({
+          success: false,
+          message: quota
+            ? googleCalendarService.calendarQuotaMessage()
+            : calErr.message || 'Failed to create Google Meet event',
+          code: quota ? 'CALENDAR_QUOTA_EXCEEDED' : calErr.code || 'MEET_CREATE_FAILED'
+        });
+      }
+
+      if (!meetLink) {
+        if (calendarEventId) {
+          try {
+            await googleCalendarService.cancelMeetEvent(calendarEventId);
+          } catch (_) {
+            /* ignore */
+          }
+        }
+        return res.status(502).json({
+          success: false,
+          message:
+            'Calendar event created but no Meet link was returned. Check Workspace Meet licensing for the host user.'
+        });
+      }
+      conferenceProvider = 'meet';
     }
 
     const roster = unassigned ? [] : await getBatchRoster(String(batchId));
@@ -743,7 +1056,7 @@ router.post('/', async (req, res) => {
       scheduledStart: start,
       scheduledEnd: end,
       timezone: tz,
-      duration: `${mins} mins`,
+      duration: parsedMins ? `${parsedMins} mins` : '',
       scheduledDate: start.toLocaleDateString('en-CA', { timeZone: tz }),
       scheduledTime: start.toLocaleTimeString('en-GB', {
         timeZone: tz,
@@ -751,10 +1064,15 @@ router.post('/', async (req, res) => {
         minute: '2-digit',
         hour12: false
       }),
+      conferenceProvider,
       calendarEventId,
       meetLink,
       meetSpaceId,
-      zoomLink: meetLink,
+      zoomMeetingId,
+      zoomLink,
+      zoomStartUrl,
+      zoomPassword,
+      zoomIsPmr,
       status: wantsStartNow ? 'live' : 'scheduled',
       attendance: seededAttendance,
       skipRecordingUpload: Boolean(unassigned),
@@ -765,17 +1083,28 @@ router.post('/', async (req, res) => {
     });
 
     const serialized = serializeMeeting(liveClass);
-    const hostJoin = withMeetJoinDefaults(meetLink, { host: true });
+    const hostJoin = getSessionJoinLink(liveClass, { host: true });
+    const platformLabel = conferenceProvider === 'zoom' ? 'Zoom' : 'Google Meet';
+    const sdkBundle =
+      conferenceProvider === 'zoom' && wantsStartNow
+        ? await buildZoomSdkPayload(liveClass, req.user, { wantHost: true })
+        : { sdk: null, sdkError: '', embedded: false };
     res.status(201).json({
       success: true,
       message: unassigned
-        ? 'Instant Meet created (no batch). Recording stays in Meet and is not uploaded to Classroom.'
+        ? `Instant ${platformLabel} class created (no batch).`
         : liveClass.status === 'live'
-          ? 'Instant Meet room created. Mic/camera muted on join; recording auto-starts when Workspace allows.'
-          : 'Meet class scheduled',
+          ? `Instant ${platformLabel} room created. Students join from the LMS dashboard.`
+          : `${platformLabel} class scheduled`,
       meeting: serialized,
       meetLink: hostJoin,
-      startUrl: hostJoin
+      startUrl: hostJoin,
+      joinUrl: hostJoin,
+      conferenceProvider,
+      embedded: sdkBundle.embedded,
+      sdk: sdkBundle.sdk,
+      sdkError: sdkBundle.sdkError || undefined,
+      closedPreviousSessions
     });
   } catch (error) {
     console.error('POST /api/meetings error:', error);
@@ -800,16 +1129,30 @@ async function cancelMeetingHandler(req, res) {
       return res.json({ success: true, message: 'Already cancelled', meeting: serializeMeeting(doc) });
     }
 
-    if (doc.calendarEventId) {
+    if (getSessionProvider(doc) === 'meet' && doc.calendarEventId) {
       try {
         await googleCalendarService.cancelMeetEvent(doc.calendarEventId);
       } catch (calErr) {
         console.error('cancelMeetEvent failed:', calErr?.message || calErr);
-        // Still mark cancelled locally if Meet is disabled
         if (calErr.code !== 'MEET_DISABLED' && calErr.code !== 'MEET_NOT_CONFIGURED') {
           return res.status(502).json({
             success: false,
             message: calErr.message || 'Failed to cancel Calendar event'
+          });
+        }
+      }
+    }
+
+  // PMI is the trainer's permanent room — never delete it when cancelling an LMS session.
+    if (getSessionProvider(doc) === 'zoom' && doc.zoomMeetingId && !doc.zoomIsPmr) {
+      try {
+        await zoomService.deleteMeeting(doc.zoomMeetingId);
+      } catch (zoomErr) {
+        console.error('deleteMeeting failed:', zoomErr?.message || zoomErr);
+        if (zoomErr.code !== 'ZOOM_NOT_CONFIGURED') {
+          return res.status(502).json({
+            success: false,
+            message: zoomErr.message || 'Failed to cancel Zoom meeting'
           });
         }
       }
@@ -843,16 +1186,51 @@ router.post('/:id/start', async (req, res) => {
     if (doc.status === 'cancelled') {
       return res.status(400).json({ success: false, message: 'Class is cancelled' });
     }
-    if (!doc.meetLink) {
-      return res.status(400).json({ success: false, message: 'No Meet link available' });
+    if (!doc.meetLink && !doc.zoomLink) {
+      return res.status(400).json({ success: false, message: 'No live class link available' });
     }
+    const teacherIdForGuard = isTeacherRole(req.user.role) ? String(req.user.id) : String(doc.teacherId);
+    await cleanupStaleSessions({ teacherId: teacherIdForGuard });
+    const closedPreviousSessions = await closePreviousLiveSessionsForTeacher(teacherIdForGuard, {
+      exceptMeetingId: doc._id
+    });
     if (isTeacherRole(req.user.role)) {
       doc.teacherId = String(req.user.id);
       if (req.user.name) doc.teacherName = req.user.name;
     }
     if (doc.status === 'scheduled' || doc.status === 'live') {
+      const now = new Date();
+      const scheduledStart = doc.scheduledStart ? new Date(doc.scheduledStart) : null;
+      const windowMins = parseDurationMinutes(doc.duration) || SCHEDULED_JOIN_WINDOW_MINUTES;
+      if (scheduledStart && scheduledStart > now) {
+        const earlyEnd = new Date(now.getTime() + windowMins * 60 * 1000);
+        const plannedEnd = doc.scheduledEnd
+          ? new Date(doc.scheduledEnd)
+          : new Date(scheduledStart.getTime() + windowMins * 60 * 1000);
+        doc.scheduledEnd = earlyEnd > plannedEnd ? earlyEnd : plannedEnd;
+      }
       doc.status = 'live';
       doc.updatedAt = new Date();
+      if (getSessionProvider(doc) === 'zoom') {
+        const conf = await resolveConferenceForTeacher(doc.teacherId);
+        if (conf.zoomUserId) {
+          const pmr = await zoomService.createMeeting({
+            zoomUserId: conf.zoomUserId,
+            topic: doc.title || 'Live Class',
+            startTime: doc.scheduledStart || new Date(),
+            duration: parseDurationMinutes(doc.duration) || SCHEDULED_JOIN_WINDOW_MINUTES,
+            timezone: doc.timezone || 'Asia/Kolkata',
+            usePMR: true
+          });
+          doc.zoomMeetingId = String(pmr.meeting.meetingId || pmr.meeting.id || doc.zoomMeetingId || '');
+          doc.zoomLink = pmr.meeting.joinUrl || doc.zoomLink || '';
+          doc.zoomPassword = pmr.meeting.password || doc.zoomPassword || '';
+          doc.zoomIsPmr = true;
+          doc.zoomStartUrl = await zoomService.getHostStartUrl(conf.zoomUserId, doc.zoomMeetingId, {
+            password: doc.zoomPassword || ''
+          });
+        }
+      }
       await doc.save();
     }
 
@@ -864,8 +1242,7 @@ router.post('/:id/start', async (req, res) => {
       console.warn('[meetings] classroom publish on start:', pubErr.message || pubErr);
     }
 
-    // Best-effort: open waiting room / auto-record on existing space
-    if (doc.meetSpaceId) {
+    if (getSessionProvider(doc) === 'meet' && doc.meetSpaceId) {
       try {
         await googleCalendarService.configureMeetSpaceOpen(doc.meetSpaceId);
       } catch (_) {
@@ -873,15 +1250,31 @@ router.post('/:id/start', async (req, res) => {
       }
     }
 
-    const hostJoin = withMeetJoinDefaults(doc.meetLink, { host: true });
+    const hostJoin = getSessionJoinLink(doc, { host: true });
+    const provider = getSessionProvider(doc);
+    const sdkBundle =
+      provider === 'zoom'
+        ? await buildZoomSdkPayload(doc, req.user, { wantHost: true })
+        : { sdk: null, sdkError: '', embedded: false };
     res.json({
       success: true,
       meeting: serializeMeeting(doc),
       startUrl: hostJoin,
       meetLink: hostJoin,
-      joinDefaults: { audioMuted: true, videoMuted: true, autoRecordRequested: true },
+      joinUrl: hostJoin,
+      conferenceProvider: provider,
+      embedded: sdkBundle.embedded,
+      sdk: sdkBundle.sdk,
+      sdkError: sdkBundle.sdkError || undefined,
+      joinDefaults:
+        provider === 'meet'
+          ? { audioMuted: true, videoMuted: true, autoRecordRequested: true }
+          : { zoomHost: true },
       message:
-        'Class started. Join opens with mic/camera muted. Start Meet recording if it does not begin automatically.'
+        provider === 'zoom'
+          ? 'Class started. Opening Zoom Workspace as host.'
+          : 'Class started. Join opens with mic/camera muted. Start Meet recording if it does not begin automatically.',
+      closedPreviousSessions
     });
   } catch (error) {
     console.error('POST /meetings/:id/start error:', error);
@@ -897,8 +1290,8 @@ router.post('/:id/join', async (req, res) => {
     if (doc.status === 'cancelled') {
       return res.status(400).json({ success: false, message: 'Class is cancelled' });
     }
-    if (!doc.meetLink) {
-      return res.status(400).json({ success: false, message: 'No Meet link available' });
+    if (!doc.meetLink && !doc.zoomLink) {
+      return res.status(400).json({ success: false, message: 'No live class link available' });
     }
     if (isStudentRole(req.user.role) && (!doc.batchId || doc.skipRecordingUpload)) {
       return res.status(403).json({
@@ -940,13 +1333,26 @@ router.post('/:id/join', async (req, res) => {
       await doc.save();
     }
 
-    const joinLink = withMeetJoinDefaults(doc.meetLink, {
+    const joinLink = getSessionJoinLink(doc, {
       host: isTeacherRole(req.user.role) || isAdmin(req.user.role)
     });
+    const provider = getSessionProvider(doc);
+    const wantHost = Boolean(
+      req.body?.host || isTeacherRole(req.user.role) || isAdmin(req.user.role)
+    );
+
+    const { sdk, sdkError, embedded: sdkEmbedded } = await buildZoomSdkPayload(doc, req.user, {
+      wantHost
+    });
+
     res.json({
       success: true,
       meetLink: joinLink,
       joinUrl: joinLink,
+      conferenceProvider: provider,
+      embedded: sdkEmbedded && Boolean(sdk),
+      sdk,
+      sdkError: sdkError || undefined,
       markedPresent,
       meeting: serializeMeeting(doc, { includeMeetLink: !isStudentRole(req.user.role) })
     });
@@ -965,7 +1371,18 @@ router.post('/:id/complete', async (req, res) => {
       return res.status(403).json({ success: false, message: 'Access denied' });
     }
     const dismissPrompt = req.body?.dismissPrompt !== false;
+    const now = new Date();
     doc.status = 'completed';
+    if (doc.scheduledStart) {
+      const start = new Date(doc.scheduledStart);
+      if (!Number.isNaN(start.getTime())) {
+        const elapsedMins = Math.max(1, Math.round((now.getTime() - start.getTime()) / 60000));
+        doc.scheduledEnd = now;
+        doc.duration = formatSessionDuration(elapsedMins);
+      }
+    } else {
+      doc.scheduledEnd = now;
+    }
     if (dismissPrompt) doc.recordingPromptDismissedAt = new Date();
     doc.updatedAt = new Date();
     await doc.save();
@@ -979,9 +1396,15 @@ router.post('/:id/complete', async (req, res) => {
     }
 
     if (!doc.skipRecordingUpload && doc.batchId) {
-      syncMeetRecordings({ meetingId: String(doc._id) }).catch((err) =>
-        console.warn('[meetings] recording sync on complete:', err.message || err)
-      );
+      if (getSessionProvider(doc) === 'zoom') {
+        syncZoomRecordings({ meetingId: String(doc._id) }).catch((err) =>
+          console.warn('[meetings] zoom recording sync on complete:', err.message || err)
+        );
+      } else {
+        syncMeetRecordings({ meetingId: String(doc._id) }).catch((err) =>
+          console.warn('[meetings] recording sync on complete:', err.message || err)
+        );
+      }
     }
 
     res.json({ success: true, meeting: serializeMeeting(doc) });
@@ -1064,6 +1487,11 @@ router.post('/:id/materials', sessionMaterialUpload.single('file'), async (req, 
 
     // Also index in BatchMaterial for batch Materials tab
     const BatchMaterial = require('../models/BatchMaterial');
+    const Classroom = require('../models/Classroom');
+    const linkedLecture = await Classroom.findOne({ liveClassId: String(doc._id) })
+      .select('_id')
+      .lean()
+      .exec();
     const mime = String(entry.mimeType || '');
     const nameLower = String(entry.name || '').toLowerCase();
     let kind = 'handout';
@@ -1080,6 +1508,7 @@ router.post('/:id/materials', sessionMaterialUpload.single('file'), async (req, 
       driveLink: entry.driveLink,
       driveFolderId: folderId,
       liveClassId: String(doc._id),
+      classroomLectureId: linkedLecture ? String(linkedLecture._id) : '',
       uploadedBy: String(req.user.id),
       uploadedByName: req.user.name || '',
       createdAt: new Date(),

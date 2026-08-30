@@ -1,43 +1,36 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { getApiBaseUrl } from '../utils/apiBase';
-import { meetJoinUrl } from '../utils/meetJoinUrl';
+import { liveJoinUrl, livePlatformLabel, trainerLivePlatform } from '../utils/liveJoinUrl';
+import { openLiveClassSession } from '../utils/openLiveClassSession';
+import { formatLiveClassCountdown, getLiveClassSessionPhase } from '../utils/liveClassSessionPhase';
+import LiveClassPlatformPicker from './LiveClassPlatformPicker';
+import './LiveClassStudio.css';
 import './MeetLiveClasses.css';
 
 function sessionPhase(meeting, now = Date.now()) {
-  const start = meeting.scheduledStart
-    ? new Date(meeting.scheduledStart).getTime()
-    : new Date(`${meeting.scheduledDate}T${meeting.scheduledTime || '00:00'}`).getTime();
-  const end = meeting.scheduledEnd ? new Date(meeting.scheduledEnd).getTime() : start + 60 * 60 * 1000;
-  if (Number.isNaN(start)) return { phase: 'unknown', minsUntil: null };
-  const minsUntil = Math.round((start - now) / 60000);
-  if (meeting.needsRecording) {
-    return { phase: 'needsRecording', minsUntil };
-  }
-  if (end < now && meeting.status !== 'completed' && meeting.status !== 'cancelled' && !meeting.skipRecordingUpload && meeting.batchId) {
-    return { phase: 'needsRecording', minsUntil };
-  }
-  if (minsUntil <= 0 && end >= now) return { phase: 'live', minsUntil };
-  if (minsUntil > 0 && minsUntil <= 15) return { phase: 'soon', minsUntil };
-  if (minsUntil > 15) return { phase: 'scheduled', minsUntil };
-  return { phase: 'ended', minsUntil };
+  return getLiveClassSessionPhase(meeting, now, { forTrainer: true });
 }
 
 function formatCountdown(minsUntil, phase) {
-  if (phase === 'needsRecording') return 'Session ended — upload recording';
-  if (minsUntil === null || minsUntil === undefined) return '';
-  if (minsUntil <= 0) return 'Session window open';
-  if (minsUntil < 60) return `Starts in ${minsUntil} min`;
-  const h = Math.floor(minsUntil / 60);
-  const m = minsUntil % 60;
-  return `Starts in ${h}h ${m}m`;
+  return formatLiveClassCountdown(minsUntil, phase, { forTrainer: true });
 }
 
 export default function MeetLiveClassesPanel({
   batchId = '',
   batches = [],
   compact = false,
-  title = 'Live classes'
+  studioLayout = false,
+  batchSchedule = null,
+  title = 'Live classes',
+  batchLabel: batchLabelProp = '',
+  conferenceProvider: conferenceProviderProp = ''
 }) {
+  const apiUrl = getApiBaseUrl();
+  const [trainerPlatform, setTrainerPlatform] = useState(
+    conferenceProviderProp === 'zoom' ? 'zoom' : conferenceProviderProp === 'meet' ? 'meet' : ''
+  );
+  const [selectedPlatform, setSelectedPlatform] = useState('meet');
+  const [hostProfile, setHostProfile] = useState({ name: '', email: '' });
   const [meetings, setMeetings] = useState([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -59,7 +52,7 @@ export default function MeetLiveClassesPanel({
   const [intimating, setIntimating] = useState(false);
   const [materialMeetingId, setMaterialMeetingId] = useState('');
   const materialInputRef = React.useRef(null);
-  const [scheduleOpen, setScheduleOpen] = useState(true);
+  const [meetEnabled, setMeetEnabled] = useState(true);
   const [sessionFilter, setSessionFilter] = useState('all'); // all | upcoming | completed
   const [sessionBatchFilter, setSessionBatchFilter] = useState('');
   const [sessionSearch, setSessionSearch] = useState('');
@@ -68,7 +61,6 @@ export default function MeetLiveClassesPanel({
     batchId: batchId || '',
     scheduledDate: '',
     scheduledTime: '',
-    duration: '60',
     description: '',
     unassigned: false
   });
@@ -111,6 +103,57 @@ export default function MeetLiveClassesPanel({
   useEffect(() => {
     loadMeetings();
   }, [loadMeetings]);
+
+  useEffect(() => {
+    const hasLive = meetings.some((m) => m.status === 'live');
+    if (!hasLive) return undefined;
+    const tick = setInterval(() => loadMeetings(), 45000);
+    return () => clearInterval(tick);
+  }, [meetings, loadMeetings]);
+
+  useEffect(() => {
+    if (conferenceProviderProp === 'zoom' || conferenceProviderProp === 'meet') {
+      setTrainerPlatform(conferenceProviderProp);
+      setSelectedPlatform(conferenceProviderProp);
+    }
+    fetch(`${apiUrl}/api/auth/me`, { headers: authHeaders() })
+      .then((r) => r.json())
+      .then((data) => {
+        if (!(conferenceProviderProp === 'zoom' || conferenceProviderProp === 'meet')) {
+          const p = data?.user?.conferenceProvider;
+          if (p === 'zoom' || p === 'meet') {
+            setTrainerPlatform(p);
+            setSelectedPlatform(p);
+          }
+        }
+        if (data?.user) {
+          setHostProfile({
+            name: data.user.name || '',
+            email: data.user.email || ''
+          });
+        }
+      })
+      .catch(() => {});
+    fetch(`${apiUrl}/api/meetings/status`, { headers: authHeaders() })
+      .then((r) => r.json())
+      .then((data) => {
+        if (typeof data?.enabled === 'boolean') {
+          setMeetEnabled(data.enabled);
+          if (!data.enabled) {
+            setTrainerPlatform((prev) => (prev === 'meet' ? 'zoom' : prev));
+            setSelectedPlatform((prev) => (prev === 'meet' ? 'zoom' : prev));
+          }
+        }
+      })
+      .catch(() => {});
+  }, [apiUrl, conferenceProviderProp]);
+
+  const platformName = trainerLivePlatform(trainerPlatform || selectedPlatform || 'meet');
+  const usesZoom = (trainerPlatform || selectedPlatform) === 'zoom';
+  const batchLabel =
+    batchLabelProp ||
+    batches.find((b) => String(b.id) === String(batchId || form.batchId))?.name ||
+    '';
 
   const summaryBatchId =
     batchId || form.batchId || meetings.find((m) => m.batchId)?.batchId || '';
@@ -187,7 +230,7 @@ export default function MeetLiveClassesPanel({
   };
 
   const visible = meetings
-    .filter((m) => m.status !== 'cancelled' && m.meetLink)
+    .filter((m) => m.status !== 'cancelled' && (m.hasJoinLink || m.meetLink || m.zoomLink))
     .filter((m) => {
       const { phase } = sessionPhase(m, now);
       return phase !== 'ended' || m.needsRecording || m.status === 'completed';
@@ -195,6 +238,20 @@ export default function MeetLiveClassesPanel({
     .sort((a, b) => new Date(a.scheduledStart || 0) - new Date(b.scheduledStart || 0));
 
   const needingRecording = visible.filter((m) => sessionPhase(m, now).phase === 'needsRecording');
+
+  const activeLive = visible.find((m) => sessionPhase(m, now).phase === 'live');
+  const nextSession =
+    activeLive ||
+    visible.find((m) => {
+      const { phase } = sessionPhase(m, now);
+      return m.status !== 'completed' && (phase === 'live' || phase === 'soon' || phase === 'scheduled');
+    });
+  const upcomingScheduled = visible.filter((m) => {
+    if (m.status === 'completed' || m.id === nextSession?.id) return false;
+    const { phase, canStart } = sessionPhase(m, now);
+    return canStart || phase === 'scheduled' || phase === 'soon';
+  });
+  const studioSplit = studioLayout && Boolean(activeLive || nextSession);
 
   const sessionList = visible
     .filter((m) => sessionPhase(m, now).phase !== 'needsRecording')
@@ -235,16 +292,14 @@ export default function MeetLiveClassesPanel({
     e.preventDefault();
     setMessage('');
     setError('');
-    const adHoc = Boolean(form.unassigned);
     const targetBatch = form.batchId || batchId;
-    if (adHoc) {
-      setError('Unassigned rooms are instant-only. Use Start unassigned Meet.');
+    if (!targetBatch || !form.scheduledDate || !form.scheduledTime) {
+      setError('Batch, date, and time are required to schedule a class.');
       return;
     }
-    if (!form.title.trim() || !targetBatch || !form.scheduledDate || !form.scheduledTime) {
-      setError('Title, batch, date, and time are required.');
-      return;
-    }
+    const title =
+      form.title.trim() ||
+      `${batches.find((b) => String(b.id) === String(targetBatch))?.name || batchLabel || 'Batch'} — Live class`;
     setSaving(true);
     try {
       const apiUrl = getApiBaseUrl();
@@ -252,18 +307,18 @@ export default function MeetLiveClassesPanel({
         method: 'POST',
         headers: authHeaders(),
         body: JSON.stringify({
-          title: form.title.trim(),
+          title,
           batchId: targetBatch,
           scheduledDate: form.scheduledDate,
           scheduledTime: form.scheduledTime,
-          duration: form.duration,
           description: form.description || '',
-          timezone: 'Asia/Kolkata'
+          timezone: 'Asia/Kolkata',
+          conferenceProvider: trainerPlatform || selectedPlatform || 'zoom'
         })
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.message || 'Failed to schedule Meet class');
-      setMessage('Class scheduled. Students get an email reminder ~15 minutes before start.');
+      if (!res.ok) throw new Error(data.message || 'Failed to schedule class');
+      setMessage('Class scheduled. It appears below — you can start it anytime before the scheduled time.');
       setForm((f) => ({
         ...f,
         title: '',
@@ -279,22 +334,17 @@ export default function MeetLiveClassesPanel({
     }
   };
 
-  const handleInstantMeet = async ({ unassigned = false, fromHero = false } = {}) => {
+  const handleInstantMeet = async ({ fromHero = false } = {}) => {
     setMessage('');
     setError('');
-    const adHoc = Boolean(unassigned || (!fromHero && form.unassigned));
-    const targetBatch = adHoc ? '' : form.batchId || batchId;
+    const targetBatch = form.batchId || batchId;
+    const batchName =
+      batches.find((b) => String(b.id) === String(targetBatch))?.name || batchLabel || '';
     const title =
       form.title.trim() ||
-      (adHoc ? 'Instant meeting' : fromHero || targetBatch ? 'Instant class' : '');
-    if (!adHoc && !targetBatch) {
-      setError('Select a batch first, or use Instant Meet with no batch.');
-      if (!scheduleOpen) setScheduleOpen(true);
-      return;
-    }
-    if (!title) {
-      setError('Add a class title to start.');
-      if (!scheduleOpen) setScheduleOpen(true);
+      (batchName ? `${batchName} — Live class` : fromHero ? 'Live class' : '');
+    if (!targetBatch) {
+      setError('Select a batch first.');
       return;
     }
     setSaving(true);
@@ -305,24 +355,41 @@ export default function MeetLiveClassesPanel({
         headers: authHeaders(),
         body: JSON.stringify({
           title,
-          batchId: adHoc ? undefined : targetBatch,
-          unassigned: adHoc,
+          batchId: targetBatch,
           startNow: true,
-          duration: form.duration || '60',
           description: form.description || '',
-          timezone: 'Asia/Kolkata'
+          timezone: 'Asia/Kolkata',
+          conferenceProvider: trainerPlatform || selectedPlatform || 'zoom'
         })
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.message || 'Failed to create instant Meet');
-      const link = meetJoinUrl(data.meetLink || data.startUrl || data.meeting?.meetLink, {
+      if (!res.ok) throw new Error(data.message || 'Failed to start class');
+      const meeting = data.meeting || data;
+      const link = liveJoinUrl(meeting, {
         host: true
-      });
-      if (link) window.open(link, '_blank', 'noopener,noreferrer');
+      }) || liveJoinUrl(data.meetLink || data.startUrl, { host: true });
+      const provider = selectedPlatform || trainerPlatform || 'meet';
+      if (provider === 'zoom' && meeting.id) {
+        openLiveClassSession({
+          meetingId: meeting.id,
+          joinUrl: link,
+          embedded: Boolean(data.embedded && data.sdk),
+          conferenceProvider: 'zoom',
+          host: true,
+          joinPayload: data.embedded && data.sdk ? data : null,
+          preferWorkspace: true,
+          userName: data.sdk?.userName || ''
+        });
+      } else if (link) {
+        window.open(link, '_blank', 'noopener,noreferrer');
+      }
       setMessage(
-        adHoc
-          ? 'Ad-hoc Meet started. Recording stays in Meet and is not uploaded to Classroom.'
-          : 'Instant room created. Mic/camera muted on join — start recording in Meet if it does not auto-start.'
+        (data.closedPreviousSessions?.length
+          ? `Closed ${data.closedPreviousSessions.length} previous session(s). `
+          : '') +
+          (usesZoom
+            ? 'Class started in Zoom Workspace. End the class when finished so recording can sync to Classroom.'
+            : 'Class started. End the class when finished.')
       );
       setForm((f) => ({ ...f, title: '', description: '' }));
       await loadMeetings();
@@ -350,6 +417,26 @@ export default function MeetLiveClassesPanel({
     }
   };
 
+  const handleEndClass = async (m) => {
+    if (!window.confirm('End this class? Students will no longer see Join. Recording will sync to Classroom.')) {
+      return;
+    }
+    try {
+      const apiUrl = getApiBaseUrl();
+      const res = await fetch(`${apiUrl}/api/meetings/${m.id}/complete`, {
+        method: 'POST',
+        headers: authHeaders(),
+        body: JSON.stringify({ dismissPrompt: false })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.message || 'Failed to end class');
+      setMessage('Class ended. Recording sync will run automatically (usually 15–60 min).');
+      await loadMeetings();
+    } catch (err) {
+      setError(err.message || 'Failed to end class');
+    }
+  };
+
   const handleStart = async (m) => {
     try {
       const apiUrl = getApiBaseUrl();
@@ -359,13 +446,34 @@ export default function MeetLiveClassesPanel({
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.message || 'Failed to start');
-      const link = meetJoinUrl(data.meetLink || data.startUrl || m.meetLink, { host: true });
-      if (link) window.open(link, '_blank', 'noopener,noreferrer');
+      const meeting = data.meeting || data;
+      const link = liveJoinUrl(meeting, { host: true }) ||
+        liveJoinUrl(data.meetLink || data.startUrl || m, { host: true });
+      const provider = meeting.conferenceProvider || m.conferenceProvider || trainerPlatform || 'meet';
+      if (provider === 'zoom' && (meeting.id || m.id)) {
+        openLiveClassSession({
+          meetingId: meeting.id || m.id,
+          joinUrl: link,
+          embedded: Boolean(data.embedded && data.sdk),
+          conferenceProvider: 'zoom',
+          host: true,
+          joinPayload: data.embedded && data.sdk ? data : null,
+          preferWorkspace: true,
+          userName: data.sdk?.userName || ''
+        });
+      } else if (link) {
+        window.open(link, '_blank', 'noopener,noreferrer');
+      }
       setExpandedId(m.id);
       await Promise.all([loadMeetings(), loadAttendance(m.id)]);
       setMessage(
-        data.message ||
-          'Class started with mic/camera muted. Students who Join are marked Present. Start recording in Meet if needed.'
+        (data.closedPreviousSessions?.length
+          ? `Closed ${data.closedPreviousSessions.length} previous session(s). `
+          : '') +
+          (data.message ||
+            (provider === 'zoom'
+              ? 'Opening Zoom Workspace as host…'
+              : 'Class started.'))
       );
     } catch (err) {
       setError(err.message || 'Failed to start class');
@@ -570,8 +678,26 @@ export default function MeetLiveClassesPanel({
     }
   };
 
+  const handleFieldChange = (field, value) => {
+    setForm((f) => ({ ...f, [field]: value }));
+  };
+
+  const handleStartNow = () => {
+    if (!batchId && !form.batchId) {
+      setError('Select a batch first.');
+      return;
+    }
+    handleInstantMeet({ fromHero: true });
+  };
+
   return (
-    <div className={`live-lobby ${compact ? 'live-lobby--compact' : ''}`}>
+    <div
+      className={`live-studio ${compact ? 'live-studio--compact' : ''}${
+        studioLayout
+          ? ` live-studio--trainer-studio${studioSplit ? ' live-studio--trainer-studio-split' : ''}`
+          : ''
+      }`}
+    >
       <input
         ref={fileInputRef}
         type="file"
@@ -586,54 +712,188 @@ export default function MeetLiveClassesPanel({
         style={{ display: 'none' }}
         onChange={onMaterialFilePicked}
       />
-      <div className="live-lobby__hero">
-        <div className="live-lobby__hero-copy">
-          <p className="live-lobby__eyebrow">Sky States · Live class</p>
-          <h2>{title}</h2>
-          <p>
-            Start a Meet room now, or schedule for later. Students who Join are marked Present.
-            Recordings land in Classroom after Google finishes processing.
-          </p>
+
+      {(trainerPlatform || conferenceProviderProp) && (
+        <div className="live-studio-trainer__start">
+        <LiveClassPlatformPicker
+          selectedPlatform={selectedPlatform}
+          onSelect={setSelectedPlatform}
+          trainerPlatform={trainerPlatform || conferenceProviderProp || 'zoom'}
+          meetEnabled={meetEnabled}
+          batchLabel={batchLabel}
+          classTitle={form.title}
+          onClassTitleChange={(value) => setForm((f) => ({ ...f, title: value }))}
+          scheduledDate={form.scheduledDate}
+          scheduledTime={form.scheduledTime}
+          description={form.description}
+          onFieldChange={handleFieldChange}
+          hostName={hostProfile.name}
+          hostEmail={hostProfile.email}
+          saving={saving}
+          onStartNow={handleStartNow}
+          onSchedule={handleSchedule}
+          showBatchSelect={!batchId}
+          batches={batches}
+          batchId={form.batchId}
+          onBatchChange={(id) => setForm((f) => ({ ...f, batchId: id }))}
+          simplified={studioLayout}
+        />
         </div>
-        <div className="live-lobby__hero-cta">
-          <button
-            type="button"
-            className="live-lobby__btn live-lobby__btn--hero-primary"
-            disabled={saving}
-            onClick={() =>
-              handleInstantMeet({
-                fromHero: true,
-                unassigned: !batchId && !form.batchId
-              })
-            }
-          >
-            {saving ? 'Starting…' : 'Start instant meeting'}
-          </button>
-          {!batchId && (
+      )}
+
+      {studioLayout && activeLive && (
+        <section className="live-studio-live-bar live-studio-trainer__next">
+          <div className="live-studio-live-bar__main">
+            <span className="live-studio-badge live-studio-badge--live">Live</span>
+            <h3>{activeLive.title}</h3>
+            <p className="live-studio-session__meta">
+              {activeLive.scheduledDate} · {activeLive.scheduledTime} IST
+            </p>
+          </div>
+          <div className="live-studio-live-bar__cta">
             <button
               type="button"
-              className="live-lobby__btn live-lobby__btn--hero-ghost"
-              disabled={saving}
-              onClick={() => handleInstantMeet({ fromHero: true, unassigned: true })}
+              className="live-lobby__btn live-lobby__btn--primary"
+              onClick={() => handleStart(activeLive)}
             >
-              Instant · no batch
+              Open Zoom
             </button>
-          )}
-          <button
-            type="button"
-            className="live-lobby__btn live-lobby__btn--hero-ghost"
-            disabled={syncingRecordings}
-            onClick={() => syncRecordings()}
-          >
-            {syncingRecordings ? 'Syncing…' : 'Sync recordings'}
-          </button>
-        </div>
-      </div>
+            <button
+              type="button"
+              className="live-lobby__btn live-lobby__btn--danger"
+              onClick={() => handleEndClass(activeLive)}
+            >
+              End class
+            </button>
+          </div>
+        </section>
+      )}
 
-      {summaryBatchId && (
-        <section className="live-lobby__card live-lobby__card--summary">
+      {studioLayout && !activeLive && nextSession && (
+        <section className="live-studio-next-session live-studio-trainer__next">
+          <div className="live-studio-next-session__card">
+            <div className="live-studio-next-session__main">
+              <div className="live-studio-next-session__head">
+                <h3>{nextSession.title}</h3>
+                {sessionPhase(nextSession, now).phase === 'live' ? (
+                  <span className="live-studio-badge live-studio-badge--live">Live</span>
+                ) : sessionPhase(nextSession, now).phase === 'soon' ? (
+                  <span className="live-studio-badge live-studio-badge--soon">Soon</span>
+                ) : (
+                  <span className="live-studio-badge live-studio-badge--scheduled">Scheduled</span>
+                )}
+              </div>
+              <p className="live-studio-session__meta">
+                {nextSession.scheduledDate} · {nextSession.scheduledTime} IST
+                {nextSession.status === 'completed' && nextSession.duration
+                  ? ` · ${nextSession.duration}`
+                  : ''}
+              </p>
+              <p className="live-studio-session__meta live-studio-session__meta--hint">
+                {formatCountdown(sessionPhase(nextSession, now).minsUntil, sessionPhase(nextSession, now).phase)}
+              </p>
+            </div>
+            <div className="live-studio-next-session__cta">
+              <button
+                type="button"
+                className="live-lobby__btn live-lobby__btn--primary"
+                onClick={() => handleStart(nextSession)}
+              >
+                {sessionPhase(nextSession, now).phase === 'live' ? 'Open class' : 'Start class'}
+              </button>
+            </div>
+          </div>
+        </section>
+      )}
+
+      {studioLayout && upcomingScheduled.length > 0 && (
+        <section className="live-studio-sessions live-studio-trainer__sessions live-studio-trainer__sessions--studio">
+          <div className="live-studio-sessions__head">
+            <h3>More scheduled classes</h3>
+          </div>
+          <ul className="live-lobby__list live-lobby__list--sessions">
+            {upcomingScheduled.map((m) => {
+              const { phase, minsUntil } = sessionPhase(m, now);
+              return (
+                <li key={m.id} className="live-session">
+                  <div className="live-session__top">
+                    <div>
+                      <h4 className="live-session__title">{m.title}</h4>
+                      <p className="live-session__meta">
+                        {m.scheduledDate} · {m.scheduledTime} IST
+                      </p>
+                      <p className="live-session__countdown">{formatCountdown(minsUntil, phase)}</p>
+                    </div>
+                    <span className="live-session__badge live-session__badge--scheduled">Scheduled</span>
+                  </div>
+                  <div className="live-session__cta">
+                    <button
+                      type="button"
+                      className="live-lobby__btn live-lobby__btn--primary"
+                      disabled={!m.hasJoinLink && !m.meetLink && !m.zoomLink}
+                      onClick={() => handleStart(m)}
+                    >
+                      Start class
+                    </button>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+      )}
+
+      {!studioLayout && nextSession && (
+        <section className="live-studio-next-session live-studio-trainer__next">
+          <p className="live-studio-section-num">2. Next live session</p>
+          <div className="live-studio-next-session__card">
+            <div className="live-studio-next-session__main">
+              <div className="live-studio-next-session__head">
+                <h3>{nextSession.title}</h3>
+                {sessionPhase(nextSession, now).phase === 'live' && (
+                  <span className="live-studio-badge live-studio-badge--live">Live</span>
+                )}
+              </div>
+              <p className="live-studio-session__meta">
+                {nextSession.scheduledDate} · {nextSession.scheduledTime} IST
+                {nextSession.status === 'completed' && nextSession.duration
+                  ? ` · ${nextSession.duration}`
+                  : ''}
+                {batchLabel ? ` · ${batchLabel}` : ''}
+              </p>
+              <p className="live-studio-session__meta">
+                {usesZoom ? 'Live on Zoom' : livePlatformLabel(nextSession)}
+              </p>
+            </div>
+            <div className="live-studio-next-session__cta">
+              <button
+                type="button"
+                className="live-lobby__btn live-lobby__btn--primary"
+                onClick={() => handleStart(nextSession)}
+              >
+                Join live session
+              </button>
+            </div>
+          </div>
+        </section>
+      )}
+
+      {(error || message) && (
+        <div className="live-studio-trainer__alerts" style={{ marginBottom: '1rem' }}>
+          {error && (
+            <div className="live-studio__alert live-studio__alert--err" role="alert">
+              {error}
+            </div>
+          )}
+          {message && <div className="live-studio__alert live-studio__alert--ok">{message}</div>}
+        </div>
+      )}
+
+      {!studioLayout && summaryBatchId && (
+        <section className="live-lobby__card live-lobby__card--summary live-studio-trainer__attendance">
+          <p className="live-studio-section-num">5. Batch attendance</p>
           <div className="live-lobby__card-head">
-            <h3>Batch attendance</h3>
+            <h3>Attendance summary</h3>
             <button
               type="button"
               className="live-lobby__btn live-lobby__btn--ghost live-lobby__btn--sm"
@@ -743,24 +1003,38 @@ export default function MeetLiveClassesPanel({
         </section>
       )}
 
-      {needingRecording.length > 0 && (
-        <section className="live-lobby__card live-lobby__card--recording">
+      {!studioLayout && needingRecording.length > 0 && (
+        <section className="live-lobby__card live-lobby__card--recording live-studio-trainer__recordings">
+          <p className="live-studio-section-num">4. Recordings</p>
           <div className="live-lobby__card-head">
-            <h3>Recordings</h3>
+            <h3>Classroom recordings</h3>
             <button
               type="button"
               className="live-lobby__btn live-lobby__btn--ghost live-lobby__btn--sm"
               disabled={syncingRecordings}
               onClick={() => syncRecordings()}
             >
-              {syncingRecordings ? 'Syncing…' : 'Sync from Meet'}
+              {syncingRecordings
+                ? 'Syncing…'
+                : usesZoom
+                  ? 'Sync Zoom → YouTube'
+                  : 'Sync from Meet'}
             </button>
           </div>
           <p className="live-lobby__muted">
-            Auto-import runs every 10 minutes. Manual upload is only needed if Meet did not record.
+            {usesZoom
+              ? 'Zoom cloud recordings are archived to Drive, then uploaded to YouTube for Classroom. Auto-import runs every 10 minutes.'
+              : 'Auto-import runs every 10 minutes. Manual upload is only needed if Meet did not record.'}
           </p>
           <ul className="live-lobby__list">
-            {needingRecording.map((m) => (
+            {needingRecording.length === 0 ? (
+              <li className="live-lobby--empty">
+                {usesZoom
+                  ? 'No recordings pending. After class ends, cloud recording syncs automatically.'
+                  : 'No recordings pending.'}
+              </li>
+            ) : (
+            needingRecording.map((m) => (
               <li key={`rec-${m.id}`} className="live-session">
                 <div className="live-session__top">
                   <div>
@@ -778,7 +1052,7 @@ export default function MeetLiveClassesPanel({
                     disabled={syncingRecordings}
                     onClick={() => syncRecordings(m.id)}
                   >
-                    Pull from Meet
+                    {usesZoom ? 'Sync recording' : 'Pull from Meet'}
                   </button>
                   <button
                     type="button"
@@ -797,142 +1071,17 @@ export default function MeetLiveClassesPanel({
                   </button>
                 </div>
               </li>
-            ))}
+            ))
+            )}
           </ul>
         </section>
       )}
 
-      <div className="live-lobby__grid">
-        <section className="live-lobby__card live-lobby__card--schedule">
-          <div className="live-lobby__card-head">
-            <h3>Schedule a class</h3>
-            <button
-              type="button"
-              className="live-lobby__btn live-lobby__btn--ghost live-lobby__btn--sm"
-              onClick={() => setScheduleOpen((o) => !o)}
-              aria-expanded={scheduleOpen}
-            >
-              {scheduleOpen ? 'Hide form' : 'Show form'}
-            </button>
-          </div>
-          {scheduleOpen && (
-            <>
-              <form className="live-lobby__form live-lobby__form--schedule" onSubmit={handleSchedule}>
-                <label className="live-lobby__field--title">
-                  Class title
-                  <input
-                    type="text"
-                    placeholder="e.g. SQL joins workshop"
-                    value={form.title}
-                    onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
-                    required
-                  />
-                </label>
-                {!batchId && (
-                  <label className="live-lobby__field--batch">
-                    Batch
-                    <select
-                      value={form.unassigned ? '' : form.batchId}
-                      onChange={(e) =>
-                        setForm((f) => ({ ...f, batchId: e.target.value, unassigned: false }))
-                      }
-                      required={!form.unassigned}
-                      disabled={form.unassigned}
-                    >
-                      <option value="">Select batch</option>
-                      {batches.map((b) => (
-                        <option key={b.id} value={b.id}>
-                          {b.name || b.id}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                )}
-                <label className="live-lobby__check">
-                  <input
-                    type="checkbox"
-                    checked={form.unassigned}
-                    onChange={(e) => setForm((f) => ({ ...f, unassigned: e.target.checked }))}
-                  />
-                  Instant Meet with no batch (recording stays in Meet; not uploaded)
-                </label>
-                <label>
-                  Date (IST)
-                  <input
-                    type="date"
-                    value={form.scheduledDate}
-                    onChange={(e) => setForm((f) => ({ ...f, scheduledDate: e.target.value }))}
-                    required
-                  />
-                </label>
-                <label>
-                  Time (IST)
-                  <input
-                    type="time"
-                    value={form.scheduledTime}
-                    onChange={(e) => setForm((f) => ({ ...f, scheduledTime: e.target.value }))}
-                    required
-                  />
-                </label>
-                <label>
-                  Duration
-                  <select
-                    value={form.duration}
-                    onChange={(e) => setForm((f) => ({ ...f, duration: e.target.value }))}
-                  >
-                    <option value="30">30 minutes</option>
-                    <option value="45">45 minutes</option>
-                    <option value="60">60 minutes</option>
-                    <option value="90">90 minutes</option>
-                    <option value="120">2 hours</option>
-                  </select>
-                </label>
-                <label className="live-lobby__field--agenda">
-                  Agenda (optional)
-                  <textarea
-                    rows={2}
-                    value={form.description}
-                    onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
-                    placeholder="What will you cover?"
-                  />
-                </label>
-                <div className="live-lobby__actions">
-                  <button
-                    type="submit"
-                    className="live-lobby__btn live-lobby__btn--primary"
-                    disabled={saving || form.unassigned}
-                    title={form.unassigned ? 'Unassigned rooms are instant-only — use Start now' : undefined}
-                  >
-                    {saving ? 'Scheduling…' : 'Schedule class'}
-                  </button>
-                  <button
-                    type="button"
-                    className="live-lobby__btn live-lobby__btn--ghost"
-                    disabled={saving}
-                    onClick={() => handleInstantMeet({ unassigned: form.unassigned })}
-                    title="Create a Meet room that starts immediately with the title above"
-                  >
-                    {saving
-                      ? 'Creating…'
-                      : form.unassigned
-                        ? 'Start now · no batch'
-                        : 'Start now'}
-                  </button>
-                </div>
-              </form>
-              {error && (
-                <p className="live-lobby__alert live-lobby__alert--err" role="alert">
-                  {error}
-                </p>
-              )}
-              {message && <p className="live-lobby__alert live-lobby__alert--ok">{message}</p>}
-            </>
-          )}
-        </section>
-
-        <section className="live-lobby__card live-lobby__card--sessions">
-          <div className="live-lobby__card-head">
-            <h3>Your sessions</h3>
+      {!studioLayout && (
+      <section className={`live-studio-sessions live-studio-trainer__sessions`}>
+        <p className="live-studio-section-num">3. Your sessions</p>
+        <div className="live-studio-sessions__head">
+            <h3>Session history</h3>
             <span className="live-lobby__muted">
               {sessionList.length} shown
               {sessionCounts.all !== sessionList.length ? ` · ${sessionCounts.all} total` : ''}
@@ -993,7 +1142,7 @@ export default function MeetLiveClassesPanel({
           ) : (
             <ul className="live-lobby__list live-lobby__list--sessions">
               {sessionList.map((m) => {
-                  const { phase, minsUntil } = sessionPhase(m, now);
+                  const { phase, minsUntil, canStart } = sessionPhase(m, now);
                   const badge =
                     phase === 'live' ? 'live' : phase === 'soon' ? 'soon' : 'scheduled';
                   const badgeLabel =
@@ -1010,7 +1159,8 @@ export default function MeetLiveClassesPanel({
                         <div>
                           <h4 className="live-session__title">{m.title}</h4>
                           <p className="live-session__meta">
-                            {m.scheduledDate} · {m.scheduledTime} IST · {m.duration}
+                            {m.scheduledDate} · {m.scheduledTime} IST
+                            {m.duration && m.status === 'completed' ? ` · ${m.duration}` : ''}
                             {m.skipRecordingUpload || !m.batchId
                               ? ' · No batch · recording not uploaded'
                               : m.batchId && batches.length
@@ -1035,20 +1185,34 @@ export default function MeetLiveClassesPanel({
                           </div>
                           )}
                         </div>
-                        <span className={`live-session__badge live-session__badge--${badge}`}>
-                          {badgeLabel}
-                        </span>
+                          <span className={`live-session__badge live-session__badge--${badge}`}>
+                            {badgeLabel}
+                          </span>
+                          <span className="live-session__badge live-session__badge--platform">
+                            {livePlatformLabel(m)}
+                          </span>
                       </div>
                       <div className="live-session__cta">
-                        {m.status !== 'completed' && (
-                          <button
-                            type="button"
-                            className="live-lobby__btn live-lobby__btn--primary"
-                            disabled={!m.meetLink && !m.hasMeetLink}
-                            onClick={() => handleStart(m)}
-                          >
-                            Start class
-                          </button>
+                        {m.status !== 'completed' && (phase === 'live' || canStart) && (
+                          <>
+                            <button
+                              type="button"
+                              className="live-lobby__btn live-lobby__btn--primary"
+                              disabled={!m.hasJoinLink && !m.meetLink && !m.zoomLink}
+                              onClick={() => handleStart(m)}
+                            >
+                              {phase === 'live' ? 'Open in Zoom' : 'Start class'}
+                            </button>
+                            {phase === 'live' && (
+                              <button
+                                type="button"
+                                className="live-lobby__btn live-lobby__btn--danger"
+                                onClick={() => handleEndClass(m)}
+                              >
+                                End class
+                              </button>
+                            )}
+                          </>
                         )}
                         <button
                           type="button"
@@ -1231,7 +1395,23 @@ export default function MeetLiveClassesPanel({
             </ul>
           )}
         </section>
-      </div>
+      )}
+
+      {activeLive && !studioLayout && (
+        <section className="live-studio-end-session live-studio-trainer__end" aria-label="End current class">
+          <p>
+            <strong>End session</strong> — Click below when class is finished. Recording will sync to
+            Classroom automatically.
+          </p>
+          <button
+            type="button"
+            className="live-studio-end-session__btn"
+            onClick={() => handleEndClass(activeLive)}
+          >
+            End session
+          </button>
+        </section>
+      )}
     </div>
   );
 }

@@ -18,6 +18,7 @@ const lessonPath = require('../services/lessonPath');
 const { Assessment } = require('../models/AssessmentStudio');
 const { logActivity } = require('../utils/activityLogger');
 const { attachPresence, findLiveClassForTeacher } = require('../utils/teacherPresence');
+const { resolveNotesAbsolutePath, streamNotesFile } = require('../utils/notesDownload');
 
 const materialUpload = multer({
   dest: path.join(__dirname, '../uploads/tmp-materials'),
@@ -353,6 +354,46 @@ router.post('/batches/:batchId/materials', materialUpload.single('file'), async 
   }
 });
 
+// @route   GET /api/teacher/batches/:batchId/materials/:id/download
+router.get('/batches/:batchId/materials/:id/download', async (req, res) => {
+  try {
+    const batch = await assertTeacherOwnsBatch(req.user.id, req.params.batchId);
+    if (!batch) return res.status(404).json({ success: false, message: 'Batch not found' });
+    const material = await BatchMaterial.findOne({
+      _id: req.params.id,
+      batchId: String(req.params.batchId)
+    })
+      .lean()
+      .exec();
+    if (!material) return res.status(404).json({ success: false, message: 'Material not found' });
+    if (material.driveFileId) {
+      await googleDriveService.streamFileToResponse(
+        res,
+        material.driveFileId,
+        material.name || 'material',
+        material.mimeType
+      );
+      return;
+    }
+    if (material.filePath) {
+      const resolved = resolveNotesAbsolutePath(material.filePath);
+      if (resolved.error) {
+        return res.status(resolved.error).json({ message: resolved.message });
+      }
+      streamNotesFile(res, {
+        filePath: resolved.path,
+        downloadName: material.name || path.basename(resolved.path)
+      });
+      return;
+    }
+    if (material.driveLink) return res.redirect(material.driveLink);
+    return res.status(404).json({ message: 'File not available' });
+  } catch (error) {
+    console.error('GET teacher material download error:', error);
+    if (!res.headersSent) res.status(500).json({ message: 'Failed to download material' });
+  }
+});
+
 // @route   DELETE /api/teacher/batches/:batchId/materials/:id
 router.delete('/batches/:batchId/materials/:id', async (req, res) => {
   try {
@@ -550,12 +591,56 @@ router.get('/classroom/:batchId', async (req, res) => {
       notesAvailable: !!(l.notesAvailable || l.notesFile),
       order: Number(l.order) || idx + 1,
       linkedAssessmentId: l.linkedAssessmentId || '',
-      unlockRule: l.unlockRule === 'afterPrevious' ? 'afterPrevious' : 'open'
+      unlockRule: l.unlockRule === 'afterPrevious' ? 'afterPrevious' : 'open',
+      studentVisible: l.studentVisible !== false
     }));
     res.json({ courseId: batchId, lectures: list, total: list.length });
   } catch (error) {
     console.error('Error fetching teacher classroom:', error);
     res.status(500).json({ message: 'Failed to fetch lectures' });
+  }
+});
+
+// @route   PATCH /api/teacher/classroom/:lectureId/visibility
+// @desc    Show or hide a lecture from students (recording pipeline unaffected)
+// @access  Teacher only
+router.patch('/classroom/:lectureId/visibility', async (req, res) => {
+  try {
+    const { lectureId } = req.params;
+    const teacherId = String(req.user.id);
+    const visible = req.body?.studentVisible ?? req.body?.visible;
+    if (visible === undefined || visible === null) {
+      return res.status(400).json({ success: false, message: 'studentVisible (boolean) is required' });
+    }
+
+    const lecture = await Classroom.findById(lectureId).exec();
+    if (!lecture) {
+      return res.status(404).json({ success: false, message: 'Lecture not found' });
+    }
+    if (!lecture.batchId) {
+      return res.status(400).json({ success: false, message: 'Lecture has no batch' });
+    }
+
+    const batch = await Batch.findById(lecture.batchId).lean().exec();
+    if (!batch || String(batch.teacherId) !== teacherId) {
+      return res.status(403).json({ success: false, message: 'Access denied' });
+    }
+
+    lecture.studentVisible = Boolean(visible);
+    lecture.updatedAt = new Date();
+    await lecture.save();
+
+    res.json({
+      success: true,
+      message: lecture.studentVisible ? 'Lecture is visible to students' : 'Lecture hidden from students',
+      lecture: {
+        id: String(lecture._id),
+        studentVisible: lecture.studentVisible !== false
+      }
+    });
+  } catch (error) {
+    console.error('Error updating lecture visibility:', error);
+    res.status(500).json({ success: false, message: 'Failed to update visibility' });
   }
 });
 
@@ -1707,6 +1792,34 @@ router.post('/videos/:videoId/notes', teacherNotesUpload.single('notesFile'), as
       success: false, 
       message: 'Failed to upload notes' 
     });
+  }
+});
+
+// @route   GET /api/teacher/batches/:batchId/notes/download
+// @desc    Download batch-level notes (zip/pdf) with correct headers
+router.get('/batches/:batchId/notes/download', async (req, res) => {
+  try {
+    const { batchId } = req.params;
+    const batch = await Batch.findById(batchId).lean().exec();
+    if (!batch) return res.status(404).json({ message: 'Batch not found' });
+    if (String(batch.teacherId) !== String(req.user.id)) {
+      return res.status(403).json({ message: 'Access denied' });
+    }
+    const notes = batch.notesFile;
+    if (!notes?.filePath) {
+      return res.status(404).json({ message: 'No batch notes uploaded' });
+    }
+    const resolved = resolveNotesAbsolutePath(notes.filePath);
+    if (resolved.error) {
+      return res.status(resolved.error).json({ message: resolved.message });
+    }
+    streamNotesFile(res, {
+      filePath: resolved.path,
+      downloadName: notes.fileName || path.basename(resolved.path)
+    });
+  } catch (error) {
+    console.error('GET /teacher/batches/:batchId/notes/download error:', error);
+    if (!res.headersSent) res.status(500).json({ message: 'Failed to download batch notes' });
   }
 });
 

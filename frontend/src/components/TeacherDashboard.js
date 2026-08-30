@@ -8,19 +8,35 @@ import ChangePasswordPanel from './ChangePasswordPanel';
 import AccountMenu from './AccountMenu';
 import SkyLoadingScreen from './SkyLoadingScreen';
 import DirectChatPanel from './DirectChatPanel';
-import MeetLiveClassesPanel from './MeetLiveClassesPanel';
-import TeacherAttendanceHub from './TeacherAttendanceHub';
+import ResponsiveShellNav from './ResponsiveShellNav';
 import TeacherAvailabilityPanel from './TeacherAvailabilityPanel';
 import { formatDateForComponent } from '../utils/dateUtils';
-import { meetJoinUrl } from '../utils/meetJoinUrl';
+import { liveJoinUrl } from '../utils/liveJoinUrl';
+import { openLiveClassSession } from '../utils/openLiveClassSession';
 import './Dashboard.css';
 import './MeetLiveClasses.css';
 import { getApiBaseUrl } from '../utils/apiBase';
 
+const TEACHER_NAV_ITEMS = [
+  { id: 'courses', label: 'My batches' },
+  { id: 'messages', label: 'Messages' },
+  { id: 'assessment-studio', label: 'Assessments' }
+];
+
+const LEGACY_TEACHER_SECTIONS = new Set([
+  'overview',
+  'attendance',
+  'students',
+  'availability',
+  'lectures',
+  'meet',
+  'batches'
+]);
+
 const TeacherDashboard = ({ user, onLogout }) => {
   const navigate = useNavigate();
   const location = useLocation();
-  const [activeSection, setActiveSection] = useState('overview');
+  const [activeSection, setActiveSection] = useState('courses');
   const [isAvailable, setIsAvailable] = useState(false);
   const [inClass, setInClass] = useState(false);
   const [liveClassTitle, setLiveClassTitle] = useState('');
@@ -93,8 +109,18 @@ const TeacherDashboard = ({ user, onLogout }) => {
 
   // Handle navigation state when returning from TeacherBatchDetailsPage
   useEffect(() => {
-    if (location.state?.activeSection) {
-      setActiveSection(location.state.activeSection);
+    const sec = location.state?.activeSection;
+    if (!sec) return;
+    if (sec === 'account') {
+      setActiveSection('account');
+      return;
+    }
+    if (LEGACY_TEACHER_SECTIONS.has(sec)) {
+      setActiveSection('courses');
+      return;
+    }
+    if (TEACHER_NAV_ITEMS.some((item) => item.id === sec)) {
+      setActiveSection(sec);
     }
   }, [location.state]);
 
@@ -294,11 +320,29 @@ const TeacherDashboard = ({ user, onLogout }) => {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.message || 'Failed to start class');
-      const link = meetJoinUrl(data.meetLink || data.startUrl || data.meeting?.meetLink, {
-        host: true
-      });
-      if (link) window.open(link, '_blank', 'noopener,noreferrer');
-      showToast('Class started. Mic/camera muted on join.', 'success');
+      const meeting = data.meeting || data;
+      const link = liveJoinUrl(meeting, { host: true }) ||
+        liveJoinUrl(data.meetLink || data.startUrl, { host: true });
+      const provider = meeting.conferenceProvider || 'meet';
+      if (provider === 'zoom' && meeting.id) {
+        openLiveClassSession({
+          meetingId: meeting.id,
+          joinUrl: link,
+          embedded: Boolean(data.embedded && data.sdk),
+          conferenceProvider: 'zoom',
+          host: true,
+          joinPayload: data.embedded && data.sdk ? data : null,
+          preferWorkspace: true
+        });
+      } else if (link) {
+        window.open(link, '_blank', 'noopener,noreferrer');
+      }
+      showToast(
+        provider === 'zoom'
+          ? 'Class started — opening Zoom Workspace…'
+          : 'Class scheduled and started. Students can join from LMS.',
+        'success'
+      );
       setActiveSection('live');
     } catch (err) {
       showToast(err.message || 'Failed to start class', 'error');
@@ -873,207 +917,44 @@ const TeacherDashboard = ({ user, onLogout }) => {
             />
           </div>
         </div>
-        <nav className="ss-shell-nav" aria-label="Teacher">
-          <button
-            type="button"
-            className={`ss-shell-nav__btn ${activeSection === 'overview' ? 'is-active' : ''}`}
-            onClick={() => setActiveSection('overview')}
-          >
-            Overview
-          </button>
-          <button
-            type="button"
-            className={`ss-shell-nav__btn ${activeSection === 'courses' ? 'is-active' : ''}`}
-            onClick={() => setActiveSection('courses')}
-          >
-            My batches
-          </button>
-          <button
-            type="button"
-            className={`ss-shell-nav__btn ${activeSection === 'attendance' ? 'is-active' : ''}`}
-            onClick={() => setActiveSection('attendance')}
-          >
-            Attendance
-          </button>
-          <button
-            type="button"
-            className={`ss-shell-nav__btn ${activeSection === 'students' ? 'is-active' : ''}`}
-            onClick={() => {
-              setActiveSection('students');
-              loadTeacherStudents();
-            }}
-          >
-            Students
-          </button>
-          <button
-            type="button"
-            className={`ss-shell-nav__btn ${activeSection === 'availability' ? 'is-active' : ''}`}
-            onClick={() => setActiveSection('availability')}
-          >
-            Availability
-          </button>
-          <button
-            type="button"
-            className={`ss-shell-nav__btn ${activeSection === 'messages' ? 'is-active' : ''}`}
-            onClick={() => setActiveSection('messages')}
-          >
-            Messages
-          </button>
-          <button
-            type="button"
-            className={`ss-shell-nav__btn ${activeSection === 'lectures' ? 'is-active' : ''}`}
-            onClick={() => setActiveSection('lectures')}
-          >
-            Lectures
-          </button>
-          <button
-            type="button"
-            className={`ss-shell-nav__btn ${activeSection === 'meet' ? 'is-active' : ''}`}
-            onClick={() => setActiveSection('meet')}
-          >
-            Live class
-          </button>
-          <button
-            type="button"
-            className={`ss-shell-nav__btn ${activeSection === 'assessment-studio' ? 'is-active' : ''}`}
-            onClick={() => setActiveSection('assessment-studio')}
-          >
-            Assessment Studio
-          </button>
-          <button
-            type="button"
-            className={`ss-shell-nav__btn ${activeSection === 'account' ? 'is-active' : ''}`}
-            onClick={() => setActiveSection('account')}
-          >
-            Account
-          </button>
-        </nav>
+        <ResponsiveShellNav
+          items={TEACHER_NAV_ITEMS}
+          activeId={TEACHER_NAV_ITEMS.some((item) => item.id === activeSection) ? activeSection : ''}
+          onSelect={(id) => setActiveSection(id)}
+          ariaLabel="Teacher"
+        />
       </header>
 
       <div className="ss-shell-main">
-        {activeSection === 'overview' && (
-          <div className="dashboard-section">
-            <h1 className="ss-page-title">Welcome back, {user?.name}</h1>
-            <p className="ss-page-sub">
-              Run cohort sessions, track attendance, and keep materials current. Your availability
-              toggle is for <strong>admins only</strong> — currently{' '}
-              <strong>
-                {inClass ? 'In class' : isAvailable ? 'Available' : 'Unavailable'}
-              </strong>
-              {inClass && liveClassTitle ? ` (${liveClassTitle})` : ''}.
-              Starting a Meet marks you in class automatically.
-            </p>
-
-            <div className="ss-stat-row">
-              <div className="ss-stat">
-                <div className="ss-stat__value">{batches.length}</div>
-                <div className="ss-stat__label">Batches</div>
-              </div>
-              <div className="ss-stat">
-                <div className="ss-stat__value">
-                  {batches.reduce((n, b) => n + (b.students?.length || b.studentCount || 0), 0)}
-                </div>
-                <div className="ss-stat__label">Students</div>
-              </div>
-              <div className="ss-stat">
-                <div className="ss-stat__value">{lectures.length || '—'}</div>
-                <div className="ss-stat__label">Lectures</div>
-              </div>
-              <div className="ss-stat">
-                <div className="ss-stat__value">
-                  {inClass ? 'Class' : isAvailable ? 'On' : 'Off'}
-                </div>
-                <div className="ss-stat__label">Admin availability</div>
-              </div>
-            </div>
-
-            <div className="ss-panel">
-              <h2 style={{ margin: '0 0 0.5rem', fontSize: '1.05rem' }}>Quick actions</h2>
-              <div className="ss-cta-row">
-                <button type="button" className="ss-shell-btn ss-shell-btn--primary" onClick={() => setActiveSection('courses')}>
-                  Open batches
-                </button>
-                <button type="button" className="ss-shell-btn" onClick={() => setActiveSection('attendance')}>
-                  Attendance
-                </button>
-                <button type="button" className="ss-shell-btn" onClick={() => setActiveSection('meet')}>
-                  Live class
-                </button>
-                <button type="button" className="ss-shell-btn" onClick={() => setActiveSection('availability')}>
-                  Weekly windows
-                </button>
-              </div>
-            </div>
-
-            {batches.length === 0 ? (
-              <div className="ss-panel" style={{ marginTop: '1rem' }}>
-                <h2 style={{ margin: '0 0 0.35rem', fontSize: '1.05rem' }}>Getting started</h2>
-                <p className="ss-page-sub" style={{ margin: 0 }}>
-                  No batches assigned yet. Once an admin adds you to a cohort, they will appear under
-                  Batches — then you can schedule Meet sessions and upload Classroom materials.
-                </p>
-              </div>
-            ) : (
-              <div className="ss-panel" style={{ marginTop: '1rem' }}>
-                <h2 style={{ margin: '0 0 0.5rem', fontSize: '1.05rem' }}>Your batches</h2>
-                <ul style={{ margin: 0, paddingLeft: '1.1rem', lineHeight: 1.6 }}>
-                  {batches.slice(0, 6).map((b) => (
-                    <li key={String(b.id || b._id)}>
-                      <strong>{b.name || 'Batch'}</strong>
-                      {b.course ? ` · ${b.course}` : ''}
-                      {b.schedule?.days
-                        ? ` · ${b.schedule.days}${b.schedule?.time ? ` @ ${b.schedule.time}` : ''}`
-                        : ''}
-                    </li>
-                  ))}
-                </ul>
-                {batches.length > 6 && (
-                  <button
-                    type="button"
-                    className="ss-shell-btn"
-                    style={{ marginTop: '0.75rem' }}
-                    onClick={() => setActiveSection('courses')}
-                  >
-                    View all {batches.length}
-                  </button>
-                )}
-              </div>
-            )}
-          </div>
-        )}
-
-        {activeSection === 'attendance' && (
-          <div className="dashboard-section">
-            <TeacherAttendanceHub />
-          </div>
-        )}
-
-        {activeSection === 'availability' && (
-          <div className="dashboard-section">
-            <TeacherAvailabilityPanel />
-          </div>
-        )}
-
-        {activeSection === 'meet' && (
-          <div className="dashboard-section">
-            <div className="ss-panel">
-              <MeetLiveClassesPanel
-                batches={batches.map((b) => ({
-                  id: String(b.id || b._id),
-                  name: `${b.name || 'Batch'}${b.course ? ` · ${b.course}` : ''}`
-                }))}
-                title="Live class studio"
-              />
-            </div>
-          </div>
-        )}
-
-
         {activeSection === 'courses' && (
           <div className="dashboard-section teacher-batches-pro">
+            <div className="teacher-home-bar ss-panel">
+              <div className="teacher-home-bar__main">
+                <h1 className="ss-page-title">Welcome back, {user?.name?.split(' ')[0] || 'Trainer'}</h1>
+                <p className="ss-page-sub" style={{ margin: 0 }}>
+                  Open a batch to run Zoom, manage classroom lectures, students, attendance, and
+                  materials — everything lives in one workspace per batch.
+                </p>
+              </div>
+              <div className="teacher-home-bar__chips" aria-label="Summary">
+                <span className="teacher-home-chip">{batches.length} batches</span>
+                <span className="teacher-home-chip">
+                  {batches.reduce((n, b) => n + (b.students?.length || b.studentCount || 0), 0)}{' '}
+                  students
+                </span>
+                <span className={`teacher-home-chip${inClass ? ' is-live' : ''}`}>
+                  {inClass
+                    ? `Live now${liveClassTitle ? ` · ${liveClassTitle}` : ''}`
+                    : isAvailable
+                      ? 'Available (admins)'
+                      : 'Away'}
+                </span>
+              </div>
+            </div>
+
             <div className="teacher-batches-pro__head">
               <div>
-                <h1 className="ss-page-title">My batches</h1>
+                <h2 className="teacher-batches-pro__title">Your batches</h2>
                 <p className="ss-page-sub">
                   Showing {filteredBatches.length} of {batches.length} batch{batches.length === 1 ? '' : 'es'}
                 </p>
@@ -1223,18 +1104,7 @@ const TeacherDashboard = ({ user, onLogout }) => {
                                   className="ss-shell-btn"
                                   onClick={() => handleViewBatchDetail(batch)}
                                 >
-                                  Workspace
-                                </button>
-                                <button
-                                  type="button"
-                                  className="ss-shell-btn"
-                                  onClick={() =>
-                                    navigate(`/teacher/batch/${batch.id || batch._id}`, {
-                                      state: { from: 'teacher-batches', activeView: 'meet' }
-                                    })
-                                  }
-                                >
-                                  Sessions
+                                  Open batch
                                 </button>
                               </div>
                             </td>
@@ -1287,341 +1157,6 @@ const TeacherDashboard = ({ user, onLogout }) => {
           </div>
         )}
 
-        {activeSection === 'students' && (
-          <div className="dashboard-section teacher-students-section">
-            <div className="section-header">
-              <div>
-                <h2>My Students</h2>
-                <p className="section-subtitle">
-                  Students in your batches. Contact details are private and not shared with teachers.
-                </p>
-              </div>
-              <button
-                type="button"
-                className="btn-secondary"
-                onClick={loadTeacherStudents}
-                disabled={studentsLoading}
-              >
-                {studentsLoading ? 'Refreshing…' : 'Refresh'}
-              </button>
-            </div>
-
-            <div className="teacher-students-toolbar">
-              <input
-                type="search"
-                className="form-input-modern"
-                placeholder="Search by name or enrollment…"
-                value={studentSearch}
-                onChange={(e) => setStudentSearch(e.target.value)}
-                aria-label="Filter students by name"
-              />
-              <select
-                className="form-input-modern"
-                value={studentCourseFilter}
-                onChange={(e) => setStudentCourseFilter(e.target.value)}
-                aria-label="Filter by course"
-              >
-                <option value="all">All courses</option>
-                {studentCourseOptions.map((c) => (
-                  <option key={c} value={c}>
-                    {c}
-                  </option>
-                ))}
-              </select>
-              <select
-                className="form-input-modern"
-                value={studentBatchFilter}
-                onChange={(e) => setStudentBatchFilter(e.target.value)}
-                aria-label="Filter by batch"
-              >
-                <option value="all">All batches</option>
-                {studentBatchOptions.map((b) => (
-                  <option key={b.id} value={b.id}>
-                    {b.name}
-                  </option>
-                ))}
-              </select>
-              {(studentSearch || studentCourseFilter !== 'all' || studentBatchFilter !== 'all') && (
-                <button
-                  type="button"
-                  className="btn-secondary btn-sm"
-                  onClick={() => {
-                    setStudentSearch('');
-                    setStudentCourseFilter('all');
-                    setStudentBatchFilter('all');
-                  }}
-                >
-                  Clear
-                </button>
-              )}
-              <span className="stat-item">
-                <span className="stat-number">{filteredTeacherStudents.length}</span>
-                <span className="stat-label">students</span>
-              </span>
-            </div>
-
-            {studentsLoading ? (
-              <p className="no-data">Loading students…</p>
-            ) : (
-              <div className="teacher-students-table-wrap">
-                <table className="teacher-students-table">
-                  <thead>
-                    <tr>
-                      <th>Name</th>
-                      <th>Course</th>
-                      <th>Schedule</th>
-                      <th>Enrollment</th>
-                      <th>Status</th>
-                      <th></th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredTeacherStudents.map((student) => (
-                        <tr key={student.id}>
-                          <td>
-                            <div className="teacher-student-name">
-                              <span className="teacher-student-avatar">
-                                {(student.name || '?').charAt(0).toUpperCase()}
-                              </span>
-                              {student.name}
-                            </div>
-                          </td>
-                          <td>{student.course || '—'}</td>
-                          <td>
-                            <div>
-                              {student.scheduleLabel || '—'}
-                              {student.batchName ? (
-                                <div className="ss-page-sub" style={{ marginTop: 2 }}>
-                                  {student.batchType === 'one-to-one' || student.batchType === 'project'
-                                    ? student.batchName
-                                    : student.batchName}
-                                </div>
-                              ) : null}
-                            </div>
-                          </td>
-                          <td>{student.enrollmentNumber || '—'}</td>
-                          <td>
-                            <span className={`status-chip ${(student.status || 'active').toLowerCase()}`}>
-                              {student.status || 'active'}
-                            </span>
-                          </td>
-                          <td>
-                            {student.batchId && (
-                              <button
-                                type="button"
-                                className="btn-secondary btn-sm"
-                                onClick={() => handleViewBatchDetail(student.batchId)}
-                              >
-                                Open batch
-                              </button>
-                            )}
-                          </td>
-                        </tr>
-                      ))}
-                  </tbody>
-                </table>
-                {teacherStudents.length === 0 && (
-                  <p className="no-data">No students enrolled in your batches yet.</p>
-                )}
-                {teacherStudents.length > 0 && filteredTeacherStudents.length === 0 && (
-                  <p className="no-data">No students match these filters.</p>
-                )}
-              </div>
-            )}
-          </div>
-        )}
-
-        {activeSection === 'lectures' && (
-          <div className="dashboard-section">
-            <div className="section-header">
-              <div>
-                <h2>Lectures</h2>
-                <p className="section-subtitle">
-                  Add YouTube lectures to a batch. Open a batch for Order, Unlock, and notes controls.
-                </p>
-              </div>
-            </div>
-            
-            {/* Upload Form */}
-            <div className="upload-section">
-              <h3>Add lecture</h3>
-              <form onSubmit={handleUploadSubmit} className="upload-form">
-                <div className="form-grid">
-                  <div className="form-group">
-                    <label htmlFor="title">Lecture title *</label>
-                    <input
-                      type="text"
-                      id="title"
-                      value={uploadForm.title}
-                      onChange={(e) => setUploadForm({...uploadForm, title: e.target.value})}
-                      required
-                    />
-                  </div>
-                  
-                  <div className="form-group">
-                    <label htmlFor="batchId">Batch *</label>
-                    <select
-                      id="batchId"
-                      value={uploadForm.batchId}
-                      onChange={(e) => {
-                        const batchId = e.target.value;
-                        setUploadForm({ ...uploadForm, batchId, courseId: batchId });
-                        setSelectedCourse(batchId);
-                        if (batchId) loadLectures(batchId);
-                      }}
-                      required
-                    >
-                      <option value="">Select a batch</option>
-                      {batches.map(batch => (
-                        <option key={batch.id} value={batch.id}>
-                          {batch.name}{batch.course ? ` · ${batch.course}` : ''}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  
-                  <div className="form-group full-width">
-                    <label htmlFor="description">Description</label>
-                    <textarea
-                      id="description"
-                      value={uploadForm.description}
-                      onChange={(e) => setUploadForm({...uploadForm, description: e.target.value})}
-                      rows="3"
-                    />
-                  </div>
-                  
-                  <div className="form-group full-width">
-                    <label htmlFor="youtubeUrl">YouTube video URL *</label>
-                    <input
-                      type="url"
-                      id="youtubeUrl"
-                      value={uploadForm.youtubeUrl}
-                      onChange={(e) => setUploadForm({...uploadForm, youtubeUrl: e.target.value})}
-                      placeholder="https://www.youtube.com/watch?v=..."
-                      required
-                    />
-                    <small>Use youtube.com/watch?v=… or youtu.be/…</small>
-                  </div>
-                </div>
-                
-                <button type="submit" className="upload-btn" disabled={uploading}>
-                  {uploading ? 'Adding lecture…' : 'Add lecture'}
-                </button>
-              </form>
-            </div>
-
-            {/* Lectures List */}
-            {selectedCourse && (
-              <div className="lectures-section sky-dashboard-lectures">
-                <h3>
-                  Lectures for{' '}
-                  {batches.find((b) => b.id === selectedCourse)?.name || 'selected batch'}
-                </h3>
-                {lectures.length > 0 ? (
-                  <div className="lectures-grid">
-                    {lectures.map(lecture => (
-                      <article key={lecture.id} className="lecture-card sky-dash-lecture-card">
-                        <div className="lecture-header">
-                          <h4>{lecture.title}</h4>
-                          {lecture.duration && (
-                            <span className="lecture-duration">{lecture.duration}</span>
-                          )}
-                        </div>
-                        {lecture.description && <p>{lecture.description}</p>}
-                        <div className="lecture-meta">
-                          <span>Added {formatDate(lecture.createdAt)}</span>
-                          {lecture.notesAvailable ? <span>Notes available</span> : null}
-                        </div>
-                        <div className="lecture-actions">
-                          {(lecture.youtubeVideoUrl || lecture.youtubeUrl) && (
-                            <button
-                              type="button"
-                              className="watch-btn"
-                              onClick={() =>
-                                window.open(lecture.youtubeVideoUrl || lecture.youtubeUrl, '_blank')
-                              }
-                            >
-                              View
-                            </button>
-                          )}
-                          <button
-                            type="button"
-                            className="edit-btn"
-                            onClick={() => handleEditLecture(lecture)}
-                          >
-                            Edit
-                          </button>
-                          <button
-                            type="button"
-                            className="delete-btn"
-                            onClick={() => handleDeleteLecture(lecture.id)}
-                          >
-                            Remove
-                          </button>
-                        </div>
-                      </article>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="no-data">No lectures for this batch yet.</p>
-                )}
-              </div>
-            )}
-            
-            {!selectedCourse && (
-              <p className="no-data">Select a batch to view and add lectures.</p>
-            )}
-          </div>
-        )}
-
-        {activeSection === 'batches' && (
-          <div className="dashboard-section">
-            <h2>My Batches</h2>
-            <div className="batches-list">
-              {batches.map(batch => (
-                <div key={batch.id} className="batch-card">
-                  <div className="batch-info">
-                    <h3>{batch.name}</h3>
-                    <p>Course: {courses.find(c => c.id === batch.courseId)?.title}</p>
-                    <p>Students: {batch.studentCount || 0}</p>
-                  </div>
-                  <div className="batch-actions">
-                    <button className="view-btn" onClick={() => handleViewBatchDetail(batch)}>
-                      View Details
-                    </button>
-                    <button className="delete-btn" onClick={() => handleDeleteBatch(batch.id || batch._id)}>
-                      Delete Batch
-                    </button>
-                  </div>
-                </div>
-              ))}
-              {batches.length === 0 && (
-                <p className="no-data">No batches found for this course.</p>
-              )}
-            </div>
-
-            {/* Add Batch Form */}
-            <div className="add-batch-section">
-              <h3>Add New Batch</h3>
-              <form onSubmit={handleBatchSubmit} className="add-batch-form">
-                <div className="form-group">
-                  <label htmlFor="batchName">Batch Name *</label>
-                  <input
-                    type="text"
-                    id="batchName"
-                    value={batchName}
-                    onChange={(e) => setBatchName(e.target.value)}
-                    required
-                  />
-                </div>
-                
-                <button type="submit" className="add-batch-btn">
-                  Add Batch
-                </button>
-              </form>
-            </div>
-          </div>
-        )}
         {activeSection === 'assessment-studio' && (
           <div className="dashboard-section">
             <AssessmentStudio user={user} />
@@ -1642,13 +1177,20 @@ const TeacherDashboard = ({ user, onLogout }) => {
           <div className="dashboard-section">
             <h1 className="ss-page-title">My account</h1>
             <p className="ss-page-sub">
-              Signed in as {user?.email}. Change your password with an email verification code.
+              Signed in as {user?.email}. Availability in the header is for admins only.
             </p>
-            <div className="ss-panel" style={{ maxWidth: 520 }}>
+            <div className="ss-panel" style={{ maxWidth: 520, marginBottom: '1.25rem' }}>
               <p><strong>Name:</strong> {user?.name || '—'}</p>
               <p><strong>Email:</strong> {user?.email || '—'}</p>
               <p><strong>Role:</strong> {user?.role || 'teacher'}</p>
               <ChangePasswordPanel mode="change" defaultEmail={user?.email || ''} />
+            </div>
+            <div className="ss-panel">
+              <h2 style={{ margin: '0 0 0.35rem', fontSize: '1.05rem' }}>Weekly availability</h2>
+              <p className="ss-page-sub" style={{ marginTop: 0 }}>
+                Set when you are generally free. Students do not see this — only admins.
+              </p>
+              <TeacherAvailabilityPanel />
             </div>
           </div>
         )}

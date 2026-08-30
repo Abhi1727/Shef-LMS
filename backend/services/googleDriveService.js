@@ -1,14 +1,17 @@
 const { google } = require('googleapis');
 const fs = require('fs');
 const path = require('path');
-const { getGoogleAuth, isMeetEnabled, getAuthMode } = require('./googleAuth');
+const { getGoogleAuth, isGoogleConfigured, getAuthMode } = require('./googleAuth');
 
 const ROOT_FOLDER_NAME = process.env.GOOGLE_DRIVE_ROOT_FOLDER || 'Sky States LMS Recordings';
 
 async function getDriveClient() {
-  if (!isMeetEnabled()) {
-    const err = new Error('Google Meet/Drive is disabled. Set GOOGLE_MEET_ENABLED=true.');
-    err.code = 'MEET_DISABLED';
+  // Drive is used for Zoom + Meet recording archives — independent of Meet live toggle
+  if (!isGoogleConfigured()) {
+    const err = new Error(
+      'Google Drive is not configured. Set GOOGLE_MEET_CLIENT_ID / SECRET / REFRESH_TOKEN (Drive scopes).'
+    );
+    err.code = 'DRIVE_NOT_CONFIGURED';
     throw err;
   }
   const auth = await getGoogleAuth();
@@ -340,9 +343,23 @@ async function streamFileToResponse(res, fileId, downloadName) {
   });
   const name = String(downloadName || meta.data.name || 'download').replace(/[/\\]/g, '_');
   const ascii = name.replace(/[^\x20-\x7E]/g, '_').replace(/["\\]/g, '_');
-  const mime = meta.data.mimeType && meta.data.mimeType !== 'application/octet-stream'
-    ? meta.data.mimeType
-    : 'application/octet-stream';
+  const ext = name.split('.').pop()?.toLowerCase() || '';
+  const mimeByExt = {
+    zip: 'application/zip',
+    pdf: 'application/pdf',
+    doc: 'application/msword',
+    docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    ppt: 'application/vnd.ms-powerpoint',
+    pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+    xls: 'application/vnd.ms-excel',
+    xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+  };
+  let mime =
+    mimeByExt[ext] ||
+    (meta.data.mimeType && meta.data.mimeType !== 'application/vnd.google-apps.document'
+      ? meta.data.mimeType
+      : 'application/octet-stream');
+  if (mime === 'application/vnd.google-apps.document') mime = 'application/octet-stream';
   res.setHeader('Content-Type', mime);
   if (meta.data.size) res.setHeader('Content-Length', meta.data.size);
   res.setHeader('Content-Disposition', `attachment; filename="${ascii}"; filename*=UTF-8''${encodeURIComponent(name)}`);
@@ -431,7 +448,7 @@ async function listRecentHostVideos({ after, before, pageSize = 50 } = {}) {
 
 function getDriveStatus() {
   return {
-    enabled: isMeetEnabled(),
+    enabled: isGoogleConfigured(),
     configured: getAuthMode() !== 'none',
     authMode: getAuthMode(),
     rootFolderName: ROOT_FOLDER_NAME

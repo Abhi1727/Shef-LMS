@@ -17,6 +17,7 @@ const googleDriveService = require('../services/googleDriveService');
 const { resolveStudentBatchIds } = require('../utils/studentEnrollment');
 const { findUserById } = require('../utils/findUserById');
 const lessonPath = require('../services/lessonPath');
+const { resolveNotesAbsolutePath, streamNotesFile } = require('../utils/notesDownload');
 
 const shareUpload = multer({
   dest: path.join(__dirname, '../uploads/tmp-student-shares'),
@@ -300,6 +301,75 @@ router.put('/password', async (req, res) => {
   }
 });
 
+// @route   GET /api/student/batch-notes/:batchId/download
+// @desc    Download batch-level notes for enrolled students
+router.get('/batch-notes/:batchId/download', async (req, res) => {
+  try {
+    const { batchId } = req.params;
+    const userId = String(req.user.id);
+    const enrolled = await resolveStudentBatchIds(userId);
+    if (!enrolled.includes(String(batchId))) {
+      return res.status(403).json({ message: 'Access denied' });
+    }
+    const batch = await Batch.findById(batchId).lean().exec();
+    if (!batch?.notesFile?.filePath) {
+      return res.status(404).json({ message: 'No batch notes available' });
+    }
+    const resolved = resolveNotesAbsolutePath(batch.notesFile.filePath);
+    if (resolved.error) {
+      return res.status(resolved.error).json({ message: resolved.message });
+    }
+    streamNotesFile(res, {
+      filePath: resolved.path,
+      downloadName: batch.notesFile.fileName || path.basename(resolved.path)
+    });
+  } catch (err) {
+    console.error('GET /student/batch-notes/:batchId/download error:', err);
+    if (!res.headersSent) res.status(500).json({ message: 'Failed to download batch notes' });
+  }
+});
+
+// @route   GET /api/student/materials/:id/download
+// @desc    Download a batch material file (session upload) via Drive or local path
+router.get('/materials/:id/download', async (req, res) => {
+  try {
+    const userId = String(req.user.id);
+    const material = await BatchMaterial.findById(req.params.id).lean().exec();
+    if (!material) return res.status(404).json({ message: 'Material not found' });
+    const enrolled = await resolveStudentBatchIds(userId);
+    if (!enrolled.includes(String(material.batchId))) {
+      return res.status(403).json({ message: 'Access denied' });
+    }
+    if (material.driveFileId) {
+      await googleDriveService.streamFileToResponse(
+        res,
+        material.driveFileId,
+        material.name || 'material',
+        material.mimeType
+      );
+      return;
+    }
+    if (material.filePath) {
+      const resolved = resolveNotesAbsolutePath(material.filePath);
+      if (resolved.error) {
+        return res.status(resolved.error).json({ message: resolved.message });
+      }
+      streamNotesFile(res, {
+        filePath: resolved.path,
+        downloadName: material.name || path.basename(resolved.path)
+      });
+      return;
+    }
+    if (material.driveLink) {
+      return res.redirect(material.driveLink);
+    }
+    return res.status(404).json({ message: 'File not available' });
+  } catch (err) {
+    console.error('GET /student/materials/:id/download error:', err);
+    if (!res.headersSent) res.status(500).json({ message: 'Failed to download material' });
+  }
+});
+
 // @route   GET /api/student/batch-materials
 // @desc    Drive materials for the student's enrolled batches
 router.get('/batch-materials', async (req, res) => {
@@ -476,7 +546,7 @@ router.get('/schedule', async (req, res) => {
     const meetings = await LiveClass.find({
       batchId: { $in: unique },
       status: { $ne: 'cancelled' },
-      meetLink: { $ne: '' }
+      $or: [{ meetLink: { $ne: '' } }, { zoomLink: { $ne: '' } }]
     })
       .sort({ scheduledStart: 1 })
       .lean()
@@ -502,7 +572,7 @@ router.get('/schedule', async (req, res) => {
         batchId: String(m.batchId || ''),
         batchName: batch?.name || '',
         status: m.status,
-        hasMeetLink: Boolean(m.meetLink),
+        hasMeetLink: Boolean(m.meetLink || m.zoomLink),
         hasRecording: Boolean(m.driveFileId || m.classroomLectureId),
         classroomLectureId: m.classroomLectureId || '',
         teacherName: m.teacherName || m.instructor || '',
@@ -512,7 +582,10 @@ router.get('/schedule', async (req, res) => {
       };
     });
 
-    const lectures = await Classroom.find({ batchId: { $in: unique } })
+    const lectures = await Classroom.find({
+      batchId: { $in: unique },
+      studentVisible: { $ne: false }
+    })
       .sort({ date: -1, createdAt: -1 })
       .limit(80)
       .lean()
@@ -714,7 +787,10 @@ const calculateVideoProgress = async (userId, batchIdsPreloaded) => {
       return { total: 0, watched: 0, progressPercentage: 0 };
     }
 
-    const batchVideos = await Classroom.find({ batchId: { $in: batchIds } })
+    const batchVideos = await Classroom.find({
+      batchId: { $in: batchIds },
+      studentVisible: { $ne: false }
+    })
       .select('_id videoSource driveId youtubeVideoId youtubeEmbedUrl youtubeVideoUrl')
       .lean()
       .exec();

@@ -31,8 +31,80 @@ function contentDisposition(filename) {
   return `attachment; filename="${ascii}"; filename*=UTF-8''${encoded}`;
 }
 
+function getBackendRoot() {
+  return path.join(__dirname, '..');
+}
+
+function getUploadsDirs() {
+  const root = getBackendRoot();
+  return ['uploads/notes', 'uploads/teacher-notes'].map((rel) => path.join(root, rel));
+}
+
+function stripDiskPrefix(name) {
+  return String(name || '').replace(/^\d+-/, '');
+}
+
+function normalizeNotesKey(value) {
+  return String(value || '')
+    .toLowerCase()
+    .replace(/[''´`]/g, '')
+    .replace(/\(\s*1\s*\)/g, '')
+    .replace(/[^a-z0-9]+/g, '')
+    .trim();
+}
+
+function listUploadFiles() {
+  const files = [];
+  for (const dir of getUploadsDirs()) {
+    if (!fs.existsSync(dir)) continue;
+    for (const name of fs.readdirSync(dir)) {
+      const full = path.join(dir, name);
+      if (fs.statSync(full).isFile()) files.push(full);
+    }
+  }
+  return files;
+}
+
+function scoreNotesMatch(diskPath, hints) {
+  const diskKey = normalizeNotesKey(stripDiskPrefix(path.basename(diskPath)));
+  if (!diskKey) return 0;
+  let best = 0;
+  for (const hint of hints) {
+    const hintKey = normalizeNotesKey(stripDiskPrefix(hint));
+    if (!hintKey) continue;
+    if (diskKey === hintKey) best = Math.max(best, 100);
+    else if (diskKey.includes(hintKey) || hintKey.includes(diskKey)) {
+      const ratio =
+        Math.min(diskKey.length, hintKey.length) / Math.max(diskKey.length, hintKey.length);
+      best = Math.max(best, Math.round(ratio * 92));
+    }
+  }
+  return best;
+}
+
+function findLocalNotesFile({ notesFilePath, notesFileName, title }, diskFiles) {
+  const exact = notesFilePath ? resolveNotesAbsolutePath(notesFilePath) : null;
+  if (exact && !exact.error) return exact;
+
+  const hints = [notesFileName, path.basename(String(notesFilePath || '')), title].filter(Boolean);
+  let bestPath = null;
+  let bestScore = 0;
+  const files = diskFiles || listUploadFiles();
+  for (const file of files) {
+    const score = scoreNotesMatch(file, hints);
+    if (score > bestScore) {
+      bestScore = score;
+      bestPath = file;
+    }
+  }
+  if (bestPath && bestScore >= 85) {
+    return { path: bestPath, matched: true, score: bestScore };
+  }
+  return { error: 404, message: 'Notes file not found on server' };
+}
+
 function resolveNotesAbsolutePath(notesFilePath) {
-  const backendRoot = path.join(__dirname, '..');
+  const backendRoot = getBackendRoot();
   const uploadsDir = path.normalize(path.join(backendRoot, 'uploads'));
   const relative = String(notesFilePath || '').replace(/^\/+/, '');
   const notesPath = path.normalize(path.join(backendRoot, relative));
@@ -63,5 +135,7 @@ module.exports = {
   getContentType,
   contentDisposition,
   resolveNotesAbsolutePath,
+  findLocalNotesFile,
+  listUploadFiles,
   streamNotesFile
 };

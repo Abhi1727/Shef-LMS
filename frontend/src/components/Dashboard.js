@@ -12,9 +12,21 @@ import DirectChatPanel from './DirectChatPanel';
 import StudentLiveClassLobby from './StudentLiveClassLobby';
 import StudentScheduleCalendar, { googleCalendarUrl } from './StudentScheduleCalendar';
 import StudentMaterialsPanel from './StudentMaterialsPanel';
+import ResponsiveShellNav from './ResponsiveShellNav';
 import './Dashboard.css';
 import '../styles/RoleShell.css';
 import { getApiBaseUrl } from '../utils/apiBase';
+import { downloadAuthenticatedFile } from '../utils/downloadFile';
+
+const STUDENT_NAV_ITEMS = [
+  { id: 'overview', label: 'Home' },
+  {
+    id: 'classroom',
+    label: 'Classroom'
+  },
+  { id: 'messages', label: 'Messages' },
+  { id: 'assessments', label: 'Assessments' }
+];
 
 // Premium Image Slider Component with Advanced Features
 const ImageSlider = ({ setActiveSection }) => {
@@ -1041,118 +1053,27 @@ const Dashboard = ({ user, onLogout }) => {
   }, [getCourseSlug]);
 
 
-  // Enhanced notes download function
   const handleDownloadNotes = async (video) => {
     try {
-      const token = localStorage.getItem('token');
-      const apiUrl = getApiBaseUrl();
-      
-      // Create download progress indicator
-      const downloadButton = document.querySelector(`[title*="Download ${video.notesFileName || 'notes'} for ${video.title}"]`);
-      if (downloadButton) {
-        downloadButton.classList.add('downloading');
-        downloadButton.disabled = true;
-      }
-      
-      // Try different possible endpoints for notes download
-      let response;
-      const endpoints = [
-        `${apiUrl}/api/classroom/${video.id}/notes`,
-        `${apiUrl}/api/admin/classroom/${video.id}/notes`,
-        `${apiUrl}/api/classroom/notes/${video.id}`,
-        `${apiUrl}/api/admin/classroom/notes/${video.id}`
-      ];
-      
-      for (const endpoint of endpoints) {
-        try {
-          response = await fetch(endpoint, {
-            headers: {
-              'Authorization': `Bearer ${token}`
-            }
-          });
-          
-          if (response.ok) {
-            break;
-          }
-        } catch (error) {
-          console.log(`Failed to fetch from ${endpoint}:`, error);
-        }
-      }
-      
-      if (response && response.ok) {
-        const contentType = (response.headers.get('content-type') || '').toLowerCase();
-        if (contentType.includes('application/json')) {
-          const errBody = await response.json().catch(() => ({}));
-          throw new Error(errBody.message || 'Notes file is not available on the server');
-        }
-        const blob = await response.blob();
-        if (!blob.size) {
-          throw new Error('Downloaded notes file is empty');
-        }
-        const header = new Uint8Array(await blob.slice(0, 4).arrayBuffer());
-        const looksZip = header[0] === 0x50 && header[1] === 0x4b;
-        const looksPdf = header[0] === 0x25 && header[1] === 0x50 && header[2] === 0x44 && header[3] === 0x46;
-        if (looksZip === false && /json|html|text\//.test(blob.type || contentType)) {
-          throw new Error('Server returned an error instead of the notes file');
-        }
-        if (/\.zip$/i.test(String(video.notesFileName || '')) && !looksZip) {
-          throw new Error('The notes zip is missing on the server. Ask your trainer to upload it again.');
-        }
+      await downloadAuthenticatedFile(`/api/classroom/${video.id}/notes`, {
+        filename: video.notesFileName || `notes-${video.title || 'class'}`
+      });
 
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-
-        const contentDisposition = response.headers.get('content-disposition');
-        let filename = video.notesFileName || '';
-        if (contentDisposition) {
-          const utf = contentDisposition.match(/filename\*=UTF-8''([^;]+)/i);
-          const plain = contentDisposition.match(/filename="([^"]+)"/i);
-          filename = decodeURIComponent((utf && utf[1]) || (plain && plain[1]) || filename);
+      setViewedFiles((prevViewed) => {
+        const noteKey = `${video.id}_notes`;
+        if (!prevViewed.includes(noteKey)) {
+          const updatedViewed = [...prevViewed, noteKey];
+          const coursePrefix = getCourseSlug();
+          localStorage.setItem(`${coursePrefix}_viewedFiles`, JSON.stringify(updatedViewed));
+          return updatedViewed;
         }
-        if (!filename) {
-          const ext = looksZip ? 'zip' : looksPdf ? 'pdf' : 'bin';
-          filename = `notes-${String(video.title || 'class').replace(/[^a-z0-9]/gi, '_').toLowerCase()}.${ext}`;
-        }
-        if (looksZip && !/\.zip$/i.test(filename)) filename = `${filename}.zip`;
+        return prevViewed;
+      });
 
-        a.download = filename;
-        document.body.appendChild(a);
-        a.click();
-        window.URL.revokeObjectURL(url);
-        document.body.removeChild(a);
-        
-        // Track notes downloaded as viewed file
-        setViewedFiles(prevViewed => {
-          const noteKey = `${video.id}_notes`;
-          if (!prevViewed.includes(noteKey)) {
-            const updatedViewed = [...prevViewed, noteKey];
-            const coursePrefix = getCourseSlug();
-            localStorage.setItem(`${coursePrefix}_viewedFiles`, JSON.stringify(updatedViewed));
-            return updatedViewed;
-          }
-          return prevViewed;
-        });
-
-        // Show success message
-        showToast('Notes downloaded successfully!', 'success');
-      } else {
-        const errBody = await response?.json?.().catch?.(() => ({}));
-        throw new Error(
-          errBody.message ||
-            'Notes file is missing on the server. Ask your trainer to upload the zip again.'
-        );
-      }
+      showToast('Notes downloaded successfully!', 'success');
     } catch (error) {
       console.error('Error downloading notes:', error);
       showToast(error.message || 'Error downloading notes. Please try again later.', 'error');
-    } finally {
-      // Remove download progress indicator
-      const downloadButton = document.querySelector(`[title*="Download ${video.notesFileName || 'notes'} for ${video.title}"]`);
-      if (downloadButton) {
-        downloadButton.classList.remove('downloading');
-        downloadButton.disabled = false;
-      }
     }
   };
 
@@ -1374,7 +1295,7 @@ const Dashboard = ({ user, onLogout }) => {
       const list = data.meetings || [];
       const now = Date.now();
       const upcoming = list.filter((m) => {
-        if (m.status === 'cancelled' || !m.meetLink) return false;
+        if (m.status === 'cancelled' || (!m.meetLink && !m.zoomLink && !m.hasJoinLink)) return false;
         const start = m.scheduledStart
           ? new Date(m.scheduledStart).getTime()
           : new Date(`${m.scheduledDate}T${m.scheduledTime || '00:00'}`).getTime();
@@ -1414,12 +1335,12 @@ const Dashboard = ({ user, onLogout }) => {
     const durations = {};
     
     for (const video of videos) {
-      if (video.videoSource === 'youtube-url' && video.youtubeVideoId) {
-        // Get thumbnail
-        thumbnails[video.id] = YouTubeUtils.getThumbnailUrl(video.youtubeVideoId, 'mqdefault');
-        
-        // For now, use a placeholder duration since we don't have YouTube API key
-        // In the future, you can implement YouTube API call to get actual duration
+      const ytId =
+        YouTubeUtils.extractVideoId(video.youtubeVideoId) ||
+        YouTubeUtils.extractVideoId(video.youtubeEmbedUrl) ||
+        YouTubeUtils.extractVideoId(video.youtubeVideoUrl || video.videoUrl || '');
+      if (ytId) {
+        thumbnails[video.id] = YouTubeUtils.getThumbnailUrl(ytId, 'mqdefault');
         durations[video.id] = video.duration || 'Duration not available';
       }
     }
@@ -2241,61 +2162,51 @@ const Dashboard = ({ user, onLogout }) => {
                 </div>
               )}
             </div>
-            <AccountMenu user={user} onLogout={onLogout} />
+            <AccountMenu
+              user={user}
+              onLogout={onLogout}
+              onOpenAccount={() => setActiveSection('profile')}
+            />
           </div>
         </div>
-        <nav className="ss-shell-nav student-shell-nav" aria-label="Student">
-          {[
-            { id: 'overview', label: 'Home' },
-            {
-              id: 'classroom',
-              label: `Classroom${visibleClassroomVideos.length ? ` (${visibleClassroomVideos.length})` : ''}`
-            },
-            { id: 'schedule', label: 'Schedule' },
-            { id: 'materials', label: 'Materials' },
-            {
-              id: 'assessments',
-              label: `Assessments${studentAssessments.length ? ` (${studentAssessments.length})` : ''}`
-            },
-            { id: 'messages', label: 'Messages' },
-            { id: 'profile', label: 'Profile' }
-          ].map((item) => (
-            <button
-              key={item.id}
-              type="button"
-              className={`ss-shell-nav__btn ${activeSection === item.id ? 'is-active' : ''}`}
-              onClick={() => setActiveSection(item.id)}
-            >
-              {item.label}
-            </button>
-          ))}
-          <button
-            type="button"
-            className="ss-shell-nav__btn"
-            onClick={() => navigate('/resources')}
-          >
-            Resources
-          </button>
-        </nav>
+        <ResponsiveShellNav
+          items={STUDENT_NAV_ITEMS.map((item) =>
+            item.id === 'classroom'
+              ? {
+                  ...item,
+                  label: `Classroom${visibleClassroomVideos.length ? ` (${visibleClassroomVideos.length})` : ''}`
+                }
+              : item.id === 'assessments'
+                ? {
+                    ...item,
+                    label: `Assessments${studentAssessments.length ? ` (${studentAssessments.length})` : ''}`
+                  }
+                : item
+          )}
+          activeId={
+            STUDENT_NAV_ITEMS.some((item) => item.id === activeSection) ? activeSection : ''
+          }
+          onSelect={(id) => setActiveSection(id)}
+          ariaLabel="Student"
+        />
       </header>
 
       <div className="ss-shell-main student-shell-main">
         <main className="student-main-content">
 
-          {activeSection === 'overview' && (
-            <div className="ss-home animate-in">
-              <section className="ss-home__hero">
-                <div>
-                  <p className="ss-home__eyebrow">Sky States</p>
+          {(activeSection === 'overview' || activeSection === 'schedule') && (
+            <div className="ss-home ss-home--compact animate-in">
+              <section className="ss-home__welcome">
+                <div className="ss-home__welcome-main">
                   <h1>Welcome back, {user?.name?.split(' ')[0] || 'Student'}</h1>
                   <p>
                     {(enrollments || []).length > 1
-                      ? `Enrolled in ${(enrollments || []).map((e) => e.course || e.batchName).filter(Boolean).join(' · ')}`
+                      ? (enrollments || []).map((e) => e.course || e.batchName).filter(Boolean).join(' · ')
                       : user?.currentCourse || batchInfo?.course || activeEnrollment?.course || 'Your program'}
                     {batchInfo?.name && (enrollments || []).length <= 1 ? ` · ${batchInfo.name}` : ''}
                   </p>
                   {(enrollments || []).length > 1 && (
-                    <div className="student-program-chips" style={{ marginTop: 12 }}>
+                    <div className="student-program-chips ss-home__programs">
                       {(enrollments || []).map((e) => (
                         <button
                           key={e.batchId}
@@ -2313,63 +2224,24 @@ const Dashboard = ({ user, onLogout }) => {
                       ))}
                     </div>
                   )}
-                  <div className="ss-home__actions">
-                    <button
-                      type="button"
-                      className="ss-home__action ss-home__action--primary"
-                      onClick={() => setActiveSection('classroom')}
-                    >
-                      Open Classroom
-                    </button>
-                    <button
-                      type="button"
-                      className="ss-home__action"
-                      onClick={() => setActiveSection('schedule')}
-                    >
-                      Schedule
-                    </button>
-                    <button
-                      type="button"
-                      className="ss-home__action"
-                      onClick={() => setActiveSection('materials')}
-                    >
-                      Materials
-                    </button>
-                    <button
-                      type="button"
-                      className="ss-home__action"
-                      onClick={() => setActiveSection('assessments')}
-                    >
-                      Assessments
-                    </button>
-                  </div>
                 </div>
-                <div className="ss-home__progress">
-                  <div className="ss-home__progress-ring" aria-label={`${progressPercent}% complete`}>
-                    <svg viewBox="0 0 100 100" width="120" height="120">
-                      <circle cx="50" cy="50" r="42" className="ring-bg" fill="none" />
-                      <circle
-                        cx="50"
-                        cy="50"
-                        r="42"
-                        className="ring-fill"
-                        fill="none"
-                        strokeDasharray="264"
-                        strokeDashoffset={264 - (264 * Math.min(100, Math.max(0, progressPercent))) / 100}
-                      />
-                    </svg>
-                    <div className="ss-home__progress-inner">
-                      <strong>{progressPercent}%</strong>
-                      <span>DONE</span>
-                    </div>
-                  </div>
+                <div className="ss-home__welcome-aside">
+                  <span className="ss-home__chip" aria-label={`${progressPercent}% complete`}>
+                    {progressPercent}% done
+                  </span>
+                  <button
+                    type="button"
+                    className="ss-home__chip ss-home__chip--action"
+                    onClick={() => setActiveSection('classroom')}
+                  >
+                    Open classroom
+                  </button>
                 </div>
               </section>
 
-              <div className="ss-home__grid">
-                <div style={{ display: 'grid', gap: '1rem' }}>
-                  <section className="ss-home__card">
-                    <h2>Continue learning</h2>
+              <div className="ss-home__grid ss-home__grid--studio">
+                <section className="ss-home__card">
+                  <h2>Continue learning</h2>
                     {(() => {
                       let videoToResume = null;
                       try {
@@ -2448,125 +2320,37 @@ const Dashboard = ({ user, onLogout }) => {
                         </button>
                       );
                     })()}
-                  </section>
+                </section>
 
-                  <section className="ss-home__card">
-                    <h2>Next live class</h2>
-                    {upcomingMeetings.length === 0 ? (
-                      <p className="ss-home__muted">
-                        No upcoming Meet sessions. Your trainer will schedule the next cohort class
-                        here.
-                      </p>
-                    ) : (
-                      <div className="ss-home__next-live">
-                        {upcomingMeetings.slice(0, 2).map((m) => (
-                          <div key={m.id} className="live-session">
-                            <div className="live-session__top">
-                              <div>
-                                <h4 className="live-session__title">{m.title}</h4>
-                                <p className="live-session__meta">
-                                  {m.scheduledDate} · {m.scheduledTime} IST · {m.duration}
-                                </p>
-                              </div>
-                              <span className="live-session__badge live-session__badge--soon">
-                                Live
-                              </span>
-                            </div>
-                            <div className="live-session__cta">
-                              <button
-                                type="button"
-                                className="live-lobby__btn live-lobby__btn--primary live-lobby__btn--sm"
-                                onClick={() => setActiveSection('schedule')}
-                              >
-                                Open calendar
-                              </button>
-                              {m.scheduledStart && (
-                                <a
-                                  className="live-lobby__btn live-lobby__btn--ghost live-lobby__btn--sm"
-                                  href={googleCalendarUrl({
-                                    title: m.title,
-                                    start: m.scheduledStart,
-                                    end: m.scheduledEnd,
-                                    description: m.description,
-                                    teacherName: m.teacherName,
-                                    batchName: batchInfo?.name
-                                  })}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                >
-                                  Add to Google Calendar
-                                </a>
-                              )}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </section>
-
-                  <StudentLiveClassLobby compact />
-                </div>
-
-                <div style={{ display: 'grid', gap: '1rem' }}>
-                  <section className="ss-home__card">
-                    <h2>Your progress</h2>
-                    <div className="ss-home__stats">
-                      <div className="ss-home__stat">
-                        <strong>
-                          {Math.max(
-                            realTimeStats?.streak?.current || 0,
-                            getLocalStorageStreak()
-                          )}
-                        </strong>
-                        <span>Day streak</span>
-                      </div>
-                      <div className="ss-home__stat">
-                        <strong>{classroomVideos.length}</strong>
-                        <span>Lessons</span>
-                      </div>
-                      <div className="ss-home__stat">
-                        <strong>
-                          {classroomVideos.filter((v) => v.watchComplete).length ||
-                            videoWatchHistory.filter((r) => r.watchProgress >= 95).length}
-                        </strong>
-                        <span>Completed</span>
-                      </div>
-                      <div className="ss-home__stat">
-                        <strong>{certificates.length}</strong>
-                        <span>Certificates</span>
-                      </div>
-                    </div>
-                  </section>
-
-                  <StudentScheduleCalendar
-                    compact
-                    hideHero
-                    classroomVideos={classroomVideos}
-                    onPlayRecording={handlePlayVideo}
-                  />
-                </div>
+                <StudentLiveClassLobby compact />
               </div>
+
+              <section className="ss-home__card ss-home__card--schedule">
+                <h2>Schedule</h2>
+                <StudentScheduleCalendar
+                  compact
+                  hideHero
+                  classroomVideos={classroomVideos}
+                  onPlayRecording={handlePlayVideo}
+                />
+              </section>
             </div>
           )}
 
-          {activeSection === 'schedule' && (
-            <div className="animate-in">
-              <StudentScheduleCalendar
-                classroomVideos={classroomVideos}
-                onPlayRecording={handlePlayVideo}
-              />
-            </div>
-          )}
-
-          {activeSection === 'classroom' && (
-            <div className="classroom-page animate-in">
-              <div className="page-header">
-                <h1 className="page-title">Classroom</h1>
-                <p className="page-subtitle">
-                  {(enrollments || []).length > 1
-                    ? 'Choose a program to view its lesson path, recordings, and notes.'
-                    : 'Lesson path for your cohort — watch recordings, download notes, and take linked quizzes.'}
-                </p>
+          {(activeSection === 'classroom' || activeSection === 'materials') && (
+            <div className="classroom-page student-classroom-page animate-in">
+              <div className="page-header student-page-header">
+                <div>
+                  <h1 className="page-title">Classroom</h1>
+                  <p className="page-subtitle">
+                    {(enrollments || []).length > 1
+                      ? 'Recordings, notes, and materials by program.'
+                      : 'Watch recordings, download notes, and take linked quizzes.'}
+                  </p>
+                </div>
+                <span className="student-page-header__stat">
+                  {visibleClassroomVideos.length} lesson{visibleClassroomVideos.length === 1 ? '' : 's'}
+                </span>
               </div>
 
               {programOptions.length > 1 && (
@@ -2742,12 +2526,11 @@ const Dashboard = ({ user, onLogout }) => {
                   </p>
                 </div>
               )}
-            </div>
-          )}
 
-          {activeSection === 'materials' && (
-            <div className="animate-in">
-              <StudentMaterialsPanel />
+              <section className="student-classroom-materials">
+                <h2 className="student-classroom-materials__title">Materials</h2>
+                <StudentMaterialsPanel compact hideHero />
+              </section>
             </div>
           )}
 

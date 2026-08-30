@@ -20,6 +20,7 @@ const StudentAnalyticsDashboard = lazy(() => import('./components/StudentAnalyti
 const ResourcesHome = lazy(() => import('./components/ResourcesHome'));
 const StudentAssessmentView = lazy(() => import('./components/StudentAssessmentView'));
 const StudentAssessmentResults = lazy(() => import('./components/StudentAssessmentResults'));
+const ZoomLiveClassroom = lazy(() => import('./components/ZoomLiveClassroom'));
 
 const LoadingSpinner = () => (
   <SkyLoadingScreen
@@ -268,6 +269,16 @@ const setupTokenMonitoring = () => {
               !isAuthenticated ? 
               <Login onLogin={handleLogin} /> :
               <Navigate to={homeForRole(user?.role)} replace />
+            } 
+          />
+          <Route 
+            path="/live/:meetingId" 
+            element={
+              <Suspense fallback={<LoadingSpinner />}>
+                {isAuthenticated ? 
+                <ZoomLiveClassroom user={user} /> : 
+                <Navigate to="/login" replace />}
+              </Suspense>
             } 
           />
           <Route 

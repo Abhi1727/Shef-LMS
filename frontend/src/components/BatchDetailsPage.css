@@ -2672,7 +2672,221 @@ body.modal-open {
 }
 
 .sky-email-compose {
+  min-width: 0;
   padding-bottom: 0;
+}
+
+.sky-email-template-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.sky-email-templates {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.65rem;
+  margin-bottom: 0.75rem;
+}
+
+.sky-email-drafts-panel {
+  margin-bottom: 0.85rem;
+  padding: 0.75rem 0.85rem;
+  border: 1px solid rgba(16, 42, 67, 0.12);
+  border-radius: 10px;
+  background: #fff;
+}
+
+.sky-email-drafts-panel__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.55rem;
+}
+
+.sky-email-drafts-panel__head h4 {
+  margin: 0;
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: #102a33;
+}
+
+.sky-email-drafts-panel__save {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.5rem;
+  margin-bottom: 0.55rem;
+}
+
+.sky-email-drafts-panel__empty {
+  margin: 0;
+  font-size: 0.8rem;
+  color: #5a6d76;
+  line-height: 1.4;
+}
+
+.sky-email-drafts-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  max-height: 180px;
+  overflow-y: auto;
+}
+
+.sky-email-drafts-item {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  border: 1px solid #e6eef1;
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.sky-email-drafts-item.is-active {
+  border-color: #147a7a;
+  background: #eef7f7;
+}
+
+.sky-email-drafts-item__main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.1rem;
+  padding: 0.45rem 0.55rem;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+}
+
+.sky-email-drafts-item__main strong {
+  font-size: 0.82rem;
+  color: #102a33;
+}
+
+.sky-email-drafts-item__main span {
+  font-size: 0.72rem;
+  color: #5a6d76;
+}
+
+.sky-email-variables__field--wide {
+  grid-column: 1 / -1;
+}
+
+.sky-email-us-timings {
+  margin-top: 0.65rem;
+  padding-top: 0.55rem;
+  border-top: 1px dashed rgba(16, 42, 67, 0.12);
+}
+
+.sky-email-us-timings__label {
+  display: block;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #5a6d76;
+  margin-bottom: 0.4rem;
+}
+
+.sky-email-us-timings__grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.4rem;
+}
+
+.sky-email-us-timings__item {
+  padding: 0.45rem 0.55rem;
+  border-radius: 8px;
+  background: #eef7f7;
+  border: 1px solid rgba(20, 122, 122, 0.15);
+  font-size: 0.78rem;
+}
+
+.sky-email-us-timings__item strong {
+  display: block;
+  font-size: 0.68rem;
+  color: #0b6363;
+  margin-bottom: 0.15rem;
+}
+
+.sky-email-us-timings__item span {
+  color: #102a33;
+  line-height: 1.35;
+}
+
+.sky-email-lms-link {
+  margin: 0.55rem 0 0;
+  font-size: 0.78rem;
+  line-height: 1.45;
+  color: #486581;
+}
+
+.sky-email-lms-link a {
+  color: #147a7a;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.sky-email-lms-link a:hover {
+  text-decoration: underline;
+}
+
+.sky-email-variables {
+  margin-bottom: 0.85rem;
+  padding: 0.75rem 0.85rem;
+  border: 1px solid rgba(16, 42, 67, 0.1);
+  border-radius: 10px;
+  background: #f8fafc;
+}
+
+.sky-email-variables__head h4 {
+  margin: 0 0 0.25rem;
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: #102a33;
+}
+
+.sky-email-variables__head p {
+  margin: 0 0 0.65rem;
+  font-size: 0.78rem;
+  line-height: 1.4;
+}
+
+.sky-email-variables__head code {
+  font-size: 0.75rem;
+  background: #eef2f5;
+  padding: 0.1rem 0.3rem;
+  border-radius: 4px;
+}
+
+.sky-email-variables__grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.5rem 0.65rem;
+}
+
+.sky-email-variables__field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #486581;
+}
+
+.sky-email-draft-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 0.85rem;
 }
 
 .sky-email-from {
@@ -5317,6 +5531,11 @@ body.modal-open {
   border-color: var(--lms-border, #d5dee3);
 }
 
+.sky-btn--sm {
+  padding: 6px 10px;
+  font-size: 0.78rem;
+}
+
 .sky-btn-danger {
   color: var(--lms-danger, #9b2c2c);
   border-color: #e8c4c4;
@@ -6630,5 +6849,248 @@ body.modal-open {
   .student-profile-modal .modal-header-actions {
     width: 100%;
     flex-wrap: wrap;
+  }
+}
+
+/* Trainer batch — single scrollable page */
+.sky-batch-single {
+  padding: 0 16px 32px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+
+.sky-batch-manage-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.85rem;
+  align-items: start;
+}
+
+@media (min-width: 1024px) {
+  .sky-batch-manage-grid {
+    grid-template-columns: minmax(0, 1.35fr) minmax(0, 0.85fr);
+  }
+}
+
+.sky-batch-section {
+  background: #fff;
+  border: 1px solid rgba(16, 42, 67, 0.1);
+  border-radius: 12px;
+  padding: 0.85rem 1rem 1rem;
+  box-shadow: 0 1px 2px rgba(16, 42, 67, 0.04);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.sky-batch-section--live {
+  padding: 0;
+  background: transparent;
+  border: none;
+  box-shadow: none;
+}
+
+.sky-batch-section--classroom,
+.sky-batch-section--students {
+  min-height: 200px;
+  max-height: min(68vh, 720px);
+}
+
+.sky-batch-section--materials {
+  max-height: min(48vh, 480px);
+}
+
+.sky-batch-section__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem 0.75rem;
+  margin-bottom: 0.55rem;
+  flex-shrink: 0;
+}
+
+.sky-batch-section__head h2 {
+  margin: 0;
+  font-family: Manrope, system-ui, sans-serif;
+  font-size: 1.02rem;
+  font-weight: 700;
+  color: #102a43;
+  letter-spacing: -0.01em;
+}
+
+.sky-batch-section__head p,
+.sky-batch-section__head .section-subtitle {
+  margin: 0.12rem 0 0;
+  font-size: 0.78rem;
+  line-height: 1.35;
+  color: var(--lms-muted, #5a6d76);
+}
+
+.sky-batch-section__head .sky-lectures-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  align-items: center;
+}
+
+.sky-batch-section__head .video-search {
+  min-width: 160px;
+  height: 34px;
+  padding: 0 10px;
+  font-size: 0.82rem;
+}
+
+.sky-batch-attendance-stats {
+  margin: 0 0 0.45rem;
+  flex-shrink: 0;
+  gap: 0.35rem;
+}
+
+.sky-batch-section--classroom .sky-batch-notes-bar {
+  flex-shrink: 0;
+  margin-bottom: 0.55rem;
+  padding: 0.5rem 0.65rem;
+  border-radius: 8px;
+}
+
+.sky-batch-section--classroom .sky-batch-notes-copy strong {
+  font-size: 0.82rem;
+}
+
+.sky-batch-section--students .teacher-students-toolbar {
+  flex-shrink: 0;
+  margin-bottom: 0.45rem;
+  gap: 0.5rem;
+}
+
+.sky-batch-section--students .teacher-students-toolbar .form-input-modern {
+  height: 34px;
+  padding: 0 10px;
+  font-size: 0.82rem;
+}
+
+.sky-batch-page.teacher-batch-details-page .sky-batch-header {
+  padding: 12px 16px 8px;
+  gap: 12px;
+}
+
+.sky-batch-page.teacher-batch-details-page .sky-batch-title {
+  font-size: 1.2rem;
+  margin-bottom: 4px;
+}
+
+.sky-batch-page.teacher-batch-details-page .sky-batch-meta {
+  gap: 6px;
+}
+
+.sky-batch-page.teacher-batch-details-page .sky-batch-timing-chip {
+  font-size: 0.78rem;
+  padding: 6px 10px;
+}
+
+.sky-batch-section__scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  padding-right: 0.35rem;
+  margin-right: -0.15rem;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(16, 42, 67, 0.28) transparent;
+}
+
+.sky-batch-section__scroll::-webkit-scrollbar {
+  width: 8px;
+}
+
+.sky-batch-section__scroll::-webkit-scrollbar-thumb {
+  background: rgba(16, 42, 67, 0.22);
+  border-radius: 999px;
+}
+
+.sky-batch-section__scroll--classroom {
+  max-height: min(52vh, 560px);
+}
+
+.sky-batch-section__scroll--students {
+  max-height: min(44vh, 480px);
+}
+
+.sky-batch-section__scroll--materials {
+  max-height: min(36vh, 360px);
+}
+
+@media (min-width: 1024px) {
+  .sky-batch-section__scroll--classroom,
+  .sky-batch-section__scroll--students,
+  .sky-batch-section__scroll--materials {
+    max-height: none;
+  }
+}
+
+.sky-batch-section__scroll .sky-lecture-grid.video-grid,
+.sky-batch-page.teacher-batch-details-page .sky-batch-section__scroll .sky-lecture-grid.video-grid,
+.teacher-batch-details-page .sky-batch-section__scroll .sky-lecture-grid.video-grid {
+  overflow: visible !important;
+  flex: none !important;
+  align-content: start;
+}
+
+.sky-batch-section--classroom .video-grid,
+.sky-batch-section--classroom .sky-lecture-grid {
+  margin-top: 0;
+}
+
+.sky-batch-section--students .teacher-students-table-wrap {
+  overflow: visible;
+  max-height: none;
+}
+
+.sky-batch-section--students .teacher-students-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: #fff;
+  box-shadow: 0 1px 0 rgba(16, 42, 67, 0.08);
+}
+
+.sky-batch-section--materials .live-lobby {
+  margin: 0;
+}
+
+.sky-batch-page--one-to-one .sky-batch-section--students,
+.sky-batch-page--project .sky-batch-section--students {
+  max-height: min(64vh, 680px);
+}
+
+@media (max-width: 640px) {
+  .sky-batch-single {
+    padding: 0 12px 36px;
+  }
+
+  .sky-batch-section {
+    padding: 1rem;
+    border-radius: 14px;
+  }
+
+  .sky-batch-section--classroom,
+  .sky-batch-section--students {
+    max-height: none;
+  }
+
+  .sky-batch-section__scroll--classroom {
+    max-height: min(58vh, 520px);
+  }
+
+  .sky-batch-section__scroll--students {
+    max-height: min(50vh, 440px);
+  }
+
+  .sky-batch-section__scroll--materials {
+    max-height: min(42vh, 380px);
   }
 }

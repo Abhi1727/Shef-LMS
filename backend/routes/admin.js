@@ -1426,6 +1426,12 @@ router.post('/teachers', async (req, res) => {
 
     if (phone) teacherData.phone = phone;
     if (address) teacherData.address = address;
+    if (req.body.conferenceProvider === 'zoom' || req.body.conferenceProvider === 'meet') {
+      teacherData.conferenceProvider = req.body.conferenceProvider;
+    }
+    if (req.body.zoomUserId !== undefined) {
+      teacherData.zoomUserId = String(req.body.zoomUserId || '').trim();
+    }
 
     const teacher = new User(teacherData);
     const saved = await teacher.save();
@@ -1634,6 +1640,40 @@ router.get('/classroom', async (req, res) => {
   } catch (error) {
     console.error('Error fetching classroom videos:', error);
     res.status(500).json({ message: 'Error fetching classroom videos' });
+  }
+});
+
+// @route   PATCH /api/admin/classroom/:id/visibility
+// @desc    Show or hide a lecture from students
+// @access  Private (Admin only)
+router.patch('/classroom/:id/visibility', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const visible = req.body?.studentVisible ?? req.body?.visible;
+    if (visible === undefined || visible === null) {
+      return res.status(400).json({ message: 'studentVisible (boolean) is required' });
+    }
+
+    const lecture = await Classroom.findById(id).exec();
+    if (!lecture) {
+      return res.status(404).json({ message: 'Lecture not found' });
+    }
+
+    lecture.studentVisible = Boolean(visible);
+    lecture.updatedAt = new Date();
+    await lecture.save();
+
+    res.json({
+      success: true,
+      message: lecture.studentVisible ? 'Lecture is visible to students' : 'Lecture hidden from students',
+      lecture: {
+        id: String(lecture._id),
+        studentVisible: lecture.studentVisible !== false
+      }
+    });
+  } catch (error) {
+    console.error('Error updating lecture visibility:', error);
+    res.status(500).json({ message: 'Failed to update visibility' });
   }
 });
 
@@ -2858,6 +2898,46 @@ router.get('/classroom/notes/:id', roleAuth('admin'), async (req, res) => {
     if (!res.headersSent) {
       res.status(500).json({ message: 'Failed to download notes' });
     }
+  }
+});
+
+// @route   GET /api/admin/live-class-settings
+// @desc    Meet / Zoom / YouTube recording pipeline flags
+router.get('/live-class-settings', roleAuth('admin'), async (req, res) => {
+  try {
+    const {
+      getLiveClassSettings
+    } = require('../services/liveClassSettings');
+    const settings = await getLiveClassSettings();
+    res.json({ success: true, settings });
+  } catch (error) {
+    console.error('GET /live-class-settings error:', error);
+    res.status(500).json({ success: false, message: error.message || 'Failed to load settings' });
+  }
+});
+
+// @route   PATCH /api/admin/live-class-settings
+// @desc    Enable/disable Google Meet live sessions (Zoom remains primary when Meet is off)
+router.patch('/live-class-settings', roleAuth('admin'), async (req, res) => {
+  try {
+    const { setGoogleMeetEnabled } = require('../services/liveClassSettings');
+    if (typeof req.body?.googleMeetEnabled !== 'boolean') {
+      return res.status(400).json({
+        success: false,
+        message: 'googleMeetEnabled (boolean) is required'
+      });
+    }
+    const settings = await setGoogleMeetEnabled(req.body.googleMeetEnabled, req.user || {});
+    res.json({
+      success: true,
+      message: settings.googleMeetEnabled
+        ? 'Google Meet enabled for live classes and Meet recording sync.'
+        : 'Google Meet disabled. Live sessions and classroom recordings use Zoom → Drive → YouTube.',
+      settings
+    });
+  } catch (error) {
+    console.error('PATCH /live-class-settings error:', error);
+    res.status(500).json({ success: false, message: error.message || 'Failed to update settings' });
   }
 });
 

@@ -125,7 +125,9 @@ router.get('/stats', async (req, res) => {
           .lean()
           .exec()
       : [];
-    const totalVideos = classroomForStats.filter((d) => !lessonPath.isUnplayableLiveStub(d)).length;
+    const totalVideos = classroomForStats.filter(
+      (d) => !lessonPath.isUnplayableLiveStub(d) && d.studentVisible !== false
+    ).length;
     const watchedIds =
       batchIds.length && userId
         ? await ActivityLog.distinct('videoId', {

@@ -2,7 +2,7 @@ const nodemailer = require('nodemailer');
 const Imap = require('imap');
 require('dotenv').config();
 
-// Create email transporter configuration
+const { formatBatchEmailHtml, LMS_URL } = require('../utils/batchEmailHtml');
 // Hostinger: smtp.hostinger.com, port 587 (TLS) - matches working local config
 const createTransporter = () => {
   const port = parseInt(process.env.EMAIL_PORT || '587', 10);
@@ -155,33 +155,11 @@ const sendEmail = async (options) => {
     // Send email to each student individually to maintain privacy and ensure proper sent folder behavior
     const results = [];
     
-    // Convert plain text to HTML to preserve formatting
-    const formatMessageAsHtml = (message) => {
-      // First, escape HTML characters to prevent issues
-      let htmlMessage = message
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#39;');
-      
-      // Convert double line breaks to paragraph breaks
-      htmlMessage = htmlMessage.replace(/\n\n+/g, '</p><p>');
-      
-      // Convert single line breaks to <br> tags
-      htmlMessage = htmlMessage.replace(/\n/g, '<br>');
-      
-      // Wrap in paragraphs with proper styling
-      htmlMessage = `
-        <div style="font-family: Arial, sans-serif; font-size: 14px; line-height: 1.6; color: #333;">
-          <p style="margin-bottom: 16px;">${htmlMessage}</p>
-        </div>
-      `;
-      
-      return htmlMessage;
-    };
-    
-    const htmlMessage = formatMessageAsHtml(message);
+    // Professional branded HTML for batch notifications
+    const htmlMessage = formatBatchEmailHtml(message, {
+      subject,
+      lmsUrl: LMS_URL
+    });
     const senderEmail = process.env.EMAIL_FROM || process.env.EMAIL_USER || 'demo@learnwithus.sbs';
     
     for (const studentEmail of studentEmails) {

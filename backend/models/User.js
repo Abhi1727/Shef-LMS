@@ -107,6 +107,18 @@ const UserSchema = new mongoose.Schema({
     ],
     default: []
   },
+  /** Live class platform for this trainer: Google Meet (default) or Zoom */
+  conferenceProvider: {
+    type: String,
+    enum: ['meet', 'zoom'],
+    default: 'meet'
+  },
+  /** Zoom API user id or email — required when conferenceProvider is zoom */
+  zoomUserId: {
+    type: String,
+    default: '',
+    trim: true
+  },
   title: {
     type: String,
   },

@@ -14,6 +14,7 @@ const auth = require('./middleware/auth');
 // const { startRecordingSync } = require('./jobs/syncRecordings');
 const videoProcessor = require('./middleware/videoProcessor');
 const { apiCacheHeaders, staticAssetCache, developmentCacheBust } = require('./middleware/cacheHeaders');
+const { resolveNotesAbsolutePath, streamNotesFile } = require('./utils/notesDownload');
 
 // Handle unhandled promise rejections
 process.on('unhandledRejection', (reason, promise) => {
@@ -150,32 +151,17 @@ app.get('/auth/google/callback', (req, res) => {
 app.get('/api/uploads/notes/:filename', auth, (req, res) => {
   try {
     const { filename } = req.params;
-    const filePath = path.join(__dirname, 'uploads', 'notes', filename);
-    
-    // Security check - prevent directory traversal
-    const normalizedPath = path.normalize(filePath);
-    const uploadsDir = path.normalize(path.join(__dirname, 'uploads', 'notes'));
-    if (!normalizedPath.startsWith(uploadsDir)) {
-      return res.status(403).json({ message: 'Access denied' });
+    const resolved = resolveNotesAbsolutePath(path.join('uploads', 'notes', filename));
+    if (resolved.error) {
+      return res.status(resolved.error).json({ message: resolved.message });
     }
-    
-    // Check if file exists
-    if (!fs.existsSync(filePath)) {
-      return res.status(404).json({ message: 'File not found' });
-    }
-    
-    // Set headers for file download
-    res.setHeader('Content-Type', 'application/octet-stream');
-    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    
-    // Stream file to response
-    const fileStream = fs.createReadStream(filePath);
-    fileStream.pipe(res);
-    
+    streamNotesFile(res, {
+      filePath: resolved.path,
+      downloadName: filename
+    });
   } catch (error) {
     console.error('Error serving file:', error);
-    res.status(500).json({ message: 'Failed to serve file' });
+    if (!res.headersSent) res.status(500).json({ message: 'Failed to serve file' });
   }
 });
 
@@ -275,6 +261,12 @@ connectDataStore()
         startMeetRecordingSyncJob();
       } catch (err) {
         logger.error('Failed to start Meet recording sync job', { error: err.message });
+      }
+      try {
+        const { startZoomRecordingSyncJob } = require('./jobs/zoomRecordingSync');
+        startZoomRecordingSyncJob();
+      } catch (err) {
+        logger.error('Failed to start Zoom recording sync job', { error: err.message });
       }
       try {
         const { startFirestoreAuthWatchdog } = require('./jobs/firestoreAuthWatchdog');

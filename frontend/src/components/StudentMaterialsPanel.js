@@ -1,8 +1,9 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { getApiBaseUrl } from '../utils/apiBase';
+import { downloadAuthenticatedFile } from '../utils/downloadFile';
 import './MeetLiveClasses.css';
 
-export default function StudentMaterialsPanel() {
+export default function StudentMaterialsPanel({ compact = false, hideHero = false }) {
   const [materials, setMaterials] = useState([]);
   const [batches, setBatches] = useState([]);
   const [shares, setShares] = useState([]);
@@ -89,7 +90,8 @@ export default function StudentMaterialsPanel() {
   };
 
   return (
-    <div className="live-lobby">
+    <div className={`live-lobby ${compact ? 'live-lobby--compact' : ''}`}>
+      {!hideHero && !compact && (
       <div className="live-lobby__hero">
         <p className="live-lobby__eyebrow">Sky States · Materials</p>
         <h2>Batch materials & your shares</h2>
@@ -98,6 +100,7 @@ export default function StudentMaterialsPanel() {
           your work for review.
         </p>
       </div>
+      )}
 
       <section className="live-lobby__card">
         <div className="live-lobby__card-head">
@@ -131,18 +134,35 @@ export default function StudentMaterialsPanel() {
                   </div>
                   <span className="live-session__badge">{m.kind}</span>
                 </div>
-                {m.driveLink && (
+                {m.driveLink || m.id ? (
                   <div className="live-session__cta">
-                    <a
+                    <button
+                      type="button"
                       className="live-lobby__btn live-lobby__btn--primary"
-                      href={m.driveLink}
-                      target="_blank"
-                      rel="noopener noreferrer"
+                      onClick={async () => {
+                        try {
+                          await downloadAuthenticatedFile(`/api/student/materials/${m.id}/download`, {
+                            filename: m.name
+                          });
+                        } catch (err) {
+                          setError(err.message || 'Download failed');
+                        }
+                      }}
                     >
-                      Open
-                    </a>
+                      Download
+                    </button>
+                    {m.driveLink && (
+                      <a
+                        className="live-lobby__btn live-lobby__btn--secondary"
+                        href={m.driveLink}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        Open in Drive
+                      </a>
+                    )}
                   </div>
-                )}
+                ) : null}
               </li>
             ))}
           </ul>

@@ -23,6 +23,15 @@ const liveClassSchema = new mongoose.Schema({
   // Legacy Zoom fields (kept for older docs)
   zoomMeetingId: { type: String, index: true },
   zoomLink: { type: String },
+  zoomStartUrl: { type: String, default: '' },
+  zoomPassword: { type: String, default: '' },
+  zoomIsPmr: { type: Boolean, default: false },
+  conferenceProvider: {
+    type: String,
+    enum: ['meet', 'zoom'],
+    default: 'meet',
+    index: true
+  },
 
   title: { type: String, required: true },
   description: { type: String, default: '' },
@@ -62,8 +71,17 @@ const liveClassSchema = new mongoose.Schema({
   driveFolderId: { type: String, default: '' },
   recordingUploadedAt: { type: Date, default: null },
   meetRecordingId: { type: String, default: '' },
+  zoomRecordingId: { type: String, default: '' },
   recordingSyncAt: { type: Date, default: null },
   recordingSyncError: { type: String, default: '' },
+  recordingPipelineStatus: {
+    type: String,
+    enum: ['', 'pending', 'downloading', 'drive', 'youtube', 'ready', 'failed'],
+    default: ''
+  },
+  youtubeVideoId: { type: String, default: '' },
+  youtubeVideoUrl: { type: String, default: '' },
+  youtubeEmbedUrl: { type: String, default: '' },
   classroomLectureId: { type: String, default: '' },
 
   // Session handouts / materials (Google Drive)

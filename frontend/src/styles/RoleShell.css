@@ -723,3 +723,51 @@
     display: inline-flex;
   }
 }
+
+/* Teacher home — batches landing */
+.teacher-home-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem 1.25rem;
+  margin-bottom: 1.15rem;
+}
+
+.teacher-home-bar__main {
+  flex: 1 1 280px;
+  min-width: 0;
+}
+
+.teacher-home-bar__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.teacher-home-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.4rem 0.75rem;
+  border-radius: 999px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: #334e68;
+  background: #f0f4f8;
+  border: 1px solid rgba(16, 42, 67, 0.08);
+}
+
+.teacher-home-chip.is-live {
+  color: #fff;
+  background: linear-gradient(135deg, #dc2626 0%, #ef4444 100%);
+  border-color: transparent;
+}
+
+.teacher-batches-pro__title {
+  margin: 0;
+  font-family: Fraunces, Georgia, serif;
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: #102a43;
+}

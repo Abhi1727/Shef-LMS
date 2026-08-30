@@ -1,9 +1,12 @@
 const cron = require('node-cron');
 const { isMeetEnabled } = require('../services/googleAuth');
 const { syncMeetRecordings } = require('../services/meetRecordingSync');
+const { isMeetLiveEnabled } = require('../services/liveClassSettings');
 
 async function runMeetRecordingSync() {
-  if (!isMeetEnabled()) return { skipped: true };
+  // Meet classroom recording pipeline — off unless Meet live is enabled (env + admin)
+  const meetOn = await isMeetLiveEnabled().catch(() => isMeetEnabled());
+  if (!meetOn) return { skipped: true, reason: 'meet-disabled' };
   return syncMeetRecordings();
 }
 
@@ -20,7 +23,7 @@ function startMeetRecordingSyncJob() {
       console.error('[Meet recording sync] startup:', err.message || err)
     );
   }, 90 * 1000);
-  console.log('[Meet recording sync] cron scheduled (every 10 minutes)');
+  console.log('[Meet recording sync] cron scheduled (every 10 minutes; no-op when Meet is off)');
 }
 
 module.exports = {

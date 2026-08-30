@@ -1,0 +1,435 @@
+.zoom-live {
+  --zl-ink: #f8fafc;
+  --zl-muted: #94a3b8;
+  --zl-teal: #5eead4;
+  --zl-zoom: #2d8cff;
+  --zl-danger: #fecaca;
+  --zl-bar-h: 3.35rem;
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  background:
+    radial-gradient(ellipse 80% 50% at 10% -10%, rgba(45, 140, 255, 0.16), transparent 55%),
+    linear-gradient(165deg, #070d18 0%, #0f172a 45%, #070d18 100%);
+  color: var(--zl-ink);
+  font-family: Manrope, system-ui, sans-serif;
+}
+
+.zoom-live__bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  min-height: var(--zl-bar-h);
+  padding: 0.55rem 1rem;
+  background: rgba(8, 15, 30, 0.96);
+  border-bottom: 1px solid rgba(148, 163, 184, 0.18);
+  z-index: 30;
+  flex-shrink: 0;
+}
+
+.zoom-live__brand {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-width: 0;
+  flex: 1;
+}
+
+.zoom-live__brand-text {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.15;
+  flex-shrink: 0;
+}
+
+.zoom-live__logo {
+  font-family: Fraunces, Georgia, serif;
+  font-weight: 600;
+  font-size: 1rem;
+  color: var(--zl-teal);
+}
+
+.zoom-live__product {
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--zl-muted);
+}
+
+.zoom-live__sep {
+  width: 1px;
+  align-self: stretch;
+  min-height: 1.75rem;
+  background: rgba(148, 163, 184, 0.28);
+  flex-shrink: 0;
+}
+
+.zoom-live__meta {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.zoom-live__title {
+  font-weight: 600;
+  font-size: 0.92rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.zoom-live__trainer {
+  font-size: 0.75rem;
+  color: var(--zl-muted);
+}
+
+.zoom-live__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  margin-top: 0.15rem;
+}
+
+.zoom-live__chip {
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  padding: 0.15rem 0.4rem;
+  border-radius: 5px;
+  background: rgba(148, 163, 184, 0.14);
+  color: #cbd5e1;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+}
+
+.zoom-live__chip--role.is-host {
+  background: rgba(45, 140, 255, 0.2);
+  border-color: rgba(45, 140, 255, 0.4);
+  color: #93c5fd;
+}
+
+.zoom-live__chip--zoom {
+  background: rgba(45, 140, 255, 0.15);
+  border-color: rgba(45, 140, 255, 0.35);
+  color: #93c5fd;
+}
+
+.zoom-live__chip--present {
+  background: rgba(16, 185, 129, 0.18);
+  border-color: rgba(16, 185, 129, 0.4);
+  color: #6ee7b7;
+}
+
+.zoom-live__leave {
+  border: 1px solid rgba(248, 113, 113, 0.4);
+  background: rgba(127, 29, 29, 0.4);
+  color: var(--zl-danger);
+  border-radius: 8px;
+  padding: 0.45rem 0.85rem;
+  font-weight: 600;
+  font-size: 0.82rem;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.zoom-live__leave:hover {
+  background: rgba(185, 28, 28, 0.55);
+}
+
+.zoom-live__banner {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.45rem 1rem;
+  font-size: 0.84rem;
+  color: #dbeafe;
+  background: rgba(45, 140, 255, 0.12);
+  border-bottom: 1px solid rgba(45, 140, 255, 0.2);
+}
+
+.zoom-live__banner p {
+  margin: 0;
+}
+
+.zoom-live__spinner {
+  width: 0.85rem;
+  height: 0.85rem;
+  border: 2px solid rgba(147, 197, 253, 0.35);
+  border-top-color: #93c5fd;
+  border-radius: 50%;
+  animation: zl-spin 0.7s linear infinite;
+  flex-shrink: 0;
+}
+
+@keyframes zl-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.zoom-live__error {
+  margin: 1.5rem auto;
+  max-width: 420px;
+  padding: 1.35rem;
+  border-radius: 12px;
+  background: rgba(127, 29, 29, 0.38);
+  border: 1px solid rgba(248, 113, 113, 0.38);
+  text-align: center;
+}
+
+.zoom-live__error h2 {
+  margin: 0 0 0.45rem;
+  font-family: Fraunces, Georgia, serif;
+  font-size: 1.15rem;
+}
+
+.zoom-live__error p {
+  margin: 0 0 1rem;
+  color: #fecaca;
+  font-size: 0.88rem;
+  line-height: 1.45;
+}
+
+.zoom-live__error-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  justify-content: center;
+}
+
+.zoom-live__fallback {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.45rem 0.85rem;
+  border-radius: 8px;
+  background: var(--zl-zoom);
+  color: #fff;
+  font-size: 0.82rem;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.zoom-live__stage {
+  flex: 1;
+  display: flex;
+  padding: 0.75rem;
+}
+
+.zoom-live__placeholder {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 2rem 1.25rem;
+  border-radius: 12px;
+  background:
+    radial-gradient(circle at 30% 20%, rgba(45, 140, 255, 0.18), transparent 45%),
+    #0b1220;
+  border: 1px solid rgba(148, 163, 184, 0.12);
+}
+
+.zoom-live__loading-brand {
+  margin: 0 0 0.5rem;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--zl-teal);
+}
+
+.zoom-live__placeholder h1 {
+  margin: 0 0 0.45rem;
+  font-family: Fraunces, Georgia, serif;
+  font-size: clamp(1.2rem, 3vw, 1.55rem);
+  max-width: 28rem;
+  line-height: 1.25;
+}
+
+.zoom-live__loading-sub {
+  margin: 0 0 1.15rem;
+  font-size: 0.86rem;
+  color: var(--zl-muted);
+  max-width: 26rem;
+  line-height: 1.4;
+}
+
+.zoom-live__loading-bar {
+  height: 3px;
+  width: 120px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, transparent, var(--zl-zoom), var(--zl-teal), transparent);
+  background-size: 200% 100%;
+  animation: zl-shimmer 1.4s ease-in-out infinite;
+}
+
+@keyframes zl-shimmer {
+  0% {
+    background-position: 100% 0;
+  }
+  100% {
+    background-position: -100% 0;
+  }
+}
+
+.zoom-live__bar-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
+
+.zoom-live__workspace {
+  border: 1px solid rgba(45, 140, 255, 0.55);
+  background: rgba(45, 140, 255, 0.16);
+  color: #dbeafe;
+  border-radius: 8px;
+  padding: 0.45rem 0.75rem;
+  font-weight: 600;
+  font-size: 0.78rem;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.zoom-live__workspace:hover:not(:disabled) {
+  background: rgba(45, 140, 255, 0.28);
+}
+
+.zoom-live__workspace:disabled {
+  opacity: 0.65;
+  cursor: wait;
+}
+
+/* Floating switcher above Zoom Client View (needs remote control / desktop tools) */
+.zoom-workspace-switch {
+  position: fixed;
+  left: 0.75rem;
+  bottom: 5.5rem;
+  right: auto;
+  top: auto;
+  z-index: 10050;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.55rem 0.75rem;
+  max-width: min(28rem, calc(100vw - 1.5rem));
+  padding: 0.55rem 0.7rem;
+  border-radius: 12px;
+  border: 1px solid rgba(45, 140, 255, 0.45);
+  background: rgba(8, 15, 30, 0.94);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.35);
+  color: #e2e8f0;
+  font-family: Manrope, system-ui, sans-serif;
+  pointer-events: auto;
+}
+
+.zoom-workspace-switch__copy {
+  display: flex;
+  flex-direction: column;
+  gap: 0.12rem;
+  min-width: 0;
+  flex: 1;
+  font-size: 0.72rem;
+  line-height: 1.35;
+  color: #94a3b8;
+}
+
+.zoom-workspace-switch__copy strong {
+  font-size: 0.78rem;
+  color: #f8fafc;
+  font-weight: 700;
+}
+
+.zoom-workspace-switch__btn {
+  border: 0;
+  border-radius: 8px;
+  padding: 0.5rem 0.8rem;
+  background: #2d8cff;
+  color: #fff;
+  font-weight: 700;
+  font-size: 0.78rem;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.zoom-workspace-switch__btn:hover:not(:disabled) {
+  background: #1f7aef;
+}
+
+.zoom-workspace-switch__btn:disabled {
+  opacity: 0.7;
+  cursor: wait;
+}
+
+.zoom-workspace-switch__note {
+  flex-basis: 100%;
+  margin: 0;
+  font-size: 0.7rem;
+  color: #5eead4;
+  line-height: 1.35;
+}
+
+@media (max-width: 640px) {
+  .zoom-workspace-switch {
+    left: 0.5rem;
+    right: auto;
+    bottom: 5.25rem;
+    max-width: min(22rem, calc(100vw - 1rem));
+  }
+
+  .zoom-live__bar-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}
+
+/* Client View: Zoom owns the page after join */
+body.zoom-client-active #root {
+  /* Keep React root out of the way once Zoom mounts full-page UI */
+  min-height: 0;
+}
+
+body.zoom-client-active #zmmtg-root {
+  position: fixed !important;
+  inset: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  z-index: 10000 !important;
+  background: #1a1a1a;
+}
+
+/* Do not let LMS global reset break Zoom Client View controls */
+#zmmtg-root button,
+#zmmtg-root input,
+#zmmtg-root select,
+#zmmtg-root a {
+  box-sizing: content-box;
+}
+
+#zmmtg-root * {
+  /* Undo aggressive global margin/padding resets that break Zoom layout */
+  font-family: inherit;
+}
+
+/* LMS global touch-target rules must not squash Zoom footer controls (incl. chat). */
+body.zoom-client-active #zmmtg-root button,
+body.zoom-client-active #zmmtg-root a,
+body.zoom-client-active #zmmtg-root [role='button'] {
+  min-height: unset !important;
+  min-width: unset !important;
+}
+
+body.zoom-client-active #zmmtg-root .footer,
+body.zoom-client-active #zmmtg-root .footer-button,
+body.zoom-client-active #zmmtg-root .footer__btns-container {
+  visibility: visible !important;
+  opacity: 1 !important;
+  pointer-events: auto !important;
+}

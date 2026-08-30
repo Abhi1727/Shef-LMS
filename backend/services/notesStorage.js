@@ -1,7 +1,7 @@
 const path = require('path');
 const Batch = require('../models/Batch');
 const googleDriveService = require('./googleDriveService');
-const { resolveNotesAbsolutePath, streamNotesFile } = require('../utils/notesDownload');
+const { findLocalNotesFile, streamNotesFile } = require('../utils/notesDownload');
 
 async function persistNotesToDrive({ file, batchId, lectureTitle }) {
   if (!file?.path) return {};
@@ -27,17 +27,44 @@ async function persistNotesToDrive({ file, batchId, lectureTitle }) {
   }
 }
 
+function isLectureNotesDeliverable(lecture, diskFiles) {
+  if (!lecture) return false;
+  if (!lecture.notesAvailable && !lecture.notesFilePath && !lecture.notesDriveId && !lecture.notesDriveLink) {
+    return false;
+  }
+  const local = findLocalNotesFile(
+    {
+      notesFilePath: lecture.notesFilePath,
+      notesFileName: lecture.notesFileName,
+      title: lecture.title
+    },
+    diskFiles
+  );
+  if (local && !local.error) return true;
+  const driveId =
+    lecture.notesDriveId || googleDriveService.extractDriveFileId(lecture.notesDriveLink);
+  return Boolean(driveId);
+}
+
 async function deliverLectureNotes(res, video) {
   const name = video.notesFileName || path.basename(String(video.notesFilePath || 'notes'));
-  const local = video.notesFilePath ? resolveNotesAbsolutePath(video.notesFilePath) : null;
+  const local = findLocalNotesFile({
+    notesFilePath: video.notesFilePath,
+    notesFileName: video.notesFileName,
+    title: video.title
+  });
   if (local && !local.error) {
     streamNotesFile(res, { filePath: local.path, downloadName: name });
     return true;
   }
   const driveId = video.notesDriveId || googleDriveService.extractDriveFileId(video.notesDriveLink);
   if (driveId) {
-    await googleDriveService.streamFileToResponse(res, driveId, name);
-    return true;
+    try {
+      await googleDriveService.streamFileToResponse(res, driveId, name);
+      return true;
+    } catch (err) {
+      console.warn('[notes] Drive download failed:', err.message || err);
+    }
   }
   return false;
 }
@@ -56,4 +83,4 @@ async function sendLectureNotes(res, video) {
   });
 }
 
-module.exports = { persistNotesToDrive, deliverLectureNotes, sendLectureNotes };
+module.exports = { persistNotesToDrive, deliverLectureNotes, sendLectureNotes, isLectureNotesDeliverable };

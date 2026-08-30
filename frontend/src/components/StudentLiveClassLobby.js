@@ -1,33 +1,29 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { getApiBaseUrl } from '../utils/apiBase';
-import { meetJoinUrl } from '../utils/meetJoinUrl';
-import './MeetLiveClasses.css';
+import { liveJoinUrl, livePlatformLabel } from '../utils/liveJoinUrl';
+import { openLiveClassSession } from '../utils/openLiveClassSession';
+import { formatLiveClassCountdown, getLiveClassSessionPhase } from '../utils/liveClassSessionPhase';
+import './LiveClassStudio.css';
 
 function sessionPhase(meeting, now = Date.now()) {
-  const start = meeting.scheduledStart
-    ? new Date(meeting.scheduledStart).getTime()
-    : new Date(`${meeting.scheduledDate}T${meeting.scheduledTime || '00:00'}`).getTime();
-  const end = meeting.scheduledEnd
-    ? new Date(meeting.scheduledEnd).getTime()
-    : start + 60 * 60 * 1000;
-  if (Number.isNaN(start)) return { phase: 'unknown', minsUntil: null, canJoin: false };
-  const minsUntil = Math.round((start - now) / 60000);
-  const canJoin = now >= start - 15 * 60 * 1000 && now <= end + 30 * 60 * 1000;
-  if (now > end + 30 * 60 * 1000) return { phase: 'ended', minsUntil, canJoin: false };
-  if (minsUntil <= 0 && now <= end) return { phase: 'live', minsUntil, canJoin };
-  if (minsUntil > 0 && minsUntil <= 15) return { phase: 'soon', minsUntil, canJoin };
-  if (minsUntil > 15) return { phase: 'scheduled', minsUntil, canJoin: false };
-  return { phase: 'live', minsUntil, canJoin };
+  return getLiveClassSessionPhase(meeting, now, { forTrainer: false });
 }
 
 function formatCountdown(minsUntil, phase) {
-  if (phase === 'ended') return 'Session ended';
-  if (minsUntil === null || minsUntil === undefined) return '';
-  if (minsUntil <= 0) return 'Class is in session — join to be marked present';
-  if (minsUntil < 60) return `Starts in ${minsUntil} min`;
-  const h = Math.floor(minsUntil / 60);
-  const m = minsUntil % 60;
-  return `Starts in ${h}h ${m}m`;
+  return formatLiveClassCountdown(minsUntil, phase, { forTrainer: false });
+}
+
+function formatTimeRange(m) {
+  const start = m.scheduledStart ? new Date(m.scheduledStart) : null;
+  const end = m.scheduledEnd ? new Date(m.scheduledEnd) : null;
+  if (!start || Number.isNaN(start.getTime())) {
+    return `${m.scheduledDate || ''} · ${m.scheduledTime || ''} IST · ${m.duration || ''}`.trim();
+  }
+  const opts = { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Asia/Kolkata' };
+  const a = start.toLocaleTimeString('en-IN', opts);
+  const b = end && !Number.isNaN(end.getTime()) ? end.toLocaleTimeString('en-IN', opts) : '';
+  const dur = m.duration || (end ? '' : '60 min');
+  return b ? `${a} – ${b} (${dur})` : `${a} IST · ${dur}`;
 }
 
 export default function StudentLiveClassLobby({ compact = false }) {
@@ -55,7 +51,7 @@ export default function StudentLiveClassLobby({ compact = false }) {
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.message || 'Failed to load live classes');
       const list = (data.meetings || []).filter(
-        (m) => m.status !== 'cancelled' && m.status !== 'completed' && (m.hasMeetLink || m.meetLink)
+        (m) => m.status !== 'cancelled' && m.status !== 'completed' && (m.hasJoinLink || m.hasMeetLink || m.meetLink || m.zoomLink)
       );
       setMeetings(list);
     } catch (err) {
@@ -74,10 +70,17 @@ export default function StudentLiveClassLobby({ compact = false }) {
     .filter((m) => sessionPhase(m, now).phase !== 'ended')
     .sort((a, b) => new Date(a.scheduledStart || 0) - new Date(b.scheduledStart || 0));
 
-  const handleJoin = async (m) => {
+  const featured =
+    visible.find((m) => {
+      const p = sessionPhase(m, now);
+      return p.phase === 'live' || p.phase === 'soon';
+    }) || visible[0];
+
+  const handleJoin = async (m, { preferWorkspace = false } = {}) => {
     setJoiningId(m.id);
     setJoinNote('');
     setError('');
+    const platform = m.conferenceProvider === 'zoom' ? 'zoom' : 'meet';
     try {
       const token = localStorage.getItem('token');
       const apiUrl = getApiBaseUrl();
@@ -90,14 +93,33 @@ export default function StudentLiveClassLobby({ compact = false }) {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.message || 'Failed to join');
-      const link = meetJoinUrl(data.meetLink || data.joinUrl);
-      if (!link) throw new Error('Meet link unavailable. Ask your trainer to start the class.');
+      const link = liveJoinUrl(data.meeting || data) || liveJoinUrl(data.meetLink || data.joinUrl);
+      const opened = openLiveClassSession({
+        meetingId: m.id,
+        joinUrl: link,
+        embedded: Boolean(data.embedded && data.sdk),
+        conferenceProvider: platform,
+        host: false,
+        joinPayload: data.embedded && data.sdk ? data : null,
+        preferWorkspace: preferWorkspace && platform === 'zoom',
+        userName: data.sdk?.userName || ''
+      });
+      if (opened.mode === 'none') {
+        throw new Error('Join link unavailable. Ask your trainer to start the class.');
+      }
       setJoinNote(
         data.markedPresent
-          ? 'You’re marked present. Opening Meet with mic/camera muted on the pre-join screen…'
-          : 'Opening Google Meet with mic/camera muted…'
+          ? opened.mode === 'workspace' || opened.mode === 'workspace-or-embedded' || opened.mode === 'workspace-or-web'
+            ? 'You’re marked present. Opening Zoom Workspace (or classroom in this tab)…'
+            : opened.mode === 'embedded'
+              ? 'You’re marked present. Opening Sky States Classroom…'
+              : `You’re marked present. Opening ${livePlatformLabel({ conferenceProvider: platform })}…`
+          : opened.mode === 'workspace' || opened.mode === 'workspace-or-embedded' || opened.mode === 'workspace-or-web'
+            ? 'Opening Zoom Workspace (or classroom in this tab)…'
+            : opened.mode === 'embedded'
+              ? 'Opening Sky States Classroom…'
+              : `Opening ${livePlatformLabel({ conferenceProvider: platform })}…`
       );
-      window.open(link, '_blank', 'noopener,noreferrer');
     } catch (err) {
       setError(err.message || 'Join failed');
     } finally {
@@ -105,85 +127,196 @@ export default function StudentLiveClassLobby({ compact = false }) {
     }
   };
 
-  return (
-    <div className={`live-lobby live-lobby--student ${compact ? 'live-lobby--compact' : ''}`}>
-      <div className="live-lobby__hero">
-        <p className="live-lobby__eyebrow">Sky States · Live class</p>
-        <h2>Join your live session</h2>
-        <p>
-          Join with one click when class opens. Attendance is marked <strong>Present</strong> the moment
-          you join — Meet opens in a new tab.
-        </p>
-      </div>
+  const featuredPhase = featured ? sessionPhase(featured, now) : null;
+  const featuredProvider =
+    featured?.conferenceProvider === 'zoom' ||
+    (featured?.zoomLink && !featured?.meetLink)
+      ? 'zoom'
+      : 'meet';
+  const isLive = featuredPhase?.phase === 'live' || featuredPhase?.phase === 'soon';
 
-      <section className="live-lobby__card">
-        <div className="live-lobby__card-head">
-          <h3>Upcoming for your batch</h3>
-          <button type="button" className="live-lobby__btn live-lobby__btn--ghost live-lobby__btn--sm" onClick={load}>
-            Refresh
-          </button>
-        </div>
-        {loading ? (
-          <p className="live-lobby--empty">Checking your schedule…</p>
-        ) : error ? (
-          <p className="live-lobby__alert live-lobby__alert--err">{error}</p>
-        ) : visible.length === 0 ? (
-          <div className="live-lobby--empty">
-            No live class is scheduled for your batch right now. Check back when your trainer posts one.
+  return (
+    <div className={`live-studio ${compact ? 'live-studio--compact' : ''}`}>
+      {loading ? (
+        <div className="live-studio-empty">Checking your schedule…</div>
+      ) : error && !featured ? (
+        <div className="live-studio__alert live-studio__alert--err">{error}</div>
+      ) : !featured ? (
+        <div className={`live-studio-student live-studio-student--empty${compact ? ' live-studio-student--compact' : ''}`}>
+          <div className="live-studio-student__main">
+            <h3 className="live-studio-student__title">No live class right now</h3>
+            <p className="live-studio-student__lede">
+              {compact
+                ? 'Your trainer’s next session will show here when it’s time to join.'
+                : 'When your trainer starts a session, it will appear here. You can also check your schedule for upcoming times.'}
+            </p>
           </div>
-        ) : (
-          <ul className="live-lobby__list">
-            {visible.map((m) => {
+        </div>
+      ) : (
+        <article
+          className={`live-studio-student${isLive ? ' live-studio-student--live' : ''}${
+            compact ? ' live-studio-student--compact' : ''
+          }`}
+        >
+          <div className="live-studio-student__inner">
+            <div className="live-studio-student__main">
+              {!compact && (
+                <p className="live-studio-student__eyebrow">Sky States Classroom</p>
+              )}
+              <span
+                className={`live-studio-badge live-studio-badge--${
+                  featuredPhase?.phase === 'live' ? 'live' : featuredPhase?.phase === 'soon' ? 'soon' : 'soon'
+                }`}
+              >
+                {featuredPhase?.phase === 'live'
+                  ? 'LIVE NOW'
+                  : featuredPhase?.phase === 'soon'
+                    ? 'Starting soon'
+                    : 'Upcoming'}
+              </span>
+              <h3 className="live-studio-student__title">{featured.title}</h3>
+              <p className="live-studio-session__meta">{formatTimeRange(featured)}</p>
+              {featured.teacherName && (
+                <p className="live-studio-session__meta live-studio-session__meta--trainer">
+                  Trainer: {featured.teacherName}
+                </p>
+              )}
+              <ul className="live-studio-student__checklist">
+                {featuredPhase?.phase === 'live' || featuredPhase?.phase === 'soon' ? (
+                  <li className="is-highlight">
+                    {formatCountdown(featuredPhase?.minsUntil, featuredPhase?.phase)}
+                  </li>
+                ) : null}
+                {!compact && featuredProvider === 'zoom' ? (
+                  <li>Sky States Classroom (in LMS) — or Zoom Workspace for remote control</li>
+                ) : !compact ? (
+                  <li>Join with {livePlatformLabel({ conferenceProvider: featuredProvider })}</li>
+                ) : null}
+                {!compact && <li>Stable internet recommended</li>}
+                {!compact && <li>You join muted — unmute only when asked</li>}
+                <li>Entering class marks you Present</li>
+              </ul>
+              <div className="live-studio-student__join-row">
+                <button
+                  type="button"
+                  className={`live-studio-student__join${featuredProvider === 'zoom' ? ' is-zoom' : ''}`}
+                  disabled={joiningId === featured.id || !featuredPhase?.canJoin}
+                  onClick={() => handleJoin(featured)}
+                >
+                  <span className="live-studio-student__join-icon" aria-hidden="true">▶</span>
+                  {joiningId === featured.id
+                    ? 'Entering…'
+                      : featuredPhase?.canJoin
+                      ? featuredProvider === 'zoom'
+                        ? 'Enter classroom'
+                        : 'Join live class'
+                      : featured?.status === 'live'
+                        ? 'Enter classroom'
+                        : 'Opens when trainer starts or 15 min before class'}
+                </button>
+                {featuredProvider === 'zoom' && featuredPhase?.canJoin ? (
+                  <button
+                    type="button"
+                    className="live-studio-student__join-alt"
+                    disabled={joiningId === featured.id}
+                    onClick={() => handleJoin(featured, { preferWorkspace: true })}
+                  >
+                    <span className="live-studio-student__join-icon" aria-hidden="true">📹</span>
+                    Open in Zoom app
+                  </button>
+                ) : null}
+              </div>
+              {featuredPhase?.canJoin && !compact && (
+                <p className="live-studio-student__hint">
+                  {featuredProvider === 'zoom'
+                    ? 'Default stays in the LMS. Use Open in Zoom app for remote screen control.'
+                    : 'Joining records your attendance as Present.'}
+                </p>
+              )}
+            </div>
+            {!compact && (
+            <div
+              className={`live-studio-student__aside${featuredProvider === 'zoom' ? ' is-zoom' : ''}`}
+              aria-hidden="true"
+            >
+              <div className="live-studio-student__stage-label">
+                <span className="live-studio-student__stage-brand">Sky States</span>
+                <span className="live-studio-student__stage-sub">Live classroom</span>
+              </div>
+              <div className="live-studio-student__preview">
+                <span />
+                <span />
+                <span />
+              </div>
+            </div>
+            )}
+          </div>
+        </article>
+      )}
+
+      {visible.length > 1 && (
+        <section className="live-studio-sessions">
+          <div className="live-studio-sessions__head">
+            <h3>More upcoming sessions</h3>
+            <button type="button" className="live-studio-btn" onClick={load}>
+              Refresh
+            </button>
+          </div>
+          {visible
+            .filter((m) => m.id !== featured?.id)
+            .map((m) => {
               const { phase, minsUntil, canJoin } = sessionPhase(m, now);
-              const badge = phase === 'live' ? 'live' : phase === 'soon' ? 'soon' : 'scheduled';
-              const badgeLabel =
-                phase === 'live' ? 'In session' : phase === 'soon' ? 'Starting soon' : 'Scheduled';
+              const provider = m.conferenceProvider === 'zoom' ? 'zoom' : 'meet';
               return (
-                <li key={m.id} className={`live-session live-session--${badge}`}>
-                  <div className="live-session__top">
+                <div key={m.id} className="live-studio-session">
+                  <div className="live-studio-session__row">
                     <div>
-                      <h4 className="live-session__title">{m.title}</h4>
-                      <p className="live-session__meta">
-                        {m.scheduledDate} · {m.scheduledTime} IST · {m.duration}
-                        {m.teacherName ? ` · ${m.teacherName}` : ''}
+                      <h4 className="live-studio-session__title">{m.title}</h4>
+                      <p className="live-studio-session__meta">{formatTimeRange(m)}</p>
+                      <p className="live-studio-session__meta">
+                        {formatCountdown(minsUntil, phase)}
                       </p>
-                      <p className="live-session__countdown">{formatCountdown(minsUntil, phase)}</p>
                     </div>
-                    <span className={`live-session__badge live-session__badge--${badge}`}>
-                      {badgeLabel}
-                    </span>
+                    <div className="live-studio-badges">
+                      <span
+                        className={`live-studio-badge live-studio-badge--platform${
+                          provider === 'zoom' ? ' is-zoom' : ''
+                        }`}
+                      >
+                        {livePlatformLabel({ conferenceProvider: provider })}
+                      </span>
+                    </div>
                   </div>
-                  <div className="live-session__cta">
+                  <div className="live-studio-session__actions">
                     <button
                       type="button"
-                      className="live-lobby__btn live-lobby__btn--primary"
+                      className="live-studio-btn live-studio-btn--primary"
                       disabled={joiningId === m.id || !canJoin}
                       onClick={() => handleJoin(m)}
-                      title={
-                        canJoin
-                          ? 'Join Meet and mark yourself present'
-                          : 'Join opens 15 minutes before class start'
-                      }
                     >
-                      {joiningId === m.id
-                        ? 'Joining…'
-                        : canJoin
-                          ? 'Join class · Mark present'
-                          : 'Opens 15 min before'}
+                      {joiningId === m.id ? 'Joining…' : canJoin ? 'Join class' : 'Opens soon'}
                     </button>
+                    {provider === 'zoom' && canJoin ? (
+                      <button
+                        type="button"
+                        className="live-studio-btn"
+                        disabled={joiningId === m.id}
+                        onClick={() => handleJoin(m, { preferWorkspace: true })}
+                      >
+                        Zoom app
+                      </button>
+                    ) : null}
                   </div>
-                  {canJoin && (
-                    <p className="live-lobby__hint">
-                      Joining records your attendance as Present for this class.
-                    </p>
-                  )}
-                </li>
+                </div>
               );
             })}
-          </ul>
-        )}
-        {joinNote && <p className="live-lobby__alert live-lobby__alert--ok">{joinNote}</p>}
-      </section>
+        </section>
+      )}
+
+      {joinNote && <div className="live-studio__alert live-studio__alert--ok">{joinNote}</div>}
+      {error && featured && (
+        <div className="live-studio__alert live-studio__alert--err">{error}</div>
+      )}
     </div>
   );
 }

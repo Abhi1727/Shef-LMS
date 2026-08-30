@@ -286,3 +286,11 @@ body {
     font-size: 18px;
   }
 }
+
+/* Zoom Meeting SDK footer controls (chat, reactions, etc.) */
+#zmmtg-root button,
+#zmmtg-root a,
+#zmmtg-root [role='button'] {
+  min-height: unset;
+  min-width: unset;
+}

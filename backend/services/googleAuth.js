@@ -40,8 +40,17 @@ function getServiceAccountCredentials() {
   return { clientEmail, privateKey };
 }
 
+/**
+ * Env-only Meet flag (sync). Prefer liveClassSettings.isMeetLiveEnabled() for
+ * runtime admin override. Drive uploads must NOT depend on this.
+ */
 function isMeetEnabled() {
   return String(process.env.GOOGLE_MEET_ENABLED || '').toLowerCase() === 'true';
+}
+
+/** True when Google OAuth/SA is configured (Drive + Calendar). */
+function isGoogleConfigured() {
+  return getAuthMode() !== 'none';
 }
 
 function getAuthMode() {
@@ -97,6 +106,7 @@ module.exports = {
   MEET_READONLY_SCOPE,
   ALL_SCOPES,
   isMeetEnabled,
+  isGoogleConfigured,
   getAuthMode,
   getOAuthCredentials,
   getServiceAccountCredentials,

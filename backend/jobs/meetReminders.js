@@ -58,7 +58,7 @@ async function sendMeetReminders() {
 
   const classes = await LiveClass.find({
     status: { $in: ['scheduled', 'live'] },
-    meetLink: { $ne: '' },
+    $or: [{ meetLink: { $ne: '' } }, { zoomLink: { $ne: '' } }],
     reminderSentAt: null,
     scheduledStart: { $gte: windowStart, $lte: windowEnd }
   })

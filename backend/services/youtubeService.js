@@ -1,11 +1,36 @@
 const { google } = require('googleapis');
 const fs = require('fs');
-const path = require('path');
+
+function resolveYouTubeCredentials() {
+  // Prefer explicit YOUTUBE_* ; fall back to the shared GCP OAuth client (Meet/Drive)
+  const clientId =
+    process.env.YOUTUBE_CLIENT_ID ||
+    process.env.GOOGLE_MEET_CLIENT_ID ||
+    process.env.GOOGLE_OAUTH_CLIENT_ID ||
+    '';
+  const clientSecret =
+    process.env.YOUTUBE_CLIENT_SECRET ||
+    process.env.GOOGLE_MEET_CLIENT_SECRET ||
+    process.env.GOOGLE_OAUTH_CLIENT_SECRET ||
+    '';
+  const redirectUri =
+    process.env.YOUTUBE_REDIRECT_URI ||
+    process.env.GOOGLE_MEET_REDIRECT_URI ||
+    process.env.GOOGLE_OAUTH_REDIRECT_URI ||
+    'http://localhost:5000/auth/youtube/callback';
+  // YouTube needs youtube.upload — Meet token alone is not enough unless re-consented
+  const refreshToken =
+    process.env.YOUTUBE_REFRESH_TOKEN ||
+    process.env.GOOGLE_YOUTUBE_REFRESH_TOKEN ||
+    '';
+  return { clientId, clientSecret, redirectUri, refreshToken };
+}
 
 class YouTubeService {
   constructor() {
     this.youtube = google.youtube('v3');
     this.oauth2Client = null;
+    this.creds = resolveYouTubeCredentials();
     this.initializeAuth();
   }
 
@@ -14,20 +39,29 @@ class YouTubeService {
    */
   initializeAuth() {
     try {
+      this.creds = resolveYouTubeCredentials();
+      if (!this.creds.clientId || !this.creds.clientSecret) {
+        console.warn('⚠️ YouTube OAuth client id/secret missing (set YOUTUBE_* or GOOGLE_MEET_*)');
+        return;
+      }
+
       this.oauth2Client = new google.auth.OAuth2(
-        process.env.YOUTUBE_CLIENT_ID,
-        process.env.YOUTUBE_CLIENT_SECRET,
-        process.env.YOUTUBE_REDIRECT_URI || 'http://localhost:5000/auth/youtube/callback'
+        this.creds.clientId,
+        this.creds.clientSecret,
+        this.creds.redirectUri
       );
 
-      // Set credentials if refresh token is available
-      if (process.env.YOUTUBE_REFRESH_TOKEN) {
+      if (this.creds.refreshToken) {
         this.oauth2Client.setCredentials({
-          refresh_token: process.env.YOUTUBE_REFRESH_TOKEN
+          refresh_token: this.creds.refreshToken
         });
       }
 
-      console.log('✅ YouTube OAuth2 client initialized');
+      console.log(
+        this.creds.refreshToken
+          ? '✅ YouTube OAuth2 client initialized (refresh token present)'
+          : '⚠️ YouTube OAuth2 client ready — missing YOUTUBE_REFRESH_TOKEN (run setup-youtube-oauth.js)'
+      );
     } catch (error) {
       console.error('❌ Failed to initialize YouTube auth:', error.message);
     }
@@ -49,7 +83,8 @@ class YouTubeService {
     return this.oauth2Client.generateAuthUrl({
       access_type: 'offline',
       scope: scopes,
-      prompt: 'consent'
+      prompt: 'consent',
+      login_hint: process.env.GOOGLE_MEET_HOST_EMAIL || process.env.YOUTUBE_UPLOAD_ACCOUNT || ''
     });
   }
 
@@ -58,7 +93,7 @@ class YouTubeService {
    */
   async getTokens(code) {
     try {
-      const { tokens } = await this.oauth2Client.getAccessToken(code);
+      const { tokens } = await this.oauth2Client.getToken(code);
       return tokens;
     } catch (error) {
       console.error('❌ Error getting YouTube tokens:', error.message);
@@ -66,34 +101,62 @@ class YouTubeService {
     }
   }
 
+  async ensureFreshCredentials() {
+    if (!this.oauth2Client) {
+      throw new Error('YouTube OAuth2 client not initialized');
+    }
+    const refresh =
+      this.creds.refreshToken ||
+      process.env.YOUTUBE_REFRESH_TOKEN ||
+      process.env.GOOGLE_YOUTUBE_REFRESH_TOKEN;
+    if (!refresh) {
+      throw new Error(
+        'YOUTUBE_REFRESH_TOKEN missing. Run: ENV_PATH=.env.dev node scripts/setup-youtube-oauth.js'
+      );
+    }
+    this.oauth2Client.setCredentials({ refresh_token: refresh });
+    const { credentials } = await this.oauth2Client.refreshAccessToken();
+    this.oauth2Client.setCredentials({ ...credentials, refresh_token: refresh });
+  }
+
   /**
-   * Upload video to YouTube as private
+   * Upload video to YouTube as unlisted (Classroom player)
    */
   async uploadVideo(videoPath, metadata) {
     try {
       if (!this.oauth2Client) {
         throw new Error('YouTube OAuth2 client not initialized');
       }
-
-      // Refresh access token if needed
-      if (process.env.YOUTUBE_REFRESH_TOKEN) {
-        const { credentials } = await this.oauth2Client.refreshAccessToken();
-        this.oauth2Client.setCredentials(credentials);
+      if (!videoPath || !fs.existsSync(videoPath)) {
+        throw new Error('Video file not found for YouTube upload');
       }
 
-      const fileSize = fs.statSync(videoPath).size;
-      
+      await this.ensureFreshCredentials();
+
+      const privacyStatus = String(
+        metadata.privacyStatus || process.env.YOUTUBE_PRIVACY_STATUS || 'unlisted'
+      ).toLowerCase();
+      const allowed = ['private', 'unlisted', 'public'];
+      const privacy = allowed.includes(privacyStatus) ? privacyStatus : 'unlisted';
+
       const youtubeMetadata = {
         snippet: {
-          title: metadata.title || 'Untitled Video',
-          description: metadata.description || `Educational video - ${metadata.courseType || 'Course'}`,
-          tags: metadata.tags || ['education', 'shef-lms', metadata.courseType, metadata.instructor],
+          title: String(metadata.title || 'Untitled Video').slice(0, 100),
+          description:
+            metadata.description || `Educational video - ${metadata.courseType || 'Course'}`,
+          tags: (metadata.tags || [
+            'education',
+            'sky-states-lms',
+            metadata.courseType,
+            metadata.instructor
+          ]).filter(Boolean),
           categoryId: '27' // Education category
         },
         status: {
-          privacyStatus: 'private', // Upload as private
+          privacyStatus: privacy,
           embeddable: true,
-          license: 'youtube'
+          license: 'youtube',
+          selfDeclaredMadeForKids: false
         }
       };
 
@@ -104,7 +167,7 @@ class YouTubeService {
         requestBody: youtubeMetadata,
         media: {
           body: fs.createReadStream(videoPath),
-          mimeType: 'video/*'
+          mimeType: 'video/mp4'
         },
         auth: this.oauth2Client
       });
@@ -117,13 +180,11 @@ class YouTubeService {
         videoId: videoId,
         videoUrl: `https://www.youtube.com/watch?v=${videoId}`,
         embedUrl: `https://www.youtube.com/embed/${videoId}`,
-        privacyStatus: 'private'
+        privacyStatus: privacy
       };
-
     } catch (error) {
       console.error('❌ Error uploading video to YouTube:', error.message);
-      
-      // Handle specific YouTube API errors
+
       if (error.code === 401) {
         throw new Error('YouTube authentication failed. Please re-authenticate.');
       } else if (error.code === 403) {
@@ -131,16 +192,14 @@ class YouTubeService {
       } else if (error.code === 400) {
         throw new Error('Invalid video metadata or file format.');
       }
-      
+
       throw new Error('Failed to upload video to YouTube: ' + error.message);
     }
   }
 
-  /**
-   * Get video details from YouTube
-   */
   async getVideoDetails(videoId) {
     try {
+      await this.ensureFreshCredentials();
       const response = await this.youtube.videos.list({
         part: 'snippet,status,contentDetails',
         id: videoId,
@@ -158,11 +217,9 @@ class YouTubeService {
     }
   }
 
-  /**
-   * Update video privacy status (useful for making videos public later)
-   */
-  async updateVideoPrivacy(videoId, privacyStatus = 'private') {
+  async updateVideoPrivacy(videoId, privacyStatus = 'unlisted') {
     try {
+      await this.ensureFreshCredentials();
       const response = await this.youtube.videos.update({
         part: 'status',
         requestBody: {
@@ -182,11 +239,9 @@ class YouTubeService {
     }
   }
 
-  /**
-   * Delete video from YouTube
-   */
   async deleteVideo(videoId) {
     try {
+      await this.ensureFreshCredentials();
       await this.youtube.videos.delete({
         id: videoId,
         auth: this.oauth2Client
@@ -200,27 +255,29 @@ class YouTubeService {
     }
   }
 
-  /**
-   * Check if YouTube API is properly configured
-   */
   isConfigured() {
-    return !!(
-      process.env.YOUTUBE_CLIENT_ID &&
-      process.env.YOUTUBE_CLIENT_SECRET &&
-      this.oauth2Client
-    );
+    this.creds = resolveYouTubeCredentials();
+    return !!(this.creds.clientId && this.creds.clientSecret && this.creds.refreshToken && this.oauth2Client);
   }
 
-  /**
-   * Get YouTube embed URL from video ID
-   */
+  getCredentialSource() {
+    this.creds = resolveYouTubeCredentials();
+    return {
+      clientFrom:
+        process.env.YOUTUBE_CLIENT_ID
+          ? 'YOUTUBE_CLIENT_ID'
+          : process.env.GOOGLE_MEET_CLIENT_ID
+            ? 'GOOGLE_MEET_CLIENT_ID'
+            : 'none',
+      hasRefreshToken: Boolean(this.creds.refreshToken),
+      configured: this.isConfigured()
+    };
+  }
+
   static getEmbedUrl(videoId) {
     return `https://www.youtube.com/embed/${videoId}`;
   }
 
-  /**
-   * Extract video ID from YouTube URL
-   */
   static extractVideoId(url) {
     const regex = /(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([^&\n?#]+)/;
     const match = url.match(regex);

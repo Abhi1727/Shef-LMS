@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { getApiBaseUrl } from '../utils/apiBase';
+import { downloadAuthenticatedFile } from '../utils/downloadFile';
 import './MeetLiveClasses.css';
 
 const MATERIAL_KINDS = [
@@ -302,14 +303,30 @@ export default function TeacherMaterialsPanel({ batchId, batchName = '' }) {
                       <span className="live-session__badge">{m.kind}</span>
                     </div>
                     <div className="live-session__cta">
+                      <button
+                        type="button"
+                        className="live-lobby__btn live-lobby__btn--primary"
+                        onClick={async () => {
+                          try {
+                            await downloadAuthenticatedFile(
+                              `/api/teacher/batches/${batchId}/materials/${m.id}/download`,
+                              { filename: m.name }
+                            );
+                          } catch (err) {
+                            setError(err.message || 'Download failed');
+                          }
+                        }}
+                      >
+                        Download
+                      </button>
                       {m.driveLink && (
                         <a
-                          className="live-lobby__btn live-lobby__btn--primary"
+                          className="live-lobby__btn live-lobby__btn--secondary"
                           href={m.driveLink}
                           target="_blank"
                           rel="noopener noreferrer"
                         >
-                          Open
+                          Open in Drive
                         </a>
                       )}
                       <button

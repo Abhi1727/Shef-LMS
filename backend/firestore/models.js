@@ -37,7 +37,8 @@ const registry = {
   Lesson: createFsModel('Lesson', 'lessons'),
   SentEmail: createFsModel('SentEmail', 'sentemails'),
   UserProgress: createFsModel('UserProgress', 'userProgress'),
-  Content: createFsModel('Content', 'content')
+  Content: createFsModel('Content', 'content'),
+  AppSetting: createFsModel('AppSetting', 'appsettings')
 };
 
 module.exports = registry;

@@ -1,6 +1,8 @@
 const Classroom = require('../models/Classroom');
 const ActivityLog = require('../models/ActivityLog');
 const { Assessment } = require('../models/AssessmentStudio');
+const { listUploadFiles } = require('../utils/notesDownload');
+const { isLectureNotesDeliverable } = require('./notesStorage');
 
 const WATCH_COMPLETE_THRESHOLD = 95;
 
@@ -8,6 +10,11 @@ function isUnplayableLiveStub(lec) {
   const source = String(lec?.videoSource || '');
   if (source !== 'meet-session' && source !== 'pending') return false;
   return !(lec.youtubeVideoId || lec.youtubeEmbedUrl || lec.youtubeVideoUrl || lec.driveId);
+}
+
+/** Legacy lectures without the field stay visible; only explicit false hides from students. */
+function isStudentVisible(lec) {
+  return lec?.studentVisible !== false;
 }
 
 /**
@@ -52,12 +59,14 @@ async function getWatchedVideoIds(userId) {
 /**
  * Build lesson path for a batch with unlock + step state for a student.
  */
-async function buildLessonPath({ batchId, studentId, watchedSet, lecturesPreloaded, assessmentsByIdPreloaded }) {
+async function buildLessonPath({ batchId, studentId, watchedSet, lecturesPreloaded, assessmentsByIdPreloaded, diskFiles }) {
   const lectures =
     lecturesPreloaded != null
       ? lecturesPreloaded
       : await Classroom.find({ batchId: String(batchId) }).lean().exec();
-  const ordered = sortLessons(lectures).filter((l) => !isUnplayableLiveStub(l));
+  const ordered = sortLessons(lectures)
+    .filter((l) => !isUnplayableLiveStub(l))
+    .filter((l) => isStudentVisible(l));
   const watched = watchedSet || (await getWatchedVideoIds(studentId));
 
   const assessmentIds = ordered
@@ -85,6 +94,8 @@ async function buildLessonPath({ batchId, studentId, watchedSet, lecturesPreload
     const locked = unlockRule === 'afterPrevious' && index > 0 && !previousComplete;
     const linked = lec.linkedAssessmentId ? assessmentsById[String(lec.linkedAssessmentId)] : null;
 
+    const deliverableNotes = isLectureNotesDeliverable(lec, diskFiles);
+
     const lesson = {
       id,
       title: lec.title,
@@ -94,8 +105,8 @@ async function buildLessonPath({ batchId, studentId, watchedSet, lecturesPreload
       unlockRule,
       locked,
       watchComplete: watchedOk,
-      notesAvailable: !!(lec.notesAvailable && lec.notesFilePath),
-      notesFileName: lec.notesFileName || '',
+      notesAvailable: deliverableNotes,
+      notesFileName: deliverableNotes ? lec.notesFileName || '' : '',
       linkedAssessmentId: lec.linkedAssessmentId || '',
       linkedAssessment: linked
         ? {
@@ -107,7 +118,7 @@ async function buildLessonPath({ batchId, studentId, watchedSet, lecturesPreload
         : null,
       steps: {
         watch: watchedOk ? 'done' : locked ? 'locked' : 'available',
-        notes: !(lec.notesAvailable && lec.notesFilePath)
+        notes: !deliverableNotes
           ? 'skipped'
           : locked
             ? 'locked'
@@ -158,6 +169,7 @@ async function buildLessonPathsForBatches({ batchIds, studentId }) {
   }
 
   const watched = await getWatchedVideoIds(studentId);
+  const diskFiles = listUploadFiles();
 
   const assessmentIds = [
     ...new Set(
@@ -186,7 +198,8 @@ async function buildLessonPathsForBatches({ batchIds, studentId }) {
       studentId,
       watchedSet: watched,
       lecturesPreloaded: lecturesByBatch[batchId] || [],
-      assessmentsByIdPreloaded: assessmentsById
+      assessmentsByIdPreloaded: assessmentsById,
+      diskFiles
     });
     result.set(batchId, path);
   }
@@ -246,6 +259,7 @@ async function annotateVideosWithPath(videos, studentId) {
 module.exports = {
   WATCH_COMPLETE_THRESHOLD,
   isUnplayableLiveStub,
+  isStudentVisible,
   nextOrderForBatch,
   sortLessons,
   getWatchedVideoIds,

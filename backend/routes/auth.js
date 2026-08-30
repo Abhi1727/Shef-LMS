@@ -206,7 +206,13 @@ router.post('/login', async (req, res) => {
         company: userData.company,
         phone: userData.phone || '',
         address: userData.address || '',
-        lastLogin: loginInfo
+        lastLogin: loginInfo,
+        ...(jwtRole === 'teacher' || userData.role === 'admin'
+          ? {
+              conferenceProvider:
+                userData.conferenceProvider === 'zoom' ? 'zoom' : 'meet'
+            }
+          : {})
       }
     };
 
@@ -235,7 +241,27 @@ router.get('/me', async (req, res) => {
     }
 
     const decoded = jwt.verify(token, getJwtSecret());
-    res.json({ user: decoded.user });
+    const base = decoded.user || {};
+    const role = base.role;
+
+    if (role === 'teacher' || role === 'admin') {
+      const fresh = await User.findById(base.id)
+        .select('conferenceProvider name email role status')
+        .lean()
+        .exec();
+      if (fresh) {
+        return res.json({
+          user: {
+            ...base,
+            name: fresh.name || base.name,
+            email: fresh.email || base.email,
+            conferenceProvider: fresh.conferenceProvider === 'zoom' ? 'zoom' : 'meet'
+          }
+        });
+      }
+    }
+
+    res.json({ user: base });
   } catch (err) {
     res.status(401).json({ message: 'Token is not valid' });
   }

@@ -36,6 +36,8 @@ const classroomSchema = new mongoose.Schema({
   order: { type: Number, default: 0, index: true },
   linkedAssessmentId: { type: String, default: '' },
   unlockRule: { type: String, enum: ['open', 'afterPrevious'], default: 'open' },
+  /** When false, students cannot see this lecture in Classroom (automation still runs). */
+  studentVisible: { type: Boolean, default: true },
   uploadedBy: { type: String },
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now },

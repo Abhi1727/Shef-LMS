@@ -8,6 +8,22 @@ import CustomVideoPlayer from './CustomVideoPlayer';
 import ActivityTimelineChart from './charts/ActivityTimelineChart';
 import { processActivityData, exportToCSV } from '../utils/activityDataProcessor';
 import { getApiBaseUrl } from '../utils/apiBase';
+import { downloadAuthenticatedFile } from '../utils/downloadFile';
+import {
+  applyTemplateToForm,
+  BUILTIN_EMAIL_TEMPLATES,
+  defaultEmailVariables,
+  deleteEmailDraft,
+  EMAIL_EDITABLE_FIELDS,
+  getBuiltinTemplate,
+  getIstTimeOptions,
+  loadEmailDrafts,
+  PLATFORM_OPTIONS,
+  recalcUsTimings,
+  resolveIstOptionId,
+  saveEmailDraft,
+  US_TIMING_KEYS
+} from '../utils/emailTemplates';
 import SkyLoadingScreen from './SkyLoadingScreen';
 import './BatchDetailsPage.css';
 
@@ -307,6 +323,12 @@ const BatchDetailsPage = () => {
   const [isSendingEmail, setIsSendingEmail] = useState(false);
   const [emailSearchTerm, setEmailSearchTerm] = useState('');
   const [emailQuickFilter, setEmailQuickFilter] = useState('all');
+  const [emailDrafts, setEmailDrafts] = useState(() => loadEmailDrafts());
+  const [selectedEmailTemplateId, setSelectedEmailTemplateId] = useState('zoom-lms-join');
+  const [selectedEmailDraftId, setSelectedEmailDraftId] = useState('');
+  const [draftNameInput, setDraftNameInput] = useState('');
+  const [selectedIstTimeOptionId, setSelectedIstTimeOptionId] = useState('custom');
+  const [emailVariables, setEmailVariables] = useState(() => defaultEmailVariables());
 
   // Activity graph state
   const [showLogins, setShowLogins] = useState(true);
@@ -319,6 +341,186 @@ const BatchDetailsPage = () => {
   // Helper function for normalizing IDs (moved here to be available for useMemo)
   const normId = (v) => (v != null && v !== '' ? String(v).trim() : '');
   const selectedBatchIdNorm = normId(selectedBatch?.id || selectedBatch?._id || batchId);
+
+  useEffect(() => {
+    if (activeView !== 'email') return;
+    setEmailDrafts(loadEmailDrafts());
+  }, [activeView]);
+
+  useEffect(() => {
+    if (activeView !== 'email' || !selectedBatch || selectedEmailDraftId) return;
+    const vars = defaultEmailVariables(selectedBatch);
+    setEmailVariables(vars);
+    setSelectedIstTimeOptionId(resolveIstOptionId(vars.istTimeRange, selectedBatch));
+  }, [activeView, selectedBatch?.id, selectedBatch?._id, selectedEmailDraftId]);
+
+  useEffect(() => {
+    if (activeView !== 'email' || !selectedBatch || selectedEmailDraftId) return;
+    setEmailForm((prev) => {
+      if (prev.message.trim()) return prev;
+      const applied = applyTemplateToForm(
+        selectedEmailTemplateId,
+        defaultEmailVariables(selectedBatch)
+      );
+      return { ...prev, subject: applied.subject, message: applied.message };
+    });
+  }, [activeView, selectedBatch?.id, selectedBatch?._id, selectedEmailTemplateId, selectedEmailDraftId]);
+
+  const refreshEmailDrafts = () => {
+    const drafts = loadEmailDrafts();
+    setEmailDrafts(drafts);
+    return drafts;
+  };
+
+  const applyEmailFormFromTemplate = (templateId, variables) => {
+    const applied = applyTemplateToForm(templateId, variables, {
+      subject: emailForm.subject,
+      message: emailForm.message
+    });
+    setEmailVariables(applied.variables);
+    setEmailForm((prev) => ({
+      ...prev,
+      subject: applied.subject,
+      message: applied.message
+    }));
+  };
+
+  const handleEmailVariableChange = (key, value) => {
+    setEmailVariables((prev) => {
+      const next = { ...prev, [key]: value };
+      if (key === 'istTimeRange') {
+        const recalced = recalcUsTimings(next);
+        setSelectedIstTimeOptionId(resolveIstOptionId(recalced.istTimeRange, selectedBatch));
+        return recalced;
+      }
+      return next;
+    });
+  };
+
+  const handleIstTimeOptionChange = (optionId) => {
+    setSelectedIstTimeOptionId(optionId);
+    if (optionId === 'custom') return;
+    const option = getIstTimeOptions(selectedBatch).find((opt) => opt.id === optionId);
+    if (!option?.istTimeRange) return;
+    const vars = recalcUsTimings({ ...emailVariables, istTimeRange: option.istTimeRange });
+    setEmailVariables(vars);
+    applyEmailFormFromTemplate(selectedEmailTemplateId, vars);
+  };
+
+  const handleFillEmailFromBatch = () => {
+    if (!selectedBatch) return;
+    const vars = defaultEmailVariables(selectedBatch);
+    setEmailVariables(vars);
+    setSelectedIstTimeOptionId(resolveIstOptionId(vars.istTimeRange, selectedBatch));
+    applyEmailFormFromTemplate(selectedEmailTemplateId, vars);
+    showToast('Filled course, batch, schedule, and US timings from this batch.', 'success');
+  };
+
+  const handleLoadEmailTemplate = (templateId) => {
+    setSelectedEmailTemplateId(templateId);
+    setSelectedEmailDraftId('');
+    setDraftNameInput('');
+    const tpl = getBuiltinTemplate(templateId);
+    if (!tpl) return;
+    if (templateId === 'blank') {
+      setEmailForm((prev) => ({ ...prev, subject: '', message: '' }));
+      return;
+    }
+    const vars = recalcUsTimings(
+      emailVariables.course || emailVariables.batchName
+        ? emailVariables
+        : defaultEmailVariables(selectedBatch)
+    );
+    applyEmailFormFromTemplate(templateId, vars);
+  };
+
+  const handleLoadEmailDraft = (draftId) => {
+    const drafts = refreshEmailDrafts();
+    if (!draftId) {
+      setSelectedEmailDraftId('');
+      setDraftNameInput('');
+      return;
+    }
+    const draft = drafts.find((d) => d.id === draftId);
+    if (!draft) {
+      showToast('Draft not found. It may have been deleted in another tab.', 'warning');
+      return;
+    }
+    setSelectedEmailDraftId(draftId);
+    setDraftNameInput(draft.name || '');
+    setSelectedEmailTemplateId(draft.templateId || 'class-announcement');
+    const vars = recalcUsTimings({
+      ...defaultEmailVariables(selectedBatch),
+      ...(draft.variables || {})
+    });
+    setEmailVariables(vars);
+    setSelectedIstTimeOptionId(
+      draft.istTimeOptionId || resolveIstOptionId(vars.istTimeRange, selectedBatch)
+    );
+    const applied = applyTemplateToForm(draft.templateId || selectedEmailTemplateId, vars, {
+      subject: draft.subject,
+      message: draft.message
+    });
+    setEmailForm((prev) => ({
+      ...prev,
+      subject: applied.subject,
+      message: applied.message
+    }));
+    showToast(`Loaded draft “${draft.name}”`, 'success');
+  };
+
+  const handleApplyEmailTemplate = () => {
+    applyEmailFormFromTemplate(selectedEmailTemplateId, emailVariables);
+    showToast('Template applied with current details.', 'success');
+  };
+
+  const handleNewEmailDraft = () => {
+    setSelectedEmailDraftId('');
+    setDraftNameInput('');
+    const vars = defaultEmailVariables(selectedBatch);
+    setEmailVariables(vars);
+    setSelectedIstTimeOptionId(resolveIstOptionId(vars.istTimeRange, selectedBatch));
+    applyEmailFormFromTemplate(selectedEmailTemplateId, vars);
+  };
+
+  const handleSaveEmailDraft = () => {
+    const name = draftNameInput.trim();
+    if (!name) {
+      showToast('Enter a draft name in the box below, then save.', 'warning');
+      return;
+    }
+    const tpl = getBuiltinTemplate(selectedEmailTemplateId);
+    const vars = recalcUsTimings(emailVariables);
+    const saved = saveEmailDraft({
+      id: selectedEmailDraftId || undefined,
+      name,
+      templateId: selectedEmailTemplateId,
+      subject: tpl && selectedEmailTemplateId !== 'blank' ? tpl.subject : emailForm.subject,
+      message: tpl && selectedEmailTemplateId !== 'blank' ? tpl.message : emailForm.message,
+      variables: vars,
+      istTimeOptionId: selectedIstTimeOptionId
+    });
+    refreshEmailDrafts();
+    setSelectedEmailDraftId(saved.id);
+    setDraftNameInput(saved.name);
+    showToast(selectedEmailDraftId ? 'Draft updated.' : 'Draft saved.', 'success');
+  };
+
+  const handleDeleteEmailDraft = (draftId = selectedEmailDraftId) => {
+    if (!draftId) {
+      showToast('Select a draft to delete.', 'warning');
+      return;
+    }
+    const draft = emailDrafts.find((d) => d.id === draftId);
+    if (!window.confirm(`Delete draft “${draft?.name || 'this draft'}”?`)) return;
+    const remaining = deleteEmailDraft(draftId);
+    setEmailDrafts(remaining);
+    if (selectedEmailDraftId === draftId) {
+      setSelectedEmailDraftId('');
+      setDraftNameInput('');
+    }
+    showToast('Draft deleted.', 'success');
+  };
 
   // Filter students for email section (moved here to avoid conditional hook usage)
   const filteredEmailStudents = useMemo(() => {
@@ -1562,115 +1764,17 @@ const BatchDetailsPage = () => {
 
   const handleDownloadNotes = async (video) => {
     try {
-      const token = localStorage.getItem('token');
-      const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
-      
-      // Enhanced download with comprehensive endpoint fallback
-      const endpoints = [
-        `${apiUrl}/api/classroom/${video.id}/notes`,
-        `${apiUrl}/api/admin/classroom/${video.id}/notes`,
-        `${apiUrl}/api/classroom/notes/${video.id}`,
-        `${apiUrl}/api/admin/classroom/notes/${video.id}`,
-        `${apiUrl}/api/teacher/videos/${video.id}/notes`,
-        `${apiUrl}/api/classroom/download/notes/${video.id}`
-      ];
-      
-      let response;
-      let workingEndpoint = null;
-      
-      // Try each endpoint with enhanced error handling
-      for (const endpoint of endpoints) {
-        try {
-          console.log(`Trying endpoint: ${endpoint}`);
-          response = await fetch(endpoint, {
-            method: 'GET',
-            headers: {
-              'Authorization': `Bearer ${token}`,
-              'Cache-Control': 'no-cache'
-            }
-          });
-          
-          if (response.ok) {
-            workingEndpoint = endpoint;
-            console.log(`Success with endpoint: ${endpoint}`);
-            break;
-          } else {
-            console.warn(`Endpoint ${endpoint} failed with status: ${response.status}`);
-          }
-        } catch (endpointError) {
-          console.warn(`Endpoint ${endpoint} error:`, endpointError.message);
-          continue;
-        }
-      }
-
-      if (response && response.ok) {
-        const contentDisposition = response.headers.get('content-disposition');
-        const contentType = (response.headers.get('content-type') || '').toLowerCase();
-        if (contentType.includes('application/json')) {
-          const errBody = await response.json().catch(() => ({}));
-          throw new Error(errBody.message || 'Notes file is not available on the server');
-        }
-
-        let filename = video.notesFileName || '';
-        if (contentDisposition) {
-          const utf = contentDisposition.match(/filename\*=UTF-8''([^;]+)/i);
-          const plain = contentDisposition.match(/filename="([^"]+)"/i);
-          filename = decodeURIComponent((utf && utf[1]) || (plain && plain[1]) || filename);
-        }
-        if (!filename) {
-          filename = `notes-${video.title || 'untitled'}`;
-        }
-        
-        try {
-          const blob = await response.blob();
-          
-          // Validate blob
-          if (blob.size === 0) {
-            throw new Error('Downloaded file is empty');
-          }
-          const header = new Uint8Array(await blob.slice(0, 4).arrayBuffer());
-          const looksZip = header[0] === 0x50 && header[1] === 0x4b;
-          if (looksZip && !/\.zip$/i.test(filename)) filename = `${filename}.zip`;
-          if (/\.zip$/i.test(filename) && !looksZip) {
-            throw new Error('The notes zip is missing on the server. Ask your trainer to upload it again.');
-          }
-          
-          // Create download link
-          const url = window.URL.createObjectURL(blob);
-          const a = document.createElement('a');
-          a.href = url;
-          a.download = filename;
-          a.style.display = 'none';
-          
-          document.body.appendChild(a);
-          a.click();
-          
-          // Cleanup
-          setTimeout(() => {
-            document.body.removeChild(a);
-            window.URL.revokeObjectURL(url);
-          }, 100);
-          
-          showToast(`Notes "${filename}" downloaded successfully!`, 'success');
-          console.log('Download completed:', {
-            filename,
-            size: formatFileSize(blob.size),
-            type: blob.type
-          });
-          
-        } catch (blobError) {
-          console.error('Error creating download blob:', blobError);
-          showToast('Failed to process downloaded file. Please try again.', 'error');
-        }
-      } else {
-        showToast(
-          'Notes file is missing on the server. Upload the zip again so it is saved to Drive.',
-          'error'
-        );
-      }
+      await downloadAuthenticatedFile(`/api/classroom/${video.id}/notes`, {
+        filename: video.notesFileName || `notes-${video.title || 'untitled'}`
+      });
+      showToast(`Notes "${video.notesFileName || 'file'}" downloaded successfully!`, 'success');
     } catch (error) {
       console.error('Unexpected error in handleDownloadNotes:', error);
-      showToast('An unexpected error occurred while downloading notes. Please try again.', 'error');
+      showToast(
+        error.message ||
+          'Notes file is missing on the server. Upload the zip again so it is saved to Drive.',
+        'error'
+      );
     }
   };
 
@@ -2709,6 +2813,198 @@ const BatchDetailsPage = () => {
                 <section className="sky-email-panel sky-email-compose">
                   <div className="sky-email-panel__head">
                     <h3>Compose</h3>
+                    <div className="sky-email-template-actions">
+                      <button
+                        type="button"
+                        className="sky-btn sky-btn-ghost sky-email-mini-btn"
+                        onClick={handleFillEmailFromBatch}
+                      >
+                        Fill from batch
+                      </button>
+                      <button
+                        type="button"
+                        className="sky-btn sky-btn-ghost sky-email-mini-btn"
+                        onClick={handleApplyEmailTemplate}
+                      >
+                        Apply template
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="sky-email-templates">
+                    <div className="sky-email-field">
+                      <label htmlFor="sky-email-template">Template</label>
+                      <select
+                        id="sky-email-template"
+                        className="sky-email-input"
+                        value={selectedEmailTemplateId}
+                        onChange={(e) => handleLoadEmailTemplate(e.target.value)}
+                      >
+                        {BUILTIN_EMAIL_TEMPLATES.map((tpl) => (
+                          <option key={tpl.id} value={tpl.id}>
+                            {tpl.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="sky-email-drafts-panel">
+                    <div className="sky-email-drafts-panel__head">
+                      <h4>Saved drafts</h4>
+                      <button
+                        type="button"
+                        className="sky-btn sky-btn-ghost sky-email-mini-btn"
+                        onClick={handleNewEmailDraft}
+                      >
+                        New draft
+                      </button>
+                    </div>
+                    <div className="sky-email-drafts-panel__save">
+                      <input
+                        type="text"
+                        className="sky-email-input"
+                        placeholder="Draft name (e.g. Weekend class announcement)"
+                        value={draftNameInput}
+                        onChange={(e) => setDraftNameInput(e.target.value)}
+                        aria-label="Draft name"
+                      />
+                      <button
+                        type="button"
+                        className="sky-btn sky-btn-secondary"
+                        onClick={handleSaveEmailDraft}
+                      >
+                        {selectedEmailDraftId ? 'Update draft' : 'Save draft'}
+                      </button>
+                    </div>
+                    {emailDrafts.length === 0 ? (
+                      <p className="sky-email-drafts-panel__empty">
+                        No saved drafts yet. Fill details, name it, and click Save draft.
+                      </p>
+                    ) : (
+                      <ul className="sky-email-drafts-list">
+                        {emailDrafts.map((draft) => (
+                          <li
+                            key={draft.id}
+                            className={`sky-email-drafts-item${
+                              selectedEmailDraftId === draft.id ? ' is-active' : ''
+                            }`}
+                          >
+                            <button
+                              type="button"
+                              className="sky-email-drafts-item__main"
+                              onClick={() => handleLoadEmailDraft(draft.id)}
+                            >
+                              <strong>{draft.name}</strong>
+                              <span>
+                                {draft.savedAt
+                                  ? new Date(draft.savedAt).toLocaleString('en-IN', {
+                                      dateStyle: 'medium',
+                                      timeStyle: 'short'
+                                    })
+                                  : 'Saved'}
+                              </span>
+                            </button>
+                            <button
+                              type="button"
+                              className="sky-btn sky-btn-ghost sky-email-mini-btn"
+                              onClick={() => handleDeleteEmailDraft(draft.id)}
+                              aria-label={`Delete ${draft.name}`}
+                            >
+                              Delete
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+
+                  <div className="sky-email-variables">
+                    <div className="sky-email-variables__head">
+                      <h4>Details to insert</h4>
+                      <p className="sky-muted">
+                        Pick class time once — EST, CST, MST, and PST fill in automatically.
+                      </p>
+                    </div>
+                    <div className="sky-email-variables__grid">
+                      {EMAIL_EDITABLE_FIELDS.map(({ key, label, placeholder }) => (
+                        <label key={key} className="sky-email-variables__field">
+                          <span>{label}</span>
+                          <input
+                            type="text"
+                            value={emailVariables[key] || ''}
+                            onChange={(e) => handleEmailVariableChange(key, e.target.value)}
+                            placeholder={placeholder || `{{${key}}}`}
+                            className="sky-email-input"
+                          />
+                        </label>
+                      ))}
+                      <label className="sky-email-variables__field">
+                        <span>Platform</span>
+                        <select
+                          className="sky-email-input"
+                          value={emailVariables.platform || 'Zoom'}
+                          onChange={(e) => handleEmailVariableChange('platform', e.target.value)}
+                        >
+                          {PLATFORM_OPTIONS.map((platform) => (
+                            <option key={platform} value={platform}>
+                              {platform}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label className="sky-email-variables__field sky-email-variables__field--wide">
+                        <span>Class time (choose one)</span>
+                        <select
+                          className="sky-email-input"
+                          value={selectedIstTimeOptionId}
+                          onChange={(e) => handleIstTimeOptionChange(e.target.value)}
+                        >
+                          {getIstTimeOptions(selectedBatch).map((opt) => (
+                            <option key={opt.id} value={opt.id}>
+                              {opt.label}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      {selectedIstTimeOptionId === 'custom' && (
+                        <label className="sky-email-variables__field sky-email-variables__field--wide">
+                          <span>Custom IST time</span>
+                          <input
+                            type="text"
+                            value={emailVariables.istTimeRange || ''}
+                            onChange={(e) => {
+                              const vars = recalcUsTimings({
+                                ...emailVariables,
+                                istTimeRange: e.target.value
+                              });
+                              setEmailVariables(vars);
+                              applyEmailFormFromTemplate(selectedEmailTemplateId, vars);
+                            }}
+                            placeholder="e.g. 6:00 AM - 8:00 AM"
+                            className="sky-email-input"
+                          />
+                        </label>
+                      )}
+                    </div>
+                    <div className="sky-email-us-timings">
+                      <span className="sky-email-us-timings__label">US timings (auto)</span>
+                      <div className="sky-email-us-timings__grid">
+                        {US_TIMING_KEYS.map(({ key, label }) => (
+                          <div key={key} className="sky-email-us-timings__item">
+                            <strong>{label}</strong>
+                            <span>{emailVariables[key] || '—'}</span>
+                          </div>
+                        ))}
+                      </div>
+                      <p className="sky-email-lms-link">
+                        LMS login:{' '}
+                        <a href={emailVariables.lmsUrl} target="_blank" rel="noopener noreferrer">
+                          {emailVariables.lmsUrl}
+                        </a>
+                        <span className="sky-muted"> · Students receive a branded HTML email with an Open LMS button</span>
+                      </p>
+                    </div>
                   </div>
 
                   <div className="sky-email-from">
@@ -2760,6 +3056,11 @@ const BatchDetailsPage = () => {
                           setEmailForm({ subject: '', message: '', selectedStudents: [] });
                           setEmailSearchTerm('');
                           setEmailQuickFilter('all');
+                          setSelectedEmailDraftId('');
+                          setDraftNameInput('');
+                          const vars = defaultEmailVariables(selectedBatch);
+                          setEmailVariables(vars);
+                          setSelectedIstTimeOptionId(resolveIstOptionId(vars.istTimeRange, selectedBatch));
                         }}
                       >
                         Reset

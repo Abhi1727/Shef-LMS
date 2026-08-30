@@ -1,4 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { liveJoinUrl } from '../utils/liveJoinUrl';
+import { openLiveClassSession } from '../utils/openLiveClassSession';
 import { getApiBaseUrl } from '../utils/apiBase';
 import './MeetLiveClasses.css';
 
@@ -209,14 +211,26 @@ export default function StudentScheduleCalendar({
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.message || 'Failed to join');
-      const link = data.meetLink || data.joinUrl;
-      if (!link) throw new Error('Meet link unavailable');
+      const meeting = data.meeting || data;
+      const link = liveJoinUrl(meeting) || liveJoinUrl(data.meetLink || data.joinUrl);
+      if (!link && !(data.embedded && data.sdk)) {
+        throw new Error('Live class link unavailable');
+      }
+      const platform = meeting.conferenceProvider === 'zoom' ? 'zoom' : 'meet';
+      openLiveClassSession({
+        meetingId,
+        joinUrl: link,
+        embedded: Boolean(data.embedded && data.sdk),
+        conferenceProvider: platform,
+        host: false,
+        joinPayload: data.embedded && data.sdk ? data : null,
+        userName: data.sdk?.userName || ''
+      });
       setJoinNote(
         data.markedPresent
-          ? 'You’re marked present. Opening Google Meet…'
-          : 'Opening Google Meet…'
+          ? 'You’re marked present. Opening live class…'
+          : 'Opening live class…'
       );
-      window.open(link, '_blank', 'noopener,noreferrer');
     } catch (err) {
       setError(err.message || 'Join failed');
     } finally {

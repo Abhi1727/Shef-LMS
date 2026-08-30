@@ -12760,7 +12760,7 @@ html {
   max-width: none;
   width: 100%;
   margin: 0;
-  padding: 1.25rem 1.5rem 3rem;
+  padding: 0.85rem 1rem 2rem;
   box-sizing: border-box;
 }
 
@@ -13274,13 +13274,61 @@ html {
 
 .student-shell .page-header {
   border-bottom: 1px solid #e6eef1;
-  padding-bottom: 0.85rem;
+  padding-bottom: 0.55rem;
+  margin-bottom: 0.75rem;
+}
+
+.student-page-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 0.5rem 0.75rem;
+}
+
+.student-page-header__stat {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #5a6d76;
+  padding: 0.35rem 0.65rem;
+  border-radius: 999px;
+  background: #eef2f5;
+  border: 1px solid #d5dee3;
+}
+
+.student-classroom-page .batch-details-banner {
+  padding: 0.65rem 0.85rem;
+  margin-bottom: 0.75rem;
+}
+
+.student-classroom-materials {
+  margin-top: 1rem;
+  padding-top: 0.85rem;
+  border-top: 1px solid #e6eef1;
+}
+
+.student-classroom-materials__title {
+  margin: 0 0 0.55rem;
+  font-family: Manrope, system-ui, sans-serif;
+  font-size: 0.92rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: #102a33;
+}
+
+.student-classroom-materials .live-lobby__card {
+  margin-bottom: 0.65rem;
+}
+
+.student-classroom-materials .live-lobby__card:last-child {
+  margin-bottom: 0;
 }
 
 .student-shell .page-title,
 .student-shell .section-title {
-  margin: 0 0 0.35rem;
-  font-size: 1.45rem;
+  margin: 0 0 0.2rem;
+  font-size: 1.15rem;
   font-weight: 700;
   letter-spacing: -0.02em;
   color: #102a33;
@@ -13289,7 +13337,7 @@ html {
 .student-shell .page-subtitle,
 .student-shell .section-subtitle {
   margin: 0;
-  font-size: 0.9rem;
+  font-size: 0.8rem;
   color: #5a6d76;
 }
 

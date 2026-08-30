@@ -1,6 +1,7 @@
 const Batch = require('../models/Batch');
 const OneToOneBatch = require('../models/OneToOneBatch');
 const { resolveStudentBatchIds } = require('./studentEnrollment');
+const { isStudentVisible } = require('../services/lessonPath');
 
 async function assertLectureAccess(user, lecture) {
   if (!user || !lecture) return false;
@@ -11,6 +12,7 @@ async function assertLectureAccess(user, lecture) {
   if (!batchId) return role === 'teacher' && String(lecture.uploadedBy || '') === String(user.id);
 
   if (role === 'student') {
+    if (!isStudentVisible(lecture)) return false;
     const batchIds = await resolveStudentBatchIds(user.id);
     return batchIds.map(String).includes(batchId);
   }

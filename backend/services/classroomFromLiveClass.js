@@ -14,10 +14,21 @@ function lectureDateFromLiveClass(doc) {
 }
 
 /**
- * Ensure a Classroom lecture exists for a Meet session.
- * When a Drive recording is attached later, the same lecture is updated.
+ * Ensure a Classroom lecture exists for a live session.
+ * Preferred playable source: YouTube (Zoom pipeline). Drive id kept as archive.
  */
-async function ensureClassroomFromLiveClass(doc, { videoSource, driveFileId, driveLink, durationLabel } = {}) {
+async function ensureClassroomFromLiveClass(
+  doc,
+  {
+    videoSource,
+    driveFileId,
+    driveLink,
+    youtubeVideoId,
+    youtubeVideoUrl,
+    youtubeEmbedUrl,
+    durationLabel
+  } = {}
+) {
   if (!doc?.batchId || doc.skipRecordingUpload) return null;
 
   const batch = await Batch.findById(doc.batchId).lean().exec();
@@ -36,10 +47,31 @@ async function ensureClassroomFromLiveClass(doc, { videoSource, driveFileId, dri
     }).exec();
   }
 
+  const ytId = youtubeVideoId || doc.youtubeVideoId || '';
+  const ytUrl = youtubeVideoUrl || doc.youtubeVideoUrl || '';
+  const ytEmbed =
+    youtubeEmbedUrl ||
+    doc.youtubeEmbedUrl ||
+    (ytId ? `https://www.youtube.com/embed/${ytId}` : '');
+  const resolvedDriveId = driveFileId || doc.driveFileId || '';
+  const resolvedDriveLink = driveLink || doc.driveLink || '';
+
+  const hasYouTube = Boolean(ytId);
+  const hasDrive = Boolean(resolvedDriveId);
+  const hasPlayableRecording = hasYouTube || hasDrive;
+
   const source =
     videoSource ||
-    (driveFileId || doc.driveFileId ? 'drive' : doc.meetLink ? 'meet-session' : 'pending');
-  const hasPlayableRecording = Boolean(driveFileId || doc.driveFileId);
+    (hasYouTube
+      ? 'youtube-url'
+      : hasDrive
+        ? 'drive'
+        : doc.conferenceProvider === 'zoom'
+          ? 'pending'
+          : doc.meetLink
+            ? 'meet-session'
+            : 'pending');
+
   const resolvedDuration =
     (durationLabel && String(durationLabel).trim()) ||
     (doc.duration && String(doc.duration).trim()) ||
@@ -63,18 +95,22 @@ async function ensureClassroomFromLiveClass(doc, { videoSource, driveFileId, dri
     instructor: doc.teacherName || doc.instructor || '',
     description:
       doc.description ||
-      (source === 'drive'
+      (hasYouTube
         ? `Recording for ${title}`
-        : `Live class on ${date}. The recording appears here after Meet finishes processing.`),
+        : `Live class on ${date}. The recording appears here after processing.`),
     course: doc.course || batch?.course || '',
     batchId: String(doc.batchId),
     batchName: batch?.name || doc.batchName || '',
     duration: resolvedDuration,
     date,
     liveClassId,
-    videoSource: source,
-    driveId: driveFileId || doc.driveFileId || '',
-    zoomUrl: driveLink || doc.driveLink || doc.meetLink || '',
+    videoSource: hasYouTube ? 'youtube-url' : source,
+    driveId: resolvedDriveId,
+    // Legacy field often holds an external link; prefer YouTube watch URL when present
+    zoomUrl: ytUrl || resolvedDriveLink || doc.meetLink || '',
+    youtubeVideoId: hasYouTube ? ytId : '',
+    youtubeVideoUrl: hasYouTube ? ytUrl : '',
+    youtubeEmbedUrl: hasYouTube ? ytEmbed : '',
     unlockRule: 'open',
     updatedAt: new Date()
   };
@@ -90,14 +126,20 @@ async function ensureClassroomFromLiveClass(doc, { videoSource, driveFileId, dri
     lecture = await Classroom.create({
       ...payload,
       order,
+      studentVisible: false,
       uploadedBy: String(doc.teacherId || doc.createdBy || ''),
       createdAt: new Date()
     });
   }
 
   doc.classroomLectureId = String(lecture._id);
-  if (driveFileId) doc.driveFileId = driveFileId;
-  if (driveLink) doc.driveLink = driveLink;
+  if (resolvedDriveId) doc.driveFileId = resolvedDriveId;
+  if (resolvedDriveLink) doc.driveLink = resolvedDriveLink;
+  if (ytId) {
+    doc.youtubeVideoId = ytId;
+    doc.youtubeVideoUrl = ytUrl;
+    doc.youtubeEmbedUrl = ytEmbed;
+  }
   doc.updatedAt = new Date();
   await doc.save();
   return lecture;

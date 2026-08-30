@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import axios from 'axios';
 import { ToastContainer, showToast } from './Toast';
+import { YouTubeUtils } from '../utils/youtubeUtils';
 import './CustomVideoPlayer.css';
 
 // YouTube IFrame API loader
@@ -89,31 +90,23 @@ const CustomVideoPlayer = ({ video, onClose, resumePosition = 0, onProgressUpdat
   const controlsTimeoutRef = useRef(null);
   const videoViewLoggedRef = useRef(false);
 
-  const extractYouTubeId = (raw) => {
-    if (!raw) return null;
-    const value = String(raw).trim();
-    if (/^[a-zA-Z0-9_-]{11}$/.test(value)) return value;
-    const match = value.match(
-      /(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/|youtube\.com\/shorts\/)([a-zA-Z0-9_-]{11})/
-    );
-    return match ? match[1] : null;
-  };
-
   const resolveYouTubeEmbed = (v) => {
     const id =
-      extractYouTubeId(v.youtubeVideoId) ||
-      extractYouTubeId(v.youtubeEmbedUrl) ||
-      extractYouTubeId(v.youtubeVideoUrl) ||
-      extractYouTubeId(v.videoUrl) ||
-      extractYouTubeId(v.zoomUrl);
-    return id ? `https://www.youtube.com/embed/${id}` : null;
+      YouTubeUtils.extractVideoId(v?.youtubeVideoId) ||
+      YouTubeUtils.extractVideoId(v?.youtubeEmbedUrl) ||
+      YouTubeUtils.extractVideoId(v?.youtubeVideoUrl) ||
+      YouTubeUtils.extractVideoId(v?.videoUrl) ||
+      YouTubeUtils.extractVideoId(v?.zoomUrl);
+    return id ? YouTubeUtils.getEmbedUrl(id) : null;
   };
 
+  // Prefer YouTube whenever an id exists (even if videoSource is still "drive" after migration).
   const detectVideoSource = (v) => {
-    if (resolveYouTubeEmbed(v)) return 'youtube-url';
-    if (v.driveId || /drive\.google\.com/.test(String(v.zoomUrl || v.videoUrl || ''))) return 'drive';
+    const preferred = YouTubeUtils.preferSource(v);
+    if (preferred === 'youtube-url') return 'youtube-url';
+    if (preferred === 'drive') return 'drive';
     if (v.videoSource === 'firebase') return 'firebase';
-    if (v.videoSource === 'meet-session' || v.videoSource === 'pending') return 'pending';
+    if (preferred === 'meet-session' || preferred === 'pending') return 'pending';
     if (v.videoSource) return v.videoSource;
     return 'unknown';
   };
@@ -376,6 +369,7 @@ const CustomVideoPlayer = ({ video, onClose, resumePosition = 0, onProgressUpdat
       const box = youtubeContainerRef.current.getBoundingClientRect();
       new window.YT.Player(youtubeContainerRef.current, {
         videoId: videoId,
+        host: 'https://www.youtube-nocookie.com',
         width: Math.max(640, Math.round(box.width) || 1280),
         height: Math.max(360, Math.round(box.height) || 720),
         playerVars: {
@@ -388,6 +382,8 @@ const CustomVideoPlayer = ({ video, onClose, resumePosition = 0, onProgressUpdat
           modestbranding: 1,
           rel: 0,
           showinfo: 0,
+          playsinline: 1,
+          origin: typeof window !== 'undefined' ? window.location.origin : undefined,
           start: Math.floor(resumePosition)
         },
         events: {
@@ -417,8 +413,9 @@ const CustomVideoPlayer = ({ video, onClose, resumePosition = 0, onProgressUpdat
       });
     } catch (error) {
       const videoId = embedUrl.match(/\/embed\/([^?]+)/)?.[1];
-      if (videoId && youtubeContainerRef.current) {
-        youtubeContainerRef.current.innerHTML = `<iframe title="Lecture" src="https://www.youtube.com/embed/${videoId}?rel=0" allow="autoplay; encrypted-media" allowfullscreen style="width:100%;height:100%;border:0;background:#000"></iframe>`;
+      const fallback = videoId ? YouTubeUtils.getEmbedUrl(videoId) : null;
+      if (fallback && youtubeContainerRef.current) {
+        youtubeContainerRef.current.innerHTML = `<iframe title="Lecture" src="${fallback}" allow="autoplay; encrypted-media" allowfullscreen style="width:100%;height:100%;border:0;background:#000;pointer-events:none"></iframe>`;
         setIsLoading(false);
         setHasStartedPlaying(true);
         return;

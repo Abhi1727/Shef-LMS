@@ -1,4 +1,5 @@
 const Classroom = require('../models/Classroom');
+const { isStudentVisible } = require('./lessonPath');
 
 class ClassroomService {
   // Direct file uploads and signed URLs are no longer supported in this
@@ -79,6 +80,8 @@ class ClassroomService {
           }
 
           if (user.role === 'student') {
+            if (!isStudentVisible(lecture)) return false;
+
             const enrolledInCourse =
               lecture.courseId === user.currentCourse ||
               lecture.courseId === user.course;
