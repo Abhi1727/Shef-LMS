@@ -1438,6 +1438,32 @@ router.post('/:id/complete', async (req, res) => {
   }
 });
 
+// @route   POST /api/meetings/:id/revert-start
+// @desc    Undo an accidental start — return session to scheduled (trainer only)
+router.post('/:id/revert-start', async (req, res) => {
+  try {
+    const doc = await LiveClass.findById(req.params.id);
+    if (!doc) return res.status(404).json({ success: false, message: 'Meeting not found' });
+    if (!(await assertTeacherOrAdminOwns(req.user, doc))) {
+      return res.status(403).json({ success: false, message: 'Access denied' });
+    }
+    if (doc.status !== 'live') {
+      return res.status(400).json({ success: false, message: 'Only a live session can be reverted to scheduled' });
+    }
+    doc.status = 'scheduled';
+    doc.updatedAt = new Date();
+    await doc.save();
+    res.json({
+      success: true,
+      meeting: serializeMeeting(doc),
+      message: 'Session moved back to scheduled. Students will not see Join until you start again.'
+    });
+  } catch (error) {
+    console.error('POST /meetings/:id/revert-start error:', error);
+    res.status(500).json({ success: false, message: 'Failed to revert session' });
+  }
+});
+
 // @route   POST /api/meetings/:id/materials
 // @desc    Upload session material to Drive and attach to LiveClass
 router.post('/:id/materials', sessionMaterialUpload.single('file'), async (req, res) => {

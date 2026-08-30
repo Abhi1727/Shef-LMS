@@ -441,7 +441,61 @@ export default function MeetLiveClassesPanel({
     }
   };
 
-  const handleStart = async (m) => {
+  const handleRevertStart = async (m) => {
+    if (
+      !window.confirm(
+        `Move "${m.title || 'this class'}" back to scheduled?\n\nStudents will no longer see Join until you start the class again.`
+      )
+    ) {
+      return;
+    }
+    try {
+      const apiUrl = getApiBaseUrl();
+      const res = await fetch(`${apiUrl}/api/meetings/${m.id}/revert-start`, {
+        method: 'POST',
+        headers: authHeaders()
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.message || 'Failed to undo start');
+      setMessage(data.message || 'Session moved back to scheduled.');
+      await loadMeetings();
+    } catch (err) {
+      setError(err.message || 'Failed to undo start');
+    }
+  };
+
+  const openLiveHost = async (m, meeting, data) => {
+    const link =
+      liveJoinUrl(meeting, { host: true }) ||
+      liveJoinUrl(data.meetLink || data.startUrl || m, { host: true });
+    const provider = meeting.conferenceProvider || m.conferenceProvider || trainerPlatform || 'meet';
+    if (provider === 'zoom' && (meeting.id || m.id)) {
+      openLiveClassSession({
+        meetingId: meeting.id || m.id,
+        joinUrl: link,
+        embedded: Boolean(data.embedded && data.sdk),
+        conferenceProvider: 'zoom',
+        host: true,
+        joinPayload: data.embedded && data.sdk ? data : null,
+        preferWorkspace: true,
+        userName: data.sdk?.userName || ''
+      });
+    } else if (link) {
+      window.open(link, '_blank', 'noopener,noreferrer');
+    }
+  };
+
+  const handleStart = async (m, { skipConfirm = false } = {}) => {
+    const isScheduled = m.status === 'scheduled';
+    if (
+      isScheduled &&
+      !skipConfirm &&
+      !window.confirm(
+        `Start "${m.title || 'this class'}" now?\n\nStudents will see Join on their dashboard and you will open Zoom as host.`
+      )
+    ) {
+      return;
+    }
     try {
       const apiUrl = getApiBaseUrl();
       const res = await fetch(`${apiUrl}/api/meetings/${m.id}/start`, {
@@ -451,23 +505,7 @@ export default function MeetLiveClassesPanel({
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.message || 'Failed to start');
       const meeting = data.meeting || data;
-      const link = liveJoinUrl(meeting, { host: true }) ||
-        liveJoinUrl(data.meetLink || data.startUrl || m, { host: true });
-      const provider = meeting.conferenceProvider || m.conferenceProvider || trainerPlatform || 'meet';
-      if (provider === 'zoom' && (meeting.id || m.id)) {
-        openLiveClassSession({
-          meetingId: meeting.id || m.id,
-          joinUrl: link,
-          embedded: Boolean(data.embedded && data.sdk),
-          conferenceProvider: 'zoom',
-          host: true,
-          joinPayload: data.embedded && data.sdk ? data : null,
-          preferWorkspace: true,
-          userName: data.sdk?.userName || ''
-        });
-      } else if (link) {
-        window.open(link, '_blank', 'noopener,noreferrer');
-      }
+      await openLiveHost(m, meeting, data);
       setExpandedId(m.id);
       await Promise.all([loadMeetings(), loadAttendance(m.id)]);
       setMessage(
@@ -475,12 +513,29 @@ export default function MeetLiveClassesPanel({
           ? `Closed ${data.closedPreviousSessions.length} previous session(s). `
           : '') +
           (data.message ||
-            (provider === 'zoom'
+            (meeting.conferenceProvider === 'zoom'
               ? 'Opening Zoom Workspace as host…'
               : 'Class started.'))
       );
     } catch (err) {
       setError(err.message || 'Failed to start class');
+    }
+  };
+
+  const handleOpenLive = async (m) => {
+    try {
+      const apiUrl = getApiBaseUrl();
+      const res = await fetch(`${apiUrl}/api/meetings/${m.id}/start`, {
+        method: 'POST',
+        headers: authHeaders()
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.message || 'Failed to open class');
+      const meeting = data.meeting || data;
+      await openLiveHost(m, meeting, data);
+      setMessage('Opening Zoom as host…');
+    } catch (err) {
+      setError(err.message || 'Failed to open Zoom');
     }
   };
 
@@ -753,14 +808,24 @@ export default function MeetLiveClassesPanel({
             <p className="live-studio-session__meta">
               {activeLive.scheduledDate} · {activeLive.scheduledTime} IST
             </p>
+            <p className="live-studio-live-bar__hint">
+              Marked live in LMS — open Zoom when you are ready to teach.
+            </p>
           </div>
           <div className="live-studio-live-bar__cta">
             <button
               type="button"
               className="live-lobby__btn live-lobby__btn--primary"
-              onClick={() => handleStart(activeLive)}
+              onClick={() => handleOpenLive(activeLive)}
             >
-              Open Zoom
+              Open Zoom as host
+            </button>
+            <button
+              type="button"
+              className="live-lobby__btn live-lobby__btn--ghost"
+              onClick={() => handleRevertStart(activeLive)}
+            >
+              Undo start
             </button>
             <button
               type="button"
@@ -801,7 +866,11 @@ export default function MeetLiveClassesPanel({
               <button
                 type="button"
                 className="live-lobby__btn live-lobby__btn--primary"
-                onClick={() => handleStart(nextSession)}
+                onClick={() =>
+                  sessionPhase(nextSession, now).phase === 'live'
+                    ? handleOpenLive(nextSession)
+                    : handleStart(nextSession)
+                }
               >
                 {sessionPhase(nextSession, now).phase === 'live' ? 'Open class' : 'Start class now'}
               </button>
@@ -872,7 +941,11 @@ export default function MeetLiveClassesPanel({
               <button
                 type="button"
                 className="live-lobby__btn live-lobby__btn--primary"
-                onClick={() => handleStart(nextSession)}
+                onClick={() =>
+                  sessionPhase(nextSession, now).phase === 'live'
+                    ? handleOpenLive(nextSession)
+                    : handleStart(nextSession)
+                }
               >
                 Join live session
               </button>
@@ -1201,10 +1274,21 @@ export default function MeetLiveClassesPanel({
                             <button
                               type="button"
                               className="live-lobby__btn live-lobby__btn--primary"
-                              onClick={() => handleStart(m)}
+                              onClick={() =>
+                                phase === 'live' ? handleOpenLive(m) : handleStart(m)
+                              }
                             >
-                              {phase === 'live' ? 'Open in Zoom' : 'Start class now'}
+                              {phase === 'live' ? 'Open Zoom as host' : 'Start class now'}
                             </button>
+                            {phase === 'live' && (
+                              <button
+                                type="button"
+                                className="live-lobby__btn live-lobby__btn--ghost"
+                                onClick={() => handleRevertStart(m)}
+                              >
+                                Undo start
+                              </button>
+                            )}
                             {phase === 'live' && (
                               <button
                                 type="button"
