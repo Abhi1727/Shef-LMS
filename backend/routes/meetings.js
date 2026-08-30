@@ -1074,6 +1074,7 @@ router.post('/', async (req, res) => {
       zoomPassword,
       zoomIsPmr,
       status: wantsStartNow ? 'live' : 'scheduled',
+      actualStartedAt: wantsStartNow ? new Date() : null,
       attendance: seededAttendance,
       skipRecordingUpload: Boolean(unassigned),
       recordingPromptDismissedAt: unassigned ? new Date() : null,
@@ -1235,6 +1236,9 @@ router.post('/:id/start', async (req, res) => {
       }
       doc.status = 'live';
       doc.updatedAt = new Date();
+      if (!doc.actualStartedAt) {
+        doc.actualStartedAt = now;
+      }
       if (getSessionProvider(doc) === 'zoom') {
         const conf = await resolveConferenceForTeacher(doc.teacherId);
         if (conf.zoomUserId) {
@@ -1352,7 +1356,10 @@ router.post('/:id/join', async (req, res) => {
       if (req.user.name) doc.teacherName = req.user.name;
     }
     if (doc.status === 'scheduled' || isStudentRole(req.user.role) || isTeacherRole(req.user.role)) {
-      if (doc.status === 'scheduled') doc.status = 'live';
+      if (doc.status === 'scheduled') {
+        doc.status = 'live';
+        if (!doc.actualStartedAt) doc.actualStartedAt = new Date();
+      }
       doc.updatedAt = new Date();
       await doc.save();
     }
@@ -1397,6 +1404,9 @@ router.post('/:id/complete', async (req, res) => {
     const dismissPrompt = req.body?.dismissPrompt !== false;
     const now = new Date();
     doc.status = 'completed';
+    if (!doc.actualEndedAt) {
+      doc.actualEndedAt = now;
+    }
     if (doc.scheduledStart) {
       const start = new Date(doc.scheduledStart);
       if (!Number.isNaN(start.getTime())) {
@@ -1451,6 +1461,8 @@ router.post('/:id/revert-start', async (req, res) => {
       return res.status(400).json({ success: false, message: 'Only a live session can be reverted to scheduled' });
     }
     doc.status = 'scheduled';
+    doc.actualStartedAt = null;
+    doc.actualEndedAt = null;
     doc.updatedAt = new Date();
     await doc.save();
     res.json({

@@ -48,6 +48,8 @@ const liveClassSchema = new mongoose.Schema({
   teacherName: { type: String, default: '' },
   scheduledStart: { type: Date, index: true },
   scheduledEnd: { type: Date },
+  actualStartedAt: { type: Date, default: null },
+  actualEndedAt: { type: Date, default: null },
   timezone: { type: String, default: 'Asia/Kolkata' },
   calendarEventId: { type: String, index: true },
   meetLink: { type: String, default: '' },
