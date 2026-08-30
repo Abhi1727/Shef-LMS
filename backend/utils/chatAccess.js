@@ -13,14 +13,43 @@ function asObjectIdOrNull(id) {
 /**
  * Returns whether student and teacher are linked via a Batch or OneToOneBatch.
  */
-async function canChatPair(studentId, teacherId) {
+async function canChatPair(studentId, teacherId, preferredBatchId = '') {
   const sid = String(studentId || '');
   const tid = String(teacherId || '');
+  const bid = String(preferredBatchId || '');
   if (!sid || !tid) return { allowed: false, batchId: '', batchName: '' };
 
   const sidObj = asObjectIdOrNull(sid);
   const studentOr = [{ students: sid }];
   if (sidObj) studentOr.push({ students: sidObj });
+
+  if (bid) {
+    const scopedBatch = await Batch.findOne({
+      _id: bid,
+      teacherId: tid,
+      $or: studentOr
+    })
+      .select('_id name')
+      .lean()
+      .exec();
+    if (scopedBatch) {
+      return { allowed: true, batchId: String(scopedBatch._id), batchName: scopedBatch.name || '' };
+    }
+
+    const scopedOto = await OneToOneBatch.findOne({
+      _id: bid,
+      teacherId: tid,
+      $or: [{ studentId: sid }, ...(sidObj ? [{ studentId: sidObj }] : [])]
+    })
+      .select('_id name')
+      .lean()
+      .exec();
+    if (scopedOto) {
+      return { allowed: true, batchId: String(scopedOto._id), batchName: scopedOto.name || '' };
+    }
+
+    return { allowed: false, batchId: '', batchName: '' };
+  }
 
   const batchMatch = await Batch.findOne({
     teacherId: tid,
@@ -77,8 +106,9 @@ async function canChatPair(studentId, teacherId) {
   return { allowed: false, batchId: '', batchName: '' };
 }
 
-async function getTeachersForStudent(studentId) {
+async function getTeachersForStudent(studentId, batchId = '') {
   const sid = String(studentId);
+  const bid = String(batchId || '');
   const sidObj = asObjectIdOrNull(sid);
   const teacherMap = new Map();
 
@@ -88,7 +118,9 @@ async function getTeachersForStudent(studentId) {
   if (sidObj) batchOr.push({ students: sidObj });
   if (student?.batchId) batchOr.push({ _id: student.batchId });
 
-  const batches = await Batch.find({ $or: batchOr })
+  const batchQuery = bid ? { _id: bid, $or: batchOr } : { $or: batchOr };
+
+  const batches = await Batch.find(batchQuery)
     .select('teacherId teacherName name')
     .lean()
     .exec();
@@ -110,7 +142,9 @@ async function getTeachersForStudent(studentId) {
   if (sidObj) otoOr.push({ studentId: sidObj });
   if (student?.oneToOneBatchId) otoOr.push({ _id: student.oneToOneBatchId });
 
-  const otos = await OneToOneBatch.find({ $or: otoOr })
+  const otoQuery = bid ? { _id: bid, $or: otoOr } : { $or: otoOr };
+
+  const otos = await OneToOneBatch.find(otoQuery)
     .select('teacherId teacherName name')
     .lean()
     .exec();
@@ -149,11 +183,15 @@ async function getTeachersForStudent(studentId) {
   });
 }
 
-async function getStudentsForTeacher(teacherId) {
+async function getStudentsForTeacher(teacherId, batchId = '') {
   const tid = String(teacherId);
+  const bid = String(batchId || '');
   const studentMap = new Map();
 
-  const batches = await Batch.find({ teacherId: tid }).select('students name').lean().exec();
+  const batchQuery = { teacherId: tid };
+  if (bid) batchQuery._id = bid;
+
+  const batches = await Batch.find(batchQuery).select('students name').lean().exec();
   batches.forEach((b) => {
     (b.students || []).forEach((sid) => {
       const id = String(sid);
@@ -163,7 +201,10 @@ async function getStudentsForTeacher(teacherId) {
     });
   });
 
-  const otos = await OneToOneBatch.find({ teacherId: tid }).select('studentId name').lean().exec();
+  const otoQuery = { teacherId: tid };
+  if (bid) otoQuery._id = bid;
+
+  const otos = await OneToOneBatch.find(otoQuery).select('studentId name').lean().exec();
   otos.forEach((b) => {
     const id = String(b.studentId || '');
     if (!id || id === 'undefined' || id === 'null') return;

@@ -35,9 +35,20 @@ function serializeMessage(m) {
     senderId: String(m.senderId),
     senderRole: m.senderRole,
     text: m.text,
+    batchId: m.batchId || '',
     createdAt: m.createdAt,
     readAt: m.readAt || null
   };
+}
+
+function filterConversationsForBatch(convos, role, batchId, peers) {
+  if (!batchId) return convos;
+  const peerIds = new Set((peers || []).map((p) => String(p.id)));
+  return convos.filter((c) => {
+    const peerId = isStudentRole(role) ? c.teacherId : c.studentId;
+    if (peerIds.has(String(peerId))) return true;
+    return String(c.batchId || '') === String(batchId);
+  });
 }
 
 function lastPreview(messages) {
@@ -47,18 +58,19 @@ function lastPreview(messages) {
   return t.length > 80 ? `${t.slice(0, 80)}…` : t;
 }
 
-// @route   GET /api/chat/peers
+// @route   GET /api/chat/peers?batchId=
 router.get('/peers', async (req, res) => {
   try {
     const userId = String(req.user.id);
     const role = req.user.role;
+    const batchId = String(req.query.batchId || '');
 
     if (isStudentRole(role)) {
-      const peers = await getTeachersForStudent(userId);
+      const peers = await getTeachersForStudent(userId, batchId);
       return res.json({ success: true, peers });
     }
     if (isTeacherRole(role)) {
-      const peers = await getStudentsForTeacher(userId);
+      const peers = await getStudentsForTeacher(userId, batchId);
       return res.json({ success: true, peers });
     }
     return res.status(403).json({ success: false, message: 'Chat not available for this role' });
@@ -68,20 +80,28 @@ router.get('/peers', async (req, res) => {
   }
 });
 
-// @route   GET /api/chat/conversations
+// @route   GET /api/chat/conversations?batchId=
 router.get('/conversations', async (req, res) => {
   try {
     const userId = String(req.user.id);
     const role = req.user.role;
+    const batchId = String(req.query.batchId || '');
     let query;
     if (isStudentRole(role)) query = { studentId: userId };
     else if (isTeacherRole(role)) query = { teacherId: userId };
     else return res.status(403).json({ success: false, message: 'Chat not available for this role' });
 
-    const convos = await Conversation.find(query)
+    let convos = await Conversation.find(query)
       .sort({ lastMessageAt: -1 })
       .lean()
       .exec();
+
+    let peersForFilter = [];
+    if (batchId) {
+      if (isStudentRole(role)) peersForFilter = await getTeachersForStudent(userId, batchId);
+      else peersForFilter = await getStudentsForTeacher(userId, batchId);
+      convos = filterConversationsForBatch(convos, role, batchId, peersForFilter);
+    }
 
     const peerIds = convos.map((c) =>
       isStudentRole(role) ? c.teacherId : c.studentId
@@ -96,12 +116,14 @@ router.get('/conversations', async (req, res) => {
     const list = convos.map((c) => {
       const peerId = isStudentRole(role) ? c.teacherId : c.studentId;
       const peer = peerMap.get(String(peerId)) || {};
+      const peerMeta = peersForFilter.find((p) => String(p.id) === String(peerId));
       const row = {
         id: String(c._id),
         peerId: String(peerId),
-        peerName: peer.name || 'User',
+        peerName: peer.name || peerMeta?.name || 'User',
         peerRole: isStudentRole(role) ? 'teacher' : 'student',
-        batchId: c.batchId || '',
+        batchId: peerMeta?.batchId || c.batchId || '',
+        batchName: peerMeta?.batchName || '',
         lastMessageAt: c.lastMessageAt,
         lastMessagePreview: lastPreview(c.messages),
         unread: isStudentRole(role) ? c.studentUnread || 0 : c.teacherUnread || 0
@@ -183,12 +205,13 @@ router.get('/conversations/:id/messages', async (req, res) => {
 });
 
 // @route   POST /api/chat/messages
-// body: { peerId, text }
+// body: { peerId, text, batchId? }
 router.post('/messages', async (req, res) => {
   try {
     const userId = String(req.user.id);
     const role = req.user.role;
     const peerId = String(req.body?.peerId || '');
+    const batchId = String(req.body?.batchId || '');
     const text = normalizeText(req.body?.text);
 
     if (!peerId || !text) {
@@ -207,7 +230,7 @@ router.post('/messages', async (req, res) => {
       return res.status(403).json({ success: false, message: 'Chat not available for this role' });
     }
 
-    const access = await canChatPair(studentId, teacherId);
+    const access = await canChatPair(studentId, teacherId, batchId);
     if (!access.allowed) {
       return res.status(403).json({
         success: false,
@@ -220,12 +243,12 @@ router.post('/messages', async (req, res) => {
       convo = new Conversation({
         studentId,
         teacherId,
-        batchId: access.batchId || '',
+        batchId: access.batchId || batchId || '',
         messages: [],
         studentUnread: 0,
         teacherUnread: 0
       });
-    } else if (access.batchId && !convo.batchId) {
+    } else if (access.batchId && (!convo.batchId || (batchId && convo.batchId !== access.batchId))) {
       convo.batchId = access.batchId;
     }
 
@@ -234,6 +257,7 @@ router.post('/messages', async (req, res) => {
       senderId: userId,
       senderRole: isStudentRole(role) ? 'student' : 'teacher',
       text,
+      batchId: access.batchId || batchId || convo.batchId || '',
       createdAt: new Date(),
       readAt: null
     };

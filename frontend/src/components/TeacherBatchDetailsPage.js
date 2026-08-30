@@ -9,6 +9,7 @@ import CustomVideoPlayer from './CustomVideoPlayer';
 import SkyLoadingScreen from './SkyLoadingScreen';
 import MeetLiveClassesPanel from './MeetLiveClassesPanel';
 import TeacherMaterialsPanel from './TeacherMaterialsPanel';
+import DirectChatPanel from './DirectChatPanel';
 import './BatchDetailsPage.css';
 import './MeetLiveClasses.css';
 
@@ -46,6 +47,25 @@ const TeacherBatchDetailsPage = () => {
     description: '',
     duration: ''
   });
+  const [chatPeerId, setChatPeerId] = useState('');
+  const [currentUserId, setCurrentUserId] = useState('');
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem('user');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        setCurrentUserId(String(parsed.id || parsed._id || ''));
+      }
+    } catch {
+      setCurrentUserId('');
+    }
+  }, []);
+
+  const scrollToChat = useCallback((peerId = '') => {
+    if (peerId) setChatPeerId(String(peerId));
+    document.getElementById('batch-messages')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, []);
 
   const authHeaders = () => {
     const token = localStorage.getItem('token');
@@ -892,6 +912,7 @@ const TeacherBatchDetailsPage = () => {
                       <th>Join %</th>
                       <th>Status</th>
                       <th>Certificate</th>
+                      <th>Chat</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -964,6 +985,15 @@ const TeacherBatchDetailsPage = () => {
                             Issue
                           </button>
                         </td>
+                        <td>
+                          <button
+                            type="button"
+                            className="sky-btn sky-btn-secondary sky-btn--sm"
+                            onClick={() => scrollToChat(student.id || student._id)}
+                          >
+                            Message
+                          </button>
+                        </td>
                       </tr>
                         );
                       })}
@@ -991,6 +1021,31 @@ const TeacherBatchDetailsPage = () => {
               aria-label="Batch materials"
             >
               <TeacherMaterialsPanel batchId={selectedBatch.id} batchName={selectedBatch.name} />
+            </div>
+          </section>
+
+          <section id="batch-messages" className="sky-batch-section sky-batch-section--chat">
+            <div className="sky-batch-section__head">
+              <div>
+                <h2>Messages</h2>
+                <p className="sky-muted">
+                  Chat with learners in this batch — conversations are grouped here by batch
+                </p>
+              </div>
+            </div>
+            <div className="sky-batch-section__scroll sky-batch-section__scroll--chat">
+              {currentUserId ? (
+                <DirectChatPanel
+                  role="teacher"
+                  currentUserId={currentUserId}
+                  batchId={selectedBatch.id}
+                  batchName={selectedBatch.name}
+                  initialPeerId={chatPeerId}
+                  embedded
+                />
+              ) : (
+                <p className="sky-muted">Sign in to use batch chat.</p>
+              )}
             </div>
           </section>
         </div>

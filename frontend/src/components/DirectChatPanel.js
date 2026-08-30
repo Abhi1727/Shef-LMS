@@ -4,12 +4,28 @@ import './DirectChatPanel.css';
 
 /**
  * Assigned student↔trainer chat (REST + polling).
- * @param {{ role: 'student' | 'teacher', currentUserId: string }} props
+ * @param {{
+ *   role: 'student' | 'teacher',
+ *   currentUserId: string,
+ *   batchId?: string,
+ *   batchName?: string,
+ *   initialPeerId?: string,
+ *   groupByBatch?: boolean,
+ *   embedded?: boolean
+ * }} props
  */
-function DirectChatPanel({ role, currentUserId }) {
+function DirectChatPanel({
+  role,
+  currentUserId,
+  batchId = '',
+  batchName = '',
+  initialPeerId = '',
+  groupByBatch = false,
+  embedded = false
+}) {
   const [peers, setPeers] = useState([]);
   const [conversations, setConversations] = useState([]);
-  const [activePeerId, setActivePeerId] = useState('');
+  const [activePeerId, setActivePeerId] = useState(initialPeerId || '');
   const [conversationId, setConversationId] = useState('');
   const [messages, setMessages] = useState([]);
   const [draft, setDraft] = useState('');
@@ -28,11 +44,13 @@ function DirectChatPanel({ role, currentUserId }) {
     };
   };
 
+  const batchQuery = batchId ? `?batchId=${encodeURIComponent(batchId)}` : '';
+
   const loadPeersAndInbox = useCallback(async () => {
     try {
       const [peersRes, convRes] = await Promise.all([
-        fetch(`${api}/api/chat/peers`, { headers: authHeaders() }),
-        fetch(`${api}/api/chat/conversations`, { headers: authHeaders() })
+        fetch(`${api}/api/chat/peers${batchQuery}`, { headers: authHeaders() }),
+        fetch(`${api}/api/chat/conversations${batchQuery}`, { headers: authHeaders() })
       ]);
       const peersJson = peersRes.ok ? await peersRes.json() : { peers: [] };
       const convJson = convRes.ok ? await convRes.json() : { conversations: [] };
@@ -45,7 +63,7 @@ function DirectChatPanel({ role, currentUserId }) {
     } finally {
       setLoading(false);
     }
-  }, [api]);
+  }, [api, batchQuery]);
 
   const loadMessages = useCallback(
     async (convoId, { incremental = false } = {}) => {
@@ -113,12 +131,22 @@ function DirectChatPanel({ role, currentUserId }) {
   }, [loadPeersAndInbox]);
 
   useEffect(() => {
+    if (initialPeerId) {
+      openPeer(initialPeerId);
+      return;
+    }
     if (!activePeerId && peers.length === 1) {
       openPeer(peers[0].id);
     }
-  }, [peers, activePeerId, openPeer]);
+  }, [peers, activePeerId, openPeer, initialPeerId]);
 
-  // When a peer is open but conversation was created by the other side, attach it.
+  useEffect(() => {
+    if (!initialPeerId) return;
+    if (String(initialPeerId) !== String(activePeerId)) {
+      openPeer(initialPeerId);
+    }
+  }, [initialPeerId, activePeerId, openPeer]);
+
   useEffect(() => {
     if (!activePeerId) return;
     const existing = conversations.find((c) => String(c.peerId) === String(activePeerId));
@@ -151,10 +179,13 @@ function DirectChatPanel({ role, currentUserId }) {
     if (!text || !activePeerId || sending) return;
     setSending(true);
     try {
+      const body = { peerId: activePeerId, text };
+      if (batchId) body.batchId = batchId;
+
       const res = await fetch(`${api}/api/chat/messages`, {
         method: 'POST',
         headers: authHeaders(),
-        body: JSON.stringify({ peerId: activePeerId, text })
+        body: JSON.stringify(body)
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -194,7 +225,8 @@ function DirectChatPanel({ role, currentUserId }) {
         name: c.peerName,
         role: c.peerRole,
         isAvailable: c.isAvailable,
-        batchName: ''
+        batchId: c.batchId || '',
+        batchName: c.batchName || ''
       };
       map.set(id, {
         ...prev,
@@ -202,7 +234,9 @@ function DirectChatPanel({ role, currentUserId }) {
         unread: c.unread || 0,
         isAvailable: typeof c.isAvailable === 'boolean' ? c.isAvailable : prev.isAvailable,
         lastMessagePreview: c.lastMessagePreview || '',
-        lastMessageAt: c.lastMessageAt
+        lastMessageAt: c.lastMessageAt,
+        batchId: c.batchId || prev.batchId || '',
+        batchName: c.batchName || prev.batchName || ''
       });
     });
     return Array.from(map.values()).sort((a, b) => {
@@ -212,47 +246,73 @@ function DirectChatPanel({ role, currentUserId }) {
     });
   })();
 
+  const groupedPeers = (() => {
+    if (!groupByBatch || batchId) return null;
+    const groups = new Map();
+    peerList.forEach((peer) => {
+      const key = peer.batchName || 'Other';
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(peer);
+    });
+    return Array.from(groups.entries()).sort(([a], [b]) => a.localeCompare(b));
+  })();
+
   const activePeer = peerList.find((p) => String(p.id) === String(activePeerId));
+
+  const renderPeerButton = (peer) => (
+    <button
+      key={peer.id}
+      type="button"
+      className={`dc-peer ${String(peer.id) === String(activePeerId) ? 'is-active' : ''}`}
+      onClick={() => openPeer(peer.id)}
+    >
+      <div className="dc-peer__row">
+        <span className="dc-peer__name">{peer.name}</span>
+        {peer.unread > 0 && <span className="dc-peer__unread">{peer.unread}</span>}
+      </div>
+      {(peer.batchName || peer.lastMessagePreview) && (
+        <span className="dc-peer__meta">
+          {peer.lastMessagePreview || peer.batchName}
+        </span>
+      )}
+    </button>
+  );
+
+  const peersHeadLabel = (() => {
+    if (batchId && batchName) return batchName;
+    if (batchId) return 'This batch';
+    return role === 'student' ? 'Your trainers' : 'Your students';
+  })();
 
   if (loading) {
     return (
-      <div className="dc-panel">
+      <div className={`dc-panel${embedded ? ' dc-panel--embedded' : ''}`}>
         <p className="dc-empty">Loading messages…</p>
       </div>
     );
   }
 
   return (
-    <div className="dc-panel">
+    <div className={`dc-panel${embedded ? ' dc-panel--embedded' : ''}`}>
       <aside className="dc-peers">
-        <div className="dc-peers__head">
-          {role === 'student' ? 'Your trainers' : 'Your students'}
-        </div>
+        <div className="dc-peers__head">{peersHeadLabel}</div>
         {peerList.length === 0 ? (
           <p className="dc-empty dc-empty--side">
-            {role === 'student'
-              ? 'No trainer assigned yet.'
-              : 'No students assigned to your batches yet.'}
+            {batchId
+              ? 'No learners in this batch yet.'
+              : role === 'student'
+                ? 'No trainer assigned yet.'
+                : 'No students assigned to your batches yet.'}
           </p>
-        ) : (
-          peerList.map((peer) => (
-            <button
-              key={peer.id}
-              type="button"
-              className={`dc-peer ${String(peer.id) === String(activePeerId) ? 'is-active' : ''}`}
-              onClick={() => openPeer(peer.id)}
-            >
-              <div className="dc-peer__row">
-                <span className="dc-peer__name">{peer.name}</span>
-                {peer.unread > 0 && <span className="dc-peer__unread">{peer.unread}</span>}
-              </div>
-              {(peer.batchName || peer.lastMessagePreview) && (
-                <span className="dc-peer__meta">
-                  {peer.lastMessagePreview || peer.batchName}
-                </span>
-              )}
-            </button>
+        ) : groupedPeers ? (
+          groupedPeers.map(([groupName, groupPeers]) => (
+            <div key={groupName} className="dc-peer-group">
+              <div className="dc-peer-group__head">{groupName}</div>
+              {groupPeers.map(renderPeerButton)}
+            </div>
           ))
+        ) : (
+          peerList.map(renderPeerButton)
         )}
       </aside>
 
@@ -264,8 +324,8 @@ function DirectChatPanel({ role, currentUserId }) {
             <div className="dc-thread__head">
               <div>
                 <strong>{activePeer?.name || 'Chat'}</strong>
-                {activePeer?.batchName && (
-                  <span className="dc-thread__sub">{activePeer.batchName}</span>
+                {(activePeer?.batchName || batchName) && (
+                  <span className="dc-thread__sub">{activePeer?.batchName || batchName}</span>
                 )}
               </div>
             </div>

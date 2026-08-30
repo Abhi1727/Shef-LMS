@@ -228,6 +228,35 @@
   background: #fdecec;
 }
 
+.dc-panel--embedded {
+  min-height: 420px;
+  border-radius: 8px;
+}
+
+.dc-panel--embedded .dc-peers,
+.dc-panel--embedded .dc-thread {
+  min-height: 420px;
+  max-height: min(60vh, 520px);
+}
+
+.dc-peer-group__head {
+  padding: 0.55rem 1rem 0.35rem;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--ss-text-muted, #5a6d76);
+  background: #f0f4f6;
+  border-bottom: 1px solid #e8eef1;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.dc-peer-group .dc-peer:last-child {
+  border-bottom: none;
+}
+
 @media (max-width: 800px) {
   .dc-panel {
     grid-template-columns: 1fr;

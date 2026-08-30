@@ -5,6 +5,7 @@ const messageSchema = new mongoose.Schema(
     senderId: { type: String, required: true },
     senderRole: { type: String, enum: ['student', 'teacher', 'admin', 'mentor', 'instructor'], required: true },
     text: { type: String, required: true, maxlength: 2000 },
+    batchId: { type: String, default: '' },
     createdAt: { type: Date, default: Date.now },
     readAt: { type: Date, default: null }
   },

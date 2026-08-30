@@ -1167,9 +1167,13 @@ const TeacherDashboard = ({ user, onLogout }) => {
           <div className="dashboard-section">
             <h1 className="ss-page-title">Messages</h1>
             <p className="ss-page-sub">
-              Chat with students assigned to your batches. Availability in the header is for admins only — students do not see it.
+              Chat with students assigned to your batches. Conversations are grouped by batch.
             </p>
-            <DirectChatPanel role="teacher" currentUserId={String(user?.id || user?._id || '')} />
+            <DirectChatPanel
+              role="teacher"
+              currentUserId={String(user?.id || user?._id || '')}
+              groupByBatch
+            />
           </div>
         )}
 

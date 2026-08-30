@@ -6901,6 +6901,24 @@ body.modal-open {
   max-height: min(48vh, 480px);
 }
 
+.sky-batch-section--chat {
+  max-height: none;
+}
+
+.sky-batch-section__scroll--chat {
+  min-height: 440px;
+  padding: 0;
+  overflow: hidden;
+}
+
+.student-classroom-chat {
+  margin-top: 1.5rem;
+}
+
+.student-classroom-chat .sky-batch-section__head {
+  margin-bottom: 0.75rem;
+}
+
 .sky-batch-section__head {
   display: flex;
   flex-wrap: wrap;

@@ -2531,6 +2531,27 @@ const Dashboard = ({ user, onLogout }) => {
                 <h2 className="student-classroom-materials__title">Materials</h2>
                 <StudentMaterialsPanel compact hideHero />
               </section>
+
+              {classroomProgramKey !== 'all' && (activeEnrollment || batchInfo) && (
+                <section className="student-classroom-chat sky-batch-section sky-batch-section--chat">
+                  <div className="sky-batch-section__head">
+                    <div>
+                      <h2 className="student-classroom-materials__title">Messages</h2>
+                      <p className="sky-muted">
+                        Chat with your trainer for{' '}
+                        {activeEnrollment?.batchName || batchInfo?.name || 'this batch'}
+                      </p>
+                    </div>
+                  </div>
+                  <DirectChatPanel
+                    role="student"
+                    currentUserId={String(user?.id || user?._id || '')}
+                    batchId={String(classroomProgramKey)}
+                    batchName={activeEnrollment?.batchName || batchInfo?.name || ''}
+                    embedded
+                  />
+                </section>
+              )}
             </div>
           )}
 
@@ -2538,9 +2559,13 @@ const Dashboard = ({ user, onLogout }) => {
             <div className="animate-in">
               <h1 className="ss-page-title">Messages</h1>
               <p className="ss-page-sub">
-                Chat privately with your assigned trainer. Availability shows whether they are free right now.
+                Chat privately with your assigned trainers. Conversations are grouped by batch.
               </p>
-              <DirectChatPanel role="student" currentUserId={String(user?.id || user?._id || '')} />
+              <DirectChatPanel
+                role="student"
+                currentUserId={String(user?.id || user?._id || '')}
+                groupByBatch
+              />
             </div>
           )}
 
