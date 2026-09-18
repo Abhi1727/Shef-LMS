@@ -292,6 +292,7 @@ async function syncOneLiveClass(doc) {
 
 function isEligible(doc, now = Date.now()) {
   if (doc.skipRecordingUpload || !doc.batchId) return false;
+  if (doc.wasteSessionFlagged && !doc.wasteSessionDismissedAt) return false;
   if (doc.status === 'cancelled') return false;
   if (!doc.meetLink && !doc.meetSpaceId) return false;
   const end = doc.scheduledEnd ? new Date(doc.scheduledEnd).getTime() : 0;

@@ -8,7 +8,8 @@ async function runZoomRecordingSync() {
 }
 
 function startZoomRecordingSyncJob() {
-  cron.schedule('*/10 * * * *', async () => {
+  // Hourly — frequent full LiveClass scans were a major Firestore read cost.
+  cron.schedule('15 * * * *', async () => {
     try {
       await runZoomRecordingSync();
     } catch (err) {
@@ -20,7 +21,7 @@ function startZoomRecordingSyncJob() {
       console.error('[Zoom recording sync] startup:', err.message || err)
     );
   }, 120 * 1000);
-  console.log('[Zoom recording sync] cron scheduled (every 10 minutes)');
+  console.log('[Zoom recording sync] cron scheduled (hourly at :15)');
 }
 
 module.exports = {

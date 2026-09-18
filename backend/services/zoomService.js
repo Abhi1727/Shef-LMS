@@ -449,12 +449,20 @@ class ZoomService {
     }
   }
 
-  async getRecordings(meetingId) {
+  async getRecordings(meetingId, { zoomUserId = '', from = '', to = '' } = {}) {
+    if (zoomUserId && from && to) {
+      return this.getRecordingsForMeeting(meetingId, { zoomUserId, from, to });
+    }
     try {
       const token = await this.getAccessToken();
 
+      const params = {};
+      if (from) params.from = from;
+      if (to) params.to = to;
+
       const response = await axios.get(`${zoomConfig.apiBaseUrl}/meetings/${meetingId}/recordings`, {
-        headers: { Authorization: `Bearer ${token}` }
+        headers: { Authorization: `Bearer ${token}` },
+        params
       });
 
       return {
@@ -488,6 +496,105 @@ class ZoomService {
       err.status = error.response?.status;
       throw err;
     }
+  }
+
+  /**
+   * List all cloud recordings for a trainer in a date range (paginated).
+   * Required for PMI rooms — /meetings/{id}/recordings only returns the latest instance.
+   */
+  async listUserRecordings(zoomUserId, from, to) {
+    const userId = String(zoomUserId || '').trim();
+    if (!userId || !from || !to) {
+      return { success: true, meetings: [], recordings: [] };
+    }
+
+    const token = await this.getAccessToken();
+    const meetings = [];
+    let nextPageToken = '';
+
+    do {
+      const params = { from, to, page_size: 300, mc: 'false' };
+      if (nextPageToken) params.next_page_token = nextPageToken;
+
+      const response = await axios.get(
+        `${zoomConfig.apiBaseUrl}/users/${encodeURIComponent(userId)}/recordings`,
+        { headers: { Authorization: `Bearer ${token}` }, params }
+      );
+
+      meetings.push(...(response.data.meetings || []));
+      nextPageToken = response.data.next_page_token || '';
+    } while (nextPageToken);
+
+    const recordings = [];
+    for (const meeting of meetings) {
+      const parentMeetingId = String(meeting.id || '');
+      for (const file of meeting.recording_files || []) {
+        recordings.push({
+          id: file.id,
+          meetingId: parentMeetingId,
+          meetingUuid: file.meeting_id || meeting.uuid || '',
+          recordingStart: file.recording_start,
+          recordingEnd: file.recording_end,
+          fileType: file.file_type,
+          fileSize: file.file_size,
+          playUrl: file.play_url,
+          downloadUrl: file.download_url,
+          status: file.status,
+          recordingType: file.recording_type,
+          topic: meeting.topic || ''
+        });
+      }
+    }
+
+    return { success: true, meetings, recordings };
+  }
+
+  async getRecordingsForMeeting(meetingId, { zoomUserId, from, to } = {}) {
+    const pmi = String(meetingId || '').trim();
+    if (!pmi) return { success: true, recordings: [] };
+
+    if (zoomUserId && from && to) {
+      const listed = await this.listUserRecordings(zoomUserId, from, to);
+      const recordings = (listed.recordings || []).filter(
+        (f) => String(f.meetingId || '') === pmi
+      );
+      return { success: true, recordings };
+    }
+
+    return this.getRecordings(pmi);
+  }
+
+  /** Account-wide recording list (used by legacy cron). */
+  async listAllRecordings(from, to) {
+    const defaultUser = zoomConfig.defaultUserId();
+    const listed = await this.listUserRecordings(
+      defaultUser,
+      from || new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+      to || new Date().toISOString().split('T')[0]
+    );
+
+    const meetings = (listed.meetings || []).map((meeting) => ({
+      id: String(meeting.id || ''),
+      uuid: meeting.uuid || '',
+      topic: meeting.topic || '',
+      startTime: meeting.start_time || '',
+      duration: meeting.duration || 0,
+      password: meeting.password || '',
+      recordingFiles: (meeting.recording_files || []).map((file) => ({
+        id: file.id,
+        meetingId: file.meeting_id || meeting.id,
+        recordingStart: file.recording_start,
+        recordingEnd: file.recording_end,
+        fileType: file.file_type,
+        fileSize: file.file_size,
+        playUrl: file.play_url,
+        downloadUrl: file.download_url,
+        status: file.status,
+        recordingType: file.recording_type
+      }))
+    }));
+
+    return { success: true, meetings };
   }
 
   /**

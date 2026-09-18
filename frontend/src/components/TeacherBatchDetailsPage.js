@@ -197,9 +197,7 @@ const TeacherBatchDetailsPage = () => {
     loadBatchData();
   }, [loadBatchData]);
 
-  useEffect(() => {
-    loadAttendanceSummary();
-  }, [loadAttendanceSummary]);
+  // Attendance analytics: load only when trainer clicks Refresh (cuts Firestore reads).
 
   useEffect(() => {
     if (location.state?.openAddLecture && selectedBatch) {
@@ -646,35 +644,34 @@ const TeacherBatchDetailsPage = () => {
               </div>
             </div>
 
-            <div className="sky-batch-notes-bar">
-                <div className="sky-batch-notes-copy">
+            <div className="sky-batch-section__toolbar sky-batch-section__toolbar--classroom">
+                <div className="sky-batch-notes-inline">
                   <strong>Batch notes</strong>
                   {selectedBatch.notesFile ? (
-                    <span className="sky-muted">{selectedBatch.notesFile.fileName}</span>
-                  ) : (
-                    <span className="sky-muted">Optional PDF/DOC shared with learners</span>
-                  )}
-                </div>
-                <div className="sky-batch-notes-actions">
-                  {selectedBatch.notesFile ? (
-                    <button
-                      type="button"
-                      className="sky-btn sky-btn-secondary"
-                      onClick={async () => {
-                        try {
-                          await downloadAuthenticatedFile(
-                            `/api/teacher/batches/${selectedBatch.id}/notes/download`,
-                            { filename: selectedBatch.notesFile.fileName }
-                          );
-                        } catch (err) {
-                          window.alert(err.message || 'Failed to download batch notes');
-                        }
-                      }}
-                    >
-                      Download
-                    </button>
+                    <>
+                      <span className="sky-muted sky-batch-notes-inline__name" title={selectedBatch.notesFile.fileName}>
+                        {selectedBatch.notesFile.fileName}
+                      </span>
+                      <button
+                        type="button"
+                        className="sky-btn sky-btn-secondary sky-btn--sm"
+                        onClick={async () => {
+                          try {
+                            await downloadAuthenticatedFile(
+                              `/api/teacher/batches/${selectedBatch.id}/notes/download`,
+                              { filename: selectedBatch.notesFile.fileName }
+                            );
+                          } catch (err) {
+                            window.alert(err.message || 'Failed to download batch notes');
+                          }
+                        }}
+                      >
+                        Download
+                      </button>
+                    </>
                   ) : (
                     <>
+                      <span className="sky-muted">Optional PDF/DOC for learners</span>
                       <input
                         type="file"
                         id="batch-notes-file"
@@ -684,16 +681,16 @@ const TeacherBatchDetailsPage = () => {
                       />
                       <button
                         type="button"
-                        className="sky-btn sky-btn-secondary"
+                        className="sky-btn sky-btn-secondary sky-btn--sm"
                         disabled={uploadingNotes}
                         onClick={() => document.getElementById('batch-notes-file')?.click()}
                       >
-                        {notesFile && !notesTargetVideoId ? notesFile.name : 'Choose file'}
+                        {notesFile && !notesTargetVideoId ? 'Change file' : 'Choose file'}
                       </button>
                       {notesFile && !notesTargetVideoId && (
                         <button
                           type="button"
-                          className="sky-btn sky-btn-primary"
+                          className="sky-btn sky-btn-primary sky-btn--sm"
                           disabled={uploadingNotes}
                           onClick={handleUploadBatchNotes}
                         >
@@ -874,7 +871,7 @@ const TeacherBatchDetailsPage = () => {
               </button>
             </div>
 
-            <div className="teacher-students-toolbar">
+            <div className="sky-batch-section__toolbar sky-batch-section__toolbar--students">
                 <input
                   type="search"
                   className="form-input-modern"
@@ -1009,6 +1006,7 @@ const TeacherBatchDetailsPage = () => {
           </section>
           </div>
 
+          <div className="sky-batch-comm-grid">
           <section id="materials" className="sky-batch-section sky-batch-section--materials">
             <div className="sky-batch-section__head">
               <div>
@@ -1020,7 +1018,7 @@ const TeacherBatchDetailsPage = () => {
               className="sky-batch-section__scroll sky-batch-section__scroll--materials"
               aria-label="Batch materials"
             >
-              <TeacherMaterialsPanel batchId={selectedBatch.id} batchName={selectedBatch.name} />
+              <TeacherMaterialsPanel batchId={selectedBatch.id} batchName={selectedBatch.name} compact />
             </div>
           </section>
 
@@ -1048,6 +1046,7 @@ const TeacherBatchDetailsPage = () => {
               )}
             </div>
           </section>
+          </div>
         </div>
       </div>
 

@@ -89,6 +89,9 @@ async function cleanupStaleLiveSessions({ teacherId = null } = {}) {
     if (!endMs || now <= endMs + STALE_AFTER_END_MS) continue;
 
     doc.status = 'completed';
+    if (!doc.actualEndedAt) {
+      doc.actualEndedAt = new Date();
+    }
     doc.updatedAt = new Date();
     await doc.save();
     closed.push({ id: String(doc._id), title: doc.title || 'Live class', reason: 'stale-live' });
@@ -115,6 +118,9 @@ async function cleanupStaleScheduledSessions({ teacherId = null } = {}) {
     if (!endMs || now <= endMs + STALE_AFTER_END_MS) continue;
 
     doc.status = 'completed';
+    if (!doc.actualEndedAt) {
+      doc.actualEndedAt = new Date();
+    }
     doc.updatedAt = new Date();
     await doc.save();
     closed.push({

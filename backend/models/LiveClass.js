@@ -110,6 +110,13 @@ const liveClassSchema = new mongoose.Schema({
   },
   sessionSummaryGeneratedAt: { type: Date, default: null },
 
+  // Auto-detected test / incomplete sessions (accidental starts, very short recordings)
+  wasteSessionFlagged: { type: Boolean, default: false, index: true },
+  wasteSessionReasons: { type: [String], default: [] },
+  wasteSessionDetectedAt: { type: Date, default: null },
+  wasteSessionDismissedAt: { type: Date, default: null },
+  wasteSessionDismissedBy: { type: String, default: '' },
+
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now }
 });

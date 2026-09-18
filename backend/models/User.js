@@ -152,6 +152,11 @@ const UserSchema = new mongoose.Schema({
     country: String,
     isp: String
   }],
+  /** Bumped to revoke all JWTs (e.g. admin “sign out of all devices”). */
+  tokenVersion: {
+    type: Number,
+    default: 0
+  },
   createdAt: {
     type: Date,
     default: Date.now

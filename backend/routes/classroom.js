@@ -52,7 +52,7 @@ const contentTypes = {
   'jpeg': 'image/jpeg',
   'png': 'image/png',
   'gif': 'image/gif',
-  'ipynb': 'application/json'
+  'ipynb': 'application/x-ipynb+json'
 };
 
 // Helper function to get content-type based on file extension

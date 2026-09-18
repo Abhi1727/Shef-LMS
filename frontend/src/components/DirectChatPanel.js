@@ -158,13 +158,27 @@ function DirectChatPanel({
   }, [conversations, activePeerId, conversationId, loadMessages]);
 
   useEffect(() => {
-    const timer = setInterval(() => {
+    // Chat: refresh about once a minute while the tab is visible.
+    // Pause when tab is hidden so idle LMS tabs don't burn Firestore reads.
+    const CHAT_POLL_MS = 60 * 1000;
+
+    const tick = () => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
       loadPeersAndInbox();
       if (conversationId) {
         loadMessages(conversationId, { incremental: true });
       }
-    }, 6000);
-    return () => clearInterval(timer);
+    };
+
+    const timer = setInterval(tick, CHAT_POLL_MS);
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') tick();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
   }, [conversationId, loadPeersAndInbox, loadMessages]);
 
   useEffect(() => {

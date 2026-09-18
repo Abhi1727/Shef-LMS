@@ -24,25 +24,89 @@ import './StudentsActivity.css';
 const API_BASE = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
 
 const ACTION_LABELS = {
-  login: { icon: '🔐', label: 'Login', color: '#10b981' },
-  logout: { icon: '🚪', label: 'Logout', color: '#ef4444' },
-  video_view: { icon: '📹', label: 'Lecture watched', color: '#3b82f6' },
-  assessment_submit: { icon: '✏️', label: 'Assessment submitted', color: '#8b5cf6' },
-  page_view: { icon: '📄', label: 'Page view', color: '#6b7280' },
-  password_change: { icon: '🔑', label: 'Password changed', color: '#f59e0b' },
-  password_reset: { icon: '🔄', label: 'Password reset', color: '#f97316' },
-  resource_download: { icon: '📥', label: 'Resource download', color: '#06b6d4' }
+  login: { label: 'Signed in', tone: 'success' },
+  logout: { label: 'Signed out', tone: 'neutral' },
+  video_view: { label: 'Lecture viewed', tone: 'info' },
+  assessment_submit: { label: 'Assessment submitted', tone: 'accent' },
+  page_view: { label: 'Page viewed', tone: 'neutral' },
+  password_change: { label: 'Password changed', tone: 'warn' },
+  password_reset: { label: 'Password reset', tone: 'warn' },
+  resource_download: { label: 'Resource downloaded', tone: 'info' },
+  ATTENDANCE_STREAK_ALERT: { label: 'Attendance alert', tone: 'alert' },
+  attendance_streak_alert: { label: 'Attendance alert', tone: 'alert' },
+  ENGAGEMENT_NUDGE: { label: 'Engagement nudge', tone: 'warn' },
+  engagement_nudge: { label: 'Engagement nudge', tone: 'warn' },
+  ENGAGEMENT_DIGEST: { label: 'Engagement digest', tone: 'neutral' },
+  engagement_digest: { label: 'Engagement digest', tone: 'neutral' },
+  logout_all_devices: { label: 'Signed out other devices', tone: 'warn' }
+};
+
+const ACTION_TONE_COLORS = {
+  success: '#0f766e',
+  info: '#0369a1',
+  accent: '#7c3aed',
+  warn: '#b45309',
+  alert: '#b91c1c',
+  neutral: '#475569'
 };
 
 const CHART_COLORS = {
   total: '#0b3d4a',
-  logins: '#0b3d4a',      // deep brand navy-teal
-  videoViews: '#2f6fed',  // clear professional blue
-  assessments: '#c27803', // warm amber (high contrast)
+  logins: '#0b3d4a',
+  videoViews: '#2f6fed',
+  assessments: '#c27803',
   grid: '#e8eef1',
   axis: '#5a6d76',
   cursor: 'rgba(11, 61, 74, 0.07)'
 };
+
+function humanizeActionKey(action) {
+  return String(action || 'event')
+    .replace(/[_-]+/g, ' ')
+    .toLowerCase()
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+function formatActivityTime(timestamp) {
+  if (!timestamp) return { date: '—', time: '' };
+  try {
+    const date = new Date(timestamp);
+    if (Number.isNaN(date.getTime())) return { date: '—', time: '' };
+    return {
+      date: date.toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+        timeZone: 'Asia/Kolkata'
+      }),
+      time: date.toLocaleTimeString('en-US', {
+        hour: '2-digit',
+        minute: '2-digit',
+        timeZone: 'Asia/Kolkata'
+      })
+    };
+  } catch (_) {
+    return { date: '—', time: '' };
+  }
+}
+
+function getActivityDetail(a) {
+  if (a.action === 'video_view' && a.videoTitle) return a.videoTitle;
+  if (a.action === 'assessment_submit') {
+    const title = a.assessmentTitle || 'Assessment';
+    return a.score != null ? `${title} · Score ${a.score}` : title;
+  }
+  if (
+    String(a.action || '').toUpperCase() === 'ATTENDANCE_STREAK_ALERT' &&
+    (a.path || a.videoTitle)
+  ) {
+    const batch = a.path || a.videoTitle;
+    const streak = a.score != null ? ` · ${a.score} missed` : '';
+    return `${batch}${streak}`;
+  }
+  if (a.path && !['login', 'logout'].includes(a.action)) return a.path;
+  return '';
+}
 
 const ChartTooltip = ({ active, payload, label }) => {
   if (!active || !payload?.length) return null;
@@ -67,11 +131,11 @@ const ChartTooltip = ({ active, payload, label }) => {
 };
 
 const ROLE_LABELS = {
-  student: { label: 'Student', color: '#3b82f6' },
-  teacher: { label: 'Teacher', color: '#10b981' },
-  admin: { label: 'Admin', color: '#f59e0b' },
-  mentor: { label: 'Mentor', color: '#8b5cf6' },
-  instructor: { label: 'Instructor', color: '#06b6d4' }
+  student: { label: 'Candidate' },
+  teacher: { label: 'Trainer' },
+  admin: { label: 'Admin' },
+  mentor: { label: 'Mentor' },
+  instructor: { label: 'Instructor' }
 };
 
 const StudentsActivity = ({ token: tokenProp }) => {
@@ -291,15 +355,20 @@ const StudentsActivity = ({ token: tokenProp }) => {
       return acc;
     }, {});
 
-    const actionDistribution = Object.entries(actionCounts).map(([action, count]) => ({
-      action,
-      name: (ACTION_LABELS[action] && ACTION_LABELS[action].label) || action,
-      label: (ACTION_LABELS[action] && ACTION_LABELS[action].label) || action,
-      icon: (ACTION_LABELS[action] && ACTION_LABELS[action].icon) || '•',
-      color: (ACTION_LABELS[action] && ACTION_LABELS[action].color) || '#6b7280',
-      count,
-      percentage: Number(((count / activities.length) * 100).toFixed(1))
-    })).sort((a, b) => b.count - a.count);
+    const actionDistribution = Object.entries(actionCounts).map(([action, count]) => {
+      const style = ACTION_LABELS[action] || ACTION_LABELS[String(action || '').toLowerCase()] || {
+        label: humanizeActionKey(action),
+        tone: 'neutral'
+      };
+      return {
+        action,
+        name: style.label,
+        label: style.label,
+        color: ACTION_TONE_COLORS[style.tone] || ACTION_TONE_COLORS.neutral,
+        count,
+        percentage: Number(((count / activities.length) * 100).toFixed(1))
+      };
+    }).sort((a, b) => b.count - a.count);
 
     return { dailyData, hourlyData, actionDistribution };
   }, [activities]);
@@ -462,12 +531,13 @@ const StudentsActivity = ({ token: tokenProp }) => {
   };
 
   const getActionStyle = (action) => {
-    const s = ACTION_LABELS[action] || { icon: '•', label: action, color: '#6b7280' };
-    return s;
+    const known = ACTION_LABELS[action] || ACTION_LABELS[String(action || '').toLowerCase()];
+    if (known) return known;
+    return { label: humanizeActionKey(action), tone: 'neutral' };
   };
 
   const getRoleStyle = (role) => {
-    return ROLE_LABELS[role] || { label: role, color: '#6b7280' };
+    return ROLE_LABELS[role] || { label: humanizeActionKey(role || 'user') };
   };
 
   // Close modal on Escape key
@@ -494,53 +564,47 @@ const StudentsActivity = ({ token: tokenProp }) => {
   return (
     <div className="students-activity-page">
       <div className="sa-header">
-        <p className="sa-eyebrow">Monitoring</p>
+        <p className="sa-eyebrow">Operations</p>
         <h1>Candidate Activity</h1>
         <p className="sa-subtitle">
-          One place to monitor candidate logins, lecture views, assessments, password events, and locations.
-          Click a candidate name to open their full activity dossier.
+          Monitor sign-ins, lecture views, assessments, and location signals in one place.
+          Select a candidate name to open their full activity dossier.
         </p>
       </div>
 
       {/* Stats Cards */}
       <div className="sa-stats-grid">
         <div className="sa-stat-card">
-          <span className="sa-stat-icon">🔐</span>
           <div>
             <span className="sa-stat-value">{stats.loginsToday}</span>
-            <span className="sa-stat-label">Logins today</span>
+            <span className="sa-stat-label">Sign-ins today</span>
           </div>
         </div>
         <div className="sa-stat-card">
-          <span className="sa-stat-icon">👤</span>
           <div>
             <span className="sa-stat-value">{stats.activeThisWeek}</span>
             <span className="sa-stat-label">Active candidates (7d)</span>
           </div>
         </div>
         <div className="sa-stat-card">
-          <span className="sa-stat-icon">📹</span>
           <div>
             <span className="sa-stat-value">{stats.videoViews}</span>
             <span className="sa-stat-label">Lecture views</span>
           </div>
         </div>
         <div className="sa-stat-card">
-          <span className="sa-stat-icon">✏️</span>
           <div>
             <span className="sa-stat-value">{stats.assessments}</span>
             <span className="sa-stat-label">Assessments</span>
           </div>
         </div>
         <div className="sa-stat-card">
-          <span className="sa-stat-icon">🌐</span>
           <div>
             <span className="sa-stat-value">{stats.uniqueIps}</span>
             <span className="sa-stat-label">Unique IPs</span>
           </div>
         </div>
         <div className="sa-stat-card">
-          <span className="sa-stat-icon">📋</span>
           <div>
             <span className="sa-stat-value">{total}</span>
             <span className="sa-stat-label">Events loaded</span>
@@ -617,13 +681,13 @@ const StudentsActivity = ({ token: tokenProp }) => {
             Auto-refresh (30s)
           </label>
           <button onClick={() => openUserModal()} className="sa-btn sa-btn-secondary">
-            👤 Inspect candidate
+            Inspect candidate
           </button>
           <button onClick={fetchActivities} disabled={loading} className="sa-btn sa-btn-secondary">
-            🔄 Refresh
+            Refresh
           </button>
           <button onClick={handleExportCSV} disabled={loading || filteredActivities.length === 0} className="sa-btn sa-btn-primary">
-            📥 Export CSV
+            Export CSV
           </button>
         </div>
       </div>
@@ -865,7 +929,7 @@ const StudentsActivity = ({ token: tokenProp }) => {
             className="sa-graph-show-btn"
             onClick={() => setShowGraph(true)}
           >
-            📈 Show Activity Graph
+            Show activity graph
           </button>
         </div>
       )}
@@ -887,127 +951,147 @@ const StudentsActivity = ({ token: tokenProp }) => {
 
       {/* Activities Table */}
       {!loading && !error && (
-        <div className="sa-table-wrapper">
-          <table className="sa-table">
-            <thead>
-              <tr>
-                <th>Timestamp</th>
-                <th>User</th>
-                <th>Action</th>
-                <th>Details</th>
-                <th>Location</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredActivities.length === 0 ? (
+        <div className="sa-table-card">
+          <div className="sa-table-card__head">
+            <div>
+              <h2>Activity feed</h2>
+              <p>
+                {filteredActivities.length} of {total} events
+                {(filters.search || filters.action || filters.startDate || filters.endDate) ? ' · filtered' : ''}
+              </p>
+            </div>
+          </div>
+          <div className="sa-table-wrapper">
+            <table className="sa-table sa-table--activity">
+              <thead>
                 <tr>
-                  <td colSpan={5} className="sa-empty-state">
-                    {filters.search || filters.action || filters.role 
-                      ? 'No activities match your filters.' 
-                      : 'No activities found.'}
-                  </td>
+                  <th scope="col">Time</th>
+                  <th scope="col">Candidate</th>
+                  <th scope="col">Event</th>
+                  <th scope="col">Details</th>
+                  <th scope="col">Location</th>
                 </tr>
-              ) : (
-                filteredActivities.map((a, i) => {
-                  const isExpanded = expandedId === a.id;
-                  const actionStyle = getActionStyle(a.action);
-                  const roleStyle = getRoleStyle(a.userRole);
-                  
-                  return (
-                    <React.Fragment key={a.id || i}>
-                      <tr 
-                        className={`sa-row ${isExpanded ? 'expanded' : ''}`}
-                        onClick={() => setExpandedId(isExpanded ? null : a.id)}
-                      >
-                        <td className="sa-time">{formatDateTimeDisplay(a.timestamp)}</td>
-                        <td className="sa-user-cell">
-                          <div className="sa-user-info">
-                            <button
-                              type="button"
-                              className="sa-user-name sa-user-link"
-                              title="Inspect candidate activity"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                if (a.userId) {
-                                  openUserModal({
-                                    id: a.userId,
-                                    name: a.userName,
-                                    email: a.userEmail,
-                                    role: a.userRole
-                                  });
-                                }
-                              }}
-                            >
-                              {a.userName || 'Unknown'}
-                            </button>
-                            <div className="sa-user-email">{a.userEmail || '—'}</div>
-                            <span className="sa-role" style={{ background: `${roleStyle.color}22`, color: roleStyle.color }}>
-                              {roleStyle.label}
-                            </span>
-                          </div>
-                        </td>
-                        <td>
-                          <span className="sa-action" style={{ background: `${actionStyle.color}22`, color: actionStyle.color }}>
-                            {actionStyle.icon} {actionStyle.label}
-                          </span>
-                        </td>
-                        <td className="sa-details-cell">
-                          {a.action === 'video_view' && a.videoTitle && (
-                            <span className="sa-detail">📹 {a.videoTitle}</span>
-                          )}
-                          {a.action === 'assessment_submit' && (
-                            <span className="sa-detail">
-                              ✏️ {a.assessmentTitle || 'Assessment'} {a.score != null && `(${a.score})`}
-                            </span>
-                          )}
-                          {a.action === 'login' && <span className="sa-detail">—</span>}
-                          {!['login', 'video_view', 'assessment_submit'].includes(a.action) && <span className="sa-detail">—</span>}
-                        </td>
-                        <td className="sa-location-cell">
-                          <div className="sa-location">
-                            {[a.city, a.country].filter(Boolean).join(', ') || '—'}
-                            {a.ipAddress && <small className="sa-location-ip">IP: {a.ipAddress}</small>}
-                          </div>
-                        </td>
-                      </tr>
-                      {isExpanded && (
-                        <tr className="sa-detail-row">
-                          <td colSpan={5}>
-                            <div className="sa-full-details">
-                              <h4>Full activity details</h4>
-                              <div className="sa-detail-grid">
-                                <div className="sa-detail-item"><label>Timestamp</label><span>{new Date(a.timestamp).toISOString()}</span></div>
-                                <div className="sa-detail-item"><label>User ID</label><span>{a.userId || '—'}</span></div>
-                                <div className="sa-detail-item"><label>User Name</label><span>{a.userName || '—'}</span></div>
-                                <div className="sa-detail-item"><label>Email</label><span>{a.userEmail || '—'}</span></div>
-                                <div className="sa-detail-item"><label>Role</label><span>{a.userRole || '—'}</span></div>
-                                <div className="sa-detail-item"><label>Action</label><span>{a.action || '—'}</span></div>
-                                <div className="sa-detail-item"><label>IP Address</label><span><code>{a.ipAddress || '—'}</code></span></div>
-                                <div className="sa-detail-item"><label>City</label><span>{a.city || '—'}</span></div>
-                                <div className="sa-detail-item"><label>Country</label><span>{a.country || '—'}</span></div>
-                                <div className="sa-detail-item"><label>ISP</label><span>{a.isp || '—'}</span></div>
-                                {a.videoId && <div className="sa-detail-item"><label>Video ID</label><span>{a.videoId}</span></div>}
-                                {a.videoTitle && <div className="sa-detail-item"><label>Video Title</label><span>{a.videoTitle}</span></div>}
-                                {a.assessmentId && <div className="sa-detail-item"><label>Assessment ID</label><span>{a.assessmentId}</span></div>}
-                                {a.assessmentTitle && <div className="sa-detail-item"><label>Assessment Title</label><span>{a.assessmentTitle}</span></div>}
-                                {a.score != null && <div className="sa-detail-item"><label>Score</label><span>{a.score}</span></div>}
-                                {a.path && <div className="sa-detail-item"><label>Path</label><span>{a.path}</span></div>}
-                              </div>
+              </thead>
+              <tbody>
+                {filteredActivities.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} className="sa-empty-state">
+                      {filters.search || filters.action || filters.role
+                        ? 'No activities match your filters.'
+                        : 'No activities found.'}
+                    </td>
+                  </tr>
+                ) : (
+                  filteredActivities.map((a, i) => {
+                    const isExpanded = expandedId === a.id;
+                    const actionStyle = getActionStyle(a.action);
+                    const roleStyle = getRoleStyle(a.userRole);
+                    const when = formatActivityTime(a.timestamp);
+                    const detail = getActivityDetail(a);
+                    const place = [a.city, a.country].filter(Boolean).join(', ');
+
+                    return (
+                      <React.Fragment key={a.id || i}>
+                        <tr
+                          className={`sa-row ${isExpanded ? 'expanded' : ''}`}
+                          onClick={() => setExpandedId(isExpanded ? null : a.id)}
+                        >
+                          <td className="sa-time">
+                            <span className="sa-time__date">{when.date}</span>
+                            <span className="sa-time__clock">{when.time}</span>
+                          </td>
+                          <td className="sa-user-cell">
+                            <div className="sa-user-info">
+                              <button
+                                type="button"
+                                className="sa-user-name sa-user-link"
+                                title="Inspect candidate activity"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  if (a.userId) {
+                                    openUserModal({
+                                      id: a.userId,
+                                      name: a.userName,
+                                      email: a.userEmail,
+                                      role: a.userRole
+                                    });
+                                  }
+                                }}
+                              >
+                                {a.userName || 'Unknown'}
+                              </button>
+                              <div className="sa-user-email">{a.userEmail || '—'}</div>
+                              {filters.role === '' && (
+                                <span className={`sa-role sa-role--${a.userRole || 'student'}`}>
+                                  {roleStyle.label}
+                                </span>
+                              )}
                             </div>
                           </td>
+                          <td>
+                            <span className={`sa-action sa-action--${actionStyle.tone}`}>
+                              {actionStyle.label}
+                            </span>
+                          </td>
+                          <td className="sa-details-cell">
+                            {detail ? (
+                              <span className="sa-detail" title={detail}>{detail}</span>
+                            ) : (
+                              <span className="sa-detail sa-detail--empty">—</span>
+                            )}
+                          </td>
+                          <td className="sa-location-cell">
+                            {place || a.ipAddress ? (
+                              <div className="sa-location">
+                                <span className="sa-location__place">{place || 'Location unavailable'}</span>
+                                {a.ipAddress && (
+                                  <span className="sa-location-ip">{a.ipAddress}</span>
+                                )}
+                              </div>
+                            ) : (
+                              <span className="sa-detail sa-detail--empty">—</span>
+                            )}
+                          </td>
                         </tr>
-                      )}
-                    </React.Fragment>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
+                        {isExpanded && (
+                          <tr className="sa-detail-row">
+                            <td colSpan={5}>
+                              <div className="sa-full-details">
+                                <h4>Event details</h4>
+                                <div className="sa-detail-grid">
+                                  <div className="sa-detail-item"><label>Timestamp</label><span>{new Date(a.timestamp).toISOString()}</span></div>
+                                  <div className="sa-detail-item"><label>User ID</label><span>{a.userId || '—'}</span></div>
+                                  <div className="sa-detail-item"><label>Name</label><span>{a.userName || '—'}</span></div>
+                                  <div className="sa-detail-item"><label>Email</label><span>{a.userEmail || '—'}</span></div>
+                                  <div className="sa-detail-item"><label>Role</label><span>{roleStyle.label}</span></div>
+                                  <div className="sa-detail-item"><label>Event</label><span>{actionStyle.label}</span></div>
+                                  <div className="sa-detail-item"><label>IP address</label><span><code>{a.ipAddress || '—'}</code></span></div>
+                                  <div className="sa-detail-item"><label>City</label><span>{a.city || '—'}</span></div>
+                                  <div className="sa-detail-item"><label>Country</label><span>{a.country || '—'}</span></div>
+                                  <div className="sa-detail-item"><label>ISP</label><span>{a.isp || '—'}</span></div>
+                                  {a.videoId && <div className="sa-detail-item"><label>Video ID</label><span>{a.videoId}</span></div>}
+                                  {a.videoTitle && <div className="sa-detail-item"><label>Lecture</label><span>{a.videoTitle}</span></div>}
+                                  {a.assessmentId && <div className="sa-detail-item"><label>Assessment ID</label><span>{a.assessmentId}</span></div>}
+                                  {a.assessmentTitle && <div className="sa-detail-item"><label>Assessment</label><span>{a.assessmentTitle}</span></div>}
+                                  {a.score != null && <div className="sa-detail-item"><label>Score</label><span>{a.score}</span></div>}
+                                  {a.path && <div className="sa-detail-item"><label>Reference</label><span>{a.path}</span></div>}
+                                </div>
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                      </React.Fragment>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
       {!loading && filteredActivities.length > 0 && (
         <div className="sa-footer">
-          Showing {filteredActivities.length} of {total} events • Click a row to expand full details
+          Showing {filteredActivities.length} of {total} events · Click a row for full details
         </div>
       )}
 
@@ -1181,31 +1265,38 @@ const StudentsActivity = ({ token: tokenProp }) => {
                         <tbody>
                           {userActivities.map((a, i) => {
                             const actionStyle = getActionStyle(a.action);
+                            const when = formatActivityTime(a.timestamp);
+                            const detail = getActivityDetail(a);
+                            const place = [a.city, a.country].filter(Boolean).join(', ');
                             return (
                               <tr key={`user-activity-${i}`}>
-                                <td className="sa-time">{formatDateTimeDisplay(a.timestamp)}</td>
+                                <td className="sa-time">
+                                  <span className="sa-time__date">{when.date}</span>
+                                  <span className="sa-time__clock">{when.time}</span>
+                                </td>
                                 <td>
-                                  <span className="sa-action" style={{ background: `${actionStyle.color}22`, color: actionStyle.color }}>
-                                    {actionStyle.icon} {actionStyle.label}
+                                  <span className={`sa-action sa-action--${actionStyle.tone}`}>
+                                    {actionStyle.label}
                                   </span>
                                 </td>
                                 <td className="sa-details-cell">
-                                  {a.action === 'video_view' && a.videoTitle && (
-                                    <span className="sa-detail">📹 {a.videoTitle}</span>
+                                  {detail ? (
+                                    <span className="sa-detail" title={detail}>{detail}</span>
+                                  ) : (
+                                    <span className="sa-detail sa-detail--empty">—</span>
                                   )}
-                                  {a.action === 'assessment_submit' && (
-                                    <span className="sa-detail">
-                                      ✏️ {a.assessmentTitle || 'Assessment'} {a.score != null && `(${a.score})`}
-                                    </span>
-                                  )}
-                                  {a.action === 'login' && <span className="sa-detail">—</span>}
-                                  {!['login', 'video_view', 'assessment_submit'].includes(a.action) && <span className="sa-detail">—</span>}
                                 </td>
                                 <td className="sa-location-cell">
-                                  <div className="sa-location">
-                                    {[a.city, a.country].filter(Boolean).join(', ') || '—'}
-                                    {a.ipAddress && <small className="sa-location-ip">IP: {a.ipAddress}</small>}
-                                  </div>
+                                  {place || a.ipAddress ? (
+                                    <div className="sa-location">
+                                      <span className="sa-location__place">{place || 'Location unavailable'}</span>
+                                      {a.ipAddress && (
+                                        <span className="sa-location-ip">{a.ipAddress}</span>
+                                      )}
+                                    </div>
+                                  ) : (
+                                    <span className="sa-detail sa-detail--empty">—</span>
+                                  )}
                                 </td>
                               </tr>
                             );

@@ -423,14 +423,15 @@ class Query {
 }
 
 const CACHE_MS_BY_COLLECTION = {
-  classrooms: 120000,
-  batches: 120000,
+  classrooms: 180000,
+  batches: 180000,
   courses: 300000,
-  modules: 120000,
-  resources: 120000,
+  modules: 180000,
+  resources: 180000,
   resourcecategories: 300000,
-  users: 45000,
-  activitylogs: 20000
+  users: 90000,
+  liveclasses: 90000,
+  activitylogs: 60000
 };
 
 function createFsModel(name, collectionName) {
@@ -476,6 +477,7 @@ function createFsModel(name, collectionName) {
         const plain = { ...this };
         delete plain.isNew;
         delete plain.save;
+        delete plain.deleteOne;
         delete plain.toObject;
         delete plain.toJSON;
         delete plain.$__;
@@ -484,6 +486,13 @@ function createFsModel(name, collectionName) {
         Object.assign(this, saved);
         this.isNew = false;
         return this;
+      },
+      async deleteOne() {
+        const id = asString(this._id || this.id);
+        if (!id) return { acknowledged: true, deletedCount: 0 };
+        await firestoreDb.deleteDoc(collectionName, id);
+        invalidate();
+        return { acknowledged: true, deletedCount: 1 };
       }
     };
     return doc;

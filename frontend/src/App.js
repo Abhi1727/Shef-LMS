@@ -134,6 +134,34 @@ const setupTokenMonitoring = () => {
       handleAutoLogout(message);
     });
 
+    // Admin dashboard uses fetch heavily — catch revoked sessions without toasts/alerts
+    if (typeof window !== 'undefined' && !window.__ssFetchSessionGuard) {
+      window.__ssFetchSessionGuard = true;
+      const originalFetch = window.fetch.bind(window);
+      window.fetch = async (...args) => {
+        const res = await originalFetch(...args);
+        if (
+          (res.status === 401 || res.status === 403) &&
+          !window.__ssAutoLogoutInProgress
+        ) {
+          try {
+            const data = await res.clone().json();
+            const revoked =
+              data?.code === 'SESSION_REVOKED' ||
+              data?.code === 'ACCOUNT_INACTIVE' ||
+              /session revoked/i.test(String(data?.message || '')) ||
+              /account is deactivated/i.test(String(data?.message || ''));
+            if (revoked) {
+              handleAutoLogout(data?.message || 'Session revoked');
+            }
+          } catch (_) {
+            /* ignore non-JSON 401 bodies */
+          }
+        }
+        return res;
+      };
+    }
+
     // Start periodic token validation
     tokenService.startTokenValidation(
       // onTokenExpired callback
@@ -161,6 +189,14 @@ const setupTokenMonitoring = () => {
 };
 
   const handleAutoLogout = (reason) => {
+    // Avoid stacking alerts/toasts when many API calls fail at once after session revoke
+    if (typeof window !== 'undefined' && window.__ssAutoLogoutInProgress) {
+      return;
+    }
+    if (typeof window !== 'undefined') {
+      window.__ssAutoLogoutInProgress = true;
+    }
+
     console.log('Performing auto-logout:', reason);
     localStorage.removeItem('token');
     localStorage.removeItem('user');
@@ -169,15 +205,14 @@ const setupTokenMonitoring = () => {
     setSessionWarning(null);
     tokenService.stopTokenValidation();
     tokenService.clearAxiosInterceptor();
-    
-    // Clear all caches on logout
+
     cacheManager.clearAllCaches();
     enhancedApiService.clearCache();
     dataFreshnessTracker.clearAll();
     assetVersioning.clearCache();
-    
-    // Show alert to user (in production, you might want a nicer notification)
-    alert(`Session expired: ${reason}. Please login again.`);
+
+    // Silent redirect to login (landing) — no error alerts
+    window.location.assign('/login');
   };
 
   // Role-aware home redirect (teachers must never bounce via /mentor)

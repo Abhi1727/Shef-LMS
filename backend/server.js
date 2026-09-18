@@ -251,8 +251,13 @@ connectDataStore()
         logger.error('Failed to start Meet reminder job', { error: err.message });
       }
       try {
-        const { startAttendanceAlertJob } = require('./jobs/attendanceAlerts');
-        startAttendanceAlertJob();
+        // Off by default — scans every batch's LiveClass history (expensive). Set ATTENDANCE_ALERTS_ENABLED=true to turn on.
+        if (String(process.env.ATTENDANCE_ALERTS_ENABLED || '').toLowerCase() === 'true') {
+          const { startAttendanceAlertJob } = require('./jobs/attendanceAlerts');
+          startAttendanceAlertJob();
+        } else {
+          logger.info('Attendance alert job skipped (ATTENDANCE_ALERTS_ENABLED not true)');
+        }
       } catch (err) {
         logger.error('Failed to start attendance alert job', { error: err.message });
       }
@@ -267,6 +272,12 @@ connectDataStore()
         startZoomRecordingSyncJob();
       } catch (err) {
         logger.error('Failed to start Zoom recording sync job', { error: err.message });
+      }
+      try {
+        const { startClassroomIntegrityJob } = require('./jobs/classroomIntegritySweep');
+        startClassroomIntegrityJob();
+      } catch (err) {
+        logger.error('Failed to start classroom integrity sweep', { error: err.message });
       }
       try {
         const { startFirestoreAuthWatchdog } = require('./jobs/firestoreAuthWatchdog');

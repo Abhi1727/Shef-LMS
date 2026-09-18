@@ -409,8 +409,7 @@ const TeacherDashboard = ({ user, onLogout }) => {
 
   useEffect(() => {
     loadAvailability();
-    const t = setInterval(loadAvailability, 20000);
-    return () => clearInterval(t);
+    // No polling — availability toggle is optional; load once per dashboard visit.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -877,7 +876,7 @@ const TeacherDashboard = ({ user, onLogout }) => {
   }
 
   return (
-    <div className="dashboard ss-shell">
+    <div className="dashboard ss-shell teacher-dashboard">
       <header className="ss-shell-header">
         <div className="ss-shell-header__row">
           <div className="ss-shell-brand">

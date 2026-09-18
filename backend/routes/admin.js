@@ -55,7 +55,7 @@ const contentTypes = {
   'jpeg': 'image/jpeg',
   'png': 'image/png',
   'gif': 'image/gif',
-  'ipynb': 'application/json'
+  'ipynb': 'application/x-ipynb+json'
 };
 
 // Helper function to get content-type based on file extension
@@ -158,9 +158,32 @@ const notesUpload = multer({
       'image/jpeg',
       'image/png',
       'image/gif',
-      'application/json' // For .ipynb files
+      'application/json',
+      'application/x-ipynb+json',
+      'text/x-python'
     ];
-    if (allowedTypes.includes(file.mimetype)) {
+    const ext = String(file.originalname || '')
+      .toLowerCase()
+      .split('.')
+      .pop();
+    const allowedExt = new Set([
+      'pdf',
+      'doc',
+      'docx',
+      'txt',
+      'ppt',
+      'pptx',
+      'xls',
+      'xlsx',
+      'csv',
+      'zip',
+      'jpg',
+      'jpeg',
+      'png',
+      'gif',
+      'ipynb'
+    ]);
+    if (allowedTypes.includes(file.mimetype) || allowedExt.has(ext)) {
       cb(null, true);
     } else {
       cb(new Error('Only document files (PDF, Word, PowerPoint, Excel, CSV, text), images, Jupyter notebooks, and zip files are allowed for notes'), false);
@@ -672,11 +695,16 @@ router.put('/users/:id/password', async (req, res) => {
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(newPassword, salt);
 
-    // Update user password
+    const { invalidateSessionCache } = require('../middleware/sessionGuard');
+    const nextTv = Number(user.tokenVersion || 0) + 1;
+
+    // Update user password and revoke all existing sessions
     await User.findByIdAndUpdate(id, { 
       password: hashedPassword,
+      tokenVersion: nextTv,
       updatedAt: new Date()
     });
+    invalidateSessionCache(id);
 
     // Log activity for audit trail
     try {
@@ -2454,10 +2482,40 @@ router.put('/batches/:id', async (req, res) => {
 
         const updated = await Batch.findByIdAndUpdate(req.params.id, updateData, { new: true }).exec();
 
+        let migratedLiveClasses = 0;
+        const nextTeacherId =
+          teacherId !== undefined ? String(teacherId || '') : String(existing.teacherId || '');
+        const prevTeacherId = String(existing.teacherId || '');
+        if (teacherId !== undefined && nextTeacherId && nextTeacherId !== prevTeacherId) {
+          let nextTeacherName = teacherName;
+          if (nextTeacherName === undefined || nextTeacherName === '') {
+            const t = await User.findById(nextTeacherId).select('name').lean().exec();
+            nextTeacherName = t?.name || '';
+          }
+          const open = await LiveClass.find({
+            batchId: String(req.params.id),
+            status: { $in: ['scheduled', 'live'] }
+          }).exec();
+          for (const session of open) {
+            session.teacherId = nextTeacherId;
+            session.teacherName = nextTeacherName || session.teacherName || '';
+            // Clear Zoom artifacts so next start binds the new trainer's PMI
+            session.zoomMeetingId = '';
+            session.zoomLink = '';
+            session.zoomStartUrl = '';
+            session.zoomPassword = '';
+            session.zoomIsPmr = false;
+            session.updatedAt = new Date();
+            await session.save();
+            migratedLiveClasses += 1;
+          }
+        }
+
         res.json({
           success: true,
           message: 'Batch updated successfully',
           id: String(updated?._id || req.params.id),
+          migratedLiveClasses,
           ...(updated ? updated.toObject() : updateData)
         });
     } catch (error) {

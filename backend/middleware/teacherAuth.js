@@ -1,4 +1,5 @@
 const jwt = require('jsonwebtoken');
+const { assertValidSession } = require('./sessionGuard');
 
 function getJwtSecret() {
   const secret = process.env.JWT_SECRET;
@@ -8,10 +9,10 @@ function getJwtSecret() {
   return secret || (process.env.NODE_ENV === 'production' ? null : 'dev_only_fallback');
 }
 
-module.exports = function(req, res, next) {
+module.exports = async function (req, res, next) {
   // Check for token in multiple header formats
   let token = req.header('x-auth-token');
-  
+
   // Also check Authorization header (Bearer token)
   if (!token) {
     const authHeader = req.header('Authorization');
@@ -27,6 +28,12 @@ module.exports = function(req, res, next) {
   try {
     const decoded = jwt.verify(token, getJwtSecret());
     req.user = decoded.user;
+
+    const guard = await assertValidSession(req.user);
+    if (!guard.ok) {
+      return res.status(guard.status).json(guard.body);
+    }
+
     next();
   } catch (err) {
     res.status(401).json({ message: 'Token is not valid' });
@@ -34,7 +41,7 @@ module.exports = function(req, res, next) {
 };
 
 // Middleware to check if user is teacher or admin
-module.exports.isTeacherOrAdmin = function(req, res, next) {
+module.exports.isTeacherOrAdmin = function (req, res, next) {
   if (req.user && (req.user.role === 'teacher' || req.user.role === 'mentor' || req.user.role === 'admin')) {
     return next();
   }
@@ -42,11 +49,11 @@ module.exports.isTeacherOrAdmin = function(req, res, next) {
 };
 
 // Middleware to check if user owns the batch or is admin
-module.exports.isBatchOwnerOrAdmin = async function(req, res, next) {
+module.exports.isBatchOwnerOrAdmin = async function (req, res, next) {
   try {
     const Batch = require('../models/Batch');
     const batchId = req.params.id || req.params.batchId;
-    
+
     const batch = await Batch.findById(batchId);
     if (!batch) {
       return res.status(404).json({ message: 'Batch not found' });

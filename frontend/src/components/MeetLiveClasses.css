@@ -561,6 +561,19 @@
   margin-left: 0.35rem;
 }
 
+.live-session__badge--waste {
+  background: rgba(120, 53, 15, 0.14);
+  color: #9a3412;
+  margin-left: 0.35rem;
+}
+
+.live-session__waste-note {
+  margin: 0.35rem 0 0;
+  font-size: 0.82rem;
+  color: #9a3412;
+  line-height: 1.45;
+}
+
 .live-session__badge--platform.is-zoom,
 .live-session__badge--platform-hero.is-zoom {
   background: rgba(45, 98, 255, 0.14);

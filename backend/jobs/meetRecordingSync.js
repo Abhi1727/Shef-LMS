@@ -11,7 +11,8 @@ async function runMeetRecordingSync() {
 }
 
 function startMeetRecordingSyncJob() {
-  cron.schedule('*/10 * * * *', async () => {
+  // Hourly — avoids scanning LiveClass every 10 minutes when Meet is rarely used.
+  cron.schedule('20 * * * *', async () => {
     try {
       await runMeetRecordingSync();
     } catch (err) {
@@ -23,7 +24,7 @@ function startMeetRecordingSyncJob() {
       console.error('[Meet recording sync] startup:', err.message || err)
     );
   }, 90 * 1000);
-  console.log('[Meet recording sync] cron scheduled (every 10 minutes; no-op when Meet is off)');
+  console.log('[Meet recording sync] cron scheduled (hourly at :20; no-op when Meet is off)');
 }
 
 module.exports = {

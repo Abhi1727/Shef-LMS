@@ -16,7 +16,7 @@ const MIME = {
   jpeg: 'image/jpeg',
   png: 'image/png',
   gif: 'image/gif',
-  ipynb: 'application/json'
+  ipynb: 'application/x-ipynb+json'
 };
 
 function getContentType(filename) {

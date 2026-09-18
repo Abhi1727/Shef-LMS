@@ -1,5 +1,6 @@
 const jwt = require('jsonwebtoken');
 const logger = require('../utils/logger');
+const { assertValidSession } = require('./sessionGuard');
 
 function getJwtSecret() {
   const secret = process.env.JWT_SECRET;
@@ -11,37 +12,32 @@ function getJwtSecret() {
 
 // Middleware to check user role and permissions
 const roleAuth = (...allowedRoles) => {
-  return (req, res, next) => {
+  return async (req, res, next) => {
     try {
-      const token = req.header('Authorization')?.replace('Bearer ', '') || 
-                    req.header('x-auth-token');
+      // If a prior auth middleware already validated the session, reuse it
+      if (!req.user) {
+        const token =
+          req.header('Authorization')?.replace(/^Bearer\s+/i, '') || req.header('x-auth-token');
 
-      if (!token) {
-        return res.status(401).json({ message: 'No token, authorization denied' });
+        if (!token) {
+          return res.status(401).json({ message: 'No token, authorization denied' });
+        }
+
+        const decoded = jwt.verify(token, getJwtSecret());
+        req.user = decoded.user;
       }
 
-      const decoded = jwt.verify(token, getJwtSecret());
-
-      req.user = decoded.user;
-
-      // Check if user account is active - ONLY for students
-      // Admins and teachers can access even if account is inactive
-      if (req.user.role === 'student' && req.user.status !== 'active') {
-        return res.status(403).json({ 
-          message: 'Account is deactivated. Please contact administrator.' 
-        });
+      const guard = await assertValidSession(req.user);
+      if (!guard.ok) {
+        return res.status(guard.status).json(guard.body);
       }
 
-      // Commented out: This was blocking admins and teachers too
-      // if (req.user.status !== 'active') {
-      //   return res.status(403).json({ 
-      //     message: 'Account is deactivated. Please contact administrator.' 
-      //   });
-      // }
+      // Mentors use teacher product surface
+      const effectiveRole = req.user.role === 'mentor' ? 'teacher' : req.user.role;
+      const allowed = allowedRoles.includes(req.user.role) || allowedRoles.includes(effectiveRole);
 
-      // Check if user's role is in the allowed roles
-      if (!allowedRoles.includes(req.user.role)) {
-        return res.status(403).json({ 
+      if (!allowed) {
+        return res.status(403).json({
           message: 'Access denied. Insufficient permissions.',
           requiredRole: allowedRoles,
           userRole: req.user.role

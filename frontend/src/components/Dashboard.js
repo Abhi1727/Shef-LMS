@@ -1111,22 +1111,23 @@ const Dashboard = ({ user, onLogout }) => {
             ? raw.videos
             : [];
 
-        const hasPathOrder = videos.some((v) => v.order > 0 || v.lessonPath || v.steps);
-        const sortedVideos = hasPathOrder
-          ? [...videos].sort((a, b) => (Number(a.order) || 0) - (Number(b.order) || 0))
-          : [...videos].sort((a, b) => {
-              const getVideoDate = (v) => {
-                if (v.isOneToOne && v.classDate) {
-                  try {
-                    return new Date(v.classDate.split('-').reverse().join('-'));
-                  } catch (e) {
-                    // fallback
-                  }
-                }
-                return new Date(v.date || v.createdAt || v.addedAt || 0);
-              };
-              return getVideoDate(b) - getVideoDate(a);
-            });
+        const getVideoSortTime = (v) => {
+          if (v.isOneToOne && v.classDate) {
+            try {
+              return new Date(v.classDate.split('-').reverse().join('-')).getTime();
+            } catch (e) {
+              /* fallback */
+            }
+          }
+          return new Date(v.date || v.createdAt || v.addedAt || 0).getTime();
+        };
+        const sortedVideos = [...videos].sort((a, b) => {
+          const batchCmp = String(a.batchId || '').localeCompare(String(b.batchId || ''));
+          if (batchCmp !== 0) return batchCmp;
+          const dateCmp = getVideoSortTime(a) - getVideoSortTime(b);
+          if (dateCmp !== 0) return dateCmp;
+          return (Number(a.order) || 0) - (Number(b.order) || 0);
+        });
 
         // Hide support/utility Zoom rooms from students (e.g. personal meeting rooms)
         const filteredVideos = sortedVideos.filter((v) => {

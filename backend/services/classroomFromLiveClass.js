@@ -30,6 +30,7 @@ async function ensureClassroomFromLiveClass(
   } = {}
 ) {
   if (!doc?.batchId || doc.skipRecordingUpload) return null;
+  if (doc.wasteSessionFlagged && !doc.wasteSessionDismissedAt) return null;
 
   const batch = await Batch.findById(doc.batchId).lean().exec();
   const title = String(doc.title || 'Live class').trim();
@@ -45,6 +46,10 @@ async function ensureClassroomFromLiveClass(
       batchId: String(doc.batchId),
       liveClassId
     }).exec();
+  }
+  // Reclaim an orphan lecture for this live on any batch (avoids duplicates / wrong-batch rows)
+  if (!lecture && liveClassId) {
+    lecture = await Classroom.findOne({ liveClassId }).exec();
   }
 
   const ytId = youtubeVideoId || doc.youtubeVideoId || '';
@@ -117,8 +122,16 @@ async function ensureClassroomFromLiveClass(
 
   if (lecture) {
     Object.assign(lecture, payload);
+    // Always realign to the live session's batch when media is attached
+    lecture.batchId = String(doc.batchId);
+    if (batch?.name || doc.batchName) {
+      lecture.batchName = batch?.name || doc.batchName || lecture.batchName || '';
+    }
     if (!lecture.order) {
       lecture.order = await lessonPath.nextOrderForBatch(String(doc.batchId));
+    }
+    if (hasPlayableRecording) {
+      lecture.studentVisible = true;
     }
     await lecture.save();
   } else {
@@ -126,7 +139,7 @@ async function ensureClassroomFromLiveClass(
     lecture = await Classroom.create({
       ...payload,
       order,
-      studentVisible: false,
+      studentVisible: hasPlayableRecording,
       uploadedBy: String(doc.teacherId || doc.createdBy || ''),
       createdAt: new Date()
     });

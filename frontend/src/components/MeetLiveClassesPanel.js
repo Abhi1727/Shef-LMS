@@ -107,7 +107,7 @@ export default function MeetLiveClassesPanel({
   useEffect(() => {
     const hasLive = meetings.some((m) => m.status === 'live');
     if (!hasLive) return undefined;
-    const tick = setInterval(() => loadMeetings(), 45000);
+    const tick = setInterval(() => loadMeetings(), 90000);
     return () => clearInterval(tick);
   }, [meetings, loadMeetings]);
 
@@ -180,9 +180,7 @@ export default function MeetLiveClassesPanel({
     }
   }, [summaryBatchId]);
 
-  useEffect(() => {
-    loadSummary();
-  }, [loadSummary]);
+  // Attendance summary is opt-in via Refresh — not auto-loaded.
 
   const intimateLowAttendance = async (studentIds = null) => {
     if (!summaryBatchId) return;
@@ -266,6 +264,9 @@ export default function MeetLiveClassesPanel({
         return false;
       }
       if (sessionFilter === 'completed') return m.status === 'completed';
+      if (sessionFilter === 'waste') {
+        return Boolean(m.wasteSession?.flagged && !m.wasteSession?.dismissed);
+      }
       if (sessionFilter === 'upcoming') {
         const { phase } = sessionPhase(m, now);
         return m.status !== 'completed' && phase !== 'ended';
@@ -289,7 +290,9 @@ export default function MeetLiveClassesPanel({
     }).length,
     completed: visible.filter(
       (m) => sessionPhase(m, now).phase !== 'needsRecording' && m.status === 'completed'
-    ).length
+    ).length,
+    waste: visible.filter((m) => Boolean(m.wasteSession?.flagged && !m.wasteSession?.dismissed))
+      .length
   };
 
   const handleSchedule = async (e) => {
@@ -464,6 +467,29 @@ export default function MeetLiveClassesPanel({
     }
   };
 
+  const handleDismissWaste = async (m) => {
+    if (
+      !window.confirm(
+        `Mark "${m.title || 'this class'}" as a real class?\n\nRecording sync will be turned back on for this session.`
+      )
+    ) {
+      return;
+    }
+    try {
+      const apiUrl = getApiBaseUrl();
+      const res = await fetch(`${apiUrl}/api/meetings/${m.id}/dismiss-waste`, {
+        method: 'POST',
+        headers: authHeaders()
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.message || 'Failed to update session');
+      setMessage(data.message || 'Marked as a real class.');
+      await loadMeetings();
+    } catch (err) {
+      setError(err.message || 'Failed to update session');
+    }
+  };
+
   const openLiveHost = async (m, meeting, data) => {
     const link =
       liveJoinUrl(meeting, { host: true }) ||
@@ -557,16 +583,7 @@ export default function MeetLiveClassesPanel({
     }
   };
 
-  // Live roster refresh while attendance panel is open
-  useEffect(() => {
-    if (!expandedId) return undefined;
-    const tick = setInterval(() => {
-      loadAttendance(expandedId);
-      loadMeetings();
-    }, 20000);
-    return () => clearInterval(tick);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [expandedId, loadMeetings]);
+  // Attendance roster: load on open only (no live polling — Firestore cost).
 
   const toggleAttendancePanel = async (meetingId) => {
     if (expandedId === meetingId) {
@@ -1169,7 +1186,10 @@ export default function MeetLiveClassesPanel({
               {[
                 { id: 'all', label: `All (${sessionCounts.all})` },
                 { id: 'upcoming', label: `Upcoming (${sessionCounts.upcoming})` },
-                { id: 'completed', label: `Completed (${sessionCounts.completed})` }
+                { id: 'completed', label: `Completed (${sessionCounts.completed})` },
+                ...(sessionCounts.waste
+                  ? [{ id: 'waste', label: `Test / incomplete (${sessionCounts.waste})` }]
+                  : [])
               ].map((chip) => (
                 <button
                   key={chip.id}
@@ -1237,16 +1257,20 @@ export default function MeetLiveClassesPanel({
                           <p className="live-session__meta">
                             {m.scheduledDate} · {m.scheduledTime} IST
                             {m.duration && m.status === 'completed' ? ` · ${m.duration}` : ''}
-                            {m.skipRecordingUpload || !m.batchId
+                            {!m.batchId
                               ? ' · No batch · recording not uploaded'
                               : m.batchId && batches.length
-                                ? ` · ${batches.find((b) => String(b.id) === String(m.batchId))?.name || ''}`
-                                : ''}
+                                ? ` · ${batches.find((b) => String(b.id) === String(m.batchId))?.name || ''}${
+                                    m.skipRecordingUpload ? ' · recording sync paused' : ''
+                                  }`
+                                : m.skipRecordingUpload
+                                  ? ' · recording sync paused'
+                                  : ''}
                           </p>
                           <p className="live-session__countdown">
                             {formatCountdown(minsUntil, phase)}
                           </p>
-                          {!(!m.batchId || m.skipRecordingUpload) && (
+                          {m.batchId && (
                           <div className="live-session__stats">
                             <span className="live-stat live-stat--present">
                               {m.attendanceCount || 0} present
@@ -1267,7 +1291,23 @@ export default function MeetLiveClassesPanel({
                           <span className="live-session__badge live-session__badge--platform">
                             {livePlatformLabel(m)}
                           </span>
+                          {m.wasteSession?.flagged && !m.wasteSession?.dismissed && (
+                            <span
+                              className="live-session__badge live-session__badge--waste"
+                              title={(m.wasteSession.labels || []).join(' · ')}
+                            >
+                              Test / incomplete
+                            </span>
+                          )}
                       </div>
+                      {m.wasteSession?.flagged && !m.wasteSession?.dismissed && (
+                        <p className="live-session__waste-note">
+                          {(m.wasteSession.labels || []).slice(0, 2).join(' · ')}
+                          {m.wasteSession.labels?.length > 2 ? ' · …' : ''}
+                          {' — '}
+                          Recording sync is paused for this session.
+                        </p>
+                      )}
                       <div className="live-session__cta">
                         {m.status !== 'completed' && (phase === 'live' || canStart || phase === 'scheduled' || phase === 'soon') && (
                           <>
@@ -1329,6 +1369,15 @@ export default function MeetLiveClassesPanel({
                               : m.sessionSummaryStatus === 'ready'
                                 ? 'Refresh AI summary'
                                 : 'Generate AI summary'}
+                          </button>
+                        )}
+                        {m.wasteSession?.flagged && !m.wasteSession?.dismissed && (
+                          <button
+                            type="button"
+                            className="live-lobby__btn live-lobby__btn--ghost"
+                            onClick={() => handleDismissWaste(m)}
+                          >
+                            Mark as real class
                           </button>
                         )}
                         {m.sessionSummaryStatus === 'ready' && m.sessionSummary && (

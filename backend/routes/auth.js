@@ -10,9 +10,50 @@ const logger = require('../utils/logger');
 const { getClientIP, getGeoFromIP } = require('../utils/geoIP');
 const { sendTransactionalEmail } = require('../services/emailService');
 const auth = require('../middleware/auth');
+const {
+  isAccountAllowed,
+  bumpTokenVersion
+} = require('../middleware/sessionGuard');
 
 // Normalize email for consistent lookup (Firestore queries are case-sensitive)
 const normalizeEmail = (e) => (e || '').trim().toLowerCase();
+
+function buildTokenUser(user, loginInfo) {
+  const jwtRole = user.role === 'mentor' ? 'teacher' : user.role;
+  const userId = String(user._id || user.id);
+  const base = {
+    id: userId,
+    name: user.name,
+    email: user.email,
+    role: jwtRole,
+    status: user.status || 'active',
+    currentCourse: user.course,
+    enrollmentNumber: user.enrollmentNumber,
+    batchId: user.batchId,
+    domain: user.domain,
+    title: user.title,
+    company: user.company,
+    phone: user.phone || '',
+    address: user.address || '',
+    tv: Number(user.tokenVersion || 0)
+  };
+  if (loginInfo) base.lastLogin = loginInfo;
+  if (jwtRole === 'teacher' || user.role === 'admin') {
+    base.conferenceProvider = user.conferenceProvider === 'zoom' ? 'zoom' : 'meet';
+  }
+  return base;
+}
+
+function signUserToken(tokenUser) {
+  return new Promise((resolve, reject) => {
+    jwt.sign(
+      { user: tokenUser },
+      getJwtSecret(),
+      { expiresIn: process.env.JWT_EXPIRE || '7d' },
+      (err, signed) => (err ? reject(err) : resolve(signed))
+    );
+  });
+}
 
 async function findUserByEmailForLogin(normalizedEmail) {
   // Firestore-only runtime (no Mongo fallback).
@@ -87,7 +128,8 @@ router.post('/register', async (req, res) => {
         id: String(savedUser._id),
         name: savedUser.name,
         email: savedUser.email,
-        role: savedUser.role
+        role: savedUser.role,
+        tv: Number(savedUser.tokenVersion || 0)
       }
     };
 
@@ -149,16 +191,12 @@ router.post('/login', async (req, res) => {
       return res.status(400).json({ message: 'Incorrect password' });
     }
 
-    // Check if user account is active - ONLY for students
-    // Admins and teachers can login even if account is inactive
-    if (userData.role === 'student' && userData.status !== 'active') {
-      return res.status(403).json({ message: 'Account is deactivated. Please contact administrator.' });
+    if (!isAccountAllowed(userData.role, userData.status)) {
+      return res.status(403).json({
+        code: 'ACCOUNT_INACTIVE',
+        message: 'Account is deactivated. Please contact administrator.'
+      });
     }
-
-    // Commented out: This was blocking admins and teachers from logging in
-    // if (userData.status !== 'active') {
-    //   return res.status(403).json({ message: 'Account is deactivated. Please contact administrator.' });
-    // }
 
     // Update user's last login and append to loginHistory
     userData.lastLogin = loginInfo;
@@ -188,43 +226,9 @@ router.post('/login', async (req, res) => {
       logger.warn('ActivityLog insert failed', { error: logErr.message });
     }
 
-    // Mentors use the teacher product surface; keep JWT role aligned with API guards
-    const jwtRole = userData.role === 'mentor' ? 'teacher' : userData.role;
-
-    const payload = {
-      user: {
-        id: userId,
-        name: userData.name,
-        email: userData.email,
-        role: jwtRole,
-        status: userData.status || 'active',
-        currentCourse: userData.course,
-        enrollmentNumber: userData.enrollmentNumber,
-        batchId: userData.batchId,
-        domain: userData.domain,
-        title: userData.title,
-        company: userData.company,
-        phone: userData.phone || '',
-        address: userData.address || '',
-        lastLogin: loginInfo,
-        ...(jwtRole === 'teacher' || userData.role === 'admin'
-          ? {
-              conferenceProvider:
-                userData.conferenceProvider === 'zoom' ? 'zoom' : 'meet'
-            }
-          : {})
-      }
-    };
-
-    jwt.sign(
-      payload,
-      getJwtSecret(),
-      { expiresIn: process.env.JWT_EXPIRE || '7d' },
-      (err, token) => {
-        if (err) throw err;
-        res.json({ token, user: payload.user });
-      }
-    );
+    const tokenUser = buildTokenUser(userData, loginInfo);
+    const token = await signUserToken(tokenUser);
+    res.json({ token, user: tokenUser });
   } catch (err) {
     logger.error('Login error', { error: err.message });
     res.status(500).send('Server error');
@@ -402,6 +406,7 @@ router.post('/reset-password', async (req, res) => {
     const salt = await bcrypt.genSalt(10);
     user.password = await bcrypt.hash(newPassword, salt);
     user.updatedAt = new Date();
+    await bumpTokenVersion(user);
     await user.save();
 
     try {
@@ -488,7 +493,11 @@ router.put('/password', auth, async (req, res) => {
     const salt = await bcrypt.genSalt(10);
     user.password = await bcrypt.hash(newPassword, salt);
     user.updatedAt = new Date();
+    await bumpTokenVersion(user);
     await user.save();
+
+    const tokenUser = buildTokenUser(user);
+    const token = await signUserToken(tokenUser);
 
     try {
       await ActivityLog.create({
@@ -501,9 +510,59 @@ router.put('/password', auth, async (req, res) => {
       });
     } catch (_) { /* non-blocking */ }
 
-    res.json({ message: 'Password updated successfully.' });
+    res.json({
+      message: 'Password updated successfully. Other devices have been signed out.',
+      token,
+      user: tokenUser
+    });
   } catch (err) {
     logger.error('Change-password error', { error: err.message });
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// @route   POST /api/auth/logout-all-devices
+// @desc    Revoke other sessions; keep this device signed in (admin + teachers)
+router.post('/logout-all-devices', auth, async (req, res) => {
+  try {
+    const role = req.user?.role;
+    const allowed =
+      role === 'admin' || role === 'teacher' || role === 'mentor' || role === 'instructor';
+    if (!allowed) {
+      return res.status(403).json({ message: 'Not available for this account type' });
+    }
+
+    const user = await User.findById(req.user.id).exec();
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    user.updatedAt = new Date();
+    await bumpTokenVersion(user);
+    await user.save();
+
+    const tokenUser = buildTokenUser(user);
+    const token = await signUserToken(tokenUser);
+
+    try {
+      await ActivityLog.create({
+        action: 'logout_all_devices',
+        userId: String(user._id),
+        userName: user.name || '',
+        userEmail: user.email || '',
+        userRole: user.role || role,
+        timestamp: new Date()
+      });
+    } catch (_) { /* non-blocking */ }
+
+    res.json({
+      message: 'Other devices have been signed out. You remain signed in here.',
+      token,
+      user: tokenUser,
+      tokenVersion: user.tokenVersion
+    });
+  } catch (err) {
+    logger.error('Logout-all-devices error', { error: err.message });
     res.status(500).json({ message: 'Server error' });
   }
 });

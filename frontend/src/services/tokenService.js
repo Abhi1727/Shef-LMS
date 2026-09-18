@@ -102,9 +102,16 @@ class TokenService {
             return Promise.reject(new Error('Unknown error occurred'));
           }
           
-          if (error.response && error.response.status === 401) {
+          if (error.response) {
+            const status = error.response.status;
+            const code = error.response.data?.code;
             const message = error.response.data?.message || 'Session expired';
-            onTokenExpired(message);
+            if (
+              status === 401 ||
+              (status === 403 && (code === 'ACCOUNT_INACTIVE' || /account is deactivated/i.test(String(message))))
+            ) {
+              onTokenExpired(message);
+            }
           }
           
           return Promise.reject(error);

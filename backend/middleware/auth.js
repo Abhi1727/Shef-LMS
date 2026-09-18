@@ -1,4 +1,5 @@
 const jwt = require('jsonwebtoken');
+const { assertValidSession, invalidateSessionCache } = require('./sessionGuard');
 
 function getJwtSecret() {
   const secret = process.env.JWT_SECRET;
@@ -8,10 +9,10 @@ function getJwtSecret() {
   return secret || (process.env.NODE_ENV === 'production' ? null : 'dev_only_fallback');
 }
 
-module.exports = function(req, res, next) {
+module.exports = async function (req, res, next) {
   // Check for token in multiple header formats (and query for media/download links)
   let token = req.header('x-auth-token');
-  
+
   // Also check Authorization header (Bearer token)
   if (!token) {
     const authHeader = req.header('Authorization');
@@ -37,8 +38,17 @@ module.exports = function(req, res, next) {
   try {
     const decoded = jwt.verify(token, getJwtSecret());
     req.user = decoded.user;
+
+    const guard = await assertValidSession(req.user);
+    if (!guard.ok) {
+      return res.status(guard.status).json(guard.body);
+    }
+
     next();
   } catch (err) {
     res.status(401).json({ message: 'Token is not valid' });
   }
 };
+
+// Back-compat for callers that invalidate after logout-all / password change
+module.exports.invalidateTokenVersionCache = invalidateSessionCache;

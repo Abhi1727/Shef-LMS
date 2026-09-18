@@ -130,6 +130,12 @@ const ChangePasswordPanel = ({
           setError(data.message || 'Failed to update password');
           return;
         }
+        if (data.token) {
+          localStorage.setItem('token', data.token);
+        }
+        if (data.user) {
+          localStorage.setItem('user', JSON.stringify(data.user));
+        }
         setMessage(data.message || 'Password updated successfully.');
         setStep('done');
         setOtp('');

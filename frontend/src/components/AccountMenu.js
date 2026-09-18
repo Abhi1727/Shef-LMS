@@ -1,6 +1,7 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import ChangePasswordPanel from './ChangePasswordPanel';
+import { getApiBaseUrl } from '../utils/apiBase';
 
 /**
  * Compact account control: avatar + dropdown (password / account / sign out).
@@ -15,6 +16,7 @@ const AccountMenu = ({
   const [open, setOpen] = useState(false);
   const [passwordOpen, setPasswordOpen] = useState(false);
   const [menuPos, setMenuPos] = useState({ top: 0, right: 0 });
+  const [logoutAllLoading, setLogoutAllLoading] = useState(false);
   const triggerRef = useRef(null);
   const menuRef = useRef(null);
 
@@ -60,6 +62,49 @@ const AccountMenu = ({
   }, [open]);
 
   const initial = (user?.name || user?.email || 'U').charAt(0).toUpperCase();
+  const canLogoutOtherDevices =
+    user?.role === 'admin' ||
+    user?.role === 'teacher' ||
+    user?.role === 'mentor' ||
+    user?.role === 'instructor';
+
+  const logoutAllDevices = async () => {
+    if (logoutAllLoading) return;
+    const ok = window.confirm(
+      'Sign out of all other devices? You will stay signed in on this device.'
+    );
+    if (!ok) return;
+
+    setLogoutAllLoading(true);
+    setOpen(false);
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch(`${getApiBaseUrl()}/api/auth/logout-all-devices`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        }
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        window.alert(data.message || 'Could not sign out of all devices');
+        return;
+      }
+      // Keep this device logged in with a fresh token; other sessions are revoked
+      if (data.token) {
+        localStorage.setItem('token', data.token);
+      }
+      if (data.user) {
+        localStorage.setItem('user', JSON.stringify(data.user));
+      }
+      window.alert(data.message || 'Other devices have been signed out. You remain signed in here.');
+    } catch (_) {
+      window.alert('Network error. Please try again.');
+    } finally {
+      setLogoutAllLoading(false);
+    }
+  };
 
   const menu = open
     ? createPortal(
@@ -91,6 +136,17 @@ const AccountMenu = ({
               }}
             >
               Change password
+            </button>
+          )}
+          {canLogoutOtherDevices && (
+            <button
+              type="button"
+              role="menuitem"
+              className="ss-account__danger"
+              disabled={logoutAllLoading}
+              onClick={logoutAllDevices}
+            >
+              Sign out of other devices
             </button>
           )}
           <div className="ss-account__divider" />

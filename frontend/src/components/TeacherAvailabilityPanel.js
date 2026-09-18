@@ -45,8 +45,7 @@ export default function TeacherAvailabilityPanel() {
 
   useEffect(() => {
     load();
-    const t = setInterval(load, 20000);
-    return () => clearInterval(t);
+    // No polling — availability is rarely changed and not a core LMS feature.
   }, [load]);
 
   const windowFor = (day) => windows.find((w) => Number(w.day) === day);

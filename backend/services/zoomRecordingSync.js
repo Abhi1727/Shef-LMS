@@ -13,6 +13,8 @@ const TMP_DIR = path.join(__dirname, '../uploads/tmp-recordings');
 const LOOKBACK_MS = 14 * 24 * 60 * 60 * 1000;
 const PRE_START_BUFFER_MS = 5 * 60 * 1000;
 const POST_END_BUFFER_MS = 20 * 60 * 1000;
+const LEGACY_PRE_START_BUFFER_MS = 90 * 60 * 1000;
+const LEGACY_POST_END_BUFFER_MS = 120 * 60 * 1000;
 
 function ensureTmpDir() {
   if (!fs.existsSync(TMP_DIR)) {
@@ -33,7 +35,10 @@ function sessionAnchorTimes(doc) {
  * Match a Zoom cloud MP4 to one LMS session.
  * PMI trainers share one zoomMeetingId — disambiguate by recording start time only.
  */
-function pickBestMp4(recordings = [], { sessionStart, sessionEnd, usedRecordingIds = new Set() } = {}) {
+function pickBestMp4(
+  recordings = [],
+  { sessionStart, sessionEnd, usedRecordingIds = new Set(), legacyMatch = false } = {}
+) {
   const videos = (recordings || []).filter((f) => {
     const type = String(f.fileType || '').toUpperCase();
     const recType = String(f.recordingType || '').toLowerCase();
@@ -49,8 +54,10 @@ function pickBestMp4(recordings = [], { sessionStart, sessionEnd, usedRecordingI
   const endMs = sessionEnd ? new Date(sessionEnd).getTime() : 0;
   if (!startMs) return null;
 
-  const windowStart = startMs - PRE_START_BUFFER_MS;
-  const windowEnd = (endMs || startMs + 60 * 60 * 1000) + POST_END_BUFFER_MS;
+  const preBuffer = legacyMatch ? LEGACY_PRE_START_BUFFER_MS : PRE_START_BUFFER_MS;
+  const postBuffer = legacyMatch ? LEGACY_POST_END_BUFFER_MS : POST_END_BUFFER_MS;
+  const windowStart = startMs - preBuffer;
+  const windowEnd = (endMs || startMs + 60 * 60 * 1000) + postBuffer;
 
   const inWindow = videos.filter((f) => {
     if (!f.recordingStart) return false;
@@ -60,7 +67,23 @@ function pickBestMp4(recordings = [], { sessionStart, sessionEnd, usedRecordingI
 
   if (!inWindow.length) return null;
 
-  const scored = inWindow.map((f) => {
+  function recordingDurationMs(f) {
+    if (!f.recordingStart) return 0;
+    const recStart = new Date(f.recordingStart).getTime();
+    const recEnd = f.recordingEnd ? new Date(f.recordingEnd).getTime() : recStart;
+    return Math.max(0, recEnd - recStart);
+  }
+
+  // Shared PMI rooms often have 1–3 min accidental starts before the real class.
+  const MIN_STUB_MS = 5 * 60 * 1000;
+  const MIN_FULL_CLASS_MS = 30 * 60 * 1000;
+  const hasFullClass = inWindow.some((f) => recordingDurationMs(f) >= MIN_FULL_CLASS_MS);
+  const pool = hasFullClass
+    ? inWindow.filter((f) => recordingDurationMs(f) >= MIN_STUB_MS)
+    : inWindow;
+  if (!pool.length) return null;
+
+  const scored = pool.map((f) => {
     const recStart = new Date(f.recordingStart).getTime();
     const delta = Math.abs(recStart - startMs);
     const typeBonus = /shared_screen_with_speaker|shared_screen_with_gallery|active_speaker/i.test(
@@ -75,11 +98,55 @@ function pickBestMp4(recordings = [], { sessionStart, sessionEnd, usedRecordingI
   const best = scored[0];
   const runnerUp = scored[1];
 
-  if (runnerUp && Math.abs(runnerUp.delta - best.delta) < 3 * 60 * 1000) {
+  // Shared PMI: if two recordings are nearly equally close, refuse auto-attach
+  // (stricter when LMS start/end times were not captured — legacyMatch).
+  const ambiguousWindowMs = legacyMatch ? 12 * 60 * 1000 : 3 * 60 * 1000;
+  if (runnerUp && Math.abs(runnerUp.delta - best.delta) < ambiguousWindowMs) {
     return { ambiguous: true, candidates: scored.slice(0, 3).map((s) => s.file) };
   }
 
   return { file: best.file };
+}
+
+function recordingDateRange(doc, { paddingDays = 2 } = {}) {
+  const anchor = doc.actualStartedAt || doc.scheduledStart;
+  const end = doc.actualEndedAt || doc.scheduledEnd || anchor;
+  const startMs = anchor ? new Date(anchor).getTime() - paddingDays * 24 * 60 * 60 * 1000 : 0;
+  const endMs = end
+    ? new Date(end).getTime() + paddingDays * 24 * 60 * 60 * 1000
+    : Date.now();
+  return {
+    from: new Date(startMs).toISOString().split('T')[0],
+    to: new Date(endMs).toISOString().split('T')[0]
+  };
+}
+
+async function fetchZoomRecordingsForSession(live, { since = null } = {}) {
+  let zoomUserId = '';
+  if (live.teacherId) {
+    const teacher = await User.findById(live.teacherId).select('zoomUserId email').lean().exec();
+    zoomUserId = teacher?.zoomUserId || teacher?.email || '';
+  }
+
+  const range = since
+    ? {
+        from: new Date(since).toISOString().split('T')[0],
+        to: new Date().toISOString().split('T')[0]
+      }
+    : recordingDateRange(live, { paddingDays: 7 });
+
+  if (zoomUserId) {
+    return zoomService.getRecordingsForMeeting(live.zoomMeetingId, {
+      zoomUserId,
+      from: range.from,
+      to: range.to
+    });
+  }
+
+  return zoomService.getRecordings(live.zoomMeetingId, {
+    from: range.from,
+    to: range.to
+  });
 }
 
 function sessionEnded(doc, now = Date.now()) {
@@ -110,8 +177,8 @@ async function getUsedZoomRecordingIds(zoomMeetingId, exceptLiveClassId = '') {
   );
 }
 
-async function findZoomSessionsNeedingSync({ meetingId = '' } = {}) {
-  const since = new Date(Date.now() - LOOKBACK_MS);
+async function findZoomSessionsNeedingSync({ meetingId = '', since = null } = {}) {
+  const sinceDate = since ? new Date(since) : new Date(Date.now() - LOOKBACK_MS);
   const query = {
     conferenceProvider: 'zoom',
     skipRecordingUpload: { $ne: true },
@@ -123,7 +190,7 @@ async function findZoomSessionsNeedingSync({ meetingId = '' } = {}) {
       { youtubeVideoId: '' },
       { youtubeVideoId: null }
     ],
-    scheduledStart: { $gte: since }
+    scheduledStart: { $gte: sinceDate }
   };
 
   if (meetingId) {
@@ -142,12 +209,15 @@ async function findZoomSessionsNeedingSync({ meetingId = '' } = {}) {
   return docs.filter((d) => sessionEnded(d) || d.status === 'completed' || d.status === 'live');
 }
 
-async function syncOneZoomRecording(doc) {
+async function syncOneZoomRecording(doc, { forceZoomRecordingId = '' } = {}) {
   ensureTmpDir();
   const live = await LiveClass.findById(doc._id || doc.id);
   if (!live) return { skipped: true, reason: 'missing' };
   if (live.skipRecordingUpload || !live.batchId || !live.zoomMeetingId) {
     return { skipped: true, reason: 'not-eligible' };
+  }
+  if (live.wasteSessionFlagged && !live.wasteSessionDismissedAt) {
+    return { skipped: true, reason: 'waste-session' };
   }
   if (live.youtubeVideoId) {
     return { skipped: true, reason: 'already-on-youtube' };
@@ -178,7 +248,7 @@ async function syncOneZoomRecording(doc) {
 
   let result;
   try {
-    result = await zoomService.getRecordings(live.zoomMeetingId);
+    result = await fetchZoomRecordingsForSession(live);
   } catch (err) {
     const msg = err.message || 'Failed to fetch Zoom recordings';
     live.recordingSyncError = msg.slice(0, 400);
@@ -189,31 +259,45 @@ async function syncOneZoomRecording(doc) {
   }
 
   const { start, end } = sessionAnchorTimes(live);
-  const pick = pickBestMp4(result.recordings || [], {
-    sessionStart: start,
-    sessionEnd: end,
-    usedRecordingIds: await getUsedZoomRecordingIds(live.zoomMeetingId, String(live._id || live.id))
-  });
+  const legacyMatch = !live.actualStartedAt && !live.actualEndedAt;
+  let best;
+  if (forceZoomRecordingId) {
+    best = (result.recordings || []).find((f) => String(f.id) === String(forceZoomRecordingId));
+    if (!best) {
+      live.recordingSyncError = `Zoom recording ${forceZoomRecordingId} not found for this trainer.`;
+      live.recordingPipelineStatus = 'failed';
+      live.recordingSyncAt = new Date();
+      await live.save();
+      return { failed: true, reason: 'forced-recording-not-found' };
+    }
+  } else {
+    const pick = pickBestMp4(result.recordings || [], {
+      sessionStart: start,
+      sessionEnd: end,
+      usedRecordingIds: await getUsedZoomRecordingIds(live.zoomMeetingId, String(live._id || live.id)),
+      legacyMatch
+    });
 
-  if (!pick) {
-    live.recordingSyncError =
-      'Zoom cloud recording not ready yet (or no MP4 in this class time window). Wait 15–60 minutes after class, then sync again.';
-    live.recordingPipelineStatus = 'pending';
-    live.recordingSyncAt = new Date();
-    await live.save();
-    return { pending: true, reason: 'recording-not-ready' };
+    if (!pick) {
+      live.recordingSyncError =
+        'Zoom cloud recording not ready yet (or no MP4 in this class time window). Wait 15–60 minutes after class, then sync again.';
+      live.recordingPipelineStatus = 'pending';
+      live.recordingSyncAt = new Date();
+      await live.save();
+      return { pending: true, reason: 'recording-not-ready' };
+    }
+
+    if (pick.ambiguous) {
+      live.recordingSyncError =
+        'Multiple Zoom recordings match this class time (shared PMI room). Start/end class from LMS so we can match the right file, or upload manually.';
+      live.recordingPipelineStatus = 'failed';
+      live.recordingSyncAt = new Date();
+      await live.save();
+      return { failed: true, reason: 'ambiguous-recording-match' };
+    }
+
+    best = pick.file;
   }
-
-  if (pick.ambiguous) {
-    live.recordingSyncError =
-      'Multiple Zoom recordings match this class time (shared PMI room). Start/end class from LMS so we can match the right file, or upload manually.';
-    live.recordingPipelineStatus = 'failed';
-    live.recordingSyncAt = new Date();
-    await live.save();
-    return { failed: true, reason: 'ambiguous-recording-match' };
-  }
-
-  const best = pick.file;
 
   const tmpPath = path.join(
     TMP_DIR,
@@ -344,13 +428,13 @@ async function syncOneZoomRecording(doc) {
 /**
  * Pull Zoom cloud recordings → Google Drive archive → YouTube (student/trainer player).
  */
-async function syncZoomRecordings({ meetingId = '' } = {}) {
+async function syncZoomRecordings({ meetingId = '', since = null } = {}) {
   const enabled = await isZoomRecordingPipelineEnabled();
   if (!enabled) {
     return { skipped: true, reason: 'zoom-recording-sync-disabled', checked: 0, synced: [], pending: [], errors: [] };
   }
 
-  const docs = await findZoomSessionsNeedingSync({ meetingId });
+  const docs = await findZoomSessionsNeedingSync({ meetingId, since });
   const result = { checked: docs.length, synced: [], pending: [], errors: [] };
 
   for (const doc of docs) {
@@ -389,5 +473,7 @@ module.exports = {
   syncZoomRecordings,
   syncOneZoomRecording,
   pickBestMp4,
-  sessionAnchorTimes
+  sessionAnchorTimes,
+  fetchZoomRecordingsForSession,
+  recordingDateRange
 };

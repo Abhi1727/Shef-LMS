@@ -16,7 +16,8 @@ const zoomService = require('../services/zoomService');
 const {
   pickBestMp4,
   sessionAnchorTimes,
-  syncZoomRecordings
+  syncZoomRecordings,
+  fetchZoomRecordingsForSession
 } = require('../services/zoomRecordingSync');
 const { ensureClassroomFromLiveClass } = require('../services/classroomFromLiveClass');
 
@@ -113,7 +114,7 @@ async function findSessionsToRepair() {
 
     let recordings = [];
     try {
-      const result = await zoomService.getRecordings(group[0].zoomMeetingId);
+      const result = await fetchZoomRecordingsForSession(group[0], { since: sinceDate });
       recordings = result.recordings || [];
     } catch (err) {
       for (const s of group) {

@@ -394,6 +394,57 @@ router.get('/batches/:batchId/materials/:id/download', async (req, res) => {
   }
 });
 
+// @route   PATCH /api/teacher/batches/:batchId/materials/:id
+// @desc    Update material metadata (name / kind)
+router.patch('/batches/:batchId/materials/:id', async (req, res) => {
+  try {
+    const batch = await assertTeacherOwnsBatch(req.user.id, req.params.batchId);
+    if (!batch) return res.status(404).json({ success: false, message: 'Batch not found' });
+    const mat = await BatchMaterial.findOne({
+      _id: req.params.id,
+      batchId: String(req.params.batchId)
+    });
+    if (!mat) return res.status(404).json({ success: false, message: 'Material not found' });
+
+    const KIND_OK = ['project', 'handout', 'notes', 'writing', 'video', 'other'];
+    if (req.body?.name != null) {
+      const name = String(req.body.name).trim();
+      if (!name) {
+        return res.status(400).json({ success: false, message: 'Name cannot be empty' });
+      }
+      mat.name = name.slice(0, 240);
+    }
+    if (req.body?.kind != null) {
+      const kind = String(req.body.kind);
+      if (!KIND_OK.includes(kind)) {
+        return res.status(400).json({ success: false, message: 'Invalid material kind' });
+      }
+      mat.kind = kind;
+    }
+    mat.updatedAt = new Date();
+    await mat.save();
+
+    // Keep linked Classroom lecture title in sync when renamed
+    if (mat.classroomLectureId && req.body?.name != null) {
+      try {
+        const lec = await Classroom.findById(mat.classroomLectureId).exec();
+        if (lec) {
+          lec.title = mat.name;
+          lec.updatedAt = new Date();
+          await lec.save();
+        }
+      } catch (_) {
+        /* non-blocking */
+      }
+    }
+
+    res.json({ success: true, material: { id: String(mat._id), ...mat.toObject() } });
+  } catch (error) {
+    console.error('PATCH materials error:', error);
+    res.status(500).json({ success: false, message: 'Failed to update material' });
+  }
+});
+
 // @route   DELETE /api/teacher/batches/:batchId/materials/:id
 router.delete('/batches/:batchId/materials/:id', async (req, res) => {
   try {
@@ -404,7 +455,33 @@ router.delete('/batches/:batchId/materials/:id', async (req, res) => {
       batchId: String(req.params.batchId)
     });
     if (!mat) return res.status(404).json({ success: false, message: 'Material not found' });
-    await mat.deleteOne();
+
+    const classroomLectureId = mat.classroomLectureId || '';
+    const materialId = String(mat._id);
+
+    // Prefer model-level delete (works on Firestore + Mongo); fall back to instance API
+    if (typeof BatchMaterial.findByIdAndDelete === 'function') {
+      await BatchMaterial.findByIdAndDelete(materialId).exec();
+    } else if (typeof mat.deleteOne === 'function') {
+      await mat.deleteOne();
+    } else {
+      await BatchMaterial.deleteOne({ _id: materialId }).exec();
+    }
+
+    // Soft-hide linked extra lecture so Classroom does not keep a broken Drive card
+    if (classroomLectureId) {
+      try {
+        const lec = await Classroom.findById(classroomLectureId).exec();
+        if (lec && String(lec.batchId) === String(batch._id)) {
+          lec.studentVisible = false;
+          lec.updatedAt = new Date();
+          await lec.save();
+        }
+      } catch (_) {
+        /* non-blocking */
+      }
+    }
+
     res.json({ success: true, message: 'Material removed' });
   } catch (error) {
     console.error('DELETE materials error:', error);
@@ -566,10 +643,10 @@ router.get('/classroom/:batchId', async (req, res) => {
     const lectures = await Classroom.find({
       batchId: String(batchId)
     })
-      .sort({ order: 1, createdAt: 1 })
       .lean()
       .exec();
-    const list = lectures.map((l, idx) => ({
+    const sorted = lessonPath.sortLessons(lectures).reverse();
+    const list = sorted.map((l, idx) => ({
       id: String(l._id),
       title: l.title,
       description: l.description,
@@ -969,9 +1046,32 @@ const teacherNotesUpload = multer({
       'image/jpeg',
       'image/png',
       'image/gif',
-      'application/json' // For .ipynb files
+      'application/json', // browsers often send this for .ipynb
+      'application/x-ipynb+json',
+      'text/x-python' // some browsers label notebooks oddly
     ];
-    if (allowedTypes.includes(file.mimetype)) {
+    const ext = String(file.originalname || '')
+      .toLowerCase()
+      .split('.')
+      .pop();
+    const allowedExt = new Set([
+      'pdf',
+      'doc',
+      'docx',
+      'txt',
+      'ppt',
+      'pptx',
+      'xls',
+      'xlsx',
+      'csv',
+      'zip',
+      'jpg',
+      'jpeg',
+      'png',
+      'gif',
+      'ipynb'
+    ]);
+    if (allowedTypes.includes(file.mimetype) || allowedExt.has(ext)) {
       cb(null, true);
     } else {
       cb(new Error('Only document files (PDF, Word, PowerPoint, Excel, CSV, text), images, Jupyter notebooks, and zip files are allowed'), false);

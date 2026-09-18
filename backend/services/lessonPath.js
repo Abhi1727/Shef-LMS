@@ -30,20 +30,28 @@ async function nextOrderForBatch(batchId) {
   return n + 1;
 }
 
+function lessonSortTime(lec) {
+  const raw = lec?.date || lec?.classDate || lec?.createdAt || 0;
+  if (typeof raw === 'string' && /^\d{2}-\d{2}-\d{4}$/.test(raw)) {
+    const [dd, mm, yyyy] = raw.split('-');
+    return new Date(`${yyyy}-${mm}-${dd}`).getTime();
+  }
+  return new Date(raw).getTime();
+}
+
 /**
- * Sort lectures: explicit order first; fall back to date for order=0 ties.
+ * Sort lectures chronologically (class date), then explicit order, then createdAt.
+ * Students expect recordings in the order classes were taught, not upload/sync order.
  */
 function sortLessons(lectures) {
-  const hasOrder = lectures.some((l) => Number(l.order) > 0);
   return [...lectures].sort((a, b) => {
-    if (hasOrder) {
-      const oa = Number(a.order) || 0;
-      const ob = Number(b.order) || 0;
-      if (oa !== ob) return oa - ob;
-    }
-    const da = new Date(a.date || a.createdAt || 0).getTime();
-    const db = new Date(b.date || b.createdAt || 0).getTime();
-    return da - db;
+    const da = lessonSortTime(a);
+    const db = lessonSortTime(b);
+    if (da !== db) return da - db;
+    const oa = Number(a.order) || 0;
+    const ob = Number(b.order) || 0;
+    if (oa !== ob) return oa - ob;
+    return new Date(a.createdAt || 0).getTime() - new Date(b.createdAt || 0).getTime();
   });
 }
 

@@ -28,6 +28,26 @@ const {
   cleanupStaleSessions,
   reconcileZoomLiveSessions
 } = require('../utils/liveClassSessionGuard');
+const {
+  analyzeWasteSession,
+  applyWasteSessionFlags,
+  groupSiblingsByTeacherBatch
+} = require('../utils/wasteSessionDetection');
+
+/** Throttle expensive session-guard work on meetings list polls (Firestore cost). */
+const SESSION_GUARD_MIN_MS = 5 * 60 * 1000;
+const lastSessionGuardAt = new Map();
+
+async function maybeRunSessionGuards(teacherId) {
+  const key = String(teacherId || '');
+  if (!key) return;
+  const now = Date.now();
+  const prev = lastSessionGuardAt.get(key) || 0;
+  if (now - prev < SESSION_GUARD_MIN_MS) return;
+  lastSessionGuardAt.set(key, now);
+  await cleanupStaleSessions({ teacherId: key });
+  await reconcileZoomLiveSessions({ teacherId: key });
+}
 
 const recordingUpload = multer({
   dest: path.join(__dirname, '../uploads/tmp-recordings'),
@@ -126,9 +146,9 @@ async function resolveConferenceForTeacher(teacherId) {
   if (!settings.googleMeetEnabled) {
     provider = 'zoom';
   }
-  const trainerZoomId = String(teacher.zoomUserId || '').trim();
-  const zoomUserId =
-    trainerZoomId || (provider === 'zoom' ? zoomConfig.defaultUserId() : '');
+  // Require an explicit Zoom host on the trainer profile.
+  // Do NOT fall back to ZOOM_DEFAULT_USER_ID — that let reassigned trainers keep hosting.
+  const zoomUserId = String(teacher.zoomUserId || '').trim();
   return {
     provider,
     zoomUserId,
@@ -256,8 +276,51 @@ function serializeMeeting(doc, { includeMeetLink = true } = {}) {
         }))
       : [],
     createdAt: o.createdAt,
-    updatedAt: o.updatedAt
+    updatedAt: o.updatedAt,
+    actualStartedAt: o.actualStartedAt || null,
+    actualEndedAt: o.actualEndedAt || null,
+    wasteSession: (() => {
+      const siblings = o._wasteSiblings || [];
+      const analysis = analyzeWasteSession(o, { siblings });
+      return {
+        flagged: Boolean(o.wasteSessionFlagged) || analysis.isWaste,
+        reasons: o.wasteSessionReasons?.length ? o.wasteSessionReasons : analysis.reasons,
+        labels: analysis.labels,
+        dismissed: Boolean(o.wasteSessionDismissedAt),
+        detectedAt: o.wasteSessionDetectedAt || null
+      };
+    })()
   };
+}
+
+function attachWasteAnalysis(docs) {
+  const groups = groupSiblingsByTeacherBatch(docs);
+  const siblingMap = new Map();
+  for (const [, group] of groups) {
+    for (const doc of group) {
+      siblingMap.set(String(doc._id || doc.id), group);
+    }
+  }
+  return docs.map((doc) => {
+    const id = String(doc._id || doc.id);
+    const siblings = (siblingMap.get(id) || []).filter((s) => String(s._id || s.id) !== id);
+    return { ...doc, _wasteSiblings: siblings };
+  });
+}
+
+async function persistWasteFlagsForDocs(docs) {
+  const enriched = attachWasteAnalysis(docs);
+  for (const row of enriched) {
+    const analysis = analyzeWasteSession(row, { siblings: row._wasteSiblings || [] });
+    if (!analysis.isWaste || row.wasteSessionDismissedAt) continue;
+    if (row.wasteSessionFlagged && row.skipRecordingUpload) continue;
+    try {
+      const live = await LiveClass.findById(row._id || row.id);
+      if (live) await applyWasteSessionFlags(live, { siblings: row._wasteSiblings || [] });
+    } catch (err) {
+      console.warn('[wasteSession] flag persist failed:', err.message || err);
+    }
+  }
 }
 
 /** Mark a student present when they join via LMS (source of truth for attendance). */
@@ -290,7 +353,17 @@ function markStudentPresent(doc, { studentId, studentName }) {
 
 async function assertTeacherOrAdminOwns(user, meeting) {
   if (isAdmin(user.role)) return true;
-  return isTeacherRole(user.role) && String(meeting.teacherId) === String(user.id);
+  if (!isTeacherRole(user.role) || String(meeting.teacherId) !== String(user.id)) {
+    return false;
+  }
+  // Batch may have been reassigned; old LiveClass.teacherId must not keep hosting rights
+  if (meeting.batchId) {
+    const batch = await Batch.findById(meeting.batchId).select('teacherId').lean().exec();
+    if (batch && batch.teacherId && String(batch.teacherId) !== String(user.id)) {
+      return false;
+    }
+  }
+  return true;
 }
 
 async function getBatchRoster(batchId) {
@@ -377,7 +450,14 @@ async function buildZoomSdkPayload(doc, user, { wantHost = false } = {}) {
     if (role === 1) {
       try {
         const conf = await resolveConferenceForTeacher(doc.teacherId || user.id);
-        zak = await zoomService.getZakToken(conf.zoomUserId || zoomConfig.defaultUserId());
+        if (!conf.zoomUserId) {
+          return res.status(400).json({
+            success: false,
+            message: 'No Zoom user configured for this trainer. Set Zoom ID in Admin → Teachers.',
+            code: 'ZOOM_USER_REQUIRED'
+          });
+        }
+        zak = await zoomService.getZakToken(conf.zoomUserId);
       } catch (zakErr) {
         zakError = zakErr.message || 'Failed to get Zoom host token (ZAK)';
         console.warn('[meetings] ZAK token failed (continuing without host token):', zakError);
@@ -751,8 +831,7 @@ router.get('/', async (req, res) => {
       if (batchIdFilter) query.batchId = batchIdFilter;
     } else if (isTeacherRole(role)) {
       query.teacherId = userId;
-      await cleanupStaleSessions({ teacherId: userId });
-      await reconcileZoomLiveSessions({ teacherId: userId });
+      await maybeRunSessionGuards(userId);
       if (batchIdFilter) {
         const owned = await findBatchForTeacher(batchIdFilter, userId);
         if (!owned) {
@@ -781,7 +860,13 @@ router.get('/', async (req, res) => {
 
     const docs = await LiveClass.find(query).sort({ scheduledStart: 1 }).lean().exec();
     const includeMeetLink = !isStudentRole(role);
-    const meetings = docs.map((d) => serializeMeeting(d, { includeMeetLink }));
+    if (isTeacherRole(role) || isAdmin(role)) {
+      persistWasteFlagsForDocs(docs).catch((err) =>
+        console.warn('[meetings] waste session scan:', err.message || err)
+      );
+    }
+    const enriched = attachWasteAnalysis(docs);
+    const meetings = enriched.map((d) => serializeMeeting(d, { includeMeetLink }));
 
     res.json({ success: true, meetings, liveClasses: meetings });
   } catch (error) {
@@ -946,7 +1031,7 @@ router.post('/', async (req, res) => {
         return res.status(400).json({
           success: false,
           message:
-            'This trainer is set to use Zoom but no Zoom user ID is configured. Set ZOOM_DEFAULT_USER_ID in env or add one in Admin → Teachers.',
+            'This trainer is set to use Zoom but no Zoom user ID is configured. Assign a Zoom ID in Admin → Teachers.',
           code: 'ZOOM_USER_REQUIRED'
         });
       }
@@ -1191,7 +1276,11 @@ router.post('/:id/start', async (req, res) => {
       if (getSessionProvider(doc) === 'zoom') {
         const conf = await resolveConferenceForTeacher(doc.teacherId);
         if (!conf.zoomUserId) {
-          return res.status(400).json({ success: false, message: 'No Zoom user configured for this trainer' });
+          return res.status(400).json({
+            success: false,
+            message: 'No Zoom user configured for this trainer. Assign a Zoom ID in Admin → Teachers.',
+            code: 'ZOOM_USER_REQUIRED'
+          });
         }
         const pmr = await zoomService.createMeeting({
           zoomUserId: conf.zoomUserId,
@@ -1241,23 +1330,29 @@ router.post('/:id/start', async (req, res) => {
       }
       if (getSessionProvider(doc) === 'zoom') {
         const conf = await resolveConferenceForTeacher(doc.teacherId);
-        if (conf.zoomUserId) {
-          const pmr = await zoomService.createMeeting({
-            zoomUserId: conf.zoomUserId,
-            topic: doc.title || 'Live Class',
-            startTime: doc.scheduledStart || new Date(),
-            duration: parseDurationMinutes(doc.duration) || SCHEDULED_JOIN_WINDOW_MINUTES,
-            timezone: doc.timezone || 'Asia/Kolkata',
-            usePMR: true
-          });
-          doc.zoomMeetingId = String(pmr.meeting.meetingId || pmr.meeting.id || doc.zoomMeetingId || '');
-          doc.zoomLink = pmr.meeting.joinUrl || doc.zoomLink || '';
-          doc.zoomPassword = pmr.meeting.password || doc.zoomPassword || '';
-          doc.zoomIsPmr = true;
-          doc.zoomStartUrl = await zoomService.getHostStartUrl(conf.zoomUserId, doc.zoomMeetingId, {
-            password: doc.zoomPassword || ''
+        if (!conf.zoomUserId) {
+          return res.status(400).json({
+            success: false,
+            message: 'No Zoom user configured for this trainer. Assign a Zoom ID in Admin → Teachers.',
+            code: 'ZOOM_USER_REQUIRED'
           });
         }
+        const pmr = await zoomService.createMeeting({
+          zoomUserId: conf.zoomUserId,
+          topic: doc.title || 'Live Class',
+          startTime: doc.scheduledStart || new Date(),
+          duration: parseDurationMinutes(doc.duration) || SCHEDULED_JOIN_WINDOW_MINUTES,
+          timezone: doc.timezone || 'Asia/Kolkata',
+          usePMR: true
+        });
+        doc.zoomMeetingId = String(pmr.meeting.meetingId || pmr.meeting.id || doc.zoomMeetingId || '');
+        doc.zoomLink = pmr.meeting.joinUrl || doc.zoomLink || '';
+        doc.zoomPassword = pmr.meeting.password || doc.zoomPassword || '';
+        doc.zoomIsPmr = true;
+        doc.zoomStartUrl = await zoomService.getHostStartUrl(conf.zoomUserId, doc.zoomMeetingId, {
+          password: doc.zoomPassword || ''
+        });
+        doc.conferenceProvider = 'zoom';
       }
       await doc.save();
     }
@@ -1321,7 +1416,9 @@ router.post('/:id/join', async (req, res) => {
     if (!doc.meetLink && !doc.zoomLink) {
       return res.status(400).json({ success: false, message: 'No live class link available' });
     }
-    if (isStudentRole(req.user.role) && (!doc.batchId || doc.skipRecordingUpload)) {
+    // Only true internal/ad-hoc rooms (no batch) are blocked for students.
+    // skipRecordingUpload is a recording-pipeline flag (waste/test) and must NOT block joining a real batch class.
+    if (isStudentRole(req.user.role) && !doc.batchId) {
       return res.status(403).json({
         success: false,
         message: 'This is an internal Meet and is not assigned to a class batch.'
@@ -1407,8 +1504,9 @@ router.post('/:id/complete', async (req, res) => {
     if (!doc.actualEndedAt) {
       doc.actualEndedAt = now;
     }
-    if (doc.scheduledStart) {
-      const start = new Date(doc.scheduledStart);
+    const startAnchor = doc.actualStartedAt || doc.scheduledStart;
+    if (startAnchor) {
+      const start = new Date(startAnchor);
       if (!Number.isNaN(start.getTime())) {
         const elapsedMins = Math.max(1, Math.round((now.getTime() - start.getTime()) / 60000));
         doc.scheduledEnd = now;
@@ -1419,17 +1517,18 @@ router.post('/:id/complete', async (req, res) => {
     }
     if (dismissPrompt) doc.recordingPromptDismissedAt = new Date();
     doc.updatedAt = new Date();
+    await applyWasteSessionFlags(doc, { save: false });
     await doc.save();
 
     try {
-      if (!doc.skipRecordingUpload && doc.batchId) {
+      if (!doc.skipRecordingUpload && doc.batchId && !doc.wasteSessionFlagged) {
         await ensureClassroomFromLiveClass(doc);
       }
     } catch (pubErr) {
       console.warn('[meetings] classroom publish on complete:', pubErr.message || pubErr);
     }
 
-    if (!doc.skipRecordingUpload && doc.batchId) {
+    if (!doc.skipRecordingUpload && doc.batchId && !doc.wasteSessionFlagged) {
       if (getSessionProvider(doc) === 'zoom') {
         syncZoomRecordings({ meetingId: String(doc._id) }).catch((err) =>
           console.warn('[meetings] zoom recording sync on complete:', err.message || err)
@@ -1445,6 +1544,35 @@ router.post('/:id/complete', async (req, res) => {
   } catch (error) {
     console.error('POST /meetings/:id/complete error:', error);
     res.status(500).json({ success: false, message: 'Failed to complete class' });
+  }
+});
+
+// @route   POST /api/meetings/:id/dismiss-waste
+// @desc    Trainer confirms this was a real class (not a test/accidental session)
+router.post('/:id/dismiss-waste', async (req, res) => {
+  try {
+    const doc = await LiveClass.findById(req.params.id);
+    if (!doc) return res.status(404).json({ success: false, message: 'Meeting not found' });
+    if (!(await assertTeacherOrAdminOwns(req.user, doc))) {
+      return res.status(403).json({ success: false, message: 'Access denied' });
+    }
+    doc.wasteSessionDismissedAt = new Date();
+    doc.wasteSessionDismissedBy = String(req.user.id);
+    doc.wasteSessionFlagged = false;
+    doc.wasteSessionReasons = [];
+    if (doc.batchId) {
+      doc.skipRecordingUpload = false;
+    }
+    doc.updatedAt = new Date();
+    await doc.save();
+    res.json({
+      success: true,
+      message: 'Marked as a real class. Recording sync is re-enabled.',
+      meeting: serializeMeeting(doc)
+    });
+  } catch (error) {
+    console.error('POST /meetings/:id/dismiss-waste error:', error);
+    res.status(500).json({ success: false, message: 'Failed to dismiss waste flag' });
   }
 });
 

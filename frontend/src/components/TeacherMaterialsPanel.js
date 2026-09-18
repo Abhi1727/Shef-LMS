@@ -21,7 +21,7 @@ const ACCEPT_BY_KIND = {
   other: undefined
 };
 
-export default function TeacherMaterialsPanel({ batchId, batchName = '' }) {
+export default function TeacherMaterialsPanel({ batchId, batchName = '', compact = false }) {
   const [materials, setMaterials] = useState([]);
   const [shares, setShares] = useState([]);
   const [folderLink, setFolderLink] = useState('');
@@ -128,6 +128,48 @@ export default function TeacherMaterialsPanel({ batchId, batchName = '' }) {
     }
   };
 
+  const rename = async (m) => {
+    const next = window.prompt('Rename material', m.name || '');
+    if (next == null) return;
+    const name = String(next).trim();
+    if (!name || name === m.name) return;
+    try {
+      const res = await fetch(
+        `${getApiBaseUrl()}/api/teacher/batches/${batchId}/materials/${m.id}`,
+        {
+          method: 'PATCH',
+          headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name })
+        }
+      );
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.message || 'Rename failed');
+      setMessage('Material renamed.');
+      await load();
+    } catch (err) {
+      setError(err.message || 'Rename failed');
+    }
+  };
+
+  const changeKind = async (m, kindValue) => {
+    if (!kindValue || kindValue === m.kind) return;
+    try {
+      const res = await fetch(
+        `${getApiBaseUrl()}/api/teacher/batches/${batchId}/materials/${m.id}`,
+        {
+          method: 'PATCH',
+          headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+          body: JSON.stringify({ kind: kindValue })
+        }
+      );
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.message || 'Update failed');
+      await load();
+    } catch (err) {
+      setError(err.message || 'Update failed');
+    }
+  };
+
   const toggleStudentUploads = async () => {
     const next = !studentUploadsEnabled;
     try {
@@ -179,170 +221,220 @@ export default function TeacherMaterialsPanel({ batchId, batchName = '' }) {
       ? materials
       : materials.filter((m) => m.kind === kindFilter);
 
-  return (
-    <div className="live-lobby">
-      <div className="live-lobby__card">
-        <div className="live-lobby__card-head">
-          <h3>Materials · {batchName || 'Batch'}</h3>
-          <button
-            type="button"
-            className="live-lobby__btn live-lobby__btn--ghost live-lobby__btn--sm"
-            onClick={load}
+  const libraryToolbar = tab === 'library' && (
+    <>
+      <div className="live-lobby__toolbar">
+        <label className="live-lobby__toolbar-field">
+          <span>Type</span>
+          <select value={kind} onChange={(e) => setKind(e.target.value)}>
+            {MATERIAL_KINDS.map((k) => (
+              <option key={k.value} value={k.value}>
+                {k.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        {kind === 'video' && (
+          <label className="live-lobby__toolbar-check">
+            <input
+              type="checkbox"
+              checked={addAsLecture}
+              onChange={(e) => setAddAsLecture(e.target.checked)}
+            />
+            Also add to Classroom
+          </label>
+        )}
+        <input
+          ref={fileRef}
+          type="file"
+          accept={ACCEPT_BY_KIND[kind]}
+          style={{ display: 'none' }}
+          onChange={onUpload}
+        />
+        <button
+          type="button"
+          className="live-lobby__btn live-lobby__btn--primary"
+          disabled={uploading}
+          onClick={() => fileRef.current?.click()}
+        >
+          {uploading ? 'Uploading…' : 'Upload to Drive'}
+        </button>
+        <label className="live-lobby__toolbar-field live-lobby__toolbar-field--filter">
+          <span>Filter</span>
+          <select
+            value={kindFilter}
+            onChange={(e) => setKindFilter(e.target.value)}
+            aria-label="Filter materials"
           >
-            Refresh
-          </button>
+            <option value="all">All types</option>
+            {MATERIAL_KINDS.map((k) => (
+              <option key={k.value} value={k.value}>
+                {k.label}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+      {error && <p className="live-lobby__alert live-lobby__alert--err">{error}</p>}
+      {message && <p className="live-lobby__alert live-lobby__alert--ok">{message}</p>}
+    </>
+  );
+
+  const libraryBody = tab === 'library' && (
+    <>
+      {loading ? (
+        <p className="live-lobby--empty">Loading materials…</p>
+      ) : filteredMaterials.length === 0 ? (
+        <div className="live-lobby--empty">
+          No materials yet. Upload writing, a handout, or an extra video.
         </div>
-        <p className="live-attendance__note">
-          Upload writing (PDF/DOC), handouts, projects, or extra videos (outside live class). Videos can
-          also appear in Classroom. Enable student uploads so learners can share work for review.
-        </p>
+      ) : (
+        <ul className="live-lobby__list">
+          {filteredMaterials.map((m) => (
+            <li key={m.id} className="live-session">
+              <div className="live-session__top">
+                <div>
+                  <h4 className="live-session__title">{m.name}</h4>
+                  <p className="live-session__meta">
+                    {m.kind}
+                    {m.liveClassId ? ' · session material' : ''}
+                    {m.classroomLectureId ? ' · Classroom lecture' : ''}
+                    {m.createdAt ? ` · ${new Date(m.createdAt).toLocaleDateString('en-IN')}` : ''}
+                  </p>
+                </div>
+                <span className="live-session__badge">{m.kind}</span>
+              </div>
+              <div className="live-session__cta">
+                <button
+                  type="button"
+                  className="live-lobby__btn live-lobby__btn--primary"
+                  onClick={async () => {
+                    try {
+                      await downloadAuthenticatedFile(
+                        `/api/teacher/batches/${batchId}/materials/${m.id}/download`,
+                        { filename: m.name }
+                      );
+                    } catch (err) {
+                      setError(err.message || 'Download failed');
+                    }
+                  }}
+                >
+                  Download
+                </button>
+                {m.driveLink && (
+                  <a
+                    className="live-lobby__btn live-lobby__btn--secondary"
+                    href={m.driveLink}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    Open in Drive
+                  </a>
+                )}
+                <button
+                  type="button"
+                  className="live-lobby__btn live-lobby__btn--ghost"
+                  onClick={() => rename(m)}
+                >
+                  Rename
+                </button>
+                <label className="live-lobby__toolbar-field live-lobby__toolbar-field--filter">
+                  <span className="sr-only">Type</span>
+                  <select
+                    value={m.kind || 'other'}
+                    aria-label="Change material type"
+                    onChange={(e) => changeKind(m, e.target.value)}
+                  >
+                    {MATERIAL_KINDS.map((k) => (
+                      <option key={k.value} value={k.value}>
+                        {k.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <button
+                  type="button"
+                  className="live-lobby__btn live-lobby__btn--danger"
+                  onClick={() => remove(m.id)}
+                >
+                  Remove
+                </button>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </>
+  );
+
+  return (
+    <div className={`live-lobby${compact ? ' live-lobby--batch-embed' : ''}`}>
+      <div className="live-lobby__card">
+        {!compact && (
+          <div className="live-lobby__card-head">
+            <h3>Materials · {batchName || 'Batch'}</h3>
+            <button
+              type="button"
+              className="live-lobby__btn live-lobby__btn--ghost live-lobby__btn--sm"
+              onClick={load}
+            >
+              Refresh
+            </button>
+          </div>
+        )}
+        {!compact && (
+          <p className="live-attendance__note">
+            Upload writing (PDF/DOC), handouts, projects, or extra videos (outside live class). Videos can
+            also appear in Classroom. Enable student uploads so learners can share work for review.
+          </p>
+        )}
         {folderLink && (
-          <p className="live-lobby__muted">
+          <p className="live-lobby__muted live-lobby__drive-link">
             Drive folder:{' '}
             <a href={folderLink} target="_blank" rel="noopener noreferrer">
               Open folder
             </a>
+            {compact && (
+              <button
+                type="button"
+                className="live-lobby__btn live-lobby__btn--ghost live-lobby__btn--sm"
+                onClick={load}
+              >
+                Refresh
+              </button>
+            )}
           </p>
         )}
 
-        <div className="live-lobby__chip-row" style={{ marginBottom: '0.85rem' }}>
-          <button
-            type="button"
-            className={`live-lobby__chip${tab === 'library' ? ' is-active' : ''}`}
-            onClick={() => setTab('library')}
-          >
-            Library ({materials.length})
-          </button>
-          <button
-            type="button"
-            className={`live-lobby__chip${tab === 'shares' ? ' is-active' : ''}`}
-            onClick={() => setTab('shares')}
-          >
-            Student shares ({shares.length})
-          </button>
+        <div className={compact ? 'live-lobby__batch-static' : undefined}>
+          <div className="live-lobby__chip-row">
+            <button
+              type="button"
+              className={`live-lobby__chip${tab === 'library' ? ' is-active' : ''}`}
+              onClick={() => setTab('library')}
+            >
+              Library ({materials.length})
+            </button>
+            <button
+              type="button"
+              className={`live-lobby__chip${tab === 'shares' ? ' is-active' : ''}`}
+              onClick={() => setTab('shares')}
+            >
+              Student shares ({shares.length})
+            </button>
+          </div>
+
+          {compact ? libraryToolbar : null}
         </div>
 
-        {tab === 'library' && (
-          <>
-            <div className="live-lobby__toolbar">
-              <label className="live-lobby__toolbar-field">
-                <span>Type</span>
-                <select value={kind} onChange={(e) => setKind(e.target.value)}>
-                  {MATERIAL_KINDS.map((k) => (
-                    <option key={k.value} value={k.value}>
-                      {k.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              {kind === 'video' && (
-                <label className="live-lobby__toolbar-check">
-                  <input
-                    type="checkbox"
-                    checked={addAsLecture}
-                    onChange={(e) => setAddAsLecture(e.target.checked)}
-                  />
-                  Also add to Classroom
-                </label>
-              )}
-              <input
-                ref={fileRef}
-                type="file"
-                accept={ACCEPT_BY_KIND[kind]}
-                style={{ display: 'none' }}
-                onChange={onUpload}
-              />
-              <button
-                type="button"
-                className="live-lobby__btn live-lobby__btn--primary"
-                disabled={uploading}
-                onClick={() => fileRef.current?.click()}
-              >
-                {uploading ? 'Uploading…' : 'Upload to Drive'}
-              </button>
-              <label className="live-lobby__toolbar-field live-lobby__toolbar-field--filter">
-                <span>Filter</span>
-                <select
-                  value={kindFilter}
-                  onChange={(e) => setKindFilter(e.target.value)}
-                  aria-label="Filter materials"
-                >
-                  <option value="all">All types</option>
-                  {MATERIAL_KINDS.map((k) => (
-                    <option key={k.value} value={k.value}>
-                      {k.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            </div>
-            {error && <p className="live-lobby__alert live-lobby__alert--err">{error}</p>}
-            {message && <p className="live-lobby__alert live-lobby__alert--ok">{message}</p>}
-            {loading ? (
-              <p className="live-lobby--empty">Loading materials…</p>
-            ) : filteredMaterials.length === 0 ? (
-              <div className="live-lobby--empty">
-                No materials yet. Upload writing, a handout, or an extra video.
-              </div>
-            ) : (
-              <ul className="live-lobby__list">
-                {filteredMaterials.map((m) => (
-                  <li key={m.id} className="live-session">
-                    <div className="live-session__top">
-                      <div>
-                        <h4 className="live-session__title">{m.name}</h4>
-                        <p className="live-session__meta">
-                          {m.kind}
-                          {m.liveClassId ? ' · session material' : ''}
-                          {m.classroomLectureId ? ' · Classroom lecture' : ''}
-                          {m.createdAt
-                            ? ` · ${new Date(m.createdAt).toLocaleDateString('en-IN')}`
-                            : ''}
-                        </p>
-                      </div>
-                      <span className="live-session__badge">{m.kind}</span>
-                    </div>
-                    <div className="live-session__cta">
-                      <button
-                        type="button"
-                        className="live-lobby__btn live-lobby__btn--primary"
-                        onClick={async () => {
-                          try {
-                            await downloadAuthenticatedFile(
-                              `/api/teacher/batches/${batchId}/materials/${m.id}/download`,
-                              { filename: m.name }
-                            );
-                          } catch (err) {
-                            setError(err.message || 'Download failed');
-                          }
-                        }}
-                      >
-                        Download
-                      </button>
-                      {m.driveLink && (
-                        <a
-                          className="live-lobby__btn live-lobby__btn--secondary"
-                          href={m.driveLink}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                        >
-                          Open in Drive
-                        </a>
-                      )}
-                      <button
-                        type="button"
-                        className="live-lobby__btn live-lobby__btn--danger"
-                        onClick={() => remove(m.id)}
-                      >
-                        Remove
-                      </button>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </>
-        )}
+        <div className={compact ? 'live-lobby__batch-scroll' : undefined}>
+          {!compact && tab === 'library' && (
+            <>
+              {libraryToolbar}
+              {libraryBody}
+            </>
+          )}
+          {compact && tab === 'library' && libraryBody}
 
         {tab === 'shares' && (
           <>
@@ -428,6 +520,7 @@ export default function TeacherMaterialsPanel({ batchId, batchName = '' }) {
             )}
           </>
         )}
+        </div>
       </div>
     </div>
   );

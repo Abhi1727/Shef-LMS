@@ -128,8 +128,8 @@ async function sendMeetReminders() {
 }
 
 function startMeetReminderJob() {
-  // Every 5 minutes
-  cron.schedule('*/5 * * * *', async () => {
+  // Every 15 minutes — reminder window is wide enough; cuts LiveClass scans 3×.
+  cron.schedule('*/15 * * * *', async () => {
     try {
       const result = await sendMeetReminders();
       if (result.sent || result.skipped) {
@@ -139,7 +139,7 @@ function startMeetReminderJob() {
       console.error('[Meet Reminders] cron error:', err.message || err);
     }
   });
-  console.log('[Meet Reminders] cron scheduled (every 5 minutes)');
+  console.log('[Meet Reminders] cron scheduled (every 15 minutes)');
 }
 
 module.exports = {
