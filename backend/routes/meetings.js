@@ -192,10 +192,12 @@ function serializeMeeting(doc, { includeMeetLink = true } = {}) {
   const endMs = end ? end.getTime() : null;
   const hasJoinLink = Boolean(o.meetLink || o.zoomLink);
   const hasPlayableRecording = Boolean(o.youtubeVideoId || o.driveFileId);
+  // Never flag needsRecording while the session is still live — students must keep Join.
   const needsRecording =
     !skipRecordingUpload &&
     hasJoinLink &&
     o.status !== 'cancelled' &&
+    o.status !== 'live' &&
     !o.recordingPromptDismissedAt &&
     !hasPlayableRecording &&
     endMs !== null &&

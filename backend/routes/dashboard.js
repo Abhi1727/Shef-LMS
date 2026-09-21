@@ -104,7 +104,8 @@ router.get('/classroom', async (req, res) => {
       });
     }
 
-    return res.json(merged);
+    // Newest class date first for Classroom UI (lesson-path unlock stays chronological in buildLessonPath).
+    return res.json(sortVideosNewestFirst(merged));
   } catch (error) {
     logger.error('Error fetching classroom videos', { error: error.message });
     res.status(500).json({ message: 'Error fetching classroom videos' });

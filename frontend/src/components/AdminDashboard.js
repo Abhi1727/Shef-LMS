@@ -208,7 +208,26 @@ const AdminDashboard = ({ user, onLogout }) => {
   const navigate = useNavigate();
   const location = useLocation();
   const apiUrl = getApiBaseUrl();
-  const [activeSection, setActiveSection] = useState('overview');
+  const validAdminSections = useMemo(
+    () => new Set(ADMIN_NAV_ITEMS.map((item) => item.id)),
+    []
+  );
+
+  const initialAdminView = useMemo(() => {
+    const params = new URLSearchParams(location.search || '');
+    const fromQuery = params.get('section');
+    const fromState = location.state?.activeSection;
+    const section =
+      (fromQuery && validAdminSections.has(fromQuery) && fromQuery) ||
+      (fromState && validAdminSections.has(fromState) && fromState) ||
+      'overview';
+    const filter = params.get('filter') === 'unassigned' ? 'unassigned' : 'assigned';
+    return { section, filter };
+    // Only seed once from the entry URL/state.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const [activeSection, setActiveSection] = useState(initialAdminView.section);
   const [loading, setLoading] = useState(true);
   
   // Data states
@@ -224,6 +243,20 @@ const AdminDashboard = ({ user, onLogout }) => {
   const [jobs, setJobs] = useState([]);
   const [mentors, setMentors] = useState([]);
   const [classroomVideos, setClassroomVideos] = useState([]);
+  /** 'assigned' | 'unassigned' — Classroom admin triage for orphan recordings */
+  const [classroomAssignmentFilter, setClassroomAssignmentFilter] = useState(initialAdminView.filter);
+  const [classroomPage, setClassroomPage] = useState(() => {
+    const params = new URLSearchParams(window.location.search || '');
+    const p = parseInt(params.get('page'), 10);
+    return Number.isFinite(p) && p > 0 ? p : 1;
+  });
+  const [classroomPerPage, setClassroomPerPage] = useState(25);
+  const [classroomMeta, setClassroomMeta] = useState({
+    total: 0,
+    totalPages: 1,
+    counts: { assigned: 0, unassigned: 0 }
+  });
+  const [batchClassroomVideos, setBatchClassroomVideos] = useState([]);
   const [liveClasses, setLiveClasses] = useState([]);
   const [stats, setStats] = useState({});
   const [attendanceAlerts, setAttendanceAlerts] = useState([]);
@@ -473,16 +506,6 @@ const AdminDashboard = ({ user, onLogout }) => {
     });
   }, [navigate]);
 
-  const handleBatchViewSelect = useCallback((view) => {
-    setBatchView(view);
-  }, []);
-
-  const closeBatchDetailsModal = useCallback(() => {
-    setShowBatchDetailsModal(false);
-    setSelectedBatch(null);
-    setBatchView('');
-  }, []);
-
   // Memoized stats component
   const StatsCards = memo(({ stats }) => (
     <div className="stats-grid">
@@ -534,6 +557,39 @@ const AdminDashboard = ({ user, onLogout }) => {
   const [selectedBatch, setSelectedBatch] = useState(null);
   const [batchView, setBatchView] = useState(''); // 'videos' or 'students'
   const [studentsPerPage, setStudentsPerPage] = useState(15);
+
+  const handleBatchViewSelect = useCallback(async (view) => {
+    setBatchView(view);
+    if (view !== 'videos') return;
+    const batchId = selectedBatch?.id || selectedBatch?._id;
+    if (!batchId) {
+      setBatchClassroomVideos([]);
+      return;
+    }
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch(
+        `${apiUrl}/api/admin/classroom?batchId=${encodeURIComponent(String(batchId))}`,
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      if (!res.ok) {
+        setBatchClassroomVideos([]);
+        return;
+      }
+      const data = await res.json();
+      setBatchClassroomVideos(Array.isArray(data) ? data : data.videos || []);
+    } catch (err) {
+      console.error('Error loading batch classroom videos:', err);
+      setBatchClassroomVideos([]);
+    }
+  }, [apiUrl, selectedBatch]);
+
+  const closeBatchDetailsModal = useCallback(() => {
+    setShowBatchDetailsModal(false);
+    setSelectedBatch(null);
+    setBatchView('');
+    setBatchClassroomVideos([]);
+  }, []);
 
   const clearSearch = useCallback(() => {
     setSearchEmail('');
@@ -930,10 +986,53 @@ const AdminDashboard = ({ user, onLogout }) => {
 
   // Handle navigation state when returning from BatchDetailsPage
   useEffect(() => {
-    if (location.state?.activeSection) {
+    if (location.state?.activeSection && validAdminSections.has(location.state.activeSection)) {
       setActiveSection(location.state.activeSection);
     }
-  }, [location.state]);
+  }, [location.state, validAdminSections]);
+
+  // Keep admin section (+ Classroom assigned/unassigned) in the URL so refresh stays put.
+  useEffect(() => {
+    if (!validAdminSections.has(activeSection)) return;
+    const params = new URLSearchParams(location.search || '');
+    let changed = false;
+
+    if (params.get('section') !== activeSection) {
+      params.set('section', activeSection);
+      changed = true;
+    }
+
+    if (activeSection === 'classroom') {
+      if (params.get('filter') !== classroomAssignmentFilter) {
+        params.set('filter', classroomAssignmentFilter);
+        changed = true;
+      }
+      if (String(params.get('page') || '1') !== String(classroomPage)) {
+        params.set('page', String(classroomPage));
+        changed = true;
+      }
+    } else if (params.has('filter') || params.has('page')) {
+      params.delete('filter');
+      params.delete('page');
+      changed = true;
+    }
+
+    if (!changed) return;
+    const nextSearch = params.toString();
+    if (nextSearch === (location.search || '').replace(/^\?/, '')) return;
+    navigate(
+      { pathname: location.pathname || '/admin', search: nextSearch },
+      { replace: true }
+    );
+  }, [
+    activeSection,
+    classroomAssignmentFilter,
+    classroomPage,
+    navigate,
+    location.pathname,
+    location.search,
+    validAdminSections
+  ]);
 
   // Reset form when modal type changes to prevent data leakage
   useEffect(() => {
@@ -1365,38 +1464,67 @@ const AdminDashboard = ({ user, onLogout }) => {
     }
   }, [getCachedData, setCachedData]);
 
-  const loadClassroomVideos = useCallback(async (forceRefresh = false) => {
-    const cachedData = getCachedData('classroom');
-    if (cachedData && !forceRefresh) {
-      setClassroomVideos(cachedData);
-      return cachedData;
-    }
+  const loadClassroomVideos = useCallback(async (forceRefresh = false, overrides = {}) => {
+    const assignment = overrides.assignment ?? classroomAssignmentFilter;
+    const page = overrides.page ?? classroomPage;
+    const limit = overrides.limit ?? classroomPerPage;
 
-    setDataLoading(prev => ({ ...prev, classroom: true }));
+    setDataLoading((prev) => ({ ...prev, classroom: true }));
     try {
       const token = localStorage.getItem('token');
       const apiUrl = getApiBaseUrl();
-      const response = await fetch(`${apiUrl}/api/admin/classroom`, {
-        headers: { 'Authorization': `Bearer ${token}` }
+      const params = new URLSearchParams({
+        assignment,
+        page: String(page),
+        limit: String(limit)
+      });
+      const response = await fetch(`${apiUrl}/api/admin/classroom?${params}`, {
+        headers: { Authorization: `Bearer ${token}` }
       });
 
       if (response.ok) {
         const data = await response.json();
-        setClassroomVideos(data);
-        setCachedData('classroom', data);
-        return data;
+        const videos = Array.isArray(data) ? data : data.videos || [];
+        const total = Array.isArray(data) ? videos.length : Number(data.total) || videos.length;
+        const totalPages = Array.isArray(data)
+          ? 1
+          : Math.max(1, Number(data.totalPages) || 1);
+        const counts = Array.isArray(data)
+          ? { assigned: 0, unassigned: 0 }
+          : data.counts || { assigned: 0, unassigned: 0 };
+
+        setClassroomVideos(videos);
+        setClassroomMeta({
+          total,
+          totalPages,
+          counts
+        });
+        if (!Array.isArray(data) && Number(data.page) > 0 && Number(data.page) !== page) {
+          setClassroomPage(Number(data.page));
+        }
+        return videos;
       }
 
       setClassroomVideos([]);
+      setClassroomMeta((prev) => ({ ...prev, total: 0, totalPages: 1 }));
       return [];
     } catch (error) {
       console.error('Error loading classroom videos:', error);
       setClassroomVideos([]);
+      setClassroomMeta((prev) => ({ ...prev, total: 0, totalPages: 1 }));
       return [];
     } finally {
-      setDataLoading(prev => ({ ...prev, classroom: false }));
+      setDataLoading((prev) => ({ ...prev, classroom: false }));
     }
-  }, [getCachedData, setCachedData]);
+  }, [classroomAssignmentFilter, classroomPage, classroomPerPage]);
+
+  const classroomAssignmentCounts = classroomMeta.counts || { assigned: 0, unassigned: 0 };
+
+  const handleClassroomAssignmentFilter = useCallback((nextFilter) => {
+    if (nextFilter === classroomAssignmentFilter) return;
+    setClassroomAssignmentFilter(nextFilter);
+    setClassroomPage(1);
+  }, [classroomAssignmentFilter]);
 
   const handleClassroomVisibilityToggle = async (video) => {
     const nextVisible = video.studentVisible === false;
@@ -1418,12 +1546,6 @@ const AdminDashboard = ({ user, onLogout }) => {
       }
       setClassroomVideos((videos) =>
         (videos || []).map((v) =>
-          v.id === video.id ? { ...v, studentVisible: nextVisible } : v
-        )
-      );
-      setCachedData(
-        'classroom',
-        (classroomVideos || []).map((v) =>
           v.id === video.id ? { ...v, studentVisible: nextVisible } : v
         )
       );
@@ -1691,8 +1813,7 @@ const AdminDashboard = ({ user, onLogout }) => {
           await Promise.race([
             Promise.all([
               loadCourses(true),
-              loadBatches(true),
-              loadClassroomVideos(true)
+              loadBatches(true)
             ]),
             timeout(10000)
           ]);
@@ -1739,7 +1860,6 @@ const AdminDashboard = ({ user, onLogout }) => {
     loadBatches,
     loadModules,
     loadLessons,
-    loadClassroomVideos,
     loadMentors,
     loadProjects,
     loadAssessments,
@@ -1787,6 +1907,13 @@ const AdminDashboard = ({ user, onLogout }) => {
     }, 20000);
     return () => clearInterval(t);
   }, [activeSection, loadTeachers]);
+
+  // Reload Classroom page when filter / page / page-size changes while on that section
+  useEffect(() => {
+    if (activeSection !== 'classroom') return undefined;
+    loadClassroomVideos(true);
+    return undefined;
+  }, [activeSection, classroomAssignmentFilter, classroomPage, classroomPerPage, loadClassroomVideos]);
 
   // Optimized refresh function - only refresh specific data types
   const refreshData = async (dataType = null, forceRefresh = true) => {
@@ -2590,6 +2717,11 @@ const AdminDashboard = ({ user, onLogout }) => {
             showToast('YouTube URL is required', 'error');
             return;
           }
+
+          if (!formData.batchId) {
+            showToast('Select a batch — videos without a batch stay hidden from trainers and students.', 'error');
+            return;
+          }
           
           // Import YouTube utility
           const videoId = YouTubeUtils.extractVideoId(formData.youtubeVideoUrl);
@@ -2602,16 +2734,22 @@ const AdminDashboard = ({ user, onLogout }) => {
           // Create lecture data for manual YouTube URL via API
           const lectureData = {
             title: formData.title,
-            instructor: 'Admin', // Default instructor since each batch has assigned teacher
+            instructor:
+              formData.instructor ||
+              editingItem?.instructor ||
+              (batches || []).find((b) => String(b.id || b._id) === String(formData.batchId))
+                ?.teacherName ||
+              'Admin',
             description: formData.description || '',
             courseId: formData.course,
-            batchId: formData.batchId || '',
+            batchId: formData.batchId,
             type: 'Lecture', // Default type since we removed the selection
             videoSource: 'youtube-url',
             youtubeVideoId: videoId,
             youtubeVideoUrl: formData.youtubeVideoUrl,
             youtubeEmbedUrl: YouTubeUtils.getEmbedUrl(videoId),
-            date: formData.date // Add class date
+            date: formData.date, // Add class date
+            studentVisible: true
           };
 
           let response;
@@ -4519,86 +4657,136 @@ const AdminDashboard = ({ user, onLogout }) => {
                 </button>
               </div>
 
-              {/* Video Instructions - Commented Out */}
-              {/* 
-              <div className="info-box">
-                <p>📹 Add live class recordings from Zoom or Google Drive. Students can watch these videos in their Classroom section.</p>
-                <p><strong>Zoom Recording:</strong> Open your recording in Zoom → Click "Share" → Copy the complete shareable link (includes passcode).</p>
-                <p><strong>Google Drive:</strong> Upload video to Drive → Get shareable link → Copy the file ID from the URL.</p>
-              </div>
-              */}
+              <div className="classroom-assign-panel">
+                <div className="classroom-assign-panel__toolbar">
+                  <div
+                    className="classroom-assign-seg"
+                    role="tablist"
+                    aria-label="Filter by batch assignment"
+                  >
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={classroomAssignmentFilter === 'assigned'}
+                    className={`classroom-assign-seg__btn${classroomAssignmentFilter === 'assigned' ? ' is-active' : ''}`}
+                    onClick={() => handleClassroomAssignmentFilter('assigned')}
+                  >
+                    Assigned
+                    <span className="classroom-assign-seg__badge">{classroomAssignmentCounts.assigned}</span>
+                  </button>
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={classroomAssignmentFilter === 'unassigned'}
+                    className={`classroom-assign-seg__btn${classroomAssignmentFilter === 'unassigned' ? ' is-active' : ''}`}
+                    onClick={() => handleClassroomAssignmentFilter('unassigned')}
+                  >
+                    Unassigned
+                    <span className="classroom-assign-seg__badge">{classroomAssignmentCounts.unassigned}</span>
+                  </button>
+                  </div>
+                  <p className="classroom-assign-panel__hint">
+                    {classroomAssignmentFilter === 'unassigned'
+                      ? 'No batch linked. Assign to a batch or delete if not needed.'
+                      : 'Linked to a batch for trainers and students.'}
+                  </p>
+                </div>
 
-              <div className="data-table">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>Class Date</th>
-                      <th>Topic</th>
-                      <th>Duration</th>
-                      <th>Course</th>
-                      <th>Video Source</th>
-                      <th>Students</th>
-                      <th>Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
+                <div className="data-table classroom-videos-table">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Date</th>
+                        <th>Topic</th>
+                        <th>Duration</th>
+                        <th>{classroomAssignmentFilter === 'unassigned' ? 'Instructor' : 'Course / batch'}</th>
+                        <th>Source</th>
+                        <th>Status</th>
+                        <th>Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
                     {classroomVideos.length === 0 ? (
                       <tr>
-                        <td colSpan="7" style={{textAlign: 'center', padding: '40px', color: '#888'}}>
-                          No classroom videos added yet. Click "Add Video" to add your first recording.
+                        <td colSpan="7" className="classroom-videos-empty">
+                          {dataLoading.classroom
+                            ? 'Loading videos…'
+                            : classroomAssignmentFilter === 'unassigned'
+                              ? 'No unassigned videos. All recordings have a batch.'
+                              : 'No assigned videos in this list.'}
                         </td>
                       </tr>
                     ) : (
-                      (classroomVideos || [])
-                        .sort((a, b) => new Date(b.date) - new Date(a.date))
-                        .map(video => (
-                          <tr key={video.id}>
-                            <td>{video.date}</td>
-                            <td><strong>{video.title}</strong></td>
-                            <td>{video.duration}</td>
+                      classroomVideos.map((video) => (
+                          <tr key={video.id} className={classroomAssignmentFilter === 'unassigned' ? 'is-unassigned-row' : ''}>
+                            <td className="classroom-videos-date">
+                              {formatDateForComponent(video.date) || video.date || '—'}
+                            </td>
                             <td>
-                              <span className={`course-badge ${video.courseId?.includes('Cyber') ? 'cyber' : 'data'}`}>
-                                {video.courseId || 'General'}
-                              </span>
-                              {video.batchId && (
-                                <small style={{display: 'block', color: '#666', marginTop: '2px'}}>
-                                  Batch: {(batches || []).find(b => b.id === video.batchId)?.name || 
-              (oneToOneBatches || []).find(b => b.id === video.batchId)?.name || 'No Batch Assigned'}
-                                </small>
+                              <div className="classroom-videos-topic">{video.title || 'Untitled'}</div>
+                            </td>
+                            <td>{video.duration || '—'}</td>
+                            <td>
+                              {classroomAssignmentFilter === 'unassigned' ? (
+                                <span className="classroom-videos-instructor">
+                                  {video.instructor || video.teacherName || 'Unknown instructor'}
+                                </span>
+                              ) : (
+                                <>
+                                  <span className={`course-badge ${video.courseId?.includes('Cyber') ? 'cyber' : 'data'}`}>
+                                    {video.courseId || 'General'}
+                                  </span>
+                                  {video.batchId && (
+                                    <small className="classroom-videos-batch">
+                                      {(batches || []).find((b) => b.id === video.batchId)?.name ||
+                                        (oneToOneBatches || []).find((b) => b.id === video.batchId)?.name ||
+                                        'Batch linked'}
+                                    </small>
+                                  )}
+                                </>
                               )}
                             </td>
                             <td>
-                              <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
-                                {video.videoSource === 'youtube-url' ? (
+                              <div className="classroom-videos-source">
+                                {video.youtubeVideoId || video.videoSource === 'youtube-url' ? (
                                   <>
-                                    <span className={`source-badge youtube`}>
-                                      📺 YouTube
-                                    </span>
-                                    <code className="drive-id">
-                                      {video.youtubeVideoId}
-                                    </code>
+                                    <span className="classroom-source-pill classroom-source-pill--yt">YouTube</span>
+                                    {video.youtubeVideoId ? (
+                                      <a
+                                        href={`https://www.youtube.com/watch?v=${video.youtubeVideoId}`}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="classroom-videos-source-link"
+                                      >
+                                        Open
+                                      </a>
+                                    ) : null}
+                                  </>
+                                ) : video.driveId ? (
+                                  <>
+                                    <span className="classroom-source-pill classroom-source-pill--drive">Drive</span>
+                                    <a
+                                      href={`https://drive.google.com/file/d/${video.driveId}/view`}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="classroom-videos-source-link"
+                                    >
+                                      Open
+                                    </a>
                                   </>
                                 ) : (
-                                  <>
-                                    <span className={`source-badge firebase`}>
-                                      🔥 Firebase
-                                    </span>
-                                    <code className="drive-id">
-                                      {video.firebaseStoragePath?.substring(0, 25)}...
-                                    </code>
-                                  </>
+                                  <span className="classroom-source-pill">Other</span>
                                 )}
                               </div>
                             </td>
                             <td>
-                              <span
-                                style={{
-                                  color: video.studentVisible === false ? '#b45309' : '#0f766e',
-                                  fontWeight: 600
-                                }}
-                              >
-                                {video.studentVisible === false ? 'Hidden' : 'Visible'}
-                              </span>
+                              {classroomAssignmentFilter === 'unassigned' ? (
+                                <span className="classroom-status-pill classroom-status-pill--warn">No batch</span>
+                              ) : video.studentVisible === false ? (
+                                <span className="classroom-status-pill classroom-status-pill--muted">Hidden</span>
+                              ) : (
+                                <span className="classroom-status-pill classroom-status-pill--ok">Visible</span>
+                              )}
                             </td>
                             <td>
                               <div className="action-btns">
@@ -4608,111 +4796,85 @@ const AdminDashboard = ({ user, onLogout }) => {
                                   className="btn-edit"
                                   title={video.studentVisible === false ? 'Show to students' : 'Hide from students'}
                                 >
-                                  {video.studentVisible === false ? '👁️' : '🙈'}
+                                  {video.studentVisible === false ? 'Show' : 'Hide'}
                                 </button>
-                                <button onClick={() => openModal('classroom', video)} className="btn-edit" title="Edit">✏️</button>
-                                <button onClick={() => handleDelete(COLLECTIONS.CLASSROOM, video.id)} className="btn-delete" title="Delete">🗑️</button>
-                                <a 
-                                  href="#"
-                                  className="btn-view"
-                                  title="View in player"
-                                  onClick={(e) => {
-                                    e.preventDefault();
-                                    // Create a simple video player modal
-                                    const modal = document.createElement('div');
-                                    modal.style.cssText = `
-                                      position: fixed;
-                                      top: 0;
-                                      left: 0;
-                                      width: 100vw;
-                                      height: 100vh;
-                                      background: rgba(0,0,0,0.9);
-                                      z-index: 10000;
-                                      display: flex;
-                                      align-items: center;
-                                      justify-content: center;
-                                    `;
-                                    
-                                    const content = document.createElement('div');
-                                    content.style.cssText = `
-                                      background: white;
-                                      padding: 20px;
-                                      border-radius: 8px;
-                                      max-width: 600px;
-                                      width: 90%;
-                                      text-align: center;
-                                    `;
-                                    
-                                    if (video.videoSource === 'youtube-url') {
-                                      content.innerHTML = `
-                                        <h3>📺 YouTube Video</h3>
-                                        <p><strong>${video.title}</strong></p>
-                                        <p>Instructor: ${video.instructor}</p>
-                                        <div style="margin: 20px 0;">
-                                          <iframe 
-                                            width="100%" 
-                                            height="315" 
-                                            src="${video.youtubeEmbedUrl}" 
-                                            frameborder="0" 
-                                            allowfullscreen
-                                            style="border-radius: 8px;"
-                                          ></iframe>
-                                        </div>
-                                        <p style="color: #666; font-size: 14px;">Students can watch this video in their Dashboard → Classroom section</p>
-                                        <button style="
-                                          background: #007bff;
-                                          color: white;
-                                          border: none;
-                                          padding: 10px 20px;
-                                          border-radius: 4px;
-                                          cursor: pointer;
-                                          margin-top: 15px;
-                                        " onclick="this.closest('div[style*=fixed]').remove()">Close</button>
-                                      `;
-                                    } else if (video.driveId || video.videoSource === 'drive') {
-                                      const id = video.driveId || '';
-                                      content.innerHTML = `
-                                        <h3>Google Drive recording</h3>
-                                        <p><strong>${video.title}</strong></p>
-                                        <p>Instructor: ${video.instructor || ''}</p>
-                                        ${id ? `<div style="margin:16px 0;aspect-ratio:16/9"><iframe title="preview" src="https://drive.google.com/file/d/${id}/preview" style="width:100%;height:100%;border:0;border-radius:8px" allow="autoplay" allowfullscreen></iframe></div>` : '<p>No Drive file attached yet.</p>'}
-                                        <p style="color:#666;font-size:14px">Stored on the Sky States admin Drive. If playback says the file is too small, the recording is still a stub — upload the real Meet video from Sessions.</p>
-                                        <button style="background:#0b6e99;color:#fff;border:none;padding:10px 20px;border-radius:4px;cursor:pointer;margin-top:15px" onclick="this.closest('div[style*=fixed]').remove()">Close</button>
-                                      `;
-                                    } else if (video.videoSource === 'meet-session' || video.videoSource === 'pending') {
-                                      content.innerHTML = `
-                                        <h3>Recording not ready</h3>
-                                        <p><strong>${video.title}</strong></p>
-                                        <p>This live class is listed, but there is no playable recording on Drive yet. After Meet finishes processing, or after the trainer uploads the mp4, it appears here.</p>
-                                        <button style="background:#0b6e99;color:#fff;border:none;padding:10px 20px;border-radius:4px;cursor:pointer;margin-top:15px" onclick="this.closest('div[style*=fixed]').remove()">Close</button>
-                                      `;
-                                    } else {
-                                      content.innerHTML = `
-                                        <h3>${video.title}</h3>
-                                        <p>This lesson does not have a playable Drive or YouTube file yet.</p>
-                                        <button style="background:#0b6e99;color:#fff;border:none;padding:10px 20px;border-radius:4px;cursor:pointer;margin-top:15px" onclick="this.closest('div[style*=fixed]').remove()">Close</button>
-                                      `;
-                                    }
-                                    
-                                    modal.appendChild(content);
-                                    document.body.appendChild(modal);
-                                    
-                                    modal.addEventListener('click', (e) => {
-                                      if (e.target === modal) {
-                                        modal.remove();
-                                      }
-                                    });
-                                  }}
+                                <button
+                                  type="button"
+                                  onClick={() => openModal('classroom', video)}
+                                  className="btn-edit"
+                                  title={classroomAssignmentFilter === 'unassigned' ? 'Assign batch' : 'Edit'}
                                 >
-                                  👁️
-                                </a>
+                                  {classroomAssignmentFilter === 'unassigned' ? 'Assign' : 'Edit'}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleDelete(COLLECTIONS.CLASSROOM, video.id)}
+                                  className="btn-delete"
+                                  title="Delete"
+                                >
+                                  Delete
+                                </button>
                               </div>
                             </td>
                           </tr>
                         ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+
+                {classroomMeta.total > 0 && (
+                  <div className="table-footer classroom-videos-footer">
+                    <div className="rows-per-page">
+                      <span>Rows per page:</span>
+                      {[10, 25, 50, 100].map((size) => (
+                        <button
+                          key={size}
+                          type="button"
+                          className={`rows-per-page-button ${classroomPerPage === size ? 'active' : ''}`}
+                          onClick={() => {
+                            setClassroomPerPage(size);
+                            setClassroomPage(1);
+                          }}
+                        >
+                          {size}
+                        </button>
+                      ))}
+                    </div>
+                    <div className="pagination-info">
+                      {(() => {
+                        const start = (classroomPage - 1) * classroomPerPage + 1;
+                        const end = Math.min(classroomPage * classroomPerPage, classroomMeta.total);
+                        return `Showing ${start}–${end} of ${classroomMeta.total} videos`;
+                      })()}
+                    </div>
+                    {classroomMeta.totalPages > 1 && (
+                      <div className="pagination-controls">
+                        <button
+                          type="button"
+                          className="btn-secondary"
+                          onClick={() => setClassroomPage((p) => Math.max(1, p - 1))}
+                          disabled={classroomPage <= 1 || dataLoading.classroom}
+                        >
+                          ← Previous
+                        </button>
+                        <span className="page-numbers" style={{ alignSelf: 'center', padding: '0 8px' }}>
+                          Page {classroomPage} of {classroomMeta.totalPages}
+                        </span>
+                        <button
+                          type="button"
+                          className="btn-secondary"
+                          onClick={() =>
+                            setClassroomPage((p) => Math.min(classroomMeta.totalPages, p + 1))
+                          }
+                          disabled={classroomPage >= classroomMeta.totalPages || dataLoading.classroom}
+                        >
+                          Next →
+                        </button>
+                      </div>
                     )}
-                  </tbody>
-                </table>
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -6836,17 +6998,12 @@ const AdminDashboard = ({ user, onLogout }) => {
                 {batchView === 'videos' && (
                   <div className="videos-view">
                     {(() => {
-                      const batchIdNorm = (v) => (v != null && v !== '' ? String(v).trim() : '');
-                      const selId = batchIdNorm(selectedBatch?.id || selectedBatch?._id);
-                      const batchVideos = classroomVideos
-                        .filter(video =>
-                          batchIdNorm(video.batchId) === selId
-                        )
+                      const batchVideos = (batchClassroomVideos || [])
+                        .slice()
                         .sort((a, b) => {
-                          // Sort by newest first - use multiple date fields for one-to-one videos
                           const dateA = new Date(a.addedAt || a.date || a.createdAt || 0);
                           const dateB = new Date(b.addedAt || b.date || b.createdAt || 0);
-                          return dateB - dateA; // Newest first (descending order)
+                          return dateB - dateA;
                         });
                       
                       return batchVideos.length > 0 ? (

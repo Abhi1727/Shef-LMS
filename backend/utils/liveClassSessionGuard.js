@@ -2,8 +2,9 @@ const LiveClass = require('../models/LiveClass');
 const User = require('../models/User');
 const zoomService = require('../services/zoomService');
 
-/** After scheduled end + grace, auto-close forgotten live rows. */
-const STALE_AFTER_END_MS = 10 * 60 * 1000;
+/** After scheduled end + grace, auto-close forgotten live rows.
+ * Keep this generous — real classes often overrun; Zoom reconcile closes sooner when the room is empty. */
+const STALE_AFTER_END_MS = 3 * 60 * 60 * 1000;
 /** Wait this long after class start before trusting Zoom "not live" (trainer may still be opening app). */
 const ZOOM_RECONCILE_AFTER_START_MS = 90 * 1000;
 

@@ -1121,12 +1121,13 @@ const Dashboard = ({ user, onLogout }) => {
           }
           return new Date(v.date || v.createdAt || v.addedAt || 0).getTime();
         };
+        // Latest session first (match trainer/admin Classroom); order is tie-break only.
         const sortedVideos = [...videos].sort((a, b) => {
           const batchCmp = String(a.batchId || '').localeCompare(String(b.batchId || ''));
           if (batchCmp !== 0) return batchCmp;
-          const dateCmp = getVideoSortTime(a) - getVideoSortTime(b);
+          const dateCmp = getVideoSortTime(b) - getVideoSortTime(a);
           if (dateCmp !== 0) return dateCmp;
-          return (Number(a.order) || 0) - (Number(b.order) || 0);
+          return (Number(b.order) || 0) - (Number(a.order) || 0);
         });
 
         // Hide support/utility Zoom rooms from students (e.g. personal meeting rooms)
@@ -1297,6 +1298,8 @@ const Dashboard = ({ user, onLogout }) => {
       const now = Date.now();
       const upcoming = list.filter((m) => {
         if (m.status === 'cancelled' || (!m.meetLink && !m.zoomLink && !m.hasJoinLink)) return false;
+        // Actively live sessions stay visible even when they overrun the schedule.
+        if (m.status === 'live') return true;
         const start = m.scheduledStart
           ? new Date(m.scheduledStart).getTime()
           : new Date(`${m.scheduledDate}T${m.scheduledTime || '00:00'}`).getTime();

@@ -301,7 +301,7 @@ async function syncOneZoomRecording(doc, { forceZoomRecordingId = '' } = {}) {
 
   const tmpPath = path.join(
     TMP_DIR,
-    `zoom-${live.zoomMeetingId}-${best.id || Date.now()}.mp4`
+    `zoom-${live.zoomMeetingId}-${best.id || Date.now()}-${process.pid}-${Date.now()}.mp4`
   );
 
   try {

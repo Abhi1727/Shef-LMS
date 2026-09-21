@@ -264,7 +264,12 @@ export default function StudentScheduleCalendar({
   };
 
   const upcoming = events
-    .filter((e) => e.type === 'live' && e.start && new Date(e.start).getTime() >= Date.now() - 2 * 3600e3)
+    .filter((e) => {
+      if (e.type !== 'live' || !e.start) return false;
+      // Always keep actively live sessions in the join list (classes often run past schedule).
+      if (e.status === 'live') return true;
+      return new Date(e.start).getTime() >= Date.now() - 2 * 3600e3;
+    })
     .slice(0, 6);
 
   const renderEventActions = (ev) => (

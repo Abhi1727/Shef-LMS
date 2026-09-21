@@ -1650,21 +1650,70 @@ router.post('/classroom/youtube-upload', upload.single('video'), async (req, res
 // @access  Private (Admin only)
 router.get('/classroom', async (req, res) => {
   try {
-    const { batchId } = req.query;
-    
+    const { batchId, assignment, page, limit } = req.query;
+
     let query = {};
     if (batchId) {
-      query.batchId = batchId.trim();
+      query.batchId = String(batchId).trim();
     }
-    
+
     const videos = await Classroom.find(query).lean().exec();
-    const mappedVideos = videos.map(v => ({ 
-      id: String(v._id), 
+    const mappedVideos = videos.map((v) => ({
+      id: String(v._id),
       ...v,
       batchId: normalizeBatchId(v.batchId)
     }));
-    
-    res.json(mappedVideos);
+
+    const isUnassigned = (v) => {
+      const b = v.batchId;
+      if (b == null || b === '') return true;
+      const s = String(b).trim().toLowerCase();
+      return !s || s === 'null' || s === 'undefined' || s === 'unassigned';
+    };
+
+    const assignedCount = mappedVideos.filter((v) => !isUnassigned(v)).length;
+    const unassignedCount = mappedVideos.filter(isUnassigned).length;
+
+    const assignmentFilter = String(assignment || '').toLowerCase();
+    let filtered = mappedVideos;
+    if (assignmentFilter === 'unassigned') {
+      filtered = mappedVideos.filter(isUnassigned);
+    } else if (assignmentFilter === 'assigned') {
+      filtered = mappedVideos.filter((v) => !isUnassigned(v));
+    }
+
+    filtered.sort(
+      (a, b) =>
+        new Date(b.date || b.createdAt || 0) - new Date(a.date || a.createdAt || 0)
+    );
+
+    const wantsPagination = page != null && page !== '';
+    if (!wantsPagination) {
+      // Legacy/array clients (e.g. batch detail by batchId)
+      res.set('X-Classroom-Assigned-Count', String(assignedCount));
+      res.set('X-Classroom-Unassigned-Count', String(unassignedCount));
+      return res.json(filtered);
+    }
+
+    const pageNum = Math.max(1, parseInt(page, 10) || 1);
+    const pageSize = Math.min(100, Math.max(5, parseInt(limit, 10) || 25));
+    const total = filtered.length;
+    const totalPages = Math.max(1, Math.ceil(total / pageSize));
+    const safePage = Math.min(pageNum, totalPages);
+    const start = (safePage - 1) * pageSize;
+    const pageVideos = filtered.slice(start, start + pageSize);
+
+    return res.json({
+      videos: pageVideos,
+      page: safePage,
+      limit: pageSize,
+      total,
+      totalPages,
+      counts: {
+        assigned: assignedCount,
+        unassigned: unassignedCount
+      }
+    });
   } catch (error) {
     console.error('Error fetching classroom videos:', error);
     res.status(500).json({ message: 'Error fetching classroom videos' });
@@ -1780,8 +1829,13 @@ router.post('/classroom/youtube-url', notesUpload.single('notesFile'), async (re
     }
 
     // Prevent duplicate: same YouTube video already assigned to this batch
-    const batchIdNorm = (batchId && typeof batchId === 'string') ? batchId.trim() : null;
-    if (batchIdNorm) {
+    const batchIdNorm = (batchId && typeof batchId === 'string') ? batchId.trim() : '';
+    if (!batchIdNorm) {
+      return res.status(400).json({
+        message: 'Batch is required. Videos without a batch do not show for trainers or students.'
+      });
+    }
+    {
       const existing = await Classroom.findOne({
         youtubeVideoId: youtubeVideoId.trim(),
         batchId: batchIdNorm
@@ -1800,7 +1854,7 @@ router.post('/classroom/youtube-url', notesUpload.single('notesFile'), async (re
       description: description?.trim() || '',
       courseId: courseId.trim(),
       course: resolvedCourse || courseId.trim(),
-      batchId: batchId?.trim() || null,
+      batchId: batchIdNorm,
       domain: domain?.trim() || null,
       duration: duration || null,
       courseType: courseType?.trim() || null,
@@ -1810,6 +1864,7 @@ router.post('/classroom/youtube-url', notesUpload.single('notesFile'), async (re
       youtubeVideoId: youtubeVideoId,
       youtubeVideoUrl: youtubeVideoUrl,
       youtubeEmbedUrl: youtubeEmbedUrl || `https://www.youtube.com/embed/${youtubeVideoId}`,
+      studentVisible: true,
       uploadedBy: req.user.id,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
@@ -2029,22 +2084,39 @@ router.put('/classroom/:id', notesUpload.single('notesFile'), async (req, res) =
       videoData.courseId = courseId;
       videoData.course = await resolveCourseNameForVideo(courseId);
     }
-    if (batchId !== undefined) videoData.batchId = batchId;
+    // batchId is required for trainer/student visibility — empty string unassigns the video
+    // and it only remains visible in the admin global list.
+    if (batchId !== undefined) {
+      const batchIdNorm = String(batchId || '').trim();
+      if (!batchIdNorm) {
+        return res.status(400).json({
+          message:
+            'Batch is required. Videos without a batch do not show for trainers or students.'
+        });
+      }
+      const batchDoc = await Batch.findById(batchIdNorm).select('_id name').lean().exec();
+      if (!batchDoc) {
+        return res.status(400).json({ message: 'Selected batch was not found.' });
+      }
+      videoData.batchId = batchIdNorm;
+      // Re-assigning to a batch should make the lecture visible unless admin hid it explicitly.
+      if (req.body.studentVisible === undefined && req.body.visible === undefined) {
+        videoData.studentVisible = true;
+      }
+    }
 
-    // Add video source specific fields
+    // Add video source specific fields — only clear other sources when explicitly switching.
     if (zoomUrl) {
       videoData.zoomUrl = zoomUrl;
       videoData.zoomPasscode = zoomPasscode;
       videoData.videoSource = 'zoom';
-      // Remove other video source fields if switching to Zoom
       videoData.driveId = null;
       videoData.youtubeVideoId = null;
       videoData.youtubeVideoUrl = null;
       videoData.youtubeEmbedUrl = null;
-    } else if (driveId) {
+    } else if (driveId && !(youtubeVideoUrl || videoSource === 'youtube-url')) {
       videoData.driveId = driveId;
       videoData.videoSource = 'drive';
-      // Remove other video source fields if switching to Drive
       videoData.zoomUrl = null;
       videoData.zoomPasscode = null;
       videoData.youtubeVideoId = null;
@@ -2052,13 +2124,12 @@ router.put('/classroom/:id', notesUpload.single('notesFile'), async (req, res) =
       videoData.youtubeEmbedUrl = null;
     } else if (youtubeVideoUrl || videoSource === 'youtube-url') {
       videoData.videoSource = 'youtube-url';
-      videoData.youtubeVideoId = youtubeVideoId;
-      videoData.youtubeVideoUrl = youtubeVideoUrl;
-      videoData.youtubeEmbedUrl = youtubeEmbedUrl;
-      // Remove other video source fields if switching to YouTube
+      if (youtubeVideoId !== undefined) videoData.youtubeVideoId = youtubeVideoId;
+      if (youtubeVideoUrl !== undefined) videoData.youtubeVideoUrl = youtubeVideoUrl;
+      if (youtubeEmbedUrl !== undefined) videoData.youtubeEmbedUrl = youtubeEmbedUrl;
       videoData.zoomUrl = null;
       videoData.zoomPasscode = null;
-      videoData.driveId = null;
+      // Keep existing Drive archive link if present; do not wipe on YouTube metadata edits.
     }
 
     // Attach or update notes metadata if provided

@@ -560,11 +560,18 @@ router.get('/schedule', async (req, res) => {
     const liveEvents = meetings.map((m) => {
       const start = m.scheduledStart ? new Date(m.scheduledStart) : null;
       const end = m.scheduledEnd ? new Date(m.scheduledEnd) : null;
-      const ended = end && end.getTime() < now;
+      // Keep status=live joinable even after scheduledEnd — trainers often run long.
+      // Only completed/cancelled (or past end while not live) are "past".
+      const isActivelyLive = m.status === 'live';
+      const endedByClock = end && end.getTime() < now;
+      const isPast =
+        m.status === 'completed' ||
+        m.status === 'cancelled' ||
+        (!isActivelyLive && endedByClock);
       const batch = batchesMeta.find((b) => String(b._id) === String(m.batchId));
       return {
         id: `live-${m._id}`,
-        type: ended || m.status === 'completed' ? 'live_past' : 'live',
+        type: isPast ? 'live_past' : 'live',
         title: m.title,
         start: start ? start.toISOString() : null,
         end: end ? end.toISOString() : null,
