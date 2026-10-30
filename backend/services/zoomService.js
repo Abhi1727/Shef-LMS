@@ -134,7 +134,8 @@ class ZoomService {
         startUrl,
         password,
         timezone: meeting.timezone || meetingData.timezone || 'Asia/Kolkata',
-        isPMR: true
+        // meetingLinkPayload is only used for PMI / fixed recurring rooms (shared).
+        isPMR: meeting.isPMR !== false
       }
     };
   }
@@ -394,6 +395,64 @@ class ZoomService {
     }
   }
 
+  /**
+   * End an in-progress Zoom meeting instance (host left / End class).
+   * Does not delete the scheduled meeting object — safe for reconnect + unique rooms.
+   * PMI: ends the current instance only.
+   */
+  async endMeeting(meetingId) {
+    const id = String(meetingId || '').replace(/\s/g, '');
+    if (!id) return { success: true, skipped: true };
+    try {
+      const token = await this.getAccessToken();
+      await axios.put(
+        `${zoomConfig.apiBaseUrl}/meetings/${encodeURIComponent(id)}/status`,
+        { action: 'end' },
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          }
+        }
+      );
+      return { success: true };
+    } catch (error) {
+      const status = error.response?.status;
+      const code = error.response?.data?.code;
+      // Already ended / not started / missing
+      if (status === 404 || status === 400 || code === 3001 || code === 3002) {
+        return { success: true, alreadyEnded: true };
+      }
+      console.warn(
+        '[zoomService] endMeeting failed:',
+        error.response?.data || error.message
+      );
+      return {
+        success: false,
+        error: error.response?.data?.message || error.message || 'end-failed'
+      };
+    }
+  }
+
+  /** Lightweight room state for join UX: waiting | started | ended | unknown */
+  async getMeetingRoomStatus(meetingId) {
+    const id = String(meetingId || '').replace(/\s/g, '');
+    if (!id) return { status: 'unknown' };
+    try {
+      const token = await this.getAccessToken();
+      const response = await axios.get(`${zoomConfig.apiBaseUrl}/meetings/${encodeURIComponent(id)}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const raw = String(response.data?.status || '').toLowerCase();
+      if (raw === 'waiting' || raw === 'started') return { status: raw };
+      return { status: raw || 'unknown' };
+    } catch (error) {
+      const status = error.response?.status;
+      if (status === 404) return { status: 'ended' };
+      return { status: 'unknown' };
+    }
+  }
+
   generatePassword() {
     return Math.random().toString(36).substring(2, 10);
   }
@@ -637,7 +696,8 @@ class ZoomService {
    */
   async getZakToken(zoomUserId) {
     const token = await this.getAccessToken();
-    const userId = String(zoomUserId || zoomConfig.defaultUserId()).trim();
+    // Never fall back to another account: a missing trainer id must not yield someone else's host token.
+    const userId = String(zoomUserId || '').trim();
     if (!userId) {
       const err = new Error('Zoom user id required for host ZAK token');
       err.code = 'ZOOM_USER_REQUIRED';

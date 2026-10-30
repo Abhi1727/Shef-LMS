@@ -10,6 +10,7 @@ import { formatDateForComponent } from '../utils/dateUtils';
 import StudentsActivity from './StudentsActivity';
 import ActivityTimelineChart from './charts/ActivityTimelineChart';
 import { processActivityData, exportToCSV } from '../utils/activityDataProcessor';
+import { sortLecturesNewestFirst } from '../utils/lectureSort';
 import AssessmentStudio from './AssessmentStudio';
 import ChangePasswordPanel from './ChangePasswordPanel';
 import AccountMenu from './AccountMenu';
@@ -2040,8 +2041,11 @@ const AdminDashboard = ({ user, onLogout }) => {
         const formData = {
           ...item,
           course: item.courseId || item.course, // Handle both courseId and course for backward compatibility
-          // Ensure YouTube URL is properly mapped for editing
+          // Ensure YouTube URL and Drive URL are properly mapped for editing
           youtubeVideoUrl: item.youtubeVideoUrl || (item.youtubeVideoId ? `https://www.youtube.com/watch?v=${item.youtubeVideoId}` : ''),
+          driveUrl: item.driveId ? `https://drive.google.com/file/d/${item.driveId}/view` : '',
+          driveId: item.driveId || '',
+          videoSource: item.videoSource || (item.driveId && !item.youtubeVideoId ? 'drive' : 'youtube-url'),
           instructor: item.instructor || 'Admin', // Default to Admin if not specified
           // Format date for input field (YYYY-MM-DD)
           date: item.date || new Date().toISOString().split('T')[0] // Use existing date or today's date
@@ -2712,10 +2716,18 @@ const AdminDashboard = ({ user, onLogout }) => {
           const token = localStorage.getItem('token');
           const apiUrl = getApiBaseUrl();
           
-          // Validate YouTube URL is provided
-          if (!formData.youtubeVideoUrl) {
-            showToast('YouTube URL is required', 'error');
-            return;
+          const isDrive = formData.videoSource === 'drive' || (formData.driveUrl && !formData.youtubeVideoUrl);
+
+          if (isDrive) {
+            if (!formData.driveUrl && !formData.driveId) {
+              showToast('Google Drive link or ID is required', 'error');
+              return;
+            }
+          } else {
+            if (!formData.youtubeVideoUrl) {
+              showToast('YouTube URL is required', 'error');
+              return;
+            }
           }
 
           if (!formData.batchId) {
@@ -2723,15 +2735,16 @@ const AdminDashboard = ({ user, onLogout }) => {
             return;
           }
           
-          // Import YouTube utility
-          const videoId = YouTubeUtils.extractVideoId(formData.youtubeVideoUrl);
-          
-          if (!videoId) {
-            showToast('Invalid YouTube URL. Please use a valid YouTube video URL.', 'error');
-            return;
+          let videoId = null;
+          if (!isDrive) {
+            videoId = YouTubeUtils.extractVideoId(formData.youtubeVideoUrl);
+            if (!videoId) {
+              showToast('Invalid YouTube URL. Please use a valid YouTube video URL.', 'error');
+              return;
+            }
           }
 
-          // Create lecture data for manual YouTube URL via API
+          // Create lecture data for API
           const lectureData = {
             title: formData.title,
             instructor:
@@ -2743,12 +2756,14 @@ const AdminDashboard = ({ user, onLogout }) => {
             description: formData.description || '',
             courseId: formData.course,
             batchId: formData.batchId,
-            type: 'Lecture', // Default type since we removed the selection
-            videoSource: 'youtube-url',
-            youtubeVideoId: videoId,
-            youtubeVideoUrl: formData.youtubeVideoUrl,
-            youtubeEmbedUrl: YouTubeUtils.getEmbedUrl(videoId),
-            date: formData.date, // Add class date
+            type: 'Lecture',
+            videoSource: isDrive ? 'drive' : 'youtube-url',
+            driveId: isDrive ? (formData.driveUrl || formData.driveId) : undefined,
+            driveUrl: isDrive ? (formData.driveUrl || formData.driveId) : undefined,
+            youtubeVideoId: isDrive ? undefined : videoId,
+            youtubeVideoUrl: isDrive ? undefined : formData.youtubeVideoUrl,
+            youtubeEmbedUrl: isDrive ? undefined : YouTubeUtils.getEmbedUrl(videoId),
+            date: formData.date,
             studentVisible: true
           };
 
@@ -6768,30 +6783,82 @@ const AdminDashboard = ({ user, onLogout }) => {
                     </small>
                   </div>
                   
-                  {/* Manual YouTube URL Input */}
+                  {/* Video Source Selector */}
                   <div style={{ marginBottom: '15px' }}>
-                    <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>
-                      YouTube Video URL *
+                    <label style={{ display: 'block', marginBottom: '6px', fontWeight: 'bold' }}>
+                      Video Source
                     </label>
-                    <input
-                      type="url"
-                      placeholder="https://www.youtube.com/watch?v=..."
-                      value={formData.youtubeVideoUrl || ''}
-                      onChange={(e) => handleInputChange('youtubeVideoUrl', e.target.value)}
-                      required
-                      style={{ width: '100%', padding: '8px', border: '1px solid #ddd', borderRadius: '4px' }}
-                    />
-                    {/* <small style={{color: '#888', marginTop: '-10px', display: 'block'}}>
-                      Paste the YouTube video URL. Video should be uploaded as "Private" or "Unlisted" on YouTube.
-                    </small>
-                    <div style={{ marginTop: '10px', padding: '10px', backgroundColor: '#fff3cd', borderRadius: '4px', border: '1px solid #ffc107' }}>
-                      <strong>📺 Manual YouTube URL:</strong><br/>
-                      • Upload video to YouTube as Private/Unlisted first<br/>
-                      • Copy the YouTube video URL here<br/>
-                      • Students will only see videos for their enrolled course<br/>
-                      • No API configuration needed
-                    </div> */}
+                    <div style={{ display: 'flex', gap: '10px' }}>
+                      <button
+                        type="button"
+                        onClick={() => handleInputChange('videoSource', 'youtube-url')}
+                        style={{
+                          flex: 1,
+                          padding: '8px 12px',
+                          borderRadius: '6px',
+                          border: '1px solid ' + (formData.videoSource !== 'drive' ? '#ff0000' : '#ddd'),
+                          background: formData.videoSource !== 'drive' ? '#fff5f5' : '#fff',
+                          color: formData.videoSource !== 'drive' ? '#c00' : '#555',
+                          fontWeight: formData.videoSource !== 'drive' ? '600' : 'normal',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        📺 YouTube URL
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleInputChange('videoSource', 'drive')}
+                        style={{
+                          flex: 1,
+                          padding: '8px 12px',
+                          borderRadius: '6px',
+                          border: '1px solid ' + (formData.videoSource === 'drive' ? '#0f9d58' : '#ddd'),
+                          background: formData.videoSource === 'drive' ? '#f0fdf4' : '#fff',
+                          color: formData.videoSource === 'drive' ? '#0b6623' : '#555',
+                          fontWeight: formData.videoSource === 'drive' ? '600' : 'normal',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        📁 Google Drive Link / ID
+                      </button>
+                    </div>
                   </div>
+
+                  {formData.videoSource === 'drive' ? (
+                    <div style={{ marginBottom: '15px' }}>
+                      <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>
+                        Google Drive Video Link or File ID *
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="https://drive.google.com/file/d/.../view or File ID"
+                        value={formData.driveUrl || formData.driveId || ''}
+                        onChange={(e) => {
+                          handleInputChange('driveUrl', e.target.value);
+                          handleInputChange('driveId', e.target.value);
+                        }}
+                        required
+                        style={{ width: '100%', padding: '8px', border: '1px solid #ddd', borderRadius: '4px' }}
+                      />
+                      <small style={{ color: '#666', marginTop: '4px', display: 'block' }}>
+                        Streamed directly through LMS proxy without YouTube policy or deletion issues.
+                      </small>
+                    </div>
+                  ) : (
+                    <div style={{ marginBottom: '15px' }}>
+                      <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>
+                        YouTube Video URL *
+                      </label>
+                      <input
+                        type="url"
+                        placeholder="https://www.youtube.com/watch?v=..."
+                        value={formData.youtubeVideoUrl || ''}
+                        onChange={(e) => handleInputChange('youtubeVideoUrl', e.target.value)}
+                        required
+                        style={{ width: '100%', padding: '8px', border: '1px solid #ddd', borderRadius: '4px' }}
+                      />
+                    </div>
+                  )}
                 </>
               )}
 
@@ -6998,13 +7065,7 @@ const AdminDashboard = ({ user, onLogout }) => {
                 {batchView === 'videos' && (
                   <div className="videos-view">
                     {(() => {
-                      const batchVideos = (batchClassroomVideos || [])
-                        .slice()
-                        .sort((a, b) => {
-                          const dateA = new Date(a.addedAt || a.date || a.createdAt || 0);
-                          const dateB = new Date(b.addedAt || b.date || b.createdAt || 0);
-                          return dateB - dateA;
-                        });
+                        const batchVideos = sortLecturesNewestFirst(batchClassroomVideos);
                       
                       return batchVideos.length > 0 ? (
                         <div className="videos-list">

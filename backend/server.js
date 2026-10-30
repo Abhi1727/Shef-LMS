@@ -201,7 +201,7 @@ app.use((error, req, res, next) => {
 
   if (error.code === 'LIMIT_FILE_SIZE') {
     return res.status(413).json({
-      message: 'File too large. Maximum size is 10MB.',
+      message: 'File too large. Maximum size is 100MB.',
       code: 'LIMIT_FILE_SIZE'
     });
   }
@@ -220,7 +220,7 @@ app.use((error, req, res, next) => {
     });
   }
 
-  if (error.message && error.message.includes('File type')) {
+  if (error.message && /file type|file format|invalid file|not allowed|only document|only video/i.test(error.message)) {
     return res.status(415).json({
       message: error.message,
       code: 'INVALID_FILE_TYPE'

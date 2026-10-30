@@ -5,8 +5,8 @@ const zoomService = require('../services/zoomService');
 /** After scheduled end + grace, auto-close forgotten live rows.
  * Keep this generous — real classes often overrun; Zoom reconcile closes sooner when the room is empty. */
 const STALE_AFTER_END_MS = 3 * 60 * 60 * 1000;
-/** Wait this long after class start before trusting Zoom "not live" (trainer may still be opening app). */
-const ZOOM_RECONCILE_AFTER_START_MS = 90 * 1000;
+/** Wait after LMS start before treating “Zoom not live” as ended (covers power/internet drops + reopen). */
+const ZOOM_RECONCILE_AFTER_START_MS = 5 * 60 * 1000;
 
 function getSessionProvider(doc) {
   if (doc?.conferenceProvider === 'zoom' || doc?.conferenceProvider === 'meet') {
@@ -181,7 +181,11 @@ async function reconcileZoomLiveSessions({ teacherId = null } = {}) {
     );
 
     for (const doc of sessions) {
-      const startMs = doc.scheduledStart ? new Date(doc.scheduledStart).getTime() : 0;
+      const startMs = doc.actualStartedAt
+        ? new Date(doc.actualStartedAt).getTime()
+        : doc.scheduledStart
+          ? new Date(doc.scheduledStart).getTime()
+          : 0;
       if (!startMs || now < startMs + ZOOM_RECONCILE_AFTER_START_MS) continue;
 
       const meetingId = String(doc.zoomMeetingId || '').replace(/\s/g, '');

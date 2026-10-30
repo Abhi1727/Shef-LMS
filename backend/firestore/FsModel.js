@@ -69,12 +69,8 @@ function matchCondition(docValue, cond) {
 
 function matchQuery(doc, query = {}) {
   if (!query || Object.keys(query).length === 0) return true;
-  if (query.$or) {
-    return query.$or.some((q) => matchQuery(doc, q));
-  }
-  if (query.$and) {
-    return query.$and.every((q) => matchQuery(doc, q));
-  }
+  if (query.$or && !query.$or.some((q) => matchQuery(doc, q))) return false;
+  if (query.$and && !query.$and.every((q) => matchQuery(doc, q))) return false;
   for (const [key, cond] of Object.entries(query)) {
     if (key.startsWith('$')) continue;
     if (key === '_id' || key === 'id') {
@@ -268,6 +264,8 @@ function pickPredicate(filter) {
   return null;
 }
 
+const SINGLE_KEY_QUERY_CAP = 1000;
+
 function filterKeyCount(filter) {
   if (!filter) return 0;
   return Object.keys(filter).filter((k) => k !== '$or' && k !== '$and').length;
@@ -356,10 +354,16 @@ async function fetchMatchingDocs(collectionName, filter, loadAllFn) {
       return [...map.values()].filter((d) => matchQuery(d, filter));
     }
     const extras = {};
-    if (filterKeyCount(filter) === 1) {
-      extras.limit = 1000;
+    // NOT_EQUAL matches most of a collection, so a capped first attempt would only be thrown away.
+    if (filterKeyCount(filter) === 1 && pred.op !== 'NOT_EQUAL') {
+      extras.limit = SINGLE_KEY_QUERY_CAP;
     }
     const docs = await queryWithPredicate(collectionName, pred, extras);
+    // Hitting the cap means rows were dropped; callers expect the full Mongo-style result.
+    if (extras.limit && docs.length >= extras.limit) {
+      const all = await queryWithPredicate(collectionName, pred);
+      return all.filter((d) => matchQuery(d, filter));
+    }
     return docs.filter((d) => matchQuery(d, filter));
   } catch (err) {
     console.warn('[FsModel] field query fallback to full scan', collectionName, pred.field, err.message);
@@ -525,6 +529,10 @@ function createFsModel(name, collectionName) {
     } else if (filter.id && typeof filter.id !== 'object') {
       const one = await firestoreDb.getDoc(collectionName, asString(filter.id));
       docs = one ? [one] : [];
+    }
+    if (docs) {
+      // Id lookups must still honour the other conditions (ownership checks like { _id, studentId }).
+      docs = docs.filter((d) => matchQuery(d, filter));
     } else if (!filter || Object.keys(filter).length === 0) {
       if (q._limit != null && q._limit <= 500 && (q._skip || 0) + q._limit <= 500) {
         try {
@@ -789,6 +797,28 @@ function createFsModel(name, collectionName) {
         const doc = await Model.findById(this._id).lean().exec();
         if (!doc) return null;
         await firestoreDb.deleteDoc(collectionName, this._id);
+        invalidate();
+        return wrapDoc(doc, this._lean);
+      },
+      then(resolve, reject) {
+        return this.exec().then(resolve, reject);
+      }
+    };
+    return q;
+  };
+
+  Model.findOneAndDelete = function findOneAndDelete(filter) {
+    const q = {
+      filter,
+      _lean: false,
+      lean() {
+        this._lean = true;
+        return this;
+      },
+      async exec() {
+        const doc = await Model.findOne(this.filter).lean().exec();
+        if (!doc) return null;
+        await firestoreDb.deleteDoc(collectionName, asString(doc._id));
         invalidate();
         return wrapDoc(doc, this._lean);
       },

@@ -15,6 +15,7 @@ const PRE_START_BUFFER_MS = 5 * 60 * 1000;
 const POST_END_BUFFER_MS = 20 * 60 * 1000;
 const LEGACY_PRE_START_BUFFER_MS = 90 * 60 * 1000;
 const LEGACY_POST_END_BUFFER_MS = 120 * 60 * 1000;
+const MAX_SESSION_MATCH_MS = 4 * 60 * 60 * 1000;
 
 function ensureTmpDir() {
   if (!fs.existsSync(TMP_DIR)) {
@@ -37,7 +38,7 @@ function sessionAnchorTimes(doc) {
  */
 function pickBestMp4(
   recordings = [],
-  { sessionStart, sessionEnd, usedRecordingIds = new Set(), legacyMatch = false } = {}
+  { sessionStart, sessionEnd, scheduledStart, usedRecordingIds = new Set(), legacyMatch = false } = {}
 ) {
   const videos = (recordings || []).filter((f) => {
     const type = String(f.fileType || '').toUpperCase();
@@ -56,8 +57,12 @@ function pickBestMp4(
 
   const preBuffer = legacyMatch ? LEGACY_PRE_START_BUFFER_MS : PRE_START_BUFFER_MS;
   const postBuffer = legacyMatch ? LEGACY_POST_END_BUFFER_MS : POST_END_BUFFER_MS;
-  const windowStart = startMs - preBuffer;
-  const windowEnd = (endMs || startMs + 60 * 60 * 1000) + postBuffer;
+  // Zoom often starts recording when the host opens the room, before Start is tapped in LMS.
+  const scheduledMs = scheduledStart ? new Date(scheduledStart).getTime() : 0;
+  const windowStart = (scheduledMs ? Math.min(startMs, scheduledMs) : startMs) - preBuffer;
+  // Sessions completed late (hours/next day) must not pull in later classes from a shared PMI.
+  const cappedEndMs = Math.min(endMs || startMs + 60 * 60 * 1000, startMs + MAX_SESSION_MATCH_MS);
+  const windowEnd = cappedEndMs + postBuffer;
 
   const inWindow = videos.filter((f) => {
     if (!f.recordingStart) return false;
@@ -86,22 +91,41 @@ function pickBestMp4(
   const scored = pool.map((f) => {
     const recStart = new Date(f.recordingStart).getTime();
     const delta = Math.abs(recStart - startMs);
+    const durMs = recordingDurationMs(f);
     const typeBonus = /shared_screen_with_speaker|shared_screen_with_gallery|active_speaker/i.test(
       String(f.recordingType || '')
     )
       ? 0
       : 5 * 60 * 1000;
-    return { file: f, delta: delta + typeBonus };
+    return { file: f, delta: delta + typeBonus, durMs };
   });
 
-  scored.sort((a, b) => a.delta - b.delta);
+  // Prefer closer start time; on near-ties prefer the longer (real) class over a stub.
+  scored.sort((a, b) => {
+    const d = a.delta - b.delta;
+    if (Math.abs(d) < 3 * 60 * 1000) return b.durMs - a.durMs;
+    return d;
+  });
   const best = scored[0];
   const runnerUp = scored[1];
 
-  // Shared PMI: if two recordings are nearly equally close, refuse auto-attach
-  // (stricter when LMS start/end times were not captured — legacyMatch).
+  // Trainer stopped/restarted recording: a short first part must not win over the real class.
+  const longest = scored.reduce((m, s) => (s.durMs > m.durMs ? s : m), best);
+  if (best.durMs < MIN_FULL_CLASS_MS && longest.durMs >= MIN_FULL_CLASS_MS) {
+    return { file: longest.file };
+  }
+
+  // Near-equal start times: if one is clearly a full class and the other is a stub, take the full one.
   const ambiguousWindowMs = legacyMatch ? 12 * 60 * 1000 : 3 * 60 * 1000;
   if (runnerUp && Math.abs(runnerUp.delta - best.delta) < ambiguousWindowMs) {
+    const longer = best.durMs >= runnerUp.durMs ? best : runnerUp;
+    const shorter = best.durMs >= runnerUp.durMs ? runnerUp : best;
+    if (longer.durMs >= MIN_FULL_CLASS_MS && shorter.durMs < MIN_STUB_MS) {
+      return { file: longer.file };
+    }
+    if (longer.durMs >= MIN_FULL_CLASS_MS && longer.durMs >= shorter.durMs * 2) {
+      return { file: longer.file };
+    }
     return { ambiguous: true, candidates: scored.slice(0, 3).map((s) => s.file) };
   }
 
@@ -274,6 +298,7 @@ async function syncOneZoomRecording(doc, { forceZoomRecordingId = '' } = {}) {
     const pick = pickBestMp4(result.recordings || [], {
       sessionStart: start,
       sessionEnd: end,
+      scheduledStart: live.scheduledStart,
       usedRecordingIds: await getUsedZoomRecordingIds(live.zoomMeetingId, String(live._id || live.id)),
       legacyMatch
     });
@@ -289,7 +314,7 @@ async function syncOneZoomRecording(doc, { forceZoomRecordingId = '' } = {}) {
 
     if (pick.ambiguous) {
       live.recordingSyncError =
-        'Multiple Zoom recordings match this class time (shared PMI room). Start/end class from LMS so we can match the right file, or upload manually.';
+        'Multiple Zoom recordings match this class time. End class from LMS after teaching, or upload the correct video manually.';
       live.recordingPipelineStatus = 'failed';
       live.recordingSyncAt = new Date();
       await live.save();
@@ -297,6 +322,20 @@ async function syncOneZoomRecording(doc, { forceZoomRecordingId = '' } = {}) {
     }
 
     best = pick.file;
+  }
+
+  // Stub MP4s (<5 min) — do NOT permanently mark waste. Full cloud file often
+  // arrives a few minutes later; leave pending so the next sync can pick it up.
+  const recStart = best.recordingStart || best.recording_start;
+  const recEnd = best.recordingEnd || best.recording_end;
+  const recMins =
+    recStart && recEnd ? (new Date(recEnd) - new Date(recStart)) / 60000 : null;
+  if (!forceZoomRecordingId && recMins != null && recMins < 5) {
+    live.recordingSyncError = `Short Zoom recording (${Math.round(recMins)} min) — waiting for full class file.`;
+    live.recordingPipelineStatus = 'pending';
+    live.recordingSyncAt = new Date();
+    await live.save();
+    return { pending: true, reason: 'short-recording-wait', minutes: recMins };
   }
 
   const tmpPath = path.join(
@@ -361,32 +400,68 @@ async function syncOneZoomRecording(doc, { forceZoomRecordingId = '' } = {}) {
     live.recordingPipelineStatus = 'youtube';
     await live.save();
 
-    const yt = await youtubeService.uploadVideo(tmpPath, {
-      title: `${batchLabel} · ${live.title || 'Live class recording'}`,
-      description: [
-        live.description || '',
-        `Sky States LMS recording`,
-        `Batch: ${batchLabel}`,
-        `Live class ID: ${String(live._id || live.id)}`,
-        live.scheduledDate ? `Scheduled: ${live.scheduledDate} ${live.scheduledTime || ''} IST` : '',
-        live.actualStartedAt
-          ? `Started: ${new Date(live.actualStartedAt).toISOString()}`
-          : '',
-        `Archive Drive: ${uploaded.driveLink || ''}`
-      ]
-        .filter(Boolean)
-        .join('\n'),
-      courseType: live.course || batch?.course || '',
-      instructor: live.teacherName || live.instructor || '',
-      privacyStatus: settings.youtubePrivacy || 'unlisted',
-      tags: ['sky-states', 'lms', 'live-class', live.course, batchLabel].filter(Boolean)
-    });
+    let yt = null;
+    let ytError = null;
+    try {
+      yt = await youtubeService.uploadVideo(tmpPath, {
+        title: `${batchLabel} · ${live.title || 'Live class recording'}`,
+        description: [
+          live.description || '',
+          `Sky States LMS recording`,
+          `Batch: ${batchLabel}`,
+          `Live class ID: ${String(live._id || live.id)}`,
+          live.scheduledDate ? `Scheduled: ${live.scheduledDate} ${live.scheduledTime || ''} IST` : '',
+          live.actualStartedAt
+            ? `Started: ${new Date(live.actualStartedAt).toISOString()}`
+            : '',
+          `Archive Drive: ${uploaded.driveLink || ''}`
+        ]
+          .filter(Boolean)
+          .join('\n'),
+        courseType: live.course || batch?.course || '',
+        instructor: live.teacherName || live.instructor || '',
+        privacyStatus: settings.youtubePrivacy || 'unlisted',
+        tags: ['sky-states', 'lms', 'live-class', live.course, batchLabel].filter(Boolean)
+      });
+    } catch (err) {
+      ytError = err;
+      console.warn(
+        `[Zoom recording sync] YouTube upload failed for "${live.title}": ${err.message}. Gracefully falling back to Google Drive playback.`
+      );
+    }
 
-    live.youtubeVideoId = yt.videoId;
-    live.youtubeVideoUrl = yt.videoUrl;
-    live.youtubeEmbedUrl = yt.embedUrl;
-    live.recordingPipelineStatus = 'ready';
-    live.recordingSyncError = '';
+    if (yt && yt.videoId) {
+      live.youtubeVideoId = yt.videoId;
+      live.youtubeVideoUrl = yt.videoUrl;
+      live.youtubeEmbedUrl = yt.embedUrl;
+      live.recordingPipelineStatus = 'ready';
+      live.recordingSyncError = '';
+      live.recordingSyncAt = new Date();
+      live.recordingPromptDismissedAt = new Date();
+      if (live.status !== 'cancelled') live.status = 'completed';
+      live.updatedAt = new Date();
+      await live.save();
+
+      await ensureClassroomFromLiveClass(live, {
+        videoSource: 'youtube-url',
+        driveFileId: uploaded.driveFileId,
+        driveLink: uploaded.driveLink,
+        youtubeVideoId: yt.videoId,
+        youtubeVideoUrl: yt.videoUrl,
+        youtubeEmbedUrl: yt.embedUrl
+      });
+
+      return {
+        synced: true,
+        meetingId: String(live._id),
+        youtubeVideoId: yt.videoId,
+        driveFileId: uploaded.driveFileId
+      };
+    }
+
+    // YouTube failed or rejected, but Google Drive archive succeeded! Fallback to Drive player:
+    live.recordingPipelineStatus = 'ready-drive-fallback';
+    live.recordingSyncError = `YouTube upload unavailable (${ytError?.message || 'terms/quota'}). Active Google Drive fallback.`;
     live.recordingSyncAt = new Date();
     live.recordingPromptDismissedAt = new Date();
     if (live.status !== 'cancelled') live.status = 'completed';
@@ -394,19 +469,16 @@ async function syncOneZoomRecording(doc, { forceZoomRecordingId = '' } = {}) {
     await live.save();
 
     await ensureClassroomFromLiveClass(live, {
-      videoSource: 'youtube-url',
+      videoSource: 'drive',
       driveFileId: uploaded.driveFileId,
-      driveLink: uploaded.driveLink,
-      youtubeVideoId: yt.videoId,
-      youtubeVideoUrl: yt.videoUrl,
-      youtubeEmbedUrl: yt.embedUrl
+      driveLink: uploaded.driveLink
     });
 
     return {
       synced: true,
       meetingId: String(live._id),
-      youtubeVideoId: yt.videoId,
-      driveFileId: uploaded.driveFileId
+      driveFileId: uploaded.driveFileId,
+      fallback: 'drive'
     };
   } catch (err) {
     const message = err.message || String(err);

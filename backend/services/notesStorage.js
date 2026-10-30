@@ -47,13 +47,17 @@ function isLectureNotesDeliverable(lecture, diskFiles) {
 }
 
 async function deliverLectureNotes(res, video) {
-  const name = video.notesFileName || path.basename(String(video.notesFilePath || 'notes'));
+  let name = video.notesFileName || path.basename(String(video.notesFilePath || 'notes'));
+  name = name.replace(/\.(docx|pptx|xlsx|pdf|ipynb|doc|ppt|xls|txt|csv|py|json|md|rtf)\.zip$/i, '.$1');
   const local = findLocalNotesFile({
     notesFilePath: video.notesFilePath,
     notesFileName: video.notesFileName,
     title: video.title
   });
   if (local && !local.error) {
+    if (!path.extname(name) && path.extname(local.path)) {
+      name = `${name}${path.extname(local.path)}`;
+    }
     streamNotesFile(res, { filePath: local.path, downloadName: name });
     return true;
   }
@@ -79,7 +83,7 @@ async function sendLectureNotes(res, video) {
   if (sent) return;
   res.status(404).json({
     message:
-      'Notes file is missing on the server. Ask your trainer to upload the zip again — it will be saved to Google Drive.'
+      'Notes file is missing on the server. Ask your trainer to upload the notes file again — it will be saved to Google Drive.'
   });
 }
 

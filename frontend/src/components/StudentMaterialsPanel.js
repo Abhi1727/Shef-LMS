@@ -220,7 +220,7 @@ export default function StudentMaterialsPanel({ compact = false, hideHero = fals
               <input
                 ref={fileRef}
                 type="file"
-                accept=".pdf,.doc,.docx,.ppt,.pptx,.zip,.txt,.md,image/*,video/*,.mp4,.mov"
+                accept=".pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.csv,.ipynb,.py,.zip,.rar,.7z,.txt,.md,image/*,video/*,.mp4,.mov"
                 style={{ display: 'none' }}
                 onChange={onUpload}
               />

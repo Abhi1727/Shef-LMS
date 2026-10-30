@@ -391,12 +391,14 @@ export default function MeetLiveClassesPanel({
         window.open(link, '_blank', 'noopener,noreferrer');
       }
       setMessage(
-        (data.closedPreviousSessions?.length
-          ? `Closed ${data.closedPreviousSessions.length} previous session(s). `
-          : '') +
-          (usesZoom
-            ? 'Class started in Zoom Workspace. End the class when finished so recording can sync to Classroom.'
-            : 'Class started. End the class when finished.')
+        data.reusedRunningSession
+          ? data.message
+          : (data.closedPreviousSessions?.length
+              ? `Closed ${data.closedPreviousSessions.length} previous session(s). `
+              : '') +
+              (usesZoom
+                ? 'Class started in Zoom Workspace. End the class when finished so recording can sync to Classroom.'
+                : 'Class started. End the class when finished.')
       );
       setForm((f) => ({ ...f, title: '', description: '' }));
       await loadMeetings();
@@ -540,7 +542,9 @@ export default function MeetLiveClassesPanel({
           : '') +
           (data.message ||
             (meeting.conferenceProvider === 'zoom'
-              ? 'Opening Zoom Workspace as host…'
+              ? data.reconnected
+                ? 'Rejoining Zoom as host (same classroom)…'
+                : 'Opening Zoom as host…'
               : 'Class started.'))
       );
     } catch (err) {
@@ -559,7 +563,12 @@ export default function MeetLiveClassesPanel({
       if (!res.ok) throw new Error(data.message || 'Failed to open class');
       const meeting = data.meeting || data;
       await openLiveHost(m, meeting, data);
-      setMessage('Opening Zoom as host…');
+      setMessage(
+        data.message ||
+          (data.reconnected
+            ? 'Rejoining Zoom as host (same classroom)…'
+            : 'Opening Zoom as host…')
+      );
     } catch (err) {
       setError(err.message || 'Failed to open Zoom');
     }
@@ -784,7 +793,7 @@ export default function MeetLiveClassesPanel({
       <input
         ref={materialInputRef}
         type="file"
-        accept=".pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.zip,.txt,.csv,.md,.rtf,image/*,video/*,.mp4,.mov,.webm"
+        accept=".pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.csv,.ipynb,.py,.zip,.rar,.7z,.txt,.md,.rtf,image/*,video/*,.mp4,.mov,.webm"
         style={{ display: 'none' }}
         onChange={onMaterialFilePicked}
       />
@@ -835,7 +844,7 @@ export default function MeetLiveClassesPanel({
               className="live-lobby__btn live-lobby__btn--primary"
               onClick={() => handleOpenLive(activeLive)}
             >
-              Open Zoom as host
+              Rejoin as host
             </button>
             <button
               type="button"
@@ -1318,7 +1327,7 @@ export default function MeetLiveClassesPanel({
                                 phase === 'live' ? handleOpenLive(m) : handleStart(m)
                               }
                             >
-                              {phase === 'live' ? 'Open Zoom as host' : 'Start class now'}
+                              {phase === 'live' ? 'Rejoin as host' : 'Start class now'}
                             </button>
                             {phase === 'live' && (
                               <button

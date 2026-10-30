@@ -555,15 +555,15 @@ router.post('/youtube-url', roleAuth('admin'), async (req, res) => {
 router.use((error, req, res, next) => {
   if (error instanceof multer.MulterError) {
     if (error.code === 'LIMIT_FILE_SIZE') {
-      return res.status(400).json({ message: 'Video file size exceeds 2GB limit' });
+      return res.status(413).json({ message: 'File size exceeds allowed limit' });
     }
     if (error.code === 'LIMIT_UNEXPECTED_FILE') {
       return res.status(400).json({ message: 'Unexpected file field' });
     }
   }
   
-  if (error.message === 'Only video files are allowed') {
-    return res.status(400).json({ message: error.message });
+  if (error.message && (error.message.includes('Only video') || error.message.includes('File type') || error.message.includes('not allowed'))) {
+    return res.status(415).json({ message: error.message });
   }
   
   next(error);

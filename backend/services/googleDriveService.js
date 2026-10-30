@@ -5,6 +5,32 @@ const { getGoogleAuth, isGoogleConfigured, getAuthMode } = require('./googleAuth
 
 const ROOT_FOLDER_NAME = process.env.GOOGLE_DRIVE_ROOT_FOLDER || 'Sky States LMS Recordings';
 
+function envFlag(name, defaultTrue = false) {
+  const raw = String(process.env[name] ?? '').trim().toLowerCase();
+  if (!raw) return defaultTrue;
+  return raw === '1' || raw === 'true' || raw === 'yes';
+}
+
+/**
+ * Drive archive stays on the admin host account.
+ * Trainers/students should use LMS (Classroom / Materials), not browse the whole admin Drive.
+ * - Do NOT share the root or sibling batch folders with trainers.
+ * - Public/domain link sharing is off unless GOOGLE_DRIVE_PUBLIC_LINKS=true.
+ * - Optional: GOOGLE_DRIVE_SHARE_TRAINER_FILE=true shares only the uploaded file (reader) with that trainer.
+ */
+function shouldSharePublicLinks() {
+  return envFlag('GOOGLE_DRIVE_PUBLIC_LINKS', false);
+}
+
+function shouldShareTrainerOnFile() {
+  return envFlag('GOOGLE_DRIVE_SHARE_TRAINER_FILE', false);
+}
+
+function shouldShareTrainerOnFolder() {
+  // Default false — folder writer access let trainers open Drive and often see far more than one batch.
+  return envFlag('GOOGLE_DRIVE_SHARE_TRAINER_FOLDER', false);
+}
+
 async function getDriveClient() {
   // Drive is used for Zoom + Meet recording archives — independent of Meet live toggle
   if (!isGoogleConfigured()) {
@@ -67,6 +93,9 @@ async function ensureBatchFolder({ batchId, batchName }) {
 }
 
 async function makeFileReadableWithLink(drive, fileId) {
+  if (!shouldSharePublicLinks()) {
+    return;
+  }
   try {
     await drive.permissions.create({
       fileId,
@@ -133,13 +162,38 @@ async function uploadRecordingFile({
   }
 
   const name = fileName || `${title || 'recording'}${path.extname(filePath) || '.mp4'}`;
+  const ext = (name.includes('.') ? name.split('.').pop() : '').toLowerCase();
+  const docMimes = {
+    pdf: 'application/pdf',
+    doc: 'application/msword',
+    docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    txt: 'text/plain',
+    ppt: 'application/vnd.ms-powerpoint',
+    pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+    xls: 'application/vnd.ms-excel',
+    xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    csv: 'text/csv',
+    zip: 'application/zip',
+    rar: 'application/vnd.rar',
+    '7z': 'application/x-7z-compressed',
+    ipynb: 'application/x-ipynb+json',
+    py: 'text/x-python',
+    json: 'application/json',
+    md: 'text/markdown',
+    mp4: 'video/mp4',
+    webm: 'video/webm'
+  };
+  const resolvedMime = mimeType && mimeType !== 'application/octet-stream'
+    ? mimeType
+    : (docMimes[ext] || mimeType || 'video/mp4');
+
   const res = await drive.files.create({
     requestBody: {
       name,
       parents: [parentId]
     },
     media: {
-      mimeType: mimeType || 'video/mp4',
+      mimeType: resolvedMime,
       body: fs.createReadStream(filePath)
     },
     fields: 'id, name, webViewLink, webContentLink, mimeType, size'
@@ -147,9 +201,12 @@ async function uploadRecordingFile({
 
   const file = res.data;
   await makeFileReadableWithLink(drive, file.id);
-  await shareWithEmails(drive, file.id, shareEmails, 'writer');
-  if (parentId && shareEmails.length) {
-    await shareWithEmails(drive, parentId, shareEmails, 'writer');
+  // Never share the LMS root. Batch-folder writer shares are off by default.
+  if (shouldShareTrainerOnFile() && shareEmails.length) {
+    await shareWithEmails(drive, file.id, shareEmails, 'reader');
+  }
+  if (shouldShareTrainerOnFolder() && parentId && shareEmails.length) {
+    await shareWithEmails(drive, parentId, shareEmails, 'reader');
   }
 
   // Refresh links after permission change
@@ -220,9 +277,11 @@ async function copyFileToBatchFolder({
 
   const file = copied.data;
   await makeFileReadableWithLink(drive, file.id);
-  await shareWithEmails(drive, file.id, shareEmails, 'writer');
-  if (parentId && shareEmails.length) {
-    await shareWithEmails(drive, parentId, shareEmails, 'writer');
+  if (shouldShareTrainerOnFile() && shareEmails.length) {
+    await shareWithEmails(drive, file.id, shareEmails, 'reader');
+  }
+  if (shouldShareTrainerOnFolder() && parentId && shareEmails.length) {
+    await shareWithEmails(drive, parentId, shareEmails, 'reader');
   }
 
   const meta = await drive.files.get({
@@ -341,7 +400,13 @@ async function streamFileToResponse(res, fileId, downloadName) {
     fields: 'id, name, mimeType, size',
     supportsAllDrives: true
   });
-  const name = String(downloadName || meta.data.name || 'download').replace(/[/\\]/g, '_');
+  let name = String(downloadName || meta.data.name || 'download').replace(/[/\\]/g, '_');
+  name = name.replace(/\.(docx|pptx|xlsx|pdf|ipynb|doc|ppt|xls|txt|csv|py|json|md|rtf)\.zip$/i, '.$1');
+  if (!path.extname(name) && meta.data.name && path.extname(meta.data.name)) {
+    name = `${name}${path.extname(meta.data.name)}`;
+  } else if (!path.extname(name) && meta.data.name) {
+    name = meta.data.name;
+  }
   const ascii = name.replace(/[^\x20-\x7E]/g, '_').replace(/["\\]/g, '_');
   const ext = name.split('.').pop()?.toLowerCase() || '';
   const mimeByExt = {
@@ -352,7 +417,25 @@ async function streamFileToResponse(res, fileId, downloadName) {
     ppt: 'application/vnd.ms-powerpoint',
     pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
     xls: 'application/vnd.ms-excel',
-    xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    csv: 'text/csv',
+    txt: 'text/plain',
+    ipynb: 'application/x-ipynb+json',
+    py: 'text/x-python',
+    json: 'application/json',
+    rar: 'application/vnd.rar',
+    '7z': 'application/x-7z-compressed',
+    tar: 'application/x-tar',
+    gz: 'application/gzip',
+    md: 'text/markdown',
+    rtf: 'application/rtf',
+    jpg: 'image/jpeg',
+    jpeg: 'image/jpeg',
+    png: 'image/png',
+    gif: 'image/gif',
+    webp: 'image/webp',
+    mp4: 'video/mp4',
+    webm: 'video/webm'
   };
   let mime =
     mimeByExt[ext] ||

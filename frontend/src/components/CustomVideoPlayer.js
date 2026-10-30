@@ -512,6 +512,12 @@ const CustomVideoPlayer = ({ video, onClose, resumePosition = 0, onProgressUpdat
   const handleEnded = () => { setIsPlaying(false); setCurrentTime(0); };
   const handleError = () => {
     setIsLoading(false);
+    if (firebaseVideoUrl && video.driveId) {
+      setFirebaseVideoUrl(null);
+      setDriveEmbedUrl(`https://drive.google.com/file/d/${video.driveId}/preview`);
+      setHasStartedPlaying(true);
+      return;
+    }
     setError('Error serving video. Please refresh and try again.');
   };
 
@@ -701,6 +707,7 @@ const CustomVideoPlayer = ({ video, onClose, resumePosition = 0, onProgressUpdat
                 if (videoRef.current && Number.isFinite(videoRef.current.duration)) {
                   setDuration(videoRef.current.duration);
                 }
+                setIsLoading(false);
               }}
               onCanPlay={() => {
                 setIsLoading(false);

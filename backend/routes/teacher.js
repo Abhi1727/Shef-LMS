@@ -29,7 +29,7 @@ const materialUpload = multer({
       /^image\//.test(file.mimetype) ||
       /^application\//.test(file.mimetype) ||
       /^text\//.test(file.mimetype) ||
-      /\.(pdf|doc|docx|ppt|pptx|xls|xlsx|zip|rar|txt|csv|md|rtf|mp4|mov|webm|png|jpg|jpeg)$/i.test(
+      /\.(pdf|doc|docx|ppt|pptx|xls|xlsx|zip|rar|7z|tar|gz|txt|csv|md|rtf|ipynb|py|json|sql|mp4|mov|webm|png|jpg|jpeg|webp)$/i.test(
         file.originalname || ''
       );
     if (!ok) return cb(new Error('File type not allowed'));
@@ -1018,8 +1018,10 @@ const teacherNotesStorage = multer.diskStorage({
   },
   filename: (req, file, cb) => {
     const timestamp = Date.now();
-    const safeOriginal = file.originalname.replace(/[^a-zA-Z0-9.\-_/ ]/g, '');
-    cb(null, `${timestamp}-${safeOriginal}`);
+    const safeOriginal = path.basename(file.originalname || 'notes')
+      .replace(/[/\\?%*:|"<>]/g, '_')
+      .replace(/[^a-zA-Z0-9.\-_ ]/g, '');
+    cb(null, `${timestamp}-${safeOriginal || 'notes'}`);
   }
 });
 
@@ -1029,7 +1031,7 @@ const teacherNotesUpload = multer({
     fileSize: NOTES_MAX_FILE_SIZE,
   },
   fileFilter: (req, file, cb) => {
-    // Allow common document types, presentations, spreadsheets, images, and zip files
+    // Allow common document types, presentations, spreadsheets, images, notebooks, code, and archives
     const allowedTypes = [
       'application/pdf',
       'application/msword',
@@ -1046,9 +1048,17 @@ const teacherNotesUpload = multer({
       'image/jpeg',
       'image/png',
       'image/gif',
+      'image/webp',
       'application/json', // browsers often send this for .ipynb
       'application/x-ipynb+json',
-      'text/x-python' // some browsers label notebooks oddly
+      'text/x-python',
+      'application/vnd.rar',
+      'application/x-7z-compressed',
+      'application/x-tar',
+      'application/gzip',
+      'text/markdown',
+      'application/rtf',
+      'application/sql'
     ];
     const ext = String(file.originalname || '')
       .toLowerCase()
@@ -1065,16 +1075,30 @@ const teacherNotesUpload = multer({
       'xlsx',
       'csv',
       'zip',
+      'rar',
+      '7z',
+      'tar',
+      'gz',
       'jpg',
       'jpeg',
       'png',
       'gif',
-      'ipynb'
+      'webp',
+      'ipynb',
+      'py',
+      'json',
+      'sql',
+      'md',
+      'rtf'
     ]);
-    if (allowedTypes.includes(file.mimetype) || allowedExt.has(ext)) {
+    if (
+      allowedTypes.includes(file.mimetype) ||
+      allowedExt.has(ext) ||
+      (file.mimetype && (file.mimetype.startsWith('image/') || file.mimetype.startsWith('text/')))
+    ) {
       cb(null, true);
     } else {
-      cb(new Error('Only document files (PDF, Word, PowerPoint, Excel, CSV, text), images, Jupyter notebooks, and zip files are allowed'), false);
+      cb(new Error('File type not supported. Allowed formats: PDF, Word, PowerPoint, Excel, CSV, text, code (.py, .ipynb), images, and archives (.zip, .rar, .7z)'), false);
     }
   }
 });
@@ -1112,15 +1136,15 @@ router.post('/classroom/youtube-upload', (req, res) => {
 router.use((error, req, res, next) => {
   if (error instanceof multer.MulterError) {
     if (error.code === 'LIMIT_FILE_SIZE') {
-      return res.status(400).json({ message: 'Video file size exceeds 2GB limit' });
+      return res.status(413).json({ message: 'File size exceeds allowed limit' });
     }
     if (error.code === 'LIMIT_UNEXPECTED_FILE') {
       return res.status(400).json({ message: 'Unexpected file field' });
     }
   }
   
-  if (error.message === 'Only video files are allowed') {
-    return res.status(400).json({ message: error.message });
+  if (error.message && (error.message.includes('File type') || error.message.includes('not supported') || error.message.includes('Only video'))) {
+    return res.status(415).json({ message: error.message });
   }
   
   next(error);
@@ -1640,7 +1664,7 @@ router.get('/students/:studentId/progress', async (req, res) => {
 router.put('/videos/:id', validateVideoUpdate, async (req, res) => {
   try {
     const { id } = req.params;
-    const { title, description, duration, youtubeUrl } = req.body;
+    const { title, description, duration, youtubeUrl, driveUrl, driveId, drive } = req.body;
     const teacherId = String(req.user.id);
 
     // Get the video/lecture
@@ -1702,7 +1726,18 @@ router.put('/videos/:id', validateVideoUpdate, async (req, res) => {
       changed.push('duration');
     }
 
-    if (youtubeUrl !== undefined && youtubeUrl !== null && String(youtubeUrl).trim() !== '') {
+    const rawDrive = driveUrl || driveId || drive;
+    if (rawDrive && String(rawDrive).trim() !== '') {
+      const nextDriveId = googleDriveService.extractDriveFileId(rawDrive) || String(rawDrive).trim();
+      if (nextDriveId) {
+        updateData.driveId = nextDriveId;
+        updateData.videoSource = 'drive';
+        updateData.youtubeVideoId = null;
+        updateData.youtubeVideoUrl = null;
+        updateData.youtubeEmbedUrl = null;
+        changed.push('driveId');
+      }
+    } else if (youtubeUrl !== undefined && youtubeUrl !== null && String(youtubeUrl).trim() !== '') {
       const nextVideoId = extractYouTubeVideoId(youtubeUrl);
       if (!nextVideoId) {
         return res.status(400).json({
@@ -1738,6 +1773,13 @@ router.put('/videos/:id', validateVideoUpdate, async (req, res) => {
       updateData,
       { new: true }
     ).lean().exec();
+
+    if (updateData.videoSource === 'drive' && updateData.driveId) {
+      await LiveClass.updateMany(
+        { $or: [{ classroomDocId: id }, { classroomId: id }, { classroomLectureId: id }] },
+        { $set: { driveFileId: updateData.driveId, status: 'ready-drive-fallback' } }
+      );
+    }
 
     // Log the update activity
     try {

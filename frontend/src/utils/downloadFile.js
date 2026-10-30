@@ -59,24 +59,71 @@ export async function downloadAuthenticatedFile(url, { filename, onError } = {})
 
   const header = new Uint8Array(await blob.slice(0, 4).arrayBuffer());
   const looksZip = header[0] === 0x50 && header[1] === 0x4b;
+  const looksPdf = header[0] === 0x25 && header[1] === 0x50 && header[2] === 0x44 && header[3] === 0x46; // %PDF
   const typeProbe = `${blob.type || ''} ${contentType}`;
-  if (/html|text\/html/.test(typeProbe) && !looksZip) {
+  if (/html|text\/html/.test(typeProbe) && !looksZip && !looksPdf) {
     throw new Error('Server returned an error instead of the file');
   }
   // Plain application/json without attachment/notebook usually means an error payload
   if (
     /application\/json/.test(typeProbe) &&
     !looksZip &&
+    !looksPdf &&
     !isAttachment &&
     !notebook
   ) {
     throw new Error('Server returned an error instead of the file');
   }
 
+  // Preserve the original file format:
+  // 1. Start from hinted name or fallback
   let name = hintedName || 'download';
-  if (looksZip && !/\.zip$/i.test(name)) name = `${name}.zip`;
-  if (/\.zip$/i.test(name) && !looksZip) {
-    throw new Error('The zip file is missing or corrupted on the server. Ask your trainer to upload it again.');
+
+  // 2. Clean up any spurious trailing .zip appended to known document/notebook/code formats
+  name = name.replace(/\.(docx|pptx|xlsx|pdf|ipynb|doc|ppt|xls|txt|csv|py|json|md|rtf)\.zip$/i, '.$1');
+
+  // 3. Map MIME types to canonical extensions
+  const mimeToExt = {
+    'application/pdf': '.pdf',
+    'application/msword': '.doc',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document': '.docx',
+    'text/plain': '.txt',
+    'application/vnd.ms-powerpoint': '.ppt',
+    'application/vnd.openxmlformats-officedocument.presentationml.presentation': '.pptx',
+    'application/vnd.ms-excel': '.xls',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': '.xlsx',
+    'text/csv': '.csv',
+    'application/zip': '.zip',
+    'application/x-zip-compressed': '.zip',
+    'image/jpeg': '.jpg',
+    'image/png': '.png',
+    'image/gif': '.gif',
+    'image/webp': '.webp',
+    'application/x-ipynb+json': '.ipynb',
+    'application/json': '.json',
+    'text/x-python': '.py',
+    'application/vnd.rar': '.rar',
+    'application/x-7z-compressed': '.7z',
+    'text/markdown': '.md',
+    'application/rtf': '.rtf'
+  };
+
+  const hasExt = /\.[a-zA-Z0-9]{1,8}$/.test(name);
+  if (!hasExt) {
+    const cleanMime = String(contentType || '').split(';')[0].trim().toLowerCase();
+    const ext = mimeToExt[cleanMime];
+    if (ext) {
+      name = `${name}${ext}`;
+    } else if (looksPdf) {
+      name = `${name}.pdf`;
+    } else if (notebook || (header[0] === 0x7b && (hintedName.includes('ipynb') || contentType.includes('json')))) {
+      name = `${name}.ipynb`;
+    } else if (looksZip) {
+      name = `${name}.zip`;
+    }
+  } else if (/\.zip$/i.test(name) && looksPdf) {
+    // If filename was named .zip but payload is actually a PDF, maintain actual PDF format
+    name = name.replace(/\.zip$/i, '.pdf');
   }
 
   const objectUrl = window.URL.createObjectURL(blob);

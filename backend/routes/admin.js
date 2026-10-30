@@ -14,9 +14,11 @@ const Module = require('../models/Module');
 const Classroom = require('../models/Classroom');
 const { resolveNotesAbsolutePath, streamNotesFile } = require('../utils/notesDownload');
 const { persistNotesToDrive } = require('../services/notesStorage');
+const { sortLessonsNewestFirst } = require('../services/lessonPath');
 const OneToOne = require('../models/OneToOne');
 const OneToOneBatch = require('../models/OneToOneBatch');
 const LiveClass = require('../models/LiveClass');
+const googleDriveService = require('../services/googleDriveService');
 const BatchMaterial = require('../models/BatchMaterial');
 const StudentShare = require('../models/StudentShare');
 const { sendEmail } = require('../services/emailService');
@@ -51,11 +53,21 @@ const contentTypes = {
   'xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
   'csv': 'text/csv',
   'zip': 'application/zip',
+  'rar': 'application/vnd.rar',
+  '7z': 'application/x-7z-compressed',
+  'tar': 'application/x-tar',
+  'gz': 'application/gzip',
   'jpg': 'image/jpeg',
   'jpeg': 'image/jpeg',
   'png': 'image/png',
   'gif': 'image/gif',
-  'ipynb': 'application/x-ipynb+json'
+  'webp': 'image/webp',
+  'ipynb': 'application/x-ipynb+json',
+  'py': 'text/x-python',
+  'json': 'application/json',
+  'md': 'text/markdown',
+  'rtf': 'application/rtf',
+  'sql': 'application/sql'
 };
 
 // Helper function to get content-type based on file extension
@@ -104,16 +116,21 @@ const moduleUpload = multer({
     fileSize: 50 * 1024 * 1024, // 50MB limit for PDF/Word files
   },
   fileFilter: (req, file, cb) => {
-    // Accept PDF and Word files
+    // Accept PDF, Word, and document files
     const allowedTypes = [
       'application/pdf',
       'application/msword',
-      'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'application/vnd.ms-powerpoint',
+      'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+      'text/plain'
     ];
-    if (allowedTypes.includes(file.mimetype)) {
+    const ext = path.extname(file.originalname || '').toLowerCase();
+    const allowedExts = ['.pdf', '.doc', '.docx', '.ppt', '.pptx', '.txt', '.zip', '.md'];
+    if (allowedTypes.includes(file.mimetype) || allowedExts.includes(ext)) {
       cb(null, true);
     } else {
-      cb(new Error('Only PDF and Word documents are allowed'), false);
+      cb(new Error('File type not supported. Only PDF, Word, PowerPoint, and text documents are allowed'), false);
     }
   }
 });
@@ -130,8 +147,10 @@ const notesUploadStorage = multer.diskStorage({
   },
   filename: (req, file, cb) => {
     const timestamp = Date.now();
-    const safeOriginal = file.originalname.replace(/[^a-zA-Z0-9.\-_/ ]/g, '');
-    cb(null, `${timestamp}-${safeOriginal}`);
+    const safeOriginal = path.basename(file.originalname || 'notes')
+      .replace(/[/\\?%*:|"<>]/g, '_')
+      .replace(/[^a-zA-Z0-9.\-_ ]/g, '');
+    cb(null, `${timestamp}-${safeOriginal || 'notes'}`);
   }
 });
 
@@ -141,7 +160,7 @@ const notesUpload = multer({
     fileSize: NOTES_MAX_FILE_SIZE,
   },
   fileFilter: (req, file, cb) => {
-    // Allow common document types, presentations, spreadsheets, images, and zip files
+    // Allow common document types, presentations, spreadsheets, images, notebooks, code, and archives
     const allowedTypes = [
       'application/pdf',
       'application/msword',
@@ -158,9 +177,17 @@ const notesUpload = multer({
       'image/jpeg',
       'image/png',
       'image/gif',
+      'image/webp',
       'application/json',
       'application/x-ipynb+json',
-      'text/x-python'
+      'text/x-python',
+      'application/vnd.rar',
+      'application/x-7z-compressed',
+      'application/x-tar',
+      'application/gzip',
+      'text/markdown',
+      'application/rtf',
+      'application/sql'
     ];
     const ext = String(file.originalname || '')
       .toLowerCase()
@@ -177,16 +204,30 @@ const notesUpload = multer({
       'xlsx',
       'csv',
       'zip',
+      'rar',
+      '7z',
+      'tar',
+      'gz',
       'jpg',
       'jpeg',
       'png',
       'gif',
-      'ipynb'
+      'webp',
+      'ipynb',
+      'py',
+      'json',
+      'sql',
+      'md',
+      'rtf'
     ]);
-    if (allowedTypes.includes(file.mimetype) || allowedExt.has(ext)) {
+    if (
+      allowedTypes.includes(file.mimetype) ||
+      allowedExt.has(ext) ||
+      (file.mimetype && (file.mimetype.startsWith('image/') || file.mimetype.startsWith('text/')))
+    ) {
       cb(null, true);
     } else {
-      cb(new Error('Only document files (PDF, Word, PowerPoint, Excel, CSV, text), images, Jupyter notebooks, and zip files are allowed for notes'), false);
+      cb(new Error('File type not supported. Allowed formats: PDF, Word, PowerPoint, Excel, CSV, text, code (.py, .ipynb), images, and archives (.zip, .rar, .7z)'), false);
     }
   }
 });
@@ -266,15 +307,11 @@ const normalizeBatchId = (v) => (v != null && v !== '' ? String(v) : null);
 // @desc    Get all users (students)
 router.get('/users', async (req, res) => {
   try {
-    const users = await User.find({ role: 'student' }).select('-password').lean().exec();
-    const allBatchIds = new Set();
-    users.forEach((u) => {
-      hydrateEnrollments(u).forEach((e) => allBatchIds.add(e.batchId));
-      if (u.batchId) allBatchIds.add(String(u.batchId));
-    });
-    const batches = allBatchIds.size
-      ? await Batch.find({ _id: { $in: [...allBatchIds] } }).select('name course').lean().exec()
-      : [];
+    // The full batch list is cached and small, so load it alongside students instead of after.
+    const [users, batches] = await Promise.all([
+      User.find({ role: 'student' }).select('-password').lean().exec(),
+      Batch.find({}).select('name course').lean().exec()
+    ]);
     const batchMap = new Map(batches.map((b) => [String(b._id), b]));
 
     const mapped = users.map((u) => {
@@ -825,6 +862,21 @@ router.get('/live-classes', listAdminLiveClasses);
 
 // @route   GET /api/admin/activity
 // @desc    Get activity log (logins, video views, etc.) from ActivityLog + User fallback
+const ATTENDANCE_SUMMARY_CACHE_MS = 5 * 60 * 1000;
+const attendanceSummaryCache = new Map();
+
+async function getCachedAttendanceSummary(batchId) {
+  const hit = attendanceSummaryCache.get(batchId);
+  if (hit && Date.now() - hit.at < ATTENDANCE_SUMMARY_CACHE_MS) return hit.summary;
+  try {
+    const summary = await require('../services/attendanceAnalytics').getBatchAttendanceSummary(batchId);
+    attendanceSummaryCache.set(batchId, { at: Date.now(), summary });
+    return summary;
+  } catch (_) {
+    return null;
+  }
+}
+
 // @route   GET /api/admin/attendance-alerts
 // @desc    Recent consecutive no-join streak alerts for admin overview
 router.get('/attendance-alerts', roleAuth('admin'), async (req, res) => {
@@ -838,18 +890,26 @@ router.get('/attendance-alerts', roleAuth('admin'), async (req, res) => {
       .lean()
       .exec();
 
-    const attendanceAnalytics = require('../services/attendanceAnalytics');
+    const streakBatchIds = [
+      ...new Set(
+        logs
+          .filter((l) => l.action === 'ATTENDANCE_STREAK_ALERT' && l.userId && l.path)
+          .map((l) => String(l.path))
+      )
+    ];
+    const summaries = new Map(
+      await Promise.all(
+        streakBatchIds.map(async (batchId) => [batchId, await getCachedAttendanceSummary(batchId)])
+      )
+    );
+
     const alerts = [];
     for (const l of logs) {
       let engagement = null;
       if (l.action === 'ATTENDANCE_STREAK_ALERT' && l.userId && l.path) {
-        try {
-          const summary = await attendanceAnalytics.getBatchAttendanceSummary(String(l.path));
-          const student = (summary.students || []).find((s) => s.studentId === String(l.userId));
-          engagement = student?.engagement || 'Unengaged';
-        } catch (_) {
-          engagement = 'Unengaged';
-        }
+        const summary = summaries.get(String(l.path));
+        const student = (summary?.students || []).find((s) => s.studentId === String(l.userId));
+        engagement = student?.engagement || 'Unengaged';
       } else if (l.action === 'ENGAGEMENT_NUDGE') {
         const title = String(l.videoTitle || '');
         if (title.startsWith('Unengaged')) engagement = 'Unengaged';
@@ -1682,10 +1742,7 @@ router.get('/classroom', async (req, res) => {
       filtered = mappedVideos.filter((v) => !isUnassigned(v));
     }
 
-    filtered.sort(
-      (a, b) =>
-        new Date(b.date || b.createdAt || 0) - new Date(a.date || a.createdAt || 0)
-    );
+    filtered = sortLessonsNewestFirst(filtered);
 
     const wantsPagination = page != null && page !== '';
     if (!wantsPagination) {
@@ -1877,37 +1934,30 @@ router.post('/classroom/youtube-url', notesUpload.single('notesFile'), async (re
       lectureData.notesFileName = (notesFileName || req.file?.originalname || '').trim() || undefined;
       
       if (req.file) {
-        // Additional validation for zip files
-        if (req.file.mimetype.includes('zip')) {
-          console.log('Processing zip file upload:', {
-            originalname: req.file.originalname,
-            size: req.file.size,
-            mimetype: req.file.mimetype
-          });
-          
-          // Validate zip file size (reasonable limit for zip files)
-          if (req.file.size > NOTES_MAX_FILE_SIZE) {
-            return res.status(413).json({
-              message: 'Zip file too large. Maximum size is 100MB.',
-              code: 'ZIP_FILE_TOO_LARGE'
-            });
-          }
-          
-          // Check if file actually exists on disk
-          const fs = require('fs');
-          const filePath = req.file.path;
-          if (!fs.existsSync(filePath)) {
-            return res.status(500).json({
-              message: 'Zip file was not saved properly.',
-              code: 'ZIP_FILE_NOT_SAVED'
-            });
-          }
-          
-          console.log('Zip file validation passed:', {
-            fileExists: fs.existsSync(filePath),
-            fileSize: req.file.size
+        // Validate file size
+        if (req.file.size > NOTES_MAX_FILE_SIZE) {
+          return res.status(413).json({
+            message: 'File too large. Maximum size is 100MB.',
+            code: 'FILE_TOO_LARGE'
           });
         }
+        
+        // Check if file actually exists on disk
+        const fs = require('fs');
+        const filePath = req.file.path;
+        if (!fs.existsSync(filePath)) {
+          return res.status(500).json({
+            message: 'Uploaded file was not saved properly.',
+            code: 'FILE_NOT_SAVED'
+          });
+        }
+        
+        console.log('Notes file upload processed:', {
+          originalname: req.file.originalname,
+          filename: req.file.filename,
+          size: req.file.size,
+          mimetype: req.file.mimetype
+        });
         
         lectureData.notesFilePath = `/uploads/notes/${req.file.filename}`;
         const driveNotes = await persistNotesToDrive({
@@ -2059,11 +2109,16 @@ router.put('/classroom/:id', notesUpload.single('notesFile'), async (req, res) =
       notesFileName
     } = req.body;
 
+    const rawDrive = req.body.driveUrl || driveId || req.body.drive;
+    const resolvedDriveId = rawDrive
+      ? (googleDriveService.extractDriveFileId(rawDrive) || String(rawDrive).trim())
+      : null;
+
     // Validate that at least one video source is provided
-    const hasVideoSource = zoomUrl || driveId || youtubeVideoUrl || videoSource;
+    const hasVideoSource = zoomUrl || resolvedDriveId || youtubeVideoUrl || videoSource;
     if (!hasVideoSource) {
       return res.status(400).json({ 
-        message: 'A video source is required. Please provide either a Zoom URL, Drive ID, or YouTube URL.' 
+        message: 'A video source is required. Please provide either a Zoom URL, Drive ID/URL, or YouTube URL.' 
       });
     }
 
@@ -2114,8 +2169,8 @@ router.put('/classroom/:id', notesUpload.single('notesFile'), async (req, res) =
       videoData.youtubeVideoId = null;
       videoData.youtubeVideoUrl = null;
       videoData.youtubeEmbedUrl = null;
-    } else if (driveId && !(youtubeVideoUrl || videoSource === 'youtube-url')) {
-      videoData.driveId = driveId;
+    } else if (resolvedDriveId && (videoSource === 'drive' || req.body.forceDrive || (!youtubeVideoUrl && videoSource !== 'youtube-url'))) {
+      videoData.driveId = resolvedDriveId;
       videoData.videoSource = 'drive';
       videoData.zoomUrl = null;
       videoData.zoomPasscode = null;
@@ -2127,6 +2182,7 @@ router.put('/classroom/:id', notesUpload.single('notesFile'), async (req, res) =
       if (youtubeVideoId !== undefined) videoData.youtubeVideoId = youtubeVideoId;
       if (youtubeVideoUrl !== undefined) videoData.youtubeVideoUrl = youtubeVideoUrl;
       if (youtubeEmbedUrl !== undefined) videoData.youtubeEmbedUrl = youtubeEmbedUrl;
+      if (resolvedDriveId) videoData.driveId = resolvedDriveId;
       videoData.zoomUrl = null;
       videoData.zoomPasscode = null;
       // Keep existing Drive archive link if present; do not wipe on YouTube metadata edits.
@@ -2169,12 +2225,116 @@ router.put('/classroom/:id', notesUpload.single('notesFile'), async (req, res) =
       );
     }
 
-    await Classroom.findByIdAndUpdate(id, videoData, { new: true }).exec();
+    const updatedLecture = await Classroom.findByIdAndUpdate(id, videoData, { new: true }).exec();
 
-    res.json({ message: 'Video updated successfully' });
+    if (videoData.videoSource === 'drive' && videoData.driveId) {
+      await LiveClass.updateMany(
+        { $or: [{ classroomDocId: id }, { classroomId: id }, { classroomLectureId: id }] },
+        { $set: { driveFileId: videoData.driveId, status: 'ready-drive-fallback' } }
+      );
+    }
+
+    res.json({ message: 'Video updated successfully', lecture: updatedLecture });
   } catch (err) {
     console.error('Error updating classroom video:', err);
     res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// @route   POST /api/admin/classroom/:id/set-drive
+// @desc    Update classroom video to Google Drive playback link/id (e.g. when YouTube deletes video)
+router.post('/classroom/:id/set-drive', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const raw = req.body.driveUrl || req.body.driveId || req.body.drive;
+    if (!raw) {
+      return res.status(400).json({ message: 'driveUrl or driveId is required' });
+    }
+    const resolvedId = googleDriveService.extractDriveFileId(raw) || String(raw).trim();
+    if (!resolvedId) {
+      return res.status(400).json({ message: 'Could not extract Google Drive file ID from link' });
+    }
+    const videoData = {
+      driveId: resolvedId,
+      videoSource: 'drive',
+      youtubeVideoId: null,
+      youtubeVideoUrl: null,
+      youtubeEmbedUrl: null,
+      studentVisible: true,
+      updatedAt: new Date().toISOString()
+    };
+    const updated = await Classroom.findByIdAndUpdate(id, { $set: videoData }, { new: true }).exec();
+    if (!updated) {
+      return res.status(404).json({ message: 'Lecture not found' });
+    }
+    await LiveClass.updateMany(
+      { $or: [{ classroomDocId: id }, { classroomId: id }, { classroomLectureId: id }] },
+      { $set: { driveFileId: resolvedId, status: 'ready-drive-fallback' } }
+    );
+    res.json({
+      success: true,
+      message: 'Classroom recording updated to Google Drive fallback successfully',
+      lecture: updated
+    });
+  } catch (err) {
+    console.error('Error updating classroom to drive:', err);
+    res.status(500).json({ message: err.message || 'Server error' });
+  }
+});
+
+// @route   POST /api/admin/classroom/fallback-deleted-youtube
+// @desc    Scan for deleted YouTube videos and switch them to Google Drive fallback
+router.post('/classroom/fallback-deleted-youtube', async (req, res) => {
+  try {
+    const { google } = require('googleapis');
+    const youtubeService = require('../services/youtubeService');
+    const yt = google.youtube({ version: 'v3', auth: youtubeService.oauth2Client });
+
+    const classrooms = await Classroom.find({
+      youtubeVideoId: { $nin: ['', null] },
+      driveId: { $nin: ['', null] }
+    }).lean().exec();
+
+    const results = [];
+    for (const room of classrooms) {
+      let isAlive = false;
+      try {
+        const check = await yt.videos.list({ part: ['status'], id: [room.youtubeVideoId] });
+        isAlive = Boolean(check.data.items?.length);
+      } catch (checkErr) {
+        isAlive = true; // don't flag if check itself failed
+      }
+
+      if (!isAlive) {
+        if (!req.body.dryRun) {
+          await Classroom.findByIdAndUpdate(room._id, {
+            $set: {
+              videoSource: 'drive',
+              youtubeVideoId: null,
+              youtubeVideoUrl: null,
+              youtubeEmbedUrl: null,
+              studentVisible: true,
+              updatedAt: new Date().toISOString()
+            }
+          });
+          await LiveClass.updateMany(
+            { $or: [{ classroomDocId: room._id }, { classroomId: room._id }, { classroomLectureId: room._id }] },
+            { $set: { driveFileId: room.driveId, status: 'ready-drive-fallback' } }
+          );
+        }
+        results.push({ id: room._id, title: room.title, driveId: room.driveId, action: req.body.dryRun ? 'detected' : 'switched_to_drive' });
+      }
+    }
+
+    res.json({
+      success: true,
+      count: results.length,
+      dryRun: Boolean(req.body.dryRun),
+      switched: results
+    });
+  } catch (err) {
+    console.error('Error falling back deleted YouTube videos:', err);
+    res.status(500).json({ message: err.message || 'Server error' });
   }
 });
 

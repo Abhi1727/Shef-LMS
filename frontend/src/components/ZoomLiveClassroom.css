@@ -208,11 +208,18 @@
   align-items: center;
   padding: 0.45rem 0.85rem;
   border-radius: 8px;
+  border: none;
   background: var(--zl-zoom);
   color: #fff;
   font-size: 0.82rem;
   font-weight: 600;
   text-decoration: none;
+  cursor: pointer;
+  transition: opacity 0.15s ease;
+}
+
+.zoom-live__fallback:hover {
+  opacity: 0.92;
 }
 
 .zoom-live__stage {

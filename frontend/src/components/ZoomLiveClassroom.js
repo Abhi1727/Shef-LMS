@@ -9,18 +9,27 @@ import '@zoom/meetingsdk/dist/css/react-select.css';
 import './ZoomLiveClassroom.css';
 
 function formatZoomError(err) {
-  if (!err) return 'Failed to join classroom';
+  if (!err) return 'Couldn’t connect to the classroom';
   if (typeof err === 'string') return err;
+  const code = err.errorCode ?? err.code;
+  const raw = String(err.reason || err.errorMessage || err.message || '');
+  // Common Meeting SDK / Zoom client codes for host not present / meeting ended
+  if (code === 3000 || /meeting.*not.*start|not started|waiting for host/i.test(raw)) {
+    return 'Your trainer is not in the classroom yet. Wait a moment, then tap Try again.';
+  }
+  if (code === 3001 || /meeting.*not.*exist|has ended|meeting is over/i.test(raw)) {
+    return 'This Zoom room was closed. Ask your trainer to open the class again from LMS.';
+  }
   if (err.reason) return String(err.reason);
   if (err.errorMessage) return String(err.errorMessage);
   if (err.message) return String(err.message);
-  if (err.errorCode != null && err.errorMessage) {
-    return `${err.errorMessage} (${err.errorCode})`;
+  if (code != null && err.errorMessage) {
+    return `${err.errorMessage} (${code})`;
   }
   try {
     return JSON.stringify(err);
   } catch (_) {
-    return 'Failed to join classroom';
+    return 'Couldn’t connect to the classroom';
   }
 }
 
@@ -90,6 +99,7 @@ export default function ZoomLiveClassroom({ user }) {
   const [markedPresent, setMarkedPresent] = useState(false);
   const [switching, setSwitching] = useState(false);
   const [switchNote, setSwitchNote] = useState('');
+  const [retryKey, setRetryKey] = useState(0);
   const asHost = searchParams.get('host') === '1';
   const isStudent = user?.role === 'student';
 
@@ -189,8 +199,12 @@ export default function ZoomLiveClassroom({ user }) {
           password: data.sdk?.password || ''
         };
 
+        if (data.message && data.zoomRoomStatus === 'waiting' && isStudent) {
+          setStatus(data.message);
+        }
+
         if (!data.embedded || !data.sdk?.signature) {
-          setError(data.sdkError || 'Embedded Zoom is not available for this class yet.');
+          setError(data.sdkError || data.message || 'Embedded Zoom is not available for this class yet.');
           setPhase('error');
           setStatus('');
           return;
@@ -200,11 +214,13 @@ export default function ZoomLiveClassroom({ user }) {
         setIsHost(hostSession);
 
         setStatus(
-          data.markedPresent
-            ? 'Attendance recorded. Connecting…'
-            : hostSession
-              ? 'Starting as host…'
-              : 'Connecting to class…'
+          data.zoomRoomStatus === 'waiting' && !hostSession
+            ? 'Waiting for your trainer to enter Zoom…'
+            : data.markedPresent
+              ? 'Attendance recorded. Connecting…'
+              : hostSession
+                ? 'Starting as host…'
+                : 'Connecting to class…'
         );
 
         ensureZoomDomRoots();
@@ -283,9 +299,15 @@ export default function ZoomLiveClassroom({ user }) {
         }
       }
     };
-  }, [meetingId, asHost, user?.name, user?.email, user?.role]);
+  }, [meetingId, asHost, user?.name, user?.email, user?.role, retryKey, isStudent]);
 
   const roleLabel = isHost ? 'Host' : isStudent ? 'Student' : 'Participant';
+  const retryJoin = useCallback(() => {
+    setError('');
+    setPhase('loading');
+    setStatus('Reconnecting…');
+    setRetryKey((k) => k + 1);
+  }, []);
 
   const workspaceSwitcher =
     fallbackUrl && typeof document !== 'undefined'
@@ -373,6 +395,9 @@ export default function ZoomLiveClassroom({ user }) {
             <h2>Couldn’t open classroom</h2>
             <p>{error}</p>
             <div className="zoom-live__error-actions">
+              <button type="button" className="zoom-live__fallback" onClick={retryJoin}>
+                Try again
+              </button>
               <button type="button" className="zoom-live__leave" onClick={goBack}>
                 Back to LMS
               </button>

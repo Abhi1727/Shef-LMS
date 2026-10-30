@@ -131,15 +131,24 @@ async function ensureClassroomFromLiveClass(
       lecture.order = await lessonPath.nextOrderForBatch(String(doc.batchId));
     }
     if (hasPlayableRecording) {
-      lecture.studentVisible = true;
+      // Do not re-publish lectures we intentionally hid (waste / short stubs).
+      const wasteHidden =
+        (doc.wasteSessionFlagged && !doc.wasteSessionDismissedAt) ||
+        doc.skipRecordingUpload === true;
+      if (!wasteHidden) {
+        lecture.studentVisible = true;
+      }
     }
     await lecture.save();
   } else {
     const order = await lessonPath.nextOrderForBatch(String(doc.batchId));
+    const wasteHidden =
+      (doc.wasteSessionFlagged && !doc.wasteSessionDismissedAt) ||
+      doc.skipRecordingUpload === true;
     lecture = await Classroom.create({
       ...payload,
       order,
-      studentVisible: hasPlayableRecording,
+      studentVisible: hasPlayableRecording && !wasteHidden,
       uploadedBy: String(doc.teacherId || doc.createdBy || ''),
       createdAt: new Date()
     });

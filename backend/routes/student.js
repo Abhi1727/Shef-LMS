@@ -28,7 +28,7 @@ const shareUpload = multer({
       /^image\//.test(file.mimetype) ||
       /^application\//.test(file.mimetype) ||
       /^text\//.test(file.mimetype) ||
-      /\.(pdf|doc|docx|ppt|pptx|xls|xlsx|zip|rar|txt|csv|md|rtf|mp4|mov|webm|png|jpg|jpeg)$/i.test(
+      /\.(pdf|doc|docx|ppt|pptx|xls|xlsx|zip|rar|7z|tar|gz|txt|csv|md|rtf|ipynb|py|json|sql|mp4|mov|webm|png|jpg|jpeg|webp)$/i.test(
         file.originalname || ''
       );
     if (!ok) return cb(new Error('File type not allowed'));

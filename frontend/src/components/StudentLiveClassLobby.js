@@ -68,13 +68,23 @@ export default function StudentLiveClassLobby({ compact = false }) {
 
   const visible = meetings
     .filter((m) => sessionPhase(m, now).phase !== 'ended')
-    .sort((a, b) => new Date(a.scheduledStart || 0) - new Date(b.scheduledStart || 0));
+    .sort((a, b) => {
+      if (a.isPrimaryBatch && !b.isPrimaryBatch) return -1;
+      if (!a.isPrimaryBatch && b.isPrimaryBatch) return 1;
+      return new Date(a.scheduledStart || 0) - new Date(b.scheduledStart || 0);
+    });
 
   const featured =
     visible.find((m) => {
       const p = sessionPhase(m, now);
+      return (p.phase === 'live' || p.phase === 'soon') && m.isPrimaryBatch;
+    }) ||
+    visible.find((m) => {
+      const p = sessionPhase(m, now);
       return p.phase === 'live' || p.phase === 'soon';
-    }) || visible[0];
+    }) ||
+    visible.find((m) => m.isPrimaryBatch) ||
+    visible[0];
 
   const handleJoin = async (m, { preferWorkspace = false } = {}) => {
     setJoiningId(m.id);
@@ -105,10 +115,14 @@ export default function StudentLiveClassLobby({ compact = false }) {
         userName: data.sdk?.userName || ''
       });
       if (opened.mode === 'none') {
-        throw new Error('Join link unavailable. Ask your trainer to start the class.');
+        throw new Error(
+          data.message || 'Join link unavailable. Ask your trainer to start the class.'
+        );
       }
       setJoinNote(
-        data.markedPresent
+        data.message
+          ? data.message
+          : data.markedPresent
           ? opened.mode === 'workspace' || opened.mode === 'workspace-or-embedded' || opened.mode === 'workspace-or-web'
             ? 'You’re marked present. Opening Zoom Workspace (or classroom in this tab)…'
             : opened.mode === 'embedded'

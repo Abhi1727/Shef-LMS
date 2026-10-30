@@ -8,8 +8,8 @@ import { formatScheduleForStudentUsZones } from '../utils/timezoneUtils';
 import { formatDateForComponent } from '../utils/dateUtils';
 import { ToastContainer, showToast } from './Toast';
 import AccountMenu from './AccountMenu';
-import DirectChatPanel from './DirectChatPanel';
 import StudentLiveClassLobby from './StudentLiveClassLobby';
+import DirectChatPanel from './DirectChatPanel';
 import StudentScheduleCalendar, { googleCalendarUrl } from './StudentScheduleCalendar';
 import StudentMaterialsPanel from './StudentMaterialsPanel';
 import ResponsiveShellNav from './ResponsiveShellNav';
@@ -17,6 +17,7 @@ import './Dashboard.css';
 import '../styles/RoleShell.css';
 import { getApiBaseUrl } from '../utils/apiBase';
 import { downloadAuthenticatedFile } from '../utils/downloadFile';
+import { sortLecturesNewestFirst } from '../utils/lectureSort';
 
 const STUDENT_NAV_ITEMS = [
   { id: 'overview', label: 'Home' },
@@ -1111,24 +1112,7 @@ const Dashboard = ({ user, onLogout }) => {
             ? raw.videos
             : [];
 
-        const getVideoSortTime = (v) => {
-          if (v.isOneToOne && v.classDate) {
-            try {
-              return new Date(v.classDate.split('-').reverse().join('-')).getTime();
-            } catch (e) {
-              /* fallback */
-            }
-          }
-          return new Date(v.date || v.createdAt || v.addedAt || 0).getTime();
-        };
-        // Latest session first (match trainer/admin Classroom); order is tie-break only.
-        const sortedVideos = [...videos].sort((a, b) => {
-          const batchCmp = String(a.batchId || '').localeCompare(String(b.batchId || ''));
-          if (batchCmp !== 0) return batchCmp;
-          const dateCmp = getVideoSortTime(b) - getVideoSortTime(a);
-          if (dateCmp !== 0) return dateCmp;
-          return (Number(b.order) || 0) - (Number(a.order) || 0);
-        });
+        const sortedVideos = sortLecturesNewestFirst(videos);
 
         // Hide support/utility Zoom rooms from students (e.g. personal meeting rooms)
         const filteredVideos = sortedVideos.filter((v) => {

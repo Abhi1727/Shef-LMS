@@ -55,6 +55,11 @@ function sortLessons(lectures) {
   });
 }
 
+/** Display order for every role: latest class first (unlock logic still uses sortLessons). */
+function sortLessonsNewestFirst(lectures) {
+  return sortLessons(lectures).reverse();
+}
+
 async function getWatchedVideoIds(userId) {
   if (!userId) return new Set();
   const ids = await ActivityLog.distinct('videoId', {
@@ -270,6 +275,7 @@ module.exports = {
   isStudentVisible,
   nextOrderForBatch,
   sortLessons,
+  sortLessonsNewestFirst,
   getWatchedVideoIds,
   buildLessonPath,
   buildLessonPathsForBatches,

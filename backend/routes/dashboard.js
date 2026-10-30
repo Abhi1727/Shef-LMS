@@ -15,9 +15,7 @@ const {
 router.use(auth);
 
 function sortVideosNewestFirst(videos) {
-  return videos.sort(
-    (a, b) => new Date(b.date || b.createdAt || 0) - new Date(a.date || a.createdAt || 0)
-  );
+  return lessonPath.sortLessonsNewestFirst(videos);
 }
 
 // @route   GET /api/dashboard/classroom

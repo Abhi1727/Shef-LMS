@@ -113,21 +113,26 @@ function validateNotesUpload(req, res, next) {
       });
     }
     
-    // Check file size (10MB limit)
-    const maxSize = 10 * 1024 * 1024;
+    // Check file size (100MB limit)
+    const maxSize = 100 * 1024 * 1024;
     if (req.file.size > maxSize) {
-      return res.status(400).json({ 
+      return res.status(413).json({ 
         success: false, 
-        message: 'File size cannot exceed 10MB' 
+        message: 'File size cannot exceed 100MB' 
       });
     }
     
     // Check file type
-    const allowedTypes = ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
-    if (!allowedTypes.includes(req.file.mimetype)) {
-      return res.status(400).json({ 
+    const allowedExts = [
+      'pdf', 'doc', 'docx', 'txt', 'ppt', 'pptx', 'xls', 'xlsx', 'csv',
+      'zip', 'rar', '7z', 'tar', 'gz', 'jpg', 'jpeg', 'png', 'gif', 'webp',
+      'ipynb', 'py', 'json', 'sql', 'md', 'rtf'
+    ];
+    const ext = String(req.file.originalname || '').toLowerCase().split('.').pop();
+    if (!allowedExts.includes(ext) && !req.file.mimetype?.startsWith('image/') && !req.file.mimetype?.startsWith('text/')) {
+      return res.status(415).json({ 
         success: false, 
-        message: 'Only PDF, DOC, and DOCX files are allowed' 
+        message: 'File type not supported. Allowed formats: PDF, Word, PowerPoint, Excel, CSV, text, code, images, and archives' 
       });
     }
     

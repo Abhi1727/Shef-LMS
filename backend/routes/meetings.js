@@ -33,6 +33,7 @@ const {
   applyWasteSessionFlags,
   groupSiblingsByTeacherBatch
 } = require('../utils/wasteSessionDetection');
+const { sessionStillLive } = require('../utils/teacherPresence');
 
 /** Throttle expensive session-guard work on meetings list polls (Firestore cost). */
 const SESSION_GUARD_MIN_MS = 5 * 60 * 1000;
@@ -70,7 +71,7 @@ const sessionMaterialUpload = multer({
       /^image\//.test(file.mimetype) ||
       /^application\//.test(file.mimetype) ||
       /^text\//.test(file.mimetype) ||
-      /\.(pdf|doc|docx|ppt|pptx|xls|xlsx|zip|rar|txt|csv|md|rtf|mp4|mov|webm|png|jpg|jpeg)$/i.test(
+      /\.(pdf|doc|docx|ppt|pptx|xls|xlsx|zip|rar|7z|tar|gz|txt|csv|md|rtf|ipynb|py|json|sql|mp4|mov|webm|png|jpg|jpeg|webp)$/i.test(
         file.originalname || ''
       );
     if (!ok) return cb(new Error('File type not allowed for session materials'));
@@ -169,7 +170,8 @@ function getSessionJoinLink(doc, { host = false } = {}) {
   return withMeetJoinDefaults(o.meetLink || '', { host });
 }
 
-function serializeMeeting(doc, { includeMeetLink = true } = {}) {
+function serializeMeeting(doc, options = {}) {
+  const { includeMeetLink = true, primaryBatchId = null } = options;
   const o = doc.toObject ? doc.toObject() : doc;
   const id = String(o._id || o.id);
   const start = o.scheduledStart ? new Date(o.scheduledStart) : null;
@@ -221,6 +223,7 @@ function serializeMeeting(doc, { includeMeetLink = true } = {}) {
     title: o.title,
     description: o.description || '',
     batchId: o.batchId || '',
+    isPrimaryBatch: Boolean(options.primaryBatchId && String(o.batchId) === String(options.primaryBatchId)),
     unassigned: !o.batchId,
     skipRecordingUpload,
     teacherId: o.teacherId || '',
@@ -829,6 +832,7 @@ router.get('/', async (req, res) => {
       query.status = { $ne: 'cancelled' };
     }
 
+    let studentUser = null;
     if (isAdmin(role)) {
       if (batchIdFilter) query.batchId = batchIdFilter;
     } else if (isTeacherRole(role)) {
@@ -842,8 +846,8 @@ router.get('/', async (req, res) => {
         query.batchId = batchIdFilter;
       }
     } else if (isStudentRole(role)) {
-      const user = await User.findById(userId).select('batchId oneToOneBatchId').lean().exec();
-      const batchIds = [user?.batchId, user?.oneToOneBatchId].filter(Boolean).map(String);
+      studentUser = await User.findById(userId).select('batchId oneToOneBatchId').lean().exec();
+      const batchIds = [studentUser?.batchId, studentUser?.oneToOneBatchId].filter(Boolean).map(String);
 
       const memberBatches = await Batch.find({ students: userId }).select('_id').lean().exec();
       memberBatches.forEach((b) => batchIds.push(String(b._id)));
@@ -868,9 +872,20 @@ router.get('/', async (req, res) => {
       );
     }
     const enriched = attachWasteAnalysis(docs);
-    const meetings = enriched.map((d) => serializeMeeting(d, { includeMeetLink }));
+    const primaryBatchId = studentUser?.batchId ? String(studentUser.batchId) : '';
+    const meetings = enriched.map((d) => serializeMeeting(d, { includeMeetLink, primaryBatchId }));
 
-    res.json({ success: true, meetings, liveClasses: meetings });
+    if (isStudentRole(role) && primaryBatchId) {
+      meetings.sort((a, b) => {
+        const aPrimary = String(a.batchId) === primaryBatchId;
+        const bPrimary = String(b.batchId) === primaryBatchId;
+        if (aPrimary && !bPrimary) return -1;
+        if (!aPrimary && bPrimary) return 1;
+        return new Date(a.scheduledStart || 0) - new Date(b.scheduledStart || 0);
+      });
+    }
+
+    res.json({ success: true, meetings });
   } catch (error) {
     console.error('GET /api/meetings error:', error);
     res.status(500).json({ success: false, message: 'Failed to list meetings' });
@@ -902,6 +917,56 @@ router.get('/:id', async (req, res) => {
     res.status(500).json({ success: false, message: 'Failed to load meeting' });
   }
 });
+
+/** A second Start for the same batch within this window rejoins the running room. */
+const REUSE_RUNNING_SESSION_MS = 3 * 60 * 60 * 1000;
+
+async function findRunningBatchSession(teacherId, batchId, provider) {
+  const docs = await LiveClass.find({ teacherId: String(teacherId), status: 'live' }).exec();
+  const now = Date.now();
+  return (
+    docs
+      .filter((d) => String(d.batchId || '') === batchId)
+      .filter((d) => getSessionProvider(d) === provider && sessionStillLive(d, now))
+      .filter((d) => {
+        const startedMs = new Date(d.actualStartedAt || d.scheduledStart || 0).getTime();
+        return startedMs && now - startedMs < REUSE_RUNNING_SESSION_MS;
+      })
+      .sort((a, b) => new Date(b.actualStartedAt || 0) - new Date(a.actualStartedAt || 0))[0] || null
+  );
+}
+
+// Starting a new room while students sit in the old one splits the class and its recording.
+async function respondWithRunningSession(res, doc, user, conf) {
+  const provider = getSessionProvider(doc);
+  if (provider === 'zoom' && conf.zoomUserId && doc.zoomMeetingId) {
+    doc.zoomStartUrl = await zoomService.getHostStartUrl(conf.zoomUserId, doc.zoomMeetingId, {
+      password: doc.zoomPassword || ''
+    });
+  }
+  doc.updatedAt = new Date();
+  await doc.save();
+
+  const hostJoin = getSessionJoinLink(doc, { host: true });
+  const sdkBundle =
+    provider === 'zoom'
+      ? await buildZoomSdkPayload(doc, user, { wantHost: true })
+      : { sdk: null, sdkError: '', embedded: false };
+  return res.status(200).json({
+    success: true,
+    reusedRunningSession: true,
+    message: 'This batch already has a live class. Rejoining the same room so students stay together.',
+    meeting: serializeMeeting(doc),
+    meetLink: hostJoin,
+    startUrl: hostJoin,
+    joinUrl: hostJoin,
+    conferenceProvider: provider,
+    embedded: sdkBundle.embedded,
+    sdk: sdkBundle.sdk,
+    sdkError: sdkBundle.sdkError || undefined,
+    closedPreviousSessions: []
+  });
+}
 
 // @route   POST /api/meetings
 router.post('/', async (req, res) => {
@@ -1016,6 +1081,12 @@ router.post('/', async (req, res) => {
     let closedPreviousSessions = [];
     if (wantsStartNow) {
       await cleanupStaleSessions({ teacherId });
+      if (!unassigned) {
+        const running = await findRunningBatchSession(teacherId, String(batchId), effectiveProvider);
+        if (running) {
+          return respondWithRunningSession(res, running, req.user, conf);
+        }
+      }
       closedPreviousSessions = await closePreviousLiveSessionsForTeacher(teacherId);
     }
 
@@ -1038,8 +1109,9 @@ router.post('/', async (req, res) => {
         });
       }
       try {
-        // Always use the trainer PMI so students join the same Zoom room every class.
-        const usePMR = true;
+        // Unique meeting per class by default (avoids shared-PMI recording mix-ups).
+        // Set ZOOM_USE_PMR=true only to restore the old single-room behaviour.
+        const usePMR = zoomConfig.shouldUsePmr();
         const created = await zoomService.createMeeting({
           zoomUserId: conf.zoomUserId,
           topic: String(title).trim(),
@@ -1053,13 +1125,20 @@ router.post('/', async (req, res) => {
         zoomMeetingId = String(created.meeting.meetingId || created.meeting.id || '');
         zoomLink = created.meeting.joinUrl || '';
         zoomPassword = created.meeting.password || '';
-        zoomIsPmr = Boolean(created.meeting.isPMR);
+        zoomIsPmr = Boolean(created.meeting.isPMR) || usePMR;
         zoomStartUrl = await zoomService.getHostStartUrl(conf.zoomUserId, zoomMeetingId, {
           password: zoomPassword
         });
         conferenceProvider = 'zoom';
       } catch (zoomErr) {
         console.error('Zoom createMeeting failed:', zoomErr?.message || zoomErr);
+        if (/user does not exist|user not exist|1001/i.test(String(zoomErr?.message || ''))) {
+          return res.status(502).json({
+            success: false,
+            message: `Your Zoom account (${conf.zoomUserId}) is not active in the Sky States Zoom account yet. Accept the Zoom invite email, or ask the admin to update your Zoom ID.`,
+            code: 'ZOOM_USER_NOT_IN_ACCOUNT'
+          });
+        }
         return res.status(502).json({
           success: false,
           message: zoomErr.message || 'Failed to create Zoom meeting',
@@ -1284,18 +1363,19 @@ router.post('/:id/start', async (req, res) => {
             code: 'ZOOM_USER_REQUIRED'
           });
         }
-        const pmr = await zoomService.createMeeting({
+        const usePMR = zoomConfig.shouldUsePmr();
+        const created = await zoomService.createMeeting({
           zoomUserId: conf.zoomUserId,
           topic: doc.title || 'Live Class',
           startTime: doc.scheduledStart || new Date(),
           duration: parseDurationMinutes(doc.duration) || SCHEDULED_JOIN_WINDOW_MINUTES,
           timezone: doc.timezone || 'Asia/Kolkata',
-          usePMR: true
+          usePMR
         });
-        doc.zoomMeetingId = String(pmr.meeting.meetingId || pmr.meeting.id || '');
-        doc.zoomLink = pmr.meeting.joinUrl || '';
-        doc.zoomPassword = pmr.meeting.password || '';
-        doc.zoomIsPmr = true;
+        doc.zoomMeetingId = String(created.meeting.meetingId || created.meeting.id || '');
+        doc.zoomLink = created.meeting.joinUrl || '';
+        doc.zoomPassword = created.meeting.password || '';
+        doc.zoomIsPmr = Boolean(created.meeting.isPMR) || usePMR;
         doc.zoomStartUrl = await zoomService.getHostStartUrl(conf.zoomUserId, doc.zoomMeetingId, {
           password: doc.zoomPassword || ''
         });
@@ -1314,6 +1394,8 @@ router.post('/:id/start', async (req, res) => {
       doc.teacherId = String(req.user.id);
       if (req.user.name) doc.teacherName = req.user.name;
     }
+    const priorStatus = doc.status;
+    const hadStartedBefore = Boolean(doc.actualStartedAt);
     if (doc.status === 'scheduled' || doc.status === 'live') {
       const now = new Date();
       const scheduledStart = doc.scheduledStart ? new Date(doc.scheduledStart) : null;
@@ -1339,21 +1421,37 @@ router.post('/:id/start', async (req, res) => {
             code: 'ZOOM_USER_REQUIRED'
           });
         }
-        const pmr = await zoomService.createMeeting({
-          zoomUserId: conf.zoomUserId,
-          topic: doc.title || 'Live Class',
-          startTime: doc.scheduledStart || new Date(),
-          duration: parseDurationMinutes(doc.duration) || SCHEDULED_JOIN_WINDOW_MINUTES,
-          timezone: doc.timezone || 'Asia/Kolkata',
-          usePMR: true
-        });
-        doc.zoomMeetingId = String(pmr.meeting.meetingId || pmr.meeting.id || doc.zoomMeetingId || '');
-        doc.zoomLink = pmr.meeting.joinUrl || doc.zoomLink || '';
-        doc.zoomPassword = pmr.meeting.password || doc.zoomPassword || '';
-        doc.zoomIsPmr = true;
-        doc.zoomStartUrl = await zoomService.getHostStartUrl(conf.zoomUserId, doc.zoomMeetingId, {
-          password: doc.zoomPassword || ''
-        });
+        const usePMR = zoomConfig.shouldUsePmr();
+        const isHostReconnect =
+          priorStatus === 'live' && hadStartedBefore && doc.zoomMeetingId && doc.zoomLink;
+        const canReuseUnique =
+          !usePMR && doc.zoomMeetingId && !doc.zoomIsPmr && doc.zoomLink;
+
+        // Reconnect after drop: keep the same meeting. Unique scheduled rooms: reuse.
+        // Legacy PMI + unique mode on first start: create a fresh unique meeting.
+        if (isHostReconnect || canReuseUnique) {
+          doc.zoomStartUrl = await zoomService.getHostStartUrl(conf.zoomUserId, doc.zoomMeetingId, {
+            password: doc.zoomPassword || ''
+          });
+        } else {
+          const created = await zoomService.createMeeting({
+            zoomUserId: conf.zoomUserId,
+            topic: doc.title || 'Live Class',
+            startTime: doc.scheduledStart || new Date(),
+            duration: parseDurationMinutes(doc.duration) || SCHEDULED_JOIN_WINDOW_MINUTES,
+            timezone: doc.timezone || 'Asia/Kolkata',
+            usePMR
+          });
+          doc.zoomMeetingId = String(
+            created.meeting.meetingId || created.meeting.id || doc.zoomMeetingId || ''
+          );
+          doc.zoomLink = created.meeting.joinUrl || doc.zoomLink || '';
+          doc.zoomPassword = created.meeting.password || doc.zoomPassword || '';
+          doc.zoomIsPmr = Boolean(created.meeting.isPMR) || usePMR;
+          doc.zoomStartUrl = await zoomService.getHostStartUrl(conf.zoomUserId, doc.zoomMeetingId, {
+            password: doc.zoomPassword || ''
+          });
+        }
         doc.conferenceProvider = 'zoom';
       }
       await doc.save();
@@ -1381,6 +1479,7 @@ router.post('/:id/start', async (req, res) => {
       provider === 'zoom'
         ? await buildZoomSdkPayload(doc, req.user, { wantHost: true })
         : { sdk: null, sdkError: '', embedded: false };
+    const wasReconnect = priorStatus === 'live' && hadStartedBefore;
     res.json({
       success: true,
       meeting: serializeMeeting(doc),
@@ -1391,13 +1490,16 @@ router.post('/:id/start', async (req, res) => {
       embedded: sdkBundle.embedded,
       sdk: sdkBundle.sdk,
       sdkError: sdkBundle.sdkError || undefined,
+      reconnected: wasReconnect,
       joinDefaults:
         provider === 'meet'
           ? { audioMuted: true, videoMuted: true, autoRecordRequested: true }
           : { zoomHost: true },
       message:
         provider === 'zoom'
-          ? 'Class started. Opening Zoom Workspace as host.'
+          ? wasReconnect
+            ? 'Rejoining as host — same classroom. Students can enter once you are in Zoom.'
+            : 'Class started. Opening Zoom as host.'
           : 'Class started. Join opens with mic/camera muted. Start Meet recording if it does not begin automatically.',
       closedPreviousSessions
     });
@@ -1415,6 +1517,13 @@ router.post('/:id/join', async (req, res) => {
     if (doc.status === 'cancelled') {
       return res.status(400).json({ success: false, message: 'Class is cancelled' });
     }
+    if (doc.status === 'completed') {
+      return res.status(400).json({
+        success: false,
+        message: 'This class has ended. Ask your trainer if they will start a new session.',
+        code: 'CLASS_ENDED'
+      });
+    }
     if (!doc.meetLink && !doc.zoomLink) {
       return res.status(400).json({ success: false, message: 'No live class link available' });
     }
@@ -1430,6 +1539,20 @@ router.post('/:id/join', async (req, res) => {
     const allowed = await assertCanViewMeeting(req.user, doc);
     if (!allowed) {
       return res.status(403).json({ success: false, message: 'Access denied' });
+    }
+
+    const wantHost = Boolean(
+      req.body?.host || isTeacherRole(req.user.role) || isAdmin(req.user.role)
+    );
+
+    // Students must wait until the trainer starts class in LMS (prevents “live” without host).
+    if (isStudentRole(req.user.role) && doc.status === 'scheduled' && !wantHost) {
+      return res.status(400).json({
+        success: false,
+        message: 'Your trainer has not started this class yet. Please wait and try Join again.',
+        code: 'WAITING_FOR_TRAINER',
+        zoomRoomStatus: 'waiting'
+      });
     }
 
     let markedPresent = false;
@@ -1454,11 +1577,15 @@ router.post('/:id/join', async (req, res) => {
       doc.teacherId = String(req.user.id);
       if (req.user.name) doc.teacherName = req.user.name;
     }
-    if (doc.status === 'scheduled' || isStudentRole(req.user.role) || isTeacherRole(req.user.role)) {
+    // Only trainers/admins promote scheduled → live (students never start the session).
+    if (wantHost && (isTeacherRole(req.user.role) || isAdmin(req.user.role))) {
       if (doc.status === 'scheduled') {
         doc.status = 'live';
         if (!doc.actualStartedAt) doc.actualStartedAt = new Date();
       }
+      doc.updatedAt = new Date();
+      await doc.save();
+    } else if (isStudentRole(req.user.role) && markedPresent) {
       doc.updatedAt = new Date();
       await doc.save();
     }
@@ -1467,13 +1594,29 @@ router.post('/:id/join', async (req, res) => {
       host: isTeacherRole(req.user.role) || isAdmin(req.user.role)
     });
     const provider = getSessionProvider(doc);
-    const wantHost = Boolean(
-      req.body?.host || isTeacherRole(req.user.role) || isAdmin(req.user.role)
-    );
+
+    let zoomRoomStatus = 'unknown';
+    if (provider === 'zoom' && doc.zoomMeetingId && zoomService.isConfigured()) {
+      try {
+        const room = await zoomService.getMeetingRoomStatus(doc.zoomMeetingId);
+        zoomRoomStatus = room.status || 'unknown';
+      } catch (_) {
+        zoomRoomStatus = 'unknown';
+      }
+    }
 
     const { sdk, sdkError, embedded: sdkEmbedded } = await buildZoomSdkPayload(doc, req.user, {
       wantHost
     });
+
+    let joinHint = '';
+    if (provider === 'zoom' && isStudentRole(req.user.role) && zoomRoomStatus === 'waiting') {
+      joinHint =
+        'Your trainer is not in the Zoom room yet. Stay on this page or tap Join again in a moment.';
+    } else if (provider === 'zoom' && zoomRoomStatus === 'ended' && !wantHost) {
+      joinHint =
+        'The Zoom room was closed. Ask your trainer to open the class again from LMS (Open Zoom as host).';
+    }
 
     res.json({
       success: true,
@@ -1484,6 +1627,9 @@ router.post('/:id/join', async (req, res) => {
       sdk,
       sdkError: sdkError || undefined,
       markedPresent,
+      zoomRoomStatus,
+      hostReady: zoomRoomStatus === 'started' || wantHost,
+      message: joinHint || undefined,
       meeting: serializeMeeting(doc, { includeMeetLink: !isStudentRole(req.user.role) })
     });
   } catch (error) {
@@ -1522,6 +1668,15 @@ router.post('/:id/complete', async (req, res) => {
     await applyWasteSessionFlags(doc, { save: false });
     await doc.save();
 
+    // Close the Zoom room so students are not left in a ghost session.
+    if (getSessionProvider(doc) === 'zoom' && doc.zoomMeetingId && zoomService.isConfigured()) {
+      try {
+        await zoomService.endMeeting(doc.zoomMeetingId);
+      } catch (endErr) {
+        console.warn('[meetings] zoom end on complete:', endErr.message || endErr);
+      }
+    }
+
     try {
       if (!doc.skipRecordingUpload && doc.batchId && !doc.wasteSessionFlagged) {
         await ensureClassroomFromLiveClass(doc);
@@ -1542,7 +1697,11 @@ router.post('/:id/complete', async (req, res) => {
       }
     }
 
-    res.json({ success: true, meeting: serializeMeeting(doc) });
+    res.json({
+      success: true,
+      meeting: serializeMeeting(doc),
+      message: 'Class ended. Zoom room closed for this session.'
+    });
   } catch (error) {
     console.error('POST /meetings/:id/complete error:', error);
     res.status(500).json({ success: false, message: 'Failed to complete class' });
@@ -1590,6 +1749,14 @@ router.post('/:id/revert-start', async (req, res) => {
     if (doc.status !== 'live') {
       return res.status(400).json({ success: false, message: 'Only a live session can be reverted to scheduled' });
     }
+    // Close the open Zoom instance so students are not left waiting in a ghost room.
+    if (getSessionProvider(doc) === 'zoom' && doc.zoomMeetingId && zoomService.isConfigured()) {
+      try {
+        await zoomService.endMeeting(doc.zoomMeetingId);
+      } catch (endErr) {
+        console.warn('[meetings] zoom end on revert-start:', endErr.message || endErr);
+      }
+    }
     doc.status = 'scheduled';
     doc.actualStartedAt = null;
     doc.actualEndedAt = null;
@@ -1598,7 +1765,7 @@ router.post('/:id/revert-start', async (req, res) => {
     res.json({
       success: true,
       meeting: serializeMeeting(doc),
-      message: 'Session moved back to scheduled. Students will not see Join until you start again.'
+      message: 'Session moved back to scheduled. Zoom room closed. Students will not see Join until you start again.'
     });
   } catch (error) {
     console.error('POST /meetings/:id/revert-start error:', error);

@@ -9,6 +9,7 @@ import ActivityTimelineChart from './charts/ActivityTimelineChart';
 import { processActivityData, exportToCSV } from '../utils/activityDataProcessor';
 import { getApiBaseUrl } from '../utils/apiBase';
 import { downloadAuthenticatedFile } from '../utils/downloadFile';
+import { sortLecturesNewestFirst } from '../utils/lectureSort';
 import {
   applyTemplateToForm,
   BUILTIN_EMAIL_TEMPLATES,
@@ -144,9 +145,23 @@ const formatFileSize = (bytes) => {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
 };
 
-const NOTES_MAX_FILE_SIZE = 10 * 1024 * 1024;
+const NOTES_MAX_FILE_SIZE = 100 * 1024 * 1024; // 100MB limit (matches backend)
 
 const validateFile = (file) => {
+  if (!file) return 'No file selected';
+
+  // Check file size (100MB limit)
+  if (file.size > NOTES_MAX_FILE_SIZE) {
+    return `File size (${formatFileSize(file.size)}) exceeds 100MB limit`;
+  }
+
+  const fileExtension = (file.name || '').toLowerCase().split('.').pop();
+  const allowedExtensions = [
+    'pdf', 'doc', 'docx', 'txt', 'ppt', 'pptx', 'xls', 'xlsx', 'csv', 
+    'zip', 'rar', '7z', 'tar', 'gz', 'jpg', 'jpeg', 'png', 'gif', 'webp',
+    'ipynb', 'py', 'json', 'sql', 'md', 'rtf'
+  ];
+
   const allowedTypes = [
     'application/pdf',
     'application/msword',
@@ -163,56 +178,27 @@ const validateFile = (file) => {
     'image/jpeg',
     'image/png',
     'image/gif',
+    'image/webp',
     'text/x-python',
-    'application/json' // For .ipynb files
+    'application/json',
+    'application/x-ipynb+json',
+    'application/vnd.rar',
+    'application/x-7z-compressed',
+    'application/x-tar',
+    'application/gzip',
+    'text/markdown',
+    'application/rtf',
+    'application/sql'
   ];
-  
-  // Check file size
-  if (file.size > NOTES_MAX_FILE_SIZE) {
-    return `File size (${formatFileSize(file.size)}) exceeds 10MB limit`;
+
+  const isValidMimeType = !file.type || allowedTypes.includes(file.type) || file.type.startsWith('image/') || file.type.startsWith('text/');
+  const isValidExtension = allowedExtensions.includes(fileExtension);
+
+  if (!isValidExtension && !isValidMimeType) {
+    return `File type .${fileExtension} is not supported. Allowed: ${allowedExtensions.slice(0, 10).join(', ')}, etc.`;
   }
-  
-  // Enhanced file type validation with extension fallback
-  const fileExtension = file.name.toLowerCase().split('.').pop();
-  const allowedExtensions = [
-    'pdf', 'doc', 'docx', 'txt', 'ppt', 'pptx', 'xls', 'xlsx', 'csv', 
-    'zip', 'jpg', 'jpeg', 'png', 'gif', 'ipynb'
-  ];
-  
-  // MIME type validation with fallback for files without proper MIME types
-  const mimeMappings = {
-    'image/jpeg': ['jpg', 'jpeg'],
-    'image/png': ['png'],
-    'image/gif': ['gif'],
-    'application/vnd.ms-powerpoint': ['ppt'],
-    'application/vnd.openxmlformats-officedocument.presentationml.presentation': ['pptx'],
-    'application/vnd.ms-excel': ['xls'],
-    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['xlsx'],
-    'text/csv': ['csv'],
-    'application/json': ['ipynb']
-  };
-  
-  // Check MIME type first, then extension as fallback
-  const isValidMimeType = allowedTypes.includes(file.type);
-  let isValidExtension = allowedExtensions.includes(fileExtension);
-  
-  // Additional validation for files with specific MIME types
-  if (file.type && mimeMappings[file.type]) {
-    const expectedExtensions = mimeMappings[file.type];
-    isValidExtension = expectedExtensions.includes(fileExtension);
-  }
-  
-  if (!isValidMimeType && !isValidExtension) {
-    return `File type not supported. Allowed types: ${allowedExtensions.join(', ')}`;
-  }
-  
-  // Additional validation for specific file types
-  if (fileExtension === 'ipynb' && file.type !== 'application/json' && !file.type.includes('text')) {
-    console.warn('Jupyter notebook MIME type warning:', file.type);
-    // Allow but log warning for .ipynb files
-  }
-  
-  return null; // No error
+
+  return null; // Valid
 };
 
 const BatchDetailsPage = () => {
@@ -1549,10 +1535,19 @@ const BatchDetailsPage = () => {
     let timeoutId;
     
     try {
-      const { title, youtubeVideoUrl, description, date, notesAvailable, notesFile } = videoFormData;
-      if (!title || !youtubeVideoUrl || !date) {
-        showToast('Please fill in all required fields (Title, YouTube URL, Class Date)', 'warning');
-        return;
+      const { title, youtubeVideoUrl, driveUrl, driveId, description, date, notesAvailable, notesFile } = videoFormData;
+      const isDrive = videoFormData.videoSource === 'drive' || (driveUrl && !youtubeVideoUrl);
+
+      if (isDrive) {
+        if (!title || (!driveUrl && !driveId) || !date) {
+          showToast('Please fill in all required fields (Title, Google Drive Link, Class Date)', 'warning');
+          return;
+        }
+      } else {
+        if (!title || !youtubeVideoUrl || !date) {
+          showToast('Please fill in all required fields (Title, YouTube URL, Class Date)', 'warning');
+          return;
+        }
       }
 
       if (notesAvailable && !notesFile) {
@@ -1560,22 +1555,25 @@ const BatchDetailsPage = () => {
         return;
       }
 
-      const videoId = YouTubeUtils.extractVideoId(youtubeVideoUrl);
-      if (!videoId) {
-        showToast('Invalid YouTube URL. Please use a valid YouTube video URL.', 'error');
-        return;
-      }
-
-      // Prevent duplicate: same YouTube video already in this batch (client-side check)
-      if (!editingVideo && selectedBatch) {
-        const selId = (selectedBatch?.id || selectedBatch?._id || '').toString().trim();
-        const alreadyInBatch = classroomVideos.some(
-          v => (v.batchId || '').toString().trim() === selId &&
-               (v.youtubeVideoId || '') === videoId
-        );
-        if (alreadyInBatch) {
-          showToast('This video is already in this batch. Each video can only be added once.', 'warning');
+      let videoId = null;
+      if (!isDrive) {
+        videoId = YouTubeUtils.extractVideoId(youtubeVideoUrl);
+        if (!videoId) {
+          showToast('Invalid YouTube URL. Please use a valid YouTube video URL.', 'error');
           return;
+        }
+
+        // Prevent duplicate: same YouTube video already in this batch (client-side check)
+        if (!editingVideo && selectedBatch) {
+          const selId = (selectedBatch?.id || selectedBatch?._id || '').toString().trim();
+          const alreadyInBatch = classroomVideos.some(
+            v => (v.batchId || '').toString().trim() === selId &&
+                 (v.youtubeVideoId || '') === videoId
+          );
+          if (alreadyInBatch) {
+            showToast('This video is already in this batch. Each video can only be added once.', 'warning');
+            return;
+          }
         }
       }
 
@@ -1593,10 +1591,16 @@ const BatchDetailsPage = () => {
       formData.append('courseId', selectedBatch?.course);
       formData.append('batchId', batchIdForApi);
       formData.append('type', 'Lecture');
-      formData.append('videoSource', 'youtube-url');
-      formData.append('youtubeVideoId', videoId);
-      formData.append('youtubeVideoUrl', youtubeVideoUrl);
-      formData.append('youtubeEmbedUrl', YouTubeUtils.getEmbedUrl(videoId));
+      if (isDrive) {
+        formData.append('videoSource', 'drive');
+        formData.append('driveUrl', driveUrl || driveId);
+        formData.append('driveId', driveId || driveUrl);
+      } else {
+        formData.append('videoSource', 'youtube-url');
+        formData.append('youtubeVideoId', videoId);
+        formData.append('youtubeVideoUrl', youtubeVideoUrl);
+        formData.append('youtubeEmbedUrl', YouTubeUtils.getEmbedUrl(videoId));
+      }
       formData.append('date', date);
       formData.append('time', videoFormData.time || '');
       formData.append('notesAvailable', notesAvailable);
@@ -1683,11 +1687,11 @@ const BatchDetailsPage = () => {
           
           // Try to extract error message from HTML response
           if (text.includes('File too large')) {
-            showToast('File too large. Maximum size is 10MB.', 'error');
+            showToast('File too large. Maximum size is 100MB.', 'error');
           } else if (text.includes('File type')) {
             showToast('File type not supported. Please check file format.', 'error');
           } else if (response.status === 413) {
-            showToast('File too large. Maximum size is 10MB.', 'error');
+            showToast('File too large. Maximum size is 100MB.', 'error');
           } else if (response.status === 415) {
             showToast('File type not supported. Please check file format.', 'error');
           } else {
@@ -1733,7 +1737,7 @@ const BatchDetailsPage = () => {
         let errorMessage = data.message || 'Failed to save YouTube video';
         
         if (response.status === 413) {
-          errorMessage = 'File too large. Maximum size is 10MB.';
+          errorMessage = 'File too large. Maximum size is 100MB.';
         } else if (response.status === 415) {
           errorMessage = 'Unsupported file type. Please check the file format.';
         } else if (response.status === 401) {
@@ -1772,7 +1776,7 @@ const BatchDetailsPage = () => {
       console.error('Unexpected error in handleDownloadNotes:', error);
       showToast(
         error.message ||
-          'Notes file is missing on the server. Upload the zip again so it is saved to Drive.',
+          'Notes file is missing on the server. Ask your trainer to upload the notes file again — it will be saved to Google Drive.',
         'error'
       );
     }
@@ -1861,6 +1865,9 @@ const BatchDetailsPage = () => {
     const formData = {
       title: video.title || '',
       youtubeVideoUrl: video.youtubeVideoUrl || '',
+      driveUrl: video.driveId ? `https://drive.google.com/file/d/${video.driveId}/view` : '',
+      driveId: video.driveId || '',
+      videoSource: video.videoSource || (video.driveId && !video.youtubeVideoId ? 'drive' : 'youtube-url'),
       description: video.description || '',
       date: video.date || '',
       time: video.time || '',
@@ -2081,17 +2088,12 @@ const BatchDetailsPage = () => {
   }
 
   // Filter videos for this batch (explicit batchId match only - no course fallback)
-  const batchVideos = classroomVideos
-    .filter(video => {
+  const batchVideos = sortLecturesNewestFirst(
+    classroomVideos.filter((video) => {
       if (!selectedBatchIdNorm) return false;
       return normId(video.batchId) === selectedBatchIdNorm;
     })
-    .sort((a, b) => {
-      // Sort by date (newest first)
-      const dateA = new Date(a.date || a.createdAt || 0);
-      const dateB = new Date(b.date || b.createdAt || 0);
-      return dateB - dateA;
-    });
+  );
 
   
   const hasValidBatch = (student) => {
@@ -3207,13 +3209,57 @@ const BatchDetailsPage = () => {
               onChange={(e) => setVideoFormData({ ...videoFormData, title: e.target.value })}
               required
             />
-            <input
-              type="text"
-              placeholder="YouTube Video URL *"
-              value={videoFormData.youtubeVideoUrl}
-              onChange={(e) => setVideoFormData({ ...videoFormData, youtubeVideoUrl: e.target.value })}
-              required
-            />
+            <div style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
+              <button
+                type="button"
+                onClick={() => setVideoFormData({ ...videoFormData, videoSource: 'youtube-url' })}
+                style={{
+                  flex: 1,
+                  padding: '6px 10px',
+                  borderRadius: '4px',
+                  border: '1px solid ' + (videoFormData.videoSource !== 'drive' ? '#ff0000' : '#ddd'),
+                  background: videoFormData.videoSource !== 'drive' ? '#fff5f5' : '#fff',
+                  color: videoFormData.videoSource !== 'drive' ? '#c00' : '#555',
+                  fontWeight: videoFormData.videoSource !== 'drive' ? '600' : 'normal',
+                  cursor: 'pointer'
+                }}
+              >
+                📺 YouTube URL
+              </button>
+              <button
+                type="button"
+                onClick={() => setVideoFormData({ ...videoFormData, videoSource: 'drive' })}
+                style={{
+                  flex: 1,
+                  padding: '6px 10px',
+                  borderRadius: '4px',
+                  border: '1px solid ' + (videoFormData.videoSource === 'drive' ? '#0f9d58' : '#ddd'),
+                  background: videoFormData.videoSource === 'drive' ? '#f0fdf4' : '#fff',
+                  color: videoFormData.videoSource === 'drive' ? '#0b6623' : '#555',
+                  fontWeight: videoFormData.videoSource === 'drive' ? '600' : 'normal',
+                  cursor: 'pointer'
+                }}
+              >
+                📁 Google Drive Link
+              </button>
+            </div>
+            {videoFormData.videoSource === 'drive' ? (
+              <input
+                type="text"
+                placeholder="Google Drive Link or File ID *"
+                value={videoFormData.driveUrl || videoFormData.driveId || ''}
+                onChange={(e) => setVideoFormData({ ...videoFormData, driveUrl: e.target.value, driveId: e.target.value })}
+                required
+              />
+            ) : (
+              <input
+                type="text"
+                placeholder="YouTube Video URL *"
+                value={videoFormData.youtubeVideoUrl || ''}
+                onChange={(e) => setVideoFormData({ ...videoFormData, youtubeVideoUrl: e.target.value })}
+                required
+              />
+            )}
             <input
               type="date"
               placeholder="Class Date *"
@@ -3296,7 +3342,7 @@ const BatchDetailsPage = () => {
                   <input
                     id="notesFileInput"
                     type="file"
-                    accept=".pdf,.doc,.docx,.txt,.ppt,.pptx,.xls,.xlsx,.csv,.ipynb,.zip,.jpg,.jpeg,.png,.gif"
+                    accept=".pdf,.doc,.docx,.txt,.ppt,.pptx,.xls,.xlsx,.csv,.ipynb,.zip,.rar,.7z,.tar,.gz,.py,.json,.sql,.md,.rtf,.jpg,.jpeg,.png,.gif,.webp"
                     onChange={handleFileSelect}
                     className="hidden-file-input"
                   />
@@ -3316,13 +3362,14 @@ const BatchDetailsPage = () => {
                       <span className="format-badge">XLS</span>
                       <span className="format-badge">CSV</span>
                       <span className="format-badge">IPYNB</span>
+                      <span className="format-badge">CODE</span>
                       <span className="format-badge">ZIP</span>
                       <span className="format-badge">IMG</span>
                     </div>
                   </div>
                   
                   <div className="upload-guidelines">
-                    <p>📝 Maximum file size: 10MB</p>
+                    <p>📝 Maximum file size: 100MB</p>
                     <p>🔒 Files are securely stored and shared only with enrolled students</p>
                   </div>
                 </div>

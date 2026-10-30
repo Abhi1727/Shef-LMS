@@ -22,15 +22,23 @@ function parseDurationToMinutes(duration) {
   if (typeof duration === 'number' && Number.isFinite(duration)) return duration;
   const raw = String(duration || '').trim().toLowerCase();
   if (!raw) return null;
-  const secMatch = raw.match(/(\d+)\s*s(?:ec)?/);
-  if (secMatch) return Number(secMatch[1]) / 60;
-  const minMatch = raw.match(/(\d+)\s*m(?:in)?/);
-  if (minMatch) return Number(minMatch[1]);
-  const hMatch = raw.match(/(\d+)\s*h/);
-  if (hMatch) {
-    const rem = raw.match(/(\d+)\s*m(?:in)?/);
-    return Number(hMatch[1]) * 60 + (rem ? Number(rem[1]) : 0);
+
+  // Prefer combined forms first so "2h 2m" is not read as 2 minutes.
+  const hm = raw.match(/(\d+)\s*h(?:ours?)?\s*(\d+)\s*m(?:in(?:ute)?s?)?/);
+  if (hm) return Number(hm[1]) * 60 + Number(hm[2]);
+  const hOnly = raw.match(/(\d+)\s*h(?:ours?)?(?!\s*\d+\s*m)/);
+  if (hOnly && !/\d+\s*m/.test(raw)) return Number(hOnly[1]) * 60;
+  if (hOnly) {
+    const rem = raw.match(/(\d+)\s*m(?:in(?:ute)?s?)?/);
+    return Number(hOnly[1]) * 60 + (rem ? Number(rem[1]) : 0);
   }
+
+  const secMatch = raw.match(/(\d+)\s*s(?:ec(?:ond)?s?)?\b/);
+  if (secMatch && !/\d+\s*m/.test(raw) && !/\d+\s*h/.test(raw)) {
+    return Number(secMatch[1]) / 60;
+  }
+  const minMatch = raw.match(/(\d+)\s*m(?:in(?:ute)?s?)?\b/);
+  if (minMatch) return Number(minMatch[1]);
   const num = raw.match(/(\d+)/);
   return num ? Number(num[1]) : null;
 }
@@ -138,7 +146,9 @@ async function applyWasteSessionFlags(doc, { save = true, siblings = [] } = {}) 
   doc.wasteSessionReasons = analysis.reasons;
   doc.wasteSessionDetectedAt = analysis.isWaste ? new Date() : doc.wasteSessionDetectedAt || null;
 
-  if (analysis.isWaste && doc.batchId && !doc.skipRecordingUpload) {
+  // A class running past its expected end is still a real class; only completed-session signals block uploads.
+  const blocksRecording = analysis.reasons.some((r) => r !== 'stale_live');
+  if (blocksRecording && doc.batchId && !doc.skipRecordingUpload) {
     doc.skipRecordingUpload = true;
   }
 

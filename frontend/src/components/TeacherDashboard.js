@@ -338,9 +338,11 @@ const TeacherDashboard = ({ user, onLogout }) => {
         window.open(link, '_blank', 'noopener,noreferrer');
       }
       showToast(
-        provider === 'zoom'
-          ? 'Class started — opening Zoom Workspace…'
-          : 'Class scheduled and started. Students can join from LMS.',
+        data.reusedRunningSession
+          ? data.message
+          : provider === 'zoom'
+            ? 'Class started — opening Zoom Workspace…'
+            : 'Class scheduled and started. Students can join from LMS.',
         'success'
       );
       setActiveSection('live');

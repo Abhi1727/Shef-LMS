@@ -671,11 +671,11 @@ const TeacherBatchDetailsPage = () => {
                     </>
                   ) : (
                     <>
-                      <span className="sky-muted">Optional PDF/DOC for learners</span>
+                      <span className="sky-muted">Optional notes/materials (PDF, Word, PPT, Excel, IPYNB, ZIP, etc.) for learners</span>
                       <input
                         type="file"
                         id="batch-notes-file"
-                        accept=".pdf,.doc,.docx,.zip"
+                        accept=".pdf,.doc,.docx,.txt,.ppt,.pptx,.xls,.xlsx,.csv,.ipynb,.zip,.rar,.7z,.py,.json,.md,.jpg,.jpeg,.png,.gif,.webp"
                         onChange={(e) => setNotesFile(e.target.files?.[0] || null)}
                         style={{ display: 'none' }}
                       />
@@ -788,7 +788,7 @@ const TeacherBatchDetailsPage = () => {
                           <input
                             type="file"
                             id={`notes-file-${video.id}`}
-                            accept=".pdf,.doc,.docx,.zip"
+                            accept=".pdf,.doc,.docx,.txt,.ppt,.pptx,.xls,.xlsx,.csv,.ipynb,.zip,.rar,.7z,.py,.json,.md,.jpg,.jpeg,.png,.gif,.webp"
                             className="sky-lecture-notes-input"
                             onChange={(e) => {
                               setNotesFile(e.target.files?.[0] || null);

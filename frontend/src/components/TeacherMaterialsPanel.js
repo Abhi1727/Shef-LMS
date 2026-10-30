@@ -15,9 +15,9 @@ const MATERIAL_KINDS = [
 const ACCEPT_BY_KIND = {
   writing: '.pdf,.doc,.docx,.txt,.md,.rtf,application/pdf,text/*',
   video: 'video/*,.mp4,.mov,.webm,.mkv',
-  handout: '.pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.zip,.txt,.csv,image/*,video/*',
-  project: '.pdf,.doc,.docx,.zip,.rar,.ppt,.pptx,.xls,.xlsx,image/*,.txt',
-  notes: '.pdf,.doc,.docx,.txt,.md,image/*',
+  handout: '.pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.zip,.rar,.7z,.ipynb,.py,.txt,.csv,.md,image/*,video/*',
+  project: '.pdf,.doc,.docx,.zip,.rar,.7z,.ipynb,.py,.ppt,.pptx,.xls,.xlsx,image/*,.txt',
+  notes: '.pdf,.doc,.docx,.ipynb,.py,.txt,.md,.zip,.rar,.7z,image/*',
   other: undefined
 };
 
@@ -386,25 +386,10 @@ export default function TeacherMaterialsPanel({ batchId, batchName = '', compact
           <p className="live-attendance__note">
             Upload writing (PDF/DOC), handouts, projects, or extra videos (outside live class). Videos can
             also appear in Classroom. Enable student uploads so learners can share work for review.
+            Recordings stay in the LMS archive — use Classroom for playback, not the admin Drive.
           </p>
         )}
-        {folderLink && (
-          <p className="live-lobby__muted live-lobby__drive-link">
-            Drive folder:{' '}
-            <a href={folderLink} target="_blank" rel="noopener noreferrer">
-              Open folder
-            </a>
-            {compact && (
-              <button
-                type="button"
-                className="live-lobby__btn live-lobby__btn--ghost live-lobby__btn--sm"
-                onClick={load}
-              >
-                Refresh
-              </button>
-            )}
-          </p>
-        )}
+        {/* Drive folder links intentionally hidden from trainers — admin archive only */}
 
         <div className={compact ? 'live-lobby__batch-static' : undefined}>
           <div className="live-lobby__chip-row">

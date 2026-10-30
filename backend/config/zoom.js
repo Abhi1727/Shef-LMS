@@ -2,11 +2,7 @@
 require('dotenv').config();
 
 function defaultUserId() {
-  return String(
-    process.env.ZOOM_DEFAULT_USER_ID ||
-      process.env.GOOGLE_MEET_HOST_EMAIL ||
-      'admin@lms.skystates.us'
-  ).trim();
+  return String(process.env.ZOOM_DEFAULT_USER_ID || '').trim();
 }
 
 function isEnabled() {
@@ -47,6 +43,17 @@ function isEmbeddedEnabled() {
   return isMeetingSdkConfigured();
 }
 
+/**
+ * Shared PMI puts every batch's cloud recordings under one Zoom meeting id,
+ * which caused cross-batch / short-stub mis-attaches. Default is unique
+ * scheduled meetings per live class. Set ZOOM_USE_PMR=true only if you
+ * explicitly want the old single-room behaviour.
+ */
+function shouldUsePmr() {
+  const flag = String(process.env.ZOOM_USE_PMR || '').trim().toLowerCase();
+  return flag === '1' || flag === 'true' || flag === 'yes';
+}
+
 module.exports = {
   accountId: process.env.ZOOM_ACCOUNT_ID,
   clientId: process.env.ZOOM_CLIENT_ID,
@@ -59,5 +66,6 @@ module.exports = {
   meetingSdkKey,
   meetingSdkSecret,
   isMeetingSdkConfigured,
-  isEmbeddedEnabled
+  isEmbeddedEnabled,
+  shouldUsePmr
 };

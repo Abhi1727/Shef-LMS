@@ -12,11 +12,23 @@ const MIME = {
   xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
   csv: 'text/csv',
   zip: 'application/zip',
+  rar: 'application/vnd.rar',
+  '7z': 'application/x-7z-compressed',
+  tar: 'application/x-tar',
+  gz: 'application/gzip',
   jpg: 'image/jpeg',
   jpeg: 'image/jpeg',
   png: 'image/png',
   gif: 'image/gif',
-  ipynb: 'application/x-ipynb+json'
+  webp: 'image/webp',
+  ipynb: 'application/x-ipynb+json',
+  py: 'text/x-python',
+  json: 'application/json',
+  md: 'text/markdown',
+  rtf: 'application/rtf',
+  sql: 'application/sql',
+  mp4: 'video/mp4',
+  webm: 'video/webm'
 };
 
 function getContentType(filename) {
@@ -119,7 +131,13 @@ function resolveNotesAbsolutePath(notesFilePath) {
 
 function streamNotesFile(res, { filePath, downloadName }) {
   const stats = fs.statSync(filePath);
-  const name = downloadName || path.basename(filePath);
+  let name = downloadName || path.basename(filePath);
+  // Strip spurious .zip suffix appended to non-zip formats
+  name = name.replace(/\.(docx|pptx|xlsx|pdf|ipynb|doc|ppt|xls|txt|csv|py|json|md|rtf)\.zip$/i, '.$1');
+  // Ensure extension is retained if downloadName lacked an extension but filePath has one
+  if (!path.extname(name) && path.extname(filePath)) {
+    name = `${name}${path.extname(filePath)}`;
+  }
   const type = getContentType(name) !== 'application/octet-stream'
     ? getContentType(name)
     : getContentType(filePath);

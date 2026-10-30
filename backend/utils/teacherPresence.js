@@ -59,13 +59,11 @@ async function findLiveClassesForTeachers(teacherIds) {
   const ids = [...new Set((teacherIds || []).map(String).filter(Boolean))];
   const map = {};
   if (!ids.length) return map;
-  const docs = await LiveClass.find({
-    teacherId: { $in: ids },
-    status: 'live'
-  })
-    .lean()
-    .exec();
+  const wanted = new Set(ids);
+  // Few sessions are live at once; filtering by teacher in memory avoids reading every teacher's history.
+  const docs = await LiveClass.find({ status: 'live' }).lean().exec();
   for (const d of docs || []) {
+    if (!wanted.has(String(d.teacherId))) continue;
     if (!sessionStillLive(d)) continue;
     const tid = String(d.teacherId);
     if (!map[tid]) map[tid] = d;
