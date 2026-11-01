@@ -5601,6 +5601,7 @@ body.modal-open {
 .sky-timing-values span { display: block; font-size: 0.8rem; margin-bottom: 2px; }
 .sky-combined-card { margin-top: 20px; }
 .sky-combined-list {
+  text-align: left;
   list-style: none;
   padding: 0;
   margin: 16px 0;
