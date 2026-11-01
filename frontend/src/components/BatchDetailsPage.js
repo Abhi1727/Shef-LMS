@@ -262,6 +262,9 @@ const BatchDetailsPage = () => {
   const [availableTeachers, setAvailableTeachers] = useState([]);
   const [selectedTrainerId, setSelectedTrainerId] = useState('');
   const [switchingTrainer, setSwitchingTrainer] = useState(false);
+  const [transferMode, setTransferMode] = useState('separate');
+  const [transferCandidates, setTransferCandidates] = useState({ loading: false, list: [] });
+  const [mergeTargetId, setMergeTargetId] = useState('');
   const [addStudentsSearch, setAddStudentsSearch] = useState('');
   const [courses, setCourses] = useState([]);
   const [allBatches, setAllBatches] = useState([]);
@@ -630,12 +633,12 @@ const BatchDetailsPage = () => {
     try {
       const token = localStorage.getItem('token');
       const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
-      const response = await fetch(`${apiUrl}/api/admin/users`, {
+      const response = await fetch(`${apiUrl}/api/admin/teachers`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       if (!response.ok) return;
       const users = await response.json();
-      const teachers = (Array.isArray(users) ? users : []).filter(u => u.role === 'teacher' && u.status !== 'inactive');
+      const teachers = (Array.isArray(users) ? users : []).filter(u => u.status !== 'inactive');
       setAvailableTeachers(teachers.map(t => ({
         id: String(t.id || t._id),
         name: t.name || 'Unnamed'
@@ -653,6 +656,11 @@ const BatchDetailsPage = () => {
     const trainer = availableTeachers.find(t => t.id === selectedTrainerId);
     if (!trainer) {
       showToast('Selected trainer not found', 'error');
+      return;
+    }
+    const merging = Boolean(transferTrainerId) && transferMode === 'merge';
+    if (merging && !mergeTargetId) {
+      showToast('Choose which batch to merge with', 'warning');
       return;
     }
     setSwitchingTrainer(true);
@@ -675,7 +683,8 @@ const BatchDetailsPage = () => {
           teacherName: trainer.name,
           status: selectedBatch.status || 'active',
           batchType: selectedBatch.batchType || 'regular',
-          programLabel: selectedBatch.programLabel || ''
+          programLabel: selectedBatch.programLabel || '',
+          ...(merging ? { mergeWithBatchId: mergeTargetId } : {})
         })
       });
       const data = await response.json();
@@ -683,10 +692,21 @@ const BatchDetailsPage = () => {
         setSelectedBatch(prev => ({
           ...prev,
           teacherId: trainer.id,
-          teacherName: trainer.name
+          teacherName: trainer.name,
+          ...(data.schedule ? { schedule: data.schedule } : {})
         }));
+        if (data.schedule) {
+          setScheduleForm({ days: data.schedule.days || '', time: data.schedule.time || '' });
+          setTimeRange(parseIstRangeToTimeInputs(data.schedule.time || ''));
+        }
         setShowSwitchTrainerModal(false);
-        showToast(`Trainer switched to ${trainer.name}`, 'success');
+        const target = transferCandidates.list.find((c) => c.id === mergeTargetId);
+        showToast(
+          merging
+            ? `Moved to ${trainer.name} and merged with ${target?.name || 'the selected batch'}. Starting either batch opens one shared room.`
+            : `Trainer switched to ${trainer.name}. The batch runs as its own class.`,
+          'success'
+        );
       } else {
         showToast(data.message || 'Failed to switch trainer', 'error');
       }
@@ -871,6 +891,37 @@ const BatchDetailsPage = () => {
       cancelled = true;
     };
   }, [isAdmin, activeView, combinedBatchId, combinedTeacherId]);
+
+  const transferTrainerId =
+    showSwitchTrainerModal && selectedTrainerId && selectedTrainerId !== String(combinedTeacherId)
+      ? selectedTrainerId
+      : '';
+  useEffect(() => {
+    setMergeTargetId('');
+    if (!transferTrainerId || !combinedBatchId) {
+      setTransferCandidates({ loading: false, list: [] });
+      return;
+    }
+    let cancelled = false;
+    setTransferCandidates({ loading: true, list: [] });
+    (async () => {
+      try {
+        const token = localStorage.getItem('token');
+        const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
+        const res = await fetch(
+          `${apiUrl}/api/admin/batches/${combinedBatchId}/combined-class?teacherId=${encodeURIComponent(transferTrainerId)}`,
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+        const data = await res.json().catch(() => ({}));
+        if (!cancelled) setTransferCandidates({ loading: false, list: res.ok ? data.candidates || [] : [] });
+      } catch (err) {
+        if (!cancelled) setTransferCandidates({ loading: false, list: [] });
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [transferTrainerId, combinedBatchId]);
 
   const handleSaveCombined = async () => {
     if (!combinedBatchId) return;
@@ -2258,6 +2309,8 @@ const BatchDetailsPage = () => {
               className="sky-btn sky-btn-secondary"
               onClick={() => {
                 setSelectedTrainerId(String(selectedBatch.teacherId || ''));
+                setTransferMode('separate');
+                setMergeTargetId('');
                 loadAvailableTeachers();
                 setShowSwitchTrainerModal(true);
               }}
@@ -3648,33 +3701,112 @@ const BatchDetailsPage = () => {
     )}
 
     {showSwitchTrainerModal && createPortal(
-      <div className="modal-overlay" onClick={() => setShowSwitchTrainerModal(false)}>
-        <div className="modal sky-modal" onClick={(e) => e.stopPropagation()}>
-          <div className="modal-header">
+      <div className="batch-portal-modal-overlay" onClick={() => setShowSwitchTrainerModal(false)} role="presentation">
+        <div className="batch-portal-modal" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
+          <div className="batch-portal-modal-header">
             <h3>Switch trainer</h3>
-            <button className="modal-close" onClick={() => setShowSwitchTrainerModal(false)}>×</button>
+            <button type="button" className="batch-portal-modal-close" onClick={() => setShowSwitchTrainerModal(false)}>×</button>
           </div>
-          <div className="modal-content">
-            <p className="modal-subtitle">
+          <div className="batch-portal-modal-content">
+            <p className="batch-portal-modal-subtitle">
               Current trainer: <strong>{selectedBatch?.teacherName || 'Unassigned'}</strong>
             </p>
             <label className="field-label">Select new trainer</label>
             <select
               value={selectedTrainerId}
               onChange={(e) => setSelectedTrainerId(e.target.value)}
-              style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #d5dee3' }}
             >
               <option value="">Choose a trainer…</option>
               {availableTeachers.map(t => (
                 <option key={t.id} value={t.id}>{t.name}</option>
               ))}
             </select>
+            {transferTrainerId && (
+              <>
+                <label className="field-label" style={{ marginTop: 16 }}>How should this batch run?</label>
+                <ul className="sky-combined-list">
+                  <li>
+                    <label>
+                      <input
+                        type="radio"
+                        name="transfer-mode"
+                        checked={transferMode === 'separate'}
+                        onChange={() => setTransferMode('separate')}
+                      />
+                      <span>
+                        <strong>Keep as a separate batch</strong>
+                        <span className="sky-muted">
+                          The new trainer teaches it as its own class with its current timing.
+                        </span>
+                      </span>
+                    </label>
+                  </li>
+                  <li>
+                    <label>
+                      <input
+                        type="radio"
+                        name="transfer-mode"
+                        checked={transferMode === 'merge'}
+                        onChange={() => setTransferMode('merge')}
+                      />
+                      <span>
+                        <strong>Merge with one of this trainer's batches</strong>
+                        <span className="sky-muted">
+                          Both batches share one live room. Each keeps its own students, attendance and recordings.
+                        </span>
+                      </span>
+                    </label>
+                  </li>
+                </ul>
+                {transferMode === 'merge' && (
+                  transferCandidates.loading ? (
+                    <p className="sky-muted">Loading batches…</p>
+                  ) : transferCandidates.list.length === 0 ? (
+                    <p className="sky-combined-warn">This trainer has no active batches to merge with.</p>
+                  ) : (
+                    <>
+                      <label className="field-label">Merge with</label>
+                      <ul className="sky-combined-list sky-combined-list--scroll">
+                        {transferCandidates.list.map((c) => (
+                          <li key={c.id}>
+                            <label>
+                              <input
+                                type="radio"
+                                name="merge-target"
+                                checked={mergeTargetId === c.id}
+                                onChange={() => setMergeTargetId(c.id)}
+                              />
+                              <span>
+                                <strong>{c.name}</strong>
+                                <span className="sky-muted">
+                                  {c.schedule?.days || '—'} · {c.schedule?.time || 'no timing'} · {c.studentCount} students
+                                </span>
+                                {!c.sameTiming && c.schedule?.time && (
+                                  <span className="sky-combined-warn">
+                                    Different timing: this batch will move to {c.schedule.days} {c.schedule.time}.
+                                  </span>
+                                )}
+                              </span>
+                            </label>
+                          </li>
+                        ))}
+                      </ul>
+                    </>
+                  )
+                )}
+              </>
+            )}
           </div>
-          <div className="modal-actions">
-            <button className="btn-secondary" onClick={() => setShowSwitchTrainerModal(false)}>Cancel</button>
+          <div className="batch-portal-modal-actions">
+            <button type="button" className="sky-btn sky-btn-ghost" onClick={() => setShowSwitchTrainerModal(false)}>Cancel</button>
             <button
+              type="button"
               className="sky-btn sky-btn-primary"
-              disabled={switchingTrainer || !selectedTrainerId}
+              disabled={
+                switchingTrainer ||
+                !selectedTrainerId ||
+                (transferTrainerId && transferMode === 'merge' && !mergeTargetId)
+              }
               onClick={handleSwitchTrainer}
             >
               {switchingTrainer ? 'Switching…' : 'Confirm switch'}

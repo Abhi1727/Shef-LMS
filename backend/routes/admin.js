@@ -2681,13 +2681,63 @@ router.post('/batches', async (req, res) => {
 
 // @route   PUT /api/admin/batches/:id
 // @desc    Update a batch (general fields)
+/**
+ * Replace a batch's combined-class links with `wanted` (all taught by `teacherId`), keeping
+ * every link symmetric. Batches previously linked but not wanted are unlinked on both sides.
+ */
+async function saveCombinedLinks(batch, requested, teacherId, { dropOtherTrainers = false } = {}) {
+  const id = String(batch._id);
+  const siblings = teacherId ? await Batch.find({ teacherId: String(teacherId) }).lean().exec() : [];
+  const siblingIds = new Set(siblings.map((b) => String(b._id)));
+  const wanted = dropOtherTrainers ? requested.filter((b) => siblingIds.has(b)) : requested;
+  if (wanted.some((b) => !siblingIds.has(b))) {
+    const err = new Error('Only batches taught by the same trainer can be combined.');
+    err.status = 400;
+    throw err;
+  }
+  await Batch.updateOne({ _id: id }, { $set: { combinedClassWith: wanted, updatedAt: new Date() } });
+  const others = new Map(siblings.map((b) => [String(b._id), b]));
+  for (const oldId of (batch.combinedClassWith || []).map(String)) {
+    if (!others.has(oldId)) {
+      const old = await Batch.findById(oldId).lean().exec();
+      if (old) others.set(oldId, old);
+    }
+  }
+  for (const [otherId, other] of others) {
+    if (otherId === id) continue;
+    const links = new Set((other.combinedClassWith || []).map(String));
+    const shouldLink = wanted.includes(otherId);
+    if (shouldLink === links.has(id)) continue;
+    if (shouldLink) links.add(id);
+    else links.delete(id);
+    await Batch.updateOne({ _id: otherId }, { $set: { combinedClassWith: [...links], updatedAt: new Date() } });
+  }
+  return wanted;
+}
+
 router.put('/batches/:id', async (req, res) => {
     try {
-        const { name, course, startDate, endDate, teacherId, teacherName, status, batchType, programLabel, resourcesEnabled, resourceUniverse } = req.body;
+        const { name, course, startDate, endDate, teacherId, teacherName, status, batchType, programLabel, resourcesEnabled, resourceUniverse, mergeWithBatchId } = req.body;
 
         const existing = await Batch.findById(req.params.id).lean().exec();
         if (!existing) {
           return res.status(404).json({ message: 'Batch not found' });
+        }
+
+        const trainerChanging =
+          teacherId !== undefined && String(teacherId || '') !== String(existing.teacherId || '');
+        let mergeTarget = null;
+        if (mergeWithBatchId) {
+          mergeTarget = await Batch.findById(String(mergeWithBatchId)).lean().exec();
+          const targetTeacher = String(teacherId !== undefined ? teacherId || '' : existing.teacherId || '');
+          if (
+            !mergeTarget ||
+            String(mergeTarget._id) === String(existing._id) ||
+            !targetTeacher ||
+            String(mergeTarget.teacherId || '') !== targetTeacher
+          ) {
+            return res.status(400).json({ message: 'Pick a batch taught by the new trainer to merge with.' });
+          }
         }
 
         const updateData = {};
@@ -2709,6 +2759,10 @@ router.put('/batches/:id', async (req, res) => {
         }
         if (resourceUniverse) {
           updateData.resourceUniverse = resourceUniverse;
+        }
+        // A merged batch must share the target's slot, otherwise starting it never combines.
+        if (mergeTarget?.schedule?.time) {
+          updateData.schedule = mergeTarget.schedule;
         }
 
         const updated = await Batch.findByIdAndUpdate(req.params.id, updateData, { new: true }).exec();
@@ -2742,11 +2796,22 @@ router.put('/batches/:id', async (req, res) => {
           }
         }
 
+        let combinedWith = null;
+        if (mergeTarget || trainerChanging) {
+          const wanted = mergeTarget
+            ? [String(mergeTarget._id), ...(mergeTarget.combinedClassWith || []).map(String)].filter(
+                (b, i, all) => b !== String(existing._id) && all.indexOf(b) === i
+              )
+            : [];
+          combinedWith = await saveCombinedLinks(existing, wanted, nextTeacherId, { dropOtherTrainers: true });
+        }
+
         res.json({
           success: true,
           message: 'Batch updated successfully',
           id: String(updated?._id || req.params.id),
           migratedLiveClasses,
+          combinedWith,
           ...(updated ? updated.toObject() : updateData)
         });
     } catch (error) {
@@ -2789,12 +2854,14 @@ router.get('/batches/:id/combined-class', async (req, res) => {
     const { parseSlot } = require('../utils/jointBatchSessions');
     const batch = await Batch.findById(req.params.id).lean().exec();
     if (!batch) return res.status(404).json({ success: false, message: 'Batch not found' });
-    if (!batch.teacherId) return res.json({ success: true, linkedBatchIds: [], candidates: [] });
+    // ?teacherId= lists another trainer's batches (used when transferring this batch to them).
+    const teacherId = String(req.query.teacherId || batch.teacherId || '');
+    if (!teacherId) return res.json({ success: true, linkedBatchIds: [], candidates: [] });
 
     const id = String(batch._id);
     const slot = parseSlot(batch.schedule);
     const linked = new Set((batch.combinedClassWith || []).map(String));
-    const siblings = await Batch.find({ teacherId: String(batch.teacherId) }).lean().exec();
+    const siblings = await Batch.find({ teacherId }).lean().exec();
     const candidates = siblings
       .filter((b) => String(b._id) !== id && !['completed', 'inactive', 'archived', 'cancelled'].includes(String(b.status || '').toLowerCase()))
       .map((b) => {
@@ -2831,34 +2898,12 @@ router.put('/batches/:id/combined-class', async (req, res) => {
     if (!batch) return res.status(404).json({ success: false, message: 'Batch not found' });
     const id = String(batch._id);
     const wanted = [...new Set((req.body?.batchIds || []).map(String))].filter((b) => b && b !== id);
-
-    const siblings = batch.teacherId
-      ? await Batch.find({ teacherId: String(batch.teacherId) }).lean().exec()
-      : [];
-    const siblingIds = new Set(siblings.map((b) => String(b._id)));
-    const invalid = wanted.filter((b) => !siblingIds.has(b));
-    if (invalid.length) {
-      return res.status(400).json({
-        success: false,
-        message: 'Only batches taught by the same trainer can be combined.'
-      });
-    }
-
-    // Keep links symmetric so starting either batch combines them.
-    await Batch.updateOne({ _id: id }, { $set: { combinedClassWith: wanted, updatedAt: new Date() } });
-    for (const other of siblings) {
-      const otherId = String(other._id);
-      if (otherId === id) continue;
-      const links = new Set((other.combinedClassWith || []).map(String));
-      const shouldLink = wanted.includes(otherId);
-      if (shouldLink === links.has(id)) continue;
-      if (shouldLink) links.add(id);
-      else links.delete(id);
-      await Batch.updateOne({ _id: otherId }, { $set: { combinedClassWith: [...links], updatedAt: new Date() } });
-    }
-
+    await saveCombinedLinks(batch, wanted, batch.teacherId);
     res.json({ success: true, linkedBatchIds: wanted, message: 'Combined class settings saved' });
   } catch (error) {
+    if (error.status === 400) {
+      return res.status(400).json({ success: false, message: error.message });
+    }
     console.error('PUT /admin/batches/:id/combined-class error:', error);
     res.status(500).json({ success: false, message: 'Failed to save combined class settings' });
   }
