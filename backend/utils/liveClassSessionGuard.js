@@ -37,7 +37,17 @@ async function closePreviousLiveSessionsForTeacher(
   const docs = await LiveClass.find(query).exec();
   const closed = [];
 
+  // Combined-batch rows share the kept session's room; closing them would end that class.
+  let keptGroupId = '';
+  if (exceptMeetingId) {
+    const kept = await LiveClass.findById(String(exceptMeetingId)).select('jointLeadId').lean().exec();
+    keptGroupId = kept ? String(kept.jointLeadId || exceptMeetingId) : '';
+  }
+
   for (const doc of docs) {
+    if (keptGroupId && (String(doc._id) === keptGroupId || String(doc.jointLeadId || '') === keptGroupId)) {
+      continue;
+    }
     doc.status = 'completed';
     doc.updatedAt = new Date();
     await doc.save();

@@ -34,6 +34,22 @@ const {
   groupSiblingsByTeacherBatch
 } = require('../utils/wasteSessionDetection');
 const { sessionStillLive } = require('../utils/teacherPresence');
+const { attachJointBatchSessions, findJointGroupMembers } = require('../utils/jointBatchSessions');
+
+async function linkJointBatches(lead, leadBatch) {
+  try {
+    return await attachJointBatchSessions(lead, leadBatch, { buildRoster: getBatchRoster });
+  } catch (err) {
+    console.warn('[meetings] combined batch link failed:', err.message || err);
+    return [];
+  }
+}
+
+function jointStartMessage(joint, leadBatchName) {
+  if (!joint.length) return '';
+  const names = [leadBatchName, ...joint.map((j) => j.batchName)].filter(Boolean).join(' + ');
+  return `Combined class: ${names} share this room. `;
+}
 
 /** Throttle expensive session-guard work on meetings list polls (Firestore cost). */
 const SESSION_GUARD_MIN_MS = 5 * 60 * 1000;
@@ -1249,6 +1265,8 @@ router.post('/', async (req, res) => {
       updatedAt: new Date()
     });
 
+    const jointSessions =
+      wantsStartNow && !unassigned ? await linkJointBatches(liveClass, batch) : [];
     const serialized = serializeMeeting(liveClass);
     const hostJoin = getSessionJoinLink(liveClass, { host: true });
     const platformLabel = conferenceProvider === 'zoom' ? 'Zoom' : 'Google Meet';
@@ -1261,8 +1279,9 @@ router.post('/', async (req, res) => {
       message: unassigned
         ? `Instant ${platformLabel} class created (no batch).`
         : liveClass.status === 'live'
-          ? `Instant ${platformLabel} room created. Students join from the LMS dashboard.`
+          ? `${jointStartMessage(jointSessions, batch?.name)}Instant ${platformLabel} room created. Students join from the LMS dashboard.`
           : `${platformLabel} class scheduled`,
+      jointSessions,
       meeting: serialized,
       meetLink: hostJoin,
       startUrl: hostJoin,
@@ -1465,6 +1484,12 @@ router.post('/:id/start', async (req, res) => {
       console.warn('[meetings] classroom publish on start:', pubErr.message || pubErr);
     }
 
+    let jointSessions = [];
+    if (doc.batchId && !doc.jointLeadId && doc.status === 'live') {
+      const leadBatch = await Batch.findById(doc.batchId).lean().exec();
+      jointSessions = await linkJointBatches(doc, leadBatch);
+    }
+
     if (getSessionProvider(doc) === 'meet' && doc.meetSpaceId) {
       try {
         await googleCalendarService.configureMeetSpaceOpen(doc.meetSpaceId);
@@ -1496,11 +1521,13 @@ router.post('/:id/start', async (req, res) => {
           ? { audioMuted: true, videoMuted: true, autoRecordRequested: true }
           : { zoomHost: true },
       message:
-        provider === 'zoom'
+        jointStartMessage(jointSessions, (doc.jointBatchNames || [])[0]) +
+        (provider === 'zoom'
           ? wasReconnect
             ? 'Rejoining as host — same classroom. Students can enter once you are in Zoom.'
             : 'Class started. Opening Zoom as host.'
-          : 'Class started. Join opens with mic/camera muted. Start Meet recording if it does not begin automatically.',
+          : 'Class started. Join opens with mic/camera muted. Start Meet recording if it does not begin automatically.'),
+      jointSessions,
       closedPreviousSessions
     });
   } catch (error) {
@@ -1667,6 +1694,32 @@ router.post('/:id/complete', async (req, res) => {
     doc.updatedAt = new Date();
     await applyWasteSessionFlags(doc, { save: false });
     await doc.save();
+
+    // A combined class shares one room: ending any batch's row ends them all.
+    const jointMembers = await findJointGroupMembers(doc).catch(() => []);
+    for (const member of jointMembers) {
+      if (member.status !== 'live' && member.status !== 'scheduled') continue;
+      member.status = 'completed';
+      member.actualEndedAt = member.actualEndedAt || doc.actualEndedAt;
+      member.scheduledEnd = doc.scheduledEnd;
+      member.duration = doc.duration;
+      if (dismissPrompt) member.recordingPromptDismissedAt = new Date();
+      member.updatedAt = new Date();
+      await applyWasteSessionFlags(member, { save: false });
+      await member.save();
+      try {
+        if (!member.skipRecordingUpload && member.batchId && !member.wasteSessionFlagged) {
+          await ensureClassroomFromLiveClass(member);
+        }
+      } catch (pubErr) {
+        console.warn('[meetings] classroom publish for combined batch:', pubErr.message || pubErr);
+      }
+    }
+    if (doc.jointLeadId && getSessionProvider(doc) === 'zoom') {
+      syncZoomRecordings({ meetingId: String(doc.jointLeadId) }).catch((err) =>
+        console.warn('[meetings] combined lead recording sync:', err.message || err)
+      );
+    }
 
     // Close the Zoom room so students are not left in a ghost session.
     if (getSessionProvider(doc) === 'zoom' && doc.zoomMeetingId && zoomService.isConfigured()) {

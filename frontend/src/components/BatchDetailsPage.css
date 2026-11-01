@@ -5599,6 +5599,23 @@ body.modal-open {
   margin: 20px 0;
 }
 .sky-timing-values span { display: block; font-size: 0.8rem; margin-bottom: 2px; }
+.sky-combined-card { margin-top: 20px; }
+.sky-combined-list {
+  list-style: none;
+  padding: 0;
+  margin: 16px 0;
+  display: grid;
+  gap: 10px;
+}
+.sky-combined-list label {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  cursor: pointer;
+}
+.sky-combined-list input { margin-top: 4px; }
+.sky-combined-list label > span { display: grid; gap: 2px; }
+.sky-combined-warn { font-size: 0.8rem; color: var(--lms-danger, #9b2c2c); }
 
 /* Neutralize rainbow action buttons inside sky batch pages */
 .sky-batch-page .btn-notes,

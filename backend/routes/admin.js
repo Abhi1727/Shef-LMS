@@ -2782,6 +2782,88 @@ router.put('/batches/:id', async (req, res) => {
       }
     });
 
+// @route   GET /api/admin/batches/:id/combined-class
+// @desc    Same-trainer batches that can share one live room with this batch
+router.get('/batches/:id/combined-class', async (req, res) => {
+  try {
+    const { parseSlot } = require('../utils/jointBatchSessions');
+    const batch = await Batch.findById(req.params.id).lean().exec();
+    if (!batch) return res.status(404).json({ success: false, message: 'Batch not found' });
+    if (!batch.teacherId) return res.json({ success: true, linkedBatchIds: [], candidates: [] });
+
+    const id = String(batch._id);
+    const slot = parseSlot(batch.schedule);
+    const linked = new Set((batch.combinedClassWith || []).map(String));
+    const siblings = await Batch.find({ teacherId: String(batch.teacherId) }).lean().exec();
+    const candidates = siblings
+      .filter((b) => String(b._id) !== id && !['completed', 'inactive', 'archived', 'cancelled'].includes(String(b.status || '').toLowerCase()))
+      .map((b) => {
+        const other = parseSlot(b.schedule);
+        const isLinked = linked.has(String(b._id)) || (b.combinedClassWith || []).map(String).includes(id);
+        return {
+          id: String(b._id),
+          name: b.name || '',
+          studentCount: (b.students || []).length,
+          schedule: b.schedule || null,
+          sameTiming: Boolean(
+            slot && other && slot.start === other.start && slot.end === other.end && [...slot.days].some((d) => other.days.has(d))
+          ),
+          linked: isLinked
+        };
+      })
+      .sort((a, b) => Number(b.sameTiming) - Number(a.sameTiming) || a.name.localeCompare(b.name));
+    res.json({
+      success: true,
+      linkedBatchIds: candidates.filter((c) => c.linked).map((c) => c.id),
+      candidates
+    });
+  } catch (error) {
+    console.error('GET /admin/batches/:id/combined-class error:', error);
+    res.status(500).json({ success: false, message: 'Failed to load combined class options' });
+  }
+});
+
+// @route   PUT /api/admin/batches/:id/combined-class
+// @desc    Link batches (same trainer) so a class started in their shared slot uses one room
+router.put('/batches/:id/combined-class', async (req, res) => {
+  try {
+    const batch = await Batch.findById(req.params.id).lean().exec();
+    if (!batch) return res.status(404).json({ success: false, message: 'Batch not found' });
+    const id = String(batch._id);
+    const wanted = [...new Set((req.body?.batchIds || []).map(String))].filter((b) => b && b !== id);
+
+    const siblings = batch.teacherId
+      ? await Batch.find({ teacherId: String(batch.teacherId) }).lean().exec()
+      : [];
+    const siblingIds = new Set(siblings.map((b) => String(b._id)));
+    const invalid = wanted.filter((b) => !siblingIds.has(b));
+    if (invalid.length) {
+      return res.status(400).json({
+        success: false,
+        message: 'Only batches taught by the same trainer can be combined.'
+      });
+    }
+
+    // Keep links symmetric so starting either batch combines them.
+    await Batch.updateOne({ _id: id }, { $set: { combinedClassWith: wanted, updatedAt: new Date() } });
+    for (const other of siblings) {
+      const otherId = String(other._id);
+      if (otherId === id) continue;
+      const links = new Set((other.combinedClassWith || []).map(String));
+      const shouldLink = wanted.includes(otherId);
+      if (shouldLink === links.has(id)) continue;
+      if (shouldLink) links.add(id);
+      else links.delete(id);
+      await Batch.updateOne({ _id: otherId }, { $set: { combinedClassWith: [...links], updatedAt: new Date() } });
+    }
+
+    res.json({ success: true, linkedBatchIds: wanted, message: 'Combined class settings saved' });
+  } catch (error) {
+    console.error('PUT /admin/batches/:id/combined-class error:', error);
+    res.status(500).json({ success: false, message: 'Failed to save combined class settings' });
+  }
+});
+
 // @route   DELETE /api/admin/batches/:id
 // @desc    Delete a batch (unenroll students, detach classroom, drop sessions/materials)
 router.delete('/batches/:id', async (req, res) => {

@@ -391,7 +391,7 @@ export default function MeetLiveClassesPanel({
         window.open(link, '_blank', 'noopener,noreferrer');
       }
       setMessage(
-        data.reusedRunningSession
+        data.reusedRunningSession || data.jointSessions?.length
           ? data.message
           : (data.closedPreviousSessions?.length
               ? `Closed ${data.closedPreviousSessions.length} previous session(s). `

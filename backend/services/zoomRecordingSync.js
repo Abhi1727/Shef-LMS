@@ -190,12 +190,13 @@ async function getUsedZoomRecordingIds(zoomMeetingId, exceptLiveClassId = '') {
     zoomMeetingId: String(zoomMeetingId),
     zoomRecordingId: { $nin: ['', null] }
   })
-    .select('zoomRecordingId')
+    .select('zoomRecordingId jointLeadId')
     .lean()
     .exec();
   return new Set(
     docs
       .filter((d) => String(d._id || d.id) !== String(exceptLiveClassId))
+      .filter((d) => !exceptLiveClassId || String(d.jointLeadId || '') !== String(exceptLiveClassId))
       .map((d) => String(d.zoomRecordingId))
       .filter(Boolean)
   );
@@ -233,6 +234,86 @@ async function findZoomSessionsNeedingSync({ meetingId = '', since = null } = {}
   return docs.filter((d) => sessionEnded(d) || d.status === 'completed' || d.status === 'live');
 }
 
+function hasJointVideo(doc) {
+  return Boolean(doc?.youtubeVideoId) || Boolean(doc?.driveFileId && /^ready/.test(doc.recordingPipelineStatus || ''));
+}
+
+/**
+ * Combined class rows share one room. Copy from whichever member already has the video;
+ * followers otherwise wait for the lead so the class is uploaded once.
+ * Returns null for normal sessions (and for a lead nobody has uploaded for yet).
+ */
+async function findJointRecordingSource(live) {
+  const id = String(live._id || live.id);
+  const groupId = live.jointLeadId ? String(live.jointLeadId) : id;
+  const members = (await LiveClass.find({ jointLeadId: groupId }).lean().exec()).filter(
+    (m) => String(m._id) !== id
+  );
+  if (live.jointLeadId) {
+    const lead = await LiveClass.findById(groupId).lean().exec();
+    if (lead) members.unshift(lead);
+  }
+  const sameRoom = members.filter((m) => String(m.zoomMeetingId || '') === String(live.zoomMeetingId || ''));
+  if (!sameRoom.length) return null;
+  const withVideo = sameRoom.find(hasJointVideo);
+  if (withVideo) return withVideo;
+  return live.jointLeadId ? sameRoom[0] : null;
+}
+
+/** Combined-batch member: one download/upload per room, so reuse the member's video. */
+async function copyJointLeadRecording(live, lead) {
+  if (!hasJointVideo(lead)) {
+    live.recordingPipelineStatus = 'pending';
+    live.recordingSyncError = 'Combined class: waiting for the main batch recording to finish uploading.';
+    live.recordingSyncAt = new Date();
+    await live.save();
+    return { pending: true, reason: 'waiting-for-joint-lead' };
+  }
+
+  live.driveFileId = lead.driveFileId || '';
+  live.driveLink = lead.driveLink || '';
+  live.zoomRecordingId = lead.zoomRecordingId || '';
+  live.recordingUploadedAt = lead.recordingUploadedAt || new Date();
+  live.youtubeVideoId = lead.youtubeVideoId || '';
+  live.youtubeVideoUrl = lead.youtubeVideoUrl || '';
+  live.youtubeEmbedUrl = lead.youtubeEmbedUrl || '';
+  live.recordingPipelineStatus = lead.recordingPipelineStatus;
+  live.recordingSyncError = '';
+  live.recordingSyncAt = new Date();
+  live.recordingPromptDismissedAt = live.recordingPromptDismissedAt || new Date();
+  if (live.status !== 'cancelled') live.status = 'completed';
+  live.updatedAt = new Date();
+  await live.save();
+
+  await ensureClassroomFromLiveClass(
+    live,
+    lead.youtubeVideoId
+      ? {
+          videoSource: 'youtube-url',
+          driveFileId: lead.driveFileId,
+          driveLink: lead.driveLink,
+          youtubeVideoId: lead.youtubeVideoId,
+          youtubeVideoUrl: lead.youtubeVideoUrl,
+          youtubeEmbedUrl: lead.youtubeEmbedUrl
+        }
+      : { videoSource: 'drive', driveFileId: lead.driveFileId, driveLink: lead.driveLink }
+  );
+  return { synced: true, meetingId: String(live._id), copiedFrom: String(lead._id) };
+}
+
+async function propagateToJointFollowers(lead) {
+  const followers = await LiveClass.find({ jointLeadId: String(lead._id) }).exec();
+  for (const follower of followers) {
+    if (follower.youtubeVideoId || follower.skipRecordingUpload) continue;
+    if (follower.wasteSessionFlagged && !follower.wasteSessionDismissedAt) continue;
+    try {
+      await copyJointLeadRecording(follower, lead.toObject ? lead.toObject() : lead);
+    } catch (err) {
+      console.warn('[Zoom recording sync] combined batch copy failed:', err.message || err);
+    }
+  }
+}
+
 async function syncOneZoomRecording(doc, { forceZoomRecordingId = '' } = {}) {
   ensureTmpDir();
   const live = await LiveClass.findById(doc._id || doc.id);
@@ -245,6 +326,11 @@ async function syncOneZoomRecording(doc, { forceZoomRecordingId = '' } = {}) {
   }
   if (live.youtubeVideoId) {
     return { skipped: true, reason: 'already-on-youtube' };
+  }
+
+  const jointSource = await findJointRecordingSource(live);
+  if (jointSource) {
+    return copyJointLeadRecording(live, jointSource);
   }
 
   const settings = await getLiveClassSettings();
@@ -450,6 +536,7 @@ async function syncOneZoomRecording(doc, { forceZoomRecordingId = '' } = {}) {
         youtubeVideoUrl: yt.videoUrl,
         youtubeEmbedUrl: yt.embedUrl
       });
+      await propagateToJointFollowers(live);
 
       return {
         synced: true,
@@ -473,6 +560,7 @@ async function syncOneZoomRecording(doc, { forceZoomRecordingId = '' } = {}) {
       driveFileId: uploaded.driveFileId,
       driveLink: uploaded.driveLink
     });
+    await propagateToJointFollowers(live);
 
     return {
       synced: true,

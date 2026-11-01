@@ -254,6 +254,9 @@ const BatchDetailsPage = () => {
   const [showScheduleModal, setShowScheduleModal] = useState(false);
   const [scheduleForm, setScheduleForm] = useState({ days: '', time: '' });
   const [timeRange, setTimeRange] = useState({ start: '', end: '' });
+  const [combinedOptions, setCombinedOptions] = useState({ loaded: false, candidates: [] });
+  const [combinedSelection, setCombinedSelection] = useState([]);
+  const [savingCombined, setSavingCombined] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
   const [showSwitchTrainerModal, setShowSwitchTrainerModal] = useState(false);
   const [availableTeachers, setAvailableTeachers] = useState([]);
@@ -842,6 +845,62 @@ const BatchDetailsPage = () => {
     loadBatchData();
     loadCoursesAndBatches();
   }, [loadBatchData]);
+
+  const combinedBatchId = selectedBatch?.id || selectedBatch?._id || '';
+  const combinedTeacherId = selectedBatch?.teacherId || '';
+  useEffect(() => {
+    if (!isAdmin || activeView !== 'timing' || !combinedBatchId) return;
+    let cancelled = false;
+    const loadCombined = async () => {
+      try {
+        const token = localStorage.getItem('token');
+        const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
+        const res = await fetch(`${apiUrl}/api/admin/batches/${combinedBatchId}/combined-class`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        const data = await res.json().catch(() => ({}));
+        if (cancelled || !res.ok) return;
+        setCombinedOptions({ loaded: true, candidates: data.candidates || [] });
+        setCombinedSelection(data.linkedBatchIds || []);
+      } catch (err) {
+        console.error('Error loading combined class options:', err);
+      }
+    };
+    loadCombined();
+    return () => {
+      cancelled = true;
+    };
+  }, [isAdmin, activeView, combinedBatchId, combinedTeacherId]);
+
+  const handleSaveCombined = async () => {
+    if (!combinedBatchId) return;
+    setSavingCombined(true);
+    try {
+      const token = localStorage.getItem('token');
+      const apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : '';
+      const res = await fetch(`${apiUrl}/api/admin/batches/${combinedBatchId}/combined-class`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ batchIds: combinedSelection })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.message || 'Failed to save');
+      setCombinedOptions((prev) => ({
+        ...prev,
+        candidates: prev.candidates.map((c) => ({ ...c, linked: combinedSelection.includes(c.id) }))
+      }));
+      showToast(
+        combinedSelection.length
+          ? 'Combined class saved. Starting any linked batch in its time slot opens one shared room.'
+          : 'Combined class removed. Batches start separately.',
+        'success'
+      );
+    } catch (err) {
+      showToast(err.message || 'Failed to save combined class settings', 'error');
+    } finally {
+      setSavingCombined(false);
+    }
+  };
 
   // Load full student list only when adding existing students (avoids scanning all users on page load)
   useEffect(() => {
@@ -2279,6 +2338,59 @@ const BatchDetailsPage = () => {
                   </button>
                 )}
               </div>
+              {isAdmin && (
+                <div className="sky-timing-card sky-combined-card">
+                  <h2>Combined class</h2>
+                  <p className="sky-muted">
+                    Linked batches of the same trainer share one live room when a class starts in their common
+                    time slot. Each batch keeps its own attendance and gets the recording in its Classroom.
+                  </p>
+                  {!combinedOptions.loaded ? (
+                    <p className="sky-muted">Loading…</p>
+                  ) : combinedOptions.candidates.length === 0 ? (
+                    <p className="sky-muted">This trainer has no other active batches.</p>
+                  ) : (
+                    <ul className="sky-combined-list">
+                      {combinedOptions.candidates.map((c) => (
+                        <li key={c.id}>
+                          <label>
+                            <input
+                              type="checkbox"
+                              checked={combinedSelection.includes(c.id)}
+                              onChange={(e) =>
+                                setCombinedSelection((prev) =>
+                                  e.target.checked ? [...prev, c.id] : prev.filter((x) => x !== c.id)
+                                )
+                              }
+                            />
+                            <span>
+                              <strong>{c.name}</strong>
+                              <span className="sky-muted">
+                                {c.schedule?.days || '—'} · {c.schedule?.time || 'no timing'} · {c.studentCount} students
+                              </span>
+                              {!c.sameTiming && (
+                                <span className="sky-combined-warn">
+                                  Different timing: they only combine when both timings match.
+                                </span>
+                              )}
+                            </span>
+                          </label>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                  {combinedOptions.candidates.length > 0 && (
+                    <button
+                      type="button"
+                      className="sky-btn sky-btn-primary"
+                      disabled={savingCombined}
+                      onClick={handleSaveCombined}
+                    >
+                      {savingCombined ? 'Saving…' : 'Save combined class'}
+                    </button>
+                  )}
+                </div>
+              )}
             </div>
           )}
           {activeView === 'videos' && (

@@ -338,7 +338,7 @@ const TeacherDashboard = ({ user, onLogout }) => {
         window.open(link, '_blank', 'noopener,noreferrer');
       }
       showToast(
-        data.reusedRunningSession
+        data.reusedRunningSession || data.jointSessions?.length
           ? data.message
           : provider === 'zoom'
             ? 'Class started — opening Zoom Workspace…'
