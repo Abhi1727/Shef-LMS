@@ -118,20 +118,13 @@ export function formatDayIn(date, tz = getViewerTimeZone(), { withDate = true } 
   );
 }
 
-/** "Sat, Nov 7 · 7:00 – 9:00 AM EST" in the viewer's zone. */
+/** "Sat, Nov 7 · 7:00 – 9:00 AM" in the viewer's own zone. */
 export function formatClassWhen(start, end, { tz = getViewerTimeZone(), withDate = true } = {}) {
   if (!start) return '';
   const s = new Date(start);
-  const abbr = zoneAbbreviation(tz, s);
   const day = formatDayIn(s, tz, { withDate });
-  if (!end) return `${day} · ${formatTimeIn(s, tz)} ${abbr}`;
-  return `${day} · ${formatTimeIn(s, tz)} – ${formatTimeIn(end, tz)} ${abbr}`;
-}
-
-/** "(5:30 PM IST)" — shown next to local times so trainers and students can talk about one slot. */
-export function istHint(start, tz = getViewerTimeZone()) {
-  if (!start || isIstViewer(tz)) return '';
-  return `${formatTimeIn(start, SCHOOL_TIME_ZONE)} IST`;
+  if (!end) return `${day} · ${formatTimeIn(s, tz)}`;
+  return `${day} · ${formatTimeIn(s, tz)} – ${formatTimeIn(end, tz)}`;
 }
 
 function parseClock(text) {
@@ -195,7 +188,7 @@ export function upcomingSlotOccurrences(schedule, { from = new Date(), count = 6
 
 /**
  * Weekly slot described in the viewer's zone, with the days converted too:
- * IST "Sun, Mon · 4:00 – 6:00 AM" → "Sat, Sun · 5:30 – 7:30 PM EST".
+ * IST "Sun, Mon · 4:00 – 6:00 AM" → "Sat, Sun · 5:30 – 7:30 PM" for a US Eastern viewer.
  */
 export function describeWeeklySlot(schedule, { tz = getViewerTimeZone(), from = new Date() } = {}) {
   const occ = upcomingSlotOccurrences(schedule, { from, count: 7 });
@@ -215,10 +208,8 @@ export function describeWeeklySlot(schedule, { tz = getViewerTimeZone(), from = 
   return {
     days: days.join(', '),
     time: `${formatTimeIn(first.start, tz)} – ${formatTimeIn(first.end, tz)}`,
-    zone: zoneAbbreviation(tz, first.start),
-    ist: `${formatTimeIn(first.start, SCHOOL_TIME_ZONE)} – ${formatTimeIn(first.end, SCHOOL_TIME_ZONE)} IST`,
     next: first,
-    text: `${days.join(', ')} · ${formatTimeIn(first.start, tz)} – ${formatTimeIn(first.end, tz)} ${zoneAbbreviation(tz, first.start)}`
+    text: `${days.join(', ')} · ${formatTimeIn(first.start, tz)} – ${formatTimeIn(first.end, tz)}`
   };
 }
 
@@ -230,7 +221,7 @@ export function upcomingLocalTimeShift(schedule, { tz = getViewerTimeZone(), fro
   const occ = upcomingSlotOccurrences(schedule, { from, count: 20, horizonDays: withinDays + 7 });
   if (occ.length < 2) return null;
   const limit = new Date(from).getTime() + withinDays * DAY_MS;
-  const key = (o) => `${formatTimeIn(o.start, tz)} ${zoneAbbreviation(tz, o.start)}`;
+  const key = (o) => formatTimeIn(o.start, tz);
   const baseline = key(occ[0]);
   const changed = occ.find((o) => o.start.getTime() <= limit && key(o) !== baseline);
   if (!changed) return null;

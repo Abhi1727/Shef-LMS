@@ -44,8 +44,8 @@ export function DstNotice({ schedule }) {
   return (
     <div className="tz-dst" role="status">
       <strong>Clock change ahead:</strong> from <strong>{shift.dayLabel}</strong> your class starts at{' '}
-      <strong>{shift.after}</strong> instead of {shift.before}. Your local clocks change; the class time in India
-      stays the same.
+      <strong>{shift.after}</strong> instead of {shift.before}, because daylight saving time changes in your
+      area.
     </div>
   );
 }

@@ -4,7 +4,7 @@ import CustomVideoPlayer from './CustomVideoPlayer';
 import StudentProfile from './StudentProfile';
 import StudentAnalyticsDashboard from './StudentAnalyticsDashboard';
 import { YouTubeUtils } from '../utils/youtubeUtils';
-import { describeWeeklySlot, istHint } from '../utils/viewerTime';
+import { describeWeeklySlot } from '../utils/viewerTime';
 import { DstNotice, useSyncDetectedTimeZone, useViewerTimeZone } from './TimeZoneTools';
 import { formatDateForComponent } from '../utils/dateUtils';
 import { ToastContainer, showToast } from './Toast';
@@ -2397,17 +2397,10 @@ const Dashboard = ({ user, onLogout }) => {
                     const slot = describeWeeklySlot(batchInfo.schedule, { tz: viewerTz });
                     return (
                       <div className="batch-banner-right">
-                        <span className="schedule-label">Schedule (your time)</span>
+                        <span className="schedule-label">Schedule</span>
                         <span className="schedule-time">
-                          {slot
-                            ? slot.text
-                            : `${batchInfo.schedule?.days || 'N/A'}${
-                                batchInfo.schedule?.time ? ` · ${batchInfo.schedule.time} IST` : ''
-                              }`}
+                          {slot ? slot.text : batchInfo.schedule?.days || 'N/A'}
                         </span>
-                        {slot && istHint(slot.next.start, viewerTz) && (
-                          <span className="schedule-ist">India: {batchInfo.schedule.days} · {slot.ist}</span>
-                        )}
                       </div>
                     );
                   })()}

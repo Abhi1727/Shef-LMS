@@ -3,7 +3,7 @@ import { getApiBaseUrl } from '../utils/apiBase';
 import { liveJoinUrl, livePlatformLabel } from '../utils/liveJoinUrl';
 import { openLiveClassSession } from '../utils/openLiveClassSession';
 import { formatLiveClassCountdown, getLiveClassSessionPhase } from '../utils/liveClassSessionPhase';
-import { formatClassWhen, istHint } from '../utils/viewerTime';
+import { SCHOOL_TIME_ZONE, formatClassWhen, instantFromZonedTime } from '../utils/viewerTime';
 import { useViewerTimeZone } from './TimeZoneTools';
 import './LiveClassStudio.css';
 
@@ -16,15 +16,13 @@ function formatCountdown(minsUntil, phase) {
 }
 
 function formatTimeRange(m, tz) {
-  const start = m.scheduledStart ? new Date(m.scheduledStart) : null;
+  const start = m.scheduledStart
+    ? new Date(m.scheduledStart)
+    : instantFromZonedTime(m.scheduledDate, m.scheduledTime, SCHOOL_TIME_ZONE);
   const end = m.scheduledEnd ? new Date(m.scheduledEnd) : null;
-  if (!start || Number.isNaN(start.getTime())) {
-    return `${m.scheduledDate || ''} · ${m.scheduledTime || ''} IST · ${m.duration || ''}`.trim();
-  }
+  if (!start || Number.isNaN(start.getTime())) return m.duration || '';
   const validEnd = end && !Number.isNaN(end.getTime()) ? end : null;
-  const when = formatClassWhen(start, validEnd, { tz });
-  const hint = istHint(start, tz);
-  return hint ? `${when} (${hint})` : when;
+  return formatClassWhen(start, validEnd, { tz });
 }
 
 export default function StudentLiveClassLobby({ compact = false }) {

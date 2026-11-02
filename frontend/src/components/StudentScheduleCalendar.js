@@ -7,7 +7,6 @@ import {
   describeWeeklySlot,
   formatClassWhen,
   formatTimeIn,
-  istHint,
   upcomingSlotOccurrences
 } from '../utils/viewerTime';
 import './MeetLiveClasses.css';
@@ -299,9 +298,6 @@ export default function StudentScheduleCalendar({
                 <strong>{c.batchName || 'Batch'}</strong>
                 <span>
                   {slot ? slot.text : c.schedule?.days || 'Schedule TBA'}
-                  {slot && istHint(slot.next.start, tz) ? (
-                    <span className="tz-hint"> ({slot.ist})</span>
-                  ) : null}
                 </span>
               </div>
             );
@@ -417,9 +413,6 @@ export default function StudentScheduleCalendar({
                     <h4 className="live-session__title">{ev.title}</h4>
                     <p className="live-session__meta">
                       {ev.start ? formatClassWhen(ev.start, ev.end, { tz }) : ''}
-                      {ev.start && istHint(ev.start, tz) ? (
-                        <span className="tz-hint"> ({istHint(ev.start, tz)})</span>
-                      ) : null}
                       {ev.teacherName ? ` · ${ev.teacherName}` : ''}
                       {ev.batchName ? ` · ${ev.batchName}` : ''}
                     </p>

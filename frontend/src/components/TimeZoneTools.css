@@ -9,12 +9,6 @@
   margin: 0.5rem 0 0.75rem;
 }
 
-.tz-hint {
-  color: var(--lms-muted, #5b6b73);
-  font-size: 0.85em;
-  white-space: nowrap;
-}
-
 .tz-calc-wrap {
   margin-top: 1.25rem;
   font-family: var(--lms-font, 'Manrope', 'Segoe UI', sans-serif);

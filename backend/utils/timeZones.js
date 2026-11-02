@@ -53,15 +53,12 @@ function timeOnly(date, tz) {
 }
 
 /**
- * "When" line for one student. Known zone: their local time first, IST in brackets.
+ * "When" line for one student. Known zone: only their local time.
  * Unknown zone: IST plus every US zone, each DST-correct for that date.
  */
 function whenLine(date, studentTz) {
   const tz = validTimeZone(studentTz);
-  if (tz && tz !== SCHOOL_TIME_ZONE) {
-    return `${formatInZone(date, tz)} (${timeOnly(date, SCHOOL_TIME_ZONE)})`;
-  }
-  if (tz === SCHOOL_TIME_ZONE) return formatInZone(date, SCHOOL_TIME_ZONE);
+  if (tz) return formatInZone(date, tz);
   const us = US_ZONES.map(([zone]) => timeOnly(date, zone)).join(' / ');
   return `${formatInZone(date, SCHOOL_TIME_ZONE)} · US: ${us}`;
 }
