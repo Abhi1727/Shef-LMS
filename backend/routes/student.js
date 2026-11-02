@@ -598,7 +598,12 @@ router.get('/schedule', async (req, res) => {
       .lean()
       .exec();
 
-    const recordingEvents = lectures.map((l) => {
+    // A recording linked to a live class is shown on that class's card; its date-only
+    // timestamp would otherwise render as a second, wrong-time entry.
+    const linkedLectureIds = new Set(
+      liveEvents.map((e) => e.classroomLectureId).filter(Boolean).map(String)
+    );
+    const recordingEvents = lectures.filter((l) => !linkedLectureIds.has(String(l._id))).map((l) => {
       let start = null;
       if (l.date) {
         const d = new Date(l.date);

@@ -5,7 +5,7 @@ import StudentProfile from './StudentProfile';
 import StudentAnalyticsDashboard from './StudentAnalyticsDashboard';
 import { YouTubeUtils } from '../utils/youtubeUtils';
 import { describeWeeklySlot, istHint } from '../utils/viewerTime';
-import { DstNotice, TimeZoneBar, useViewerTimeZone } from './TimeZoneTools';
+import { DstNotice, useSyncDetectedTimeZone, useViewerTimeZone } from './TimeZoneTools';
 import { formatDateForComponent } from '../utils/dateUtils';
 import { ToastContainer, showToast } from './Toast';
 import AccountMenu from './AccountMenu';
@@ -596,6 +596,7 @@ const Dashboard = ({ user, onLogout }) => {
   // Course content state
   const [courseContent, setCourseContent] = useState(null);
   const viewerTz = useViewerTimeZone();
+  useSyncDetectedTimeZone();
   
   // Progress tracking state
   const [viewedFiles, setViewedFiles] = useState([]);
@@ -2413,7 +2414,6 @@ const Dashboard = ({ user, onLogout }) => {
                 </div>
               )}
               {batchInfo?.schedule && <DstNotice schedule={batchInfo.schedule} />}
-              {batchInfo?.schedule && <TimeZoneBar />}
 
               {!batchInfo && !(enrollments || []).length && (
                 <div className="sky-empty-panel">

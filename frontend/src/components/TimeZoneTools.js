@@ -1,114 +1,39 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { getApiBaseUrl } from '../utils/apiBase';
 import {
-  COMMON_TIME_ZONES,
   SCHOOL_TIME_ZONE,
   detectBrowserTimeZone,
   formatDayIn,
   formatTimeIn,
   getViewerTimeZone,
-  hasManualTimeZone,
   instantFromZonedTime,
-  setViewerTimeZoneOverride,
   upcomingLocalTimeShift,
   zoneAbbreviation,
   zoneLabel
 } from '../utils/viewerTime';
 import './TimeZoneTools.css';
 
-/** Current viewer zone; re-renders when the user changes it anywhere in the app. */
+/** The viewer's zone, detected from their device. */
 export function useViewerTimeZone() {
-  const [tz, setTz] = useState(getViewerTimeZone);
-  useEffect(() => {
-    const onChange = () => setTz(getViewerTimeZone());
-    window.addEventListener('lms-timezone-change', onChange);
-    return () => window.removeEventListener('lms-timezone-change', onChange);
-  }, []);
-  return tz;
+  return useMemo(getViewerTimeZone, []);
 }
 
 let syncedThisSession = false;
 
-function saveTimeZone(body) {
-  const token = localStorage.getItem('token');
-  if (!token) return Promise.resolve(null);
-  return fetch(`${getApiBaseUrl()}/api/auth/timezone`, {
-    method: 'PUT',
-    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify(body)
-  })
-    .then((r) => (r.ok ? r.json() : null))
-    .catch(() => null);
-}
-
-/** Keep the profile zone in step with the browser for users who stay logged in for weeks. */
-function useSyncDetectedTimeZone() {
+/** Keep the profile zone (used for reminder emails) in step with the device for users who stay logged in. */
+export function useSyncDetectedTimeZone() {
   useEffect(() => {
-    if (syncedThisSession || hasManualTimeZone()) return;
+    if (syncedThisSession) return;
     syncedThisSession = true;
     const detected = detectBrowserTimeZone();
-    if (detected) saveTimeZone({ timezone: detected, manual: false });
+    const token = localStorage.getItem('token');
+    if (!detected || !token) return;
+    fetch(`${getApiBaseUrl()}/api/auth/timezone`, {
+      method: 'PUT',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ timezone: detected, manual: false })
+    }).catch(() => {});
   }, []);
-}
-
-function zoneOptions(current) {
-  const detected = detectBrowserTimeZone();
-  const ids = [...new Set([detected, current, ...COMMON_TIME_ZONES.map((z) => z.id)].filter(Boolean))];
-  return ids.map((id) => ({ id, label: `${zoneLabel(id)} (${zoneAbbreviation(id)})` }));
-}
-
-/** "Class times are shown in US Eastern (EST) · Change" */
-export function TimeZoneBar({ compact = false }) {
-  useSyncDetectedTimeZone();
-  const tz = useViewerTimeZone();
-  const [editing, setEditing] = useState(false);
-  const isManual = hasManualTimeZone();
-  const options = useMemo(() => zoneOptions(tz), [tz]);
-
-  const choose = (value) => {
-    if (value === 'auto') {
-      setViewerTimeZoneOverride('');
-      saveTimeZone({ timezone: '', manual: false }).then(() =>
-        saveTimeZone({ timezone: detectBrowserTimeZone(), manual: false })
-      );
-    } else {
-      setViewerTimeZoneOverride(value);
-      saveTimeZone({ timezone: value, manual: true });
-    }
-    setEditing(false);
-  };
-
-  return (
-    <div className={`tz-bar${compact ? ' tz-bar--compact' : ''}`}>
-      <span className="tz-bar__icon" aria-hidden="true">🕒</span>
-      {editing ? (
-        <select
-          className="tz-bar__select"
-          autoFocus
-          value={isManual ? tz : 'auto'}
-          onChange={(e) => choose(e.target.value)}
-          onBlur={() => setEditing(false)}
-        >
-          <option value="auto">Automatic ({zoneLabel(detectBrowserTimeZone() || SCHOOL_TIME_ZONE)})</option>
-          {options.map((o) => (
-            <option key={o.id} value={o.id}>
-              {o.label}
-            </option>
-          ))}
-        </select>
-      ) : (
-        <span>
-          Times shown in <strong>{zoneLabel(tz)} ({zoneAbbreviation(tz)})</strong>
-          {isManual ? '' : ' · detected from your device'}
-        </span>
-      )}
-      {!editing && (
-        <button type="button" className="tz-bar__change" onClick={() => setEditing(true)}>
-          Change
-        </button>
-      )}
-    </div>
-  );
 }
 
 /** Warns before a daylight-saving switch moves the student's local class time. */

@@ -19,10 +19,10 @@ const {
 // Normalize email for consistent lookup (Firestore queries are case-sensitive)
 const normalizeEmail = (e) => (e || '').trim().toLowerCase();
 
-/** Browser-detected zones refresh on login; a zone the user picked by hand is kept. */
+/** The device's zone always wins; it refreshes on login and dashboard load. */
 function applyDetectedTimeZone(user, detected) {
   const tz = validTimeZone(detected);
-  if (!tz || user.timezoneSource === 'manual' || user.timezone === tz) return false;
+  if (!tz || (user.timezone === tz && user.timezoneSource === 'browser')) return false;
   user.timezone = tz;
   user.timezoneSource = 'browser';
   return true;

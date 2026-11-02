@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { liveJoinUrl } from '../utils/liveJoinUrl';
 import { openLiveClassSession } from '../utils/openLiveClassSession';
 import { getApiBaseUrl } from '../utils/apiBase';
-import { TimeZoneBar, TimeZoneCalculator, useViewerTimeZone } from './TimeZoneTools';
+import { TimeZoneCalculator, useViewerTimeZone } from './TimeZoneTools';
 import {
   describeWeeklySlot,
   formatClassWhen,
@@ -289,7 +289,6 @@ export default function StudentScheduleCalendar({
         </div>
       )}
 
-      <TimeZoneBar />
 
       {cohort.length > 0 && (
         <div className="live-cal-cohort">

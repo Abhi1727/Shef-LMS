@@ -7,12 +7,11 @@
  */
 
 export const SCHOOL_TIME_ZONE = 'Asia/Kolkata';
-const OVERRIDE_KEY = 'lmsTimeZone';
 const IST_OFFSET_MS = 330 * 60 * 1000;
 const DAY_KEYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-/** Zones offered in the picker and the time calculator. */
+/** Zones offered in the time calculator. */
 export const COMMON_TIME_ZONES = [
   { id: 'America/New_York', label: 'US Eastern' },
   { id: 'America/Chicago', label: 'US Central' },
@@ -54,42 +53,10 @@ function storedUser() {
   }
 }
 
-/** True when the zone was picked by hand (on this device or saved on the profile from another). */
-export function hasManualTimeZone() {
-  return Boolean(localStorage.getItem(OVERRIDE_KEY)) || storedUser().timezoneSource === 'manual';
-}
-
-/** Manual choice > this device's zone > last saved profile zone > IST. */
+/** This device's zone > last saved profile zone > IST. */
 export function getViewerTimeZone() {
-  const user = storedUser();
-  const candidates = [
-    localStorage.getItem(OVERRIDE_KEY),
-    user.timezoneSource === 'manual' ? user.timezone : '',
-    detectBrowserTimeZone(),
-    user.timezone
-  ];
+  const candidates = [detectBrowserTimeZone(), storedUser().timezone];
   return candidates.find(isValidTimeZone) || SCHOOL_TIME_ZONE;
-}
-
-export function setViewerTimeZoneOverride(tz) {
-  if (tz && isValidTimeZone(tz)) localStorage.setItem(OVERRIDE_KEY, tz);
-  else localStorage.removeItem(OVERRIDE_KEY);
-  try {
-    const user = JSON.parse(localStorage.getItem('user') || 'null');
-    if (user) {
-      localStorage.setItem(
-        'user',
-        JSON.stringify({
-          ...user,
-          timezone: tz || detectBrowserTimeZone(),
-          timezoneSource: tz ? 'manual' : 'browser'
-        })
-      );
-    }
-  } catch {
-    /* ignore */
-  }
-  window.dispatchEvent(new Event('lms-timezone-change'));
 }
 
 export function isIstViewer(tz = getViewerTimeZone()) {

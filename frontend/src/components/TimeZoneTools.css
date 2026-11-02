@@ -1,33 +1,3 @@
-.tz-bar {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  flex-wrap: wrap;
-  font-family: var(--lms-font, 'Manrope', 'Segoe UI', sans-serif);
-  font-size: 0.85rem;
-  color: var(--lms-ink, #102a33);
-  background: #eef6f6;
-  border: 1px solid var(--lms-border, #d5dee3);
-  border-radius: 10px;
-  padding: 0.45rem 0.75rem;
-  margin-bottom: 0.75rem;
-}
-.tz-bar--compact { margin-bottom: 0; padding: 0.3rem 0.6rem; }
-.tz-bar__change {
-  background: none;
-  border: none;
-  color: var(--lms-accent, #147a7a);
-  font-weight: 700;
-  cursor: pointer;
-  padding: 0;
-}
-.tz-bar__select {
-  font: inherit;
-  padding: 0.25rem 0.4rem;
-  border-radius: 6px;
-  border: 1px solid var(--lms-border, #d5dee3);
-}
-
 .tz-dst {
   font-family: var(--lms-font, 'Manrope', 'Segoe UI', sans-serif);
   font-size: 0.88rem;
