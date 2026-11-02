@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { detectUserIP } from '../utils/ipDetector';
+import { detectBrowserTimeZone } from '../utils/viewerTime';
 import ChangePasswordPanel from './ChangePasswordPanel';
 import './Login.css';
 
@@ -64,6 +65,7 @@ const Login = ({ onLogin }) => {
             }
           : null,
         userAgent: navigator.userAgent,
+        timezone: detectBrowserTimeZone(),
         timestamp: new Date().toISOString(),
         loginAttempts: loginAttempts + 1
       };

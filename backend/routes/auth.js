@@ -10,6 +10,7 @@ const logger = require('../utils/logger');
 const { getClientIP, getGeoFromIP } = require('../utils/geoIP');
 const { sendTransactionalEmail } = require('../services/emailService');
 const auth = require('../middleware/auth');
+const { validTimeZone } = require('../utils/timeZones');
 const {
   isAccountAllowed,
   bumpTokenVersion
@@ -17,6 +18,15 @@ const {
 
 // Normalize email for consistent lookup (Firestore queries are case-sensitive)
 const normalizeEmail = (e) => (e || '').trim().toLowerCase();
+
+/** Browser-detected zones refresh on login; a zone the user picked by hand is kept. */
+function applyDetectedTimeZone(user, detected) {
+  const tz = validTimeZone(detected);
+  if (!tz || user.timezoneSource === 'manual' || user.timezone === tz) return false;
+  user.timezone = tz;
+  user.timezoneSource = 'browser';
+  return true;
+}
 
 function buildTokenUser(user, loginInfo) {
   const jwtRole = user.role === 'mentor' ? 'teacher' : user.role;
@@ -35,6 +45,8 @@ function buildTokenUser(user, loginInfo) {
     company: user.company,
     phone: user.phone || '',
     address: user.address || '',
+    timezone: user.timezone || '',
+    timezoneSource: user.timezoneSource || '',
     tv: Number(user.tokenVersion || 0)
   };
   if (loginInfo) base.lastLogin = loginInfo;
@@ -152,7 +164,7 @@ router.post('/register', async (req, res) => {
 // @desc    Login user (captures IP + location for production)
 router.post('/login', async (req, res) => {
   try {
-    const { email, password } = req.body;
+    const { email, password, timezone } = req.body;
     const normalizedEmail = normalizeEmail(email);
 
     if (!normalizedEmail || !password) {
@@ -206,6 +218,7 @@ router.post('/login', async (req, res) => {
     userData.loginHistory = userData.loginHistory || [];
     userData.loginHistory.unshift(historyEntry);
     if (userData.loginHistory.length > 20) userData.loginHistory = userData.loginHistory.slice(0, 20);
+    applyDetectedTimeZone(userData, timezone);
     await userData.save();
 
     // Log to centralized ActivityLog (non-blocking)
@@ -232,6 +245,36 @@ router.post('/login', async (req, res) => {
   } catch (err) {
     logger.error('Login error', { error: err.message });
     res.status(500).send('Server error');
+  }
+});
+
+// @route   PUT /api/auth/timezone
+// @desc    Save the user's timezone: { timezone, manual }. manual=true pins it; manual=false with an
+//          empty timezone returns to automatic (browser) detection.
+router.put('/timezone', auth, async (req, res) => {
+  try {
+    const user = await User.findById(String(req.user.id));
+    if (!user) return res.status(404).json({ success: false, message: 'User not found' });
+    const manual = Boolean(req.body?.manual);
+    const tz = validTimeZone(req.body?.timezone);
+    if (req.body?.timezone && !tz) {
+      return res.status(400).json({ success: false, message: 'Unknown timezone' });
+    }
+    if (manual) {
+      user.timezone = tz;
+      user.timezoneSource = 'manual';
+    } else {
+      if (user.timezoneSource === 'manual' && !tz) user.timezoneSource = 'browser';
+      else if (!applyDetectedTimeZone(user, tz)) {
+        return res.json({ success: true, timezone: user.timezone || '', source: user.timezoneSource || '' });
+      }
+    }
+    user.updatedAt = new Date();
+    await user.save();
+    res.json({ success: true, timezone: user.timezone || '', source: user.timezoneSource || '' });
+  } catch (err) {
+    logger.error('Save timezone error', { error: err.message });
+    res.status(500).json({ success: false, message: 'Could not save timezone' });
   }
 });
 

@@ -3,6 +3,8 @@ import { getApiBaseUrl } from '../utils/apiBase';
 import { liveJoinUrl, livePlatformLabel } from '../utils/liveJoinUrl';
 import { openLiveClassSession } from '../utils/openLiveClassSession';
 import { formatLiveClassCountdown, getLiveClassSessionPhase } from '../utils/liveClassSessionPhase';
+import { formatClassWhen, istHint } from '../utils/viewerTime';
+import { useViewerTimeZone } from './TimeZoneTools';
 import './LiveClassStudio.css';
 
 function sessionPhase(meeting, now = Date.now()) {
@@ -13,17 +15,16 @@ function formatCountdown(minsUntil, phase) {
   return formatLiveClassCountdown(minsUntil, phase, { forTrainer: false });
 }
 
-function formatTimeRange(m) {
+function formatTimeRange(m, tz) {
   const start = m.scheduledStart ? new Date(m.scheduledStart) : null;
   const end = m.scheduledEnd ? new Date(m.scheduledEnd) : null;
   if (!start || Number.isNaN(start.getTime())) {
     return `${m.scheduledDate || ''} · ${m.scheduledTime || ''} IST · ${m.duration || ''}`.trim();
   }
-  const opts = { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Asia/Kolkata' };
-  const a = start.toLocaleTimeString('en-IN', opts);
-  const b = end && !Number.isNaN(end.getTime()) ? end.toLocaleTimeString('en-IN', opts) : '';
-  const dur = m.duration || (end ? '' : '60 min');
-  return b ? `${a} – ${b} (${dur})` : `${a} IST · ${dur}`;
+  const validEnd = end && !Number.isNaN(end.getTime()) ? end : null;
+  const when = formatClassWhen(start, validEnd, { tz });
+  const hint = istHint(start, tz);
+  return hint ? `${when} (${hint})` : when;
 }
 
 export default function StudentLiveClassLobby({ compact = false }) {
@@ -33,6 +34,7 @@ export default function StudentLiveClassLobby({ compact = false }) {
   const [joinNote, setJoinNote] = useState('');
   const [joiningId, setJoiningId] = useState('');
   const [now, setNow] = useState(Date.now());
+  const tz = useViewerTimeZone();
 
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now()), 15000);
@@ -189,7 +191,7 @@ export default function StudentLiveClassLobby({ compact = false }) {
                     : 'Upcoming'}
               </span>
               <h3 className="live-studio-student__title">{featured.title}</h3>
-              <p className="live-studio-session__meta">{formatTimeRange(featured)}</p>
+              <p className="live-studio-session__meta">{formatTimeRange(featured, tz)}</p>
               {featured.teacherName && (
                 <p className="live-studio-session__meta live-studio-session__meta--trainer">
                   Trainer: {featured.teacherName}
@@ -286,7 +288,7 @@ export default function StudentLiveClassLobby({ compact = false }) {
                   <div className="live-studio-session__row">
                     <div>
                       <h4 className="live-studio-session__title">{m.title}</h4>
-                      <p className="live-studio-session__meta">{formatTimeRange(m)}</p>
+                      <p className="live-studio-session__meta">{formatTimeRange(m, tz)}</p>
                       <p className="live-studio-session__meta">
                         {formatCountdown(minsUntil, phase)}
                       </p>

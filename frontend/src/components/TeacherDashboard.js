@@ -9,6 +9,7 @@ import AccountMenu from './AccountMenu';
 import SkyLoadingScreen from './SkyLoadingScreen';
 import DirectChatPanel from './DirectChatPanel';
 import ResponsiveShellNav from './ResponsiveShellNav';
+import { TimeZoneCalculator } from './TimeZoneTools';
 import TeacherAvailabilityPanel from './TeacherAvailabilityPanel';
 import { formatDateForComponent } from '../utils/dateUtils';
 import { liveJoinUrl } from '../utils/liveJoinUrl';
@@ -1155,6 +1156,10 @@ const TeacherDashboard = ({ user, onLogout }) => {
                 </button>
               </form>
             </div> */}
+            <details className="tz-calc-wrap">
+              <summary>Time zone calculator: check a student's local time</summary>
+              <TimeZoneCalculator defaultFromZone="Asia/Kolkata" />
+            </details>
           </div>
         )}
 

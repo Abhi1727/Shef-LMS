@@ -129,6 +129,15 @@ const UserSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Course'
   }],
+  timezone: {
+    type: String,
+    default: ''
+  },
+  timezoneSource: {
+    type: String,
+    enum: ['', 'browser', 'manual'],
+    default: ''
+  },
   // IP Address tracking fields
   lastLoginIP: {
     type: String,

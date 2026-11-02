@@ -2,6 +2,14 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { liveJoinUrl } from '../utils/liveJoinUrl';
 import { openLiveClassSession } from '../utils/openLiveClassSession';
 import { getApiBaseUrl } from '../utils/apiBase';
+import { TimeZoneBar, TimeZoneCalculator, useViewerTimeZone } from './TimeZoneTools';
+import {
+  describeWeeklySlot,
+  formatClassWhen,
+  formatTimeIn,
+  istHint,
+  upcomingSlotOccurrences
+} from '../utils/viewerTime';
 import './MeetLiveClasses.css';
 
 function startOfWeek(d) {
@@ -33,22 +41,12 @@ function sameDay(a, b) {
   );
 }
 
-function formatDayLabel(d) {
-  return d.toLocaleDateString('en-IN', {
-    weekday: 'short',
-    day: 'numeric',
-    month: 'short'
-  });
+function dayKeyInZone(date, tz) {
+  return new Date(date).toLocaleDateString('en-CA', { timeZone: tz });
 }
 
-function formatTime(iso) {
-  if (!iso) return '';
-  return new Date(iso).toLocaleTimeString('en-IN', {
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: true,
-    timeZone: 'Asia/Kolkata'
-  });
+function cellKey(d) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
 function toGCalStamp(iso) {
@@ -61,7 +59,7 @@ function toGCalStamp(iso) {
 }
 
 /** Google Calendar “create event” template URL for a live class */
-export function googleCalendarUrl(ev) {
+export function googleCalendarUrl(ev, tz = 'Asia/Kolkata') {
   if (!ev?.start) return '';
   const start = toGCalStamp(ev.start);
   const end = toGCalStamp(
@@ -80,51 +78,9 @@ export function googleCalendarUrl(ev) {
       .filter(Boolean)
       .join('\n'),
     location: 'Google Meet (via Sky States LMS)',
-    ctz: 'Asia/Kolkata'
+    ctz: tz
   });
   return `https://calendar.google.com/calendar/render?${params.toString()}`;
-}
-
-function parseCohortDays(schedule) {
-  if (!schedule) return [];
-  const raw = schedule.days || schedule.day || '';
-  if (Array.isArray(raw)) return raw.map(String);
-  return String(raw)
-    .split(/[,/|&]+/)
-    .map((s) => s.trim())
-    .filter(Boolean);
-}
-
-function dayMatchesCohort(date, cohortDays) {
-  if (!cohortDays.length) return false;
-  const names = [
-    'sun',
-    'sunday',
-    'mon',
-    'monday',
-    'tue',
-    'tues',
-    'tuesday',
-    'wed',
-    'wednesday',
-    'thu',
-    'thur',
-    'thurs',
-    'thursday',
-    'fri',
-    'friday',
-    'sat',
-    'saturday'
-  ];
-  const weekday = date
-    .toLocaleDateString('en-US', { weekday: 'short', timeZone: 'Asia/Kolkata' })
-    .toLowerCase()
-    .slice(0, 3);
-  return cohortDays.some((d) => {
-    const x = String(d).toLowerCase().replace(/\./g, '');
-    if (x.startsWith(weekday)) return true;
-    return names.some((n) => n.startsWith(x) && n.startsWith(weekday));
-  });
 }
 
 export default function StudentScheduleCalendar({
@@ -140,6 +96,7 @@ export default function StudentScheduleCalendar({
   const [joinNote, setJoinNote] = useState('');
   const [joiningId, setJoiningId] = useState('');
   const [monthCursor, setMonthCursor] = useState(() => startOfMonth(new Date()));
+  const tz = useViewerTimeZone();
   // Month calendar only (week view removed)
 
   const load = useCallback(async () => {
@@ -168,24 +125,29 @@ export default function StudentScheduleCalendar({
     load();
   }, [load]);
 
-  const cohortDays = useMemo(() => {
-    const days = [];
-    cohort.forEach((c) => days.push(...parseCohortDays(c.schedule)));
-    return [...new Set(days)];
-  }, [cohort]);
-
   const monthCells = useMemo(() => {
     const first = startOfMonth(monthCursor);
     const gridStart = startOfWeek(first);
     return Array.from({ length: 42 }, (_, i) => addDays(gridStart, i));
   }, [monthCursor]);
 
+  // Cohort days are IST slots; highlight the viewer's local dates they actually fall on.
+  const cohortDayKeys = useMemo(() => {
+    const keys = new Set();
+    const from = addDays(monthCells[0], -1);
+    cohort.forEach((c) =>
+      upcomingSlotOccurrences(c.schedule, { from, count: 40, horizonDays: 45 }).forEach((o) =>
+        keys.add(dayKeyInZone(o.start, tz))
+      )
+    );
+    return keys;
+  }, [cohort, monthCells, tz]);
+
   const eventsByDay = useMemo(() => {
     const map = {};
     events.forEach((ev) => {
       if (!ev.start) return;
-      const d = new Date(ev.start);
-      const key = d.toDateString();
+      const key = dayKeyInZone(ev.start, tz);
       if (!map[key]) map[key] = [];
       map[key].push(ev);
     });
@@ -193,7 +155,7 @@ export default function StudentScheduleCalendar({
       list.sort((a, b) => new Date(a.start) - new Date(b.start))
     );
     return map;
-  }, [events]);
+  }, [events, tz]);
 
   const handleJoin = async (meetingId) => {
     setJoiningId(meetingId);
@@ -287,7 +249,7 @@ export default function StudentScheduleCalendar({
       {ev.type === 'live' && ev.start && (
         <a
           className="live-lobby__btn live-lobby__btn--ghost live-lobby__btn--sm"
-          href={googleCalendarUrl(ev)}
+          href={googleCalendarUrl(ev, tz)}
           target="_blank"
           rel="noopener noreferrer"
         >
@@ -327,17 +289,24 @@ export default function StudentScheduleCalendar({
         </div>
       )}
 
+      <TimeZoneBar />
+
       {cohort.length > 0 && (
         <div className="live-cal-cohort">
-          {cohort.map((c) => (
-            <div key={c.batchId} className="live-cal-cohort__chip">
-              <strong>{c.batchName || 'Batch'}</strong>
-              <span>
-                {(c.schedule?.days || 'Schedule TBA') +
-                  (c.schedule?.time ? ` · ${c.schedule.time}` : '')}
-              </span>
-            </div>
-          ))}
+          {cohort.map((c) => {
+            const slot = describeWeeklySlot(c.schedule, { tz });
+            return (
+              <div key={c.batchId} className="live-cal-cohort__chip">
+                <strong>{c.batchName || 'Batch'}</strong>
+                <span>
+                  {slot ? slot.text : c.schedule?.days || 'Schedule TBA'}
+                  {slot && istHint(slot.next.start, tz) ? (
+                    <span className="tz-hint"> ({slot.ist})</span>
+                  ) : null}
+                </span>
+              </div>
+            );
+          })}
         </div>
       )}
 
@@ -395,10 +364,10 @@ export default function StudentScheduleCalendar({
             </div>
             <div className="live-cal-month__grid">
               {monthCells.map((day) => {
-                const list = eventsByDay[day.toDateString()] || [];
+                const list = eventsByDay[cellKey(day)] || [];
                 const inMonth = day.getMonth() === monthCursor.getMonth();
                 const isToday = sameDay(day, new Date());
-                const isCohortDay = dayMatchesCohort(day, cohortDays);
+                const isCohortDay = cohortDayKeys.has(cellKey(day));
                 return (
                   <div
                     key={day.toISOString()}
@@ -423,7 +392,7 @@ export default function StudentScheduleCalendar({
                           }
                         }}
                       >
-                        {formatTime(ev.start) || '•'} {ev.title}
+                        {ev.start ? formatTimeIn(ev.start, tz) : '•'} {ev.title}
                       </button>
                     ))}
                     {list.length > 2 && (
@@ -448,9 +417,10 @@ export default function StudentScheduleCalendar({
                   <div>
                     <h4 className="live-session__title">{ev.title}</h4>
                     <p className="live-session__meta">
-                      {ev.start
-                        ? new Date(ev.start).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })
-                        : ''}
+                      {ev.start ? formatClassWhen(ev.start, ev.end, { tz }) : ''}
+                      {ev.start && istHint(ev.start, tz) ? (
+                        <span className="tz-hint"> ({istHint(ev.start, tz)})</span>
+                      ) : null}
                       {ev.teacherName ? ` · ${ev.teacherName}` : ''}
                       {ev.batchName ? ` · ${ev.batchName}` : ''}
                     </p>
@@ -462,6 +432,15 @@ export default function StudentScheduleCalendar({
             ))}
           </ul>
         </section>
+      )}
+
+      {compact ? (
+        <details className="tz-calc-wrap">
+          <summary>Time zone calculator</summary>
+          <TimeZoneCalculator />
+        </details>
+      ) : (
+        <TimeZoneCalculator />
       )}
     </div>
   );

@@ -4,7 +4,8 @@ import CustomVideoPlayer from './CustomVideoPlayer';
 import StudentProfile from './StudentProfile';
 import StudentAnalyticsDashboard from './StudentAnalyticsDashboard';
 import { YouTubeUtils } from '../utils/youtubeUtils';
-import { formatScheduleForStudentUsZones } from '../utils/timezoneUtils';
+import { describeWeeklySlot, istHint } from '../utils/viewerTime';
+import { DstNotice, TimeZoneBar, useViewerTimeZone } from './TimeZoneTools';
 import { formatDateForComponent } from '../utils/dateUtils';
 import { ToastContainer, showToast } from './Toast';
 import AccountMenu from './AccountMenu';
@@ -594,6 +595,7 @@ const Dashboard = ({ user, onLogout }) => {
   
   // Course content state
   const [courseContent, setCourseContent] = useState(null);
+  const viewerTz = useViewerTimeZone();
   
   // Progress tracking state
   const [viewedFiles, setViewedFiles] = useState([]);
@@ -1390,7 +1392,9 @@ const Dashboard = ({ user, onLogout }) => {
     const slug = getCourseSlug();
     try {
       const apiUrl = getApiBaseUrl() + '/api';
-      const response = await fetch(`${apiUrl}/content/${slug}`);
+      const response = await fetch(`${apiUrl}/content/${slug}`, {
+        headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+      });
       const data = await response.json();
       if (data && data.success) {
         setCourseContent(data);
@@ -2385,22 +2389,28 @@ const Dashboard = ({ user, onLogout }) => {
                       {batchInfo?.teacherName ? ` · ${batchInfo.teacherName}` : ''}
                     </span>
                   </div>
-                  {batchInfo?.schedule && (
-                    <div className="batch-banner-right">
-                      <span className="schedule-label">Schedule</span>
-                      <span className="schedule-time">
-                        {batchInfo.schedule?.days || 'N/A'}
-                        {batchInfo.schedule?.time
-                          ? ` · ${
-                              formatScheduleForStudentUsZones(batchInfo.schedule.time) ||
-                              batchInfo.schedule.time
-                            }`
-                          : ''}
-                      </span>
-                    </div>
-                  )}
+                  {batchInfo?.schedule && (() => {
+                    const slot = describeWeeklySlot(batchInfo.schedule, { tz: viewerTz });
+                    return (
+                      <div className="batch-banner-right">
+                        <span className="schedule-label">Schedule (your time)</span>
+                        <span className="schedule-time">
+                          {slot
+                            ? slot.text
+                            : `${batchInfo.schedule?.days || 'N/A'}${
+                                batchInfo.schedule?.time ? ` · ${batchInfo.schedule.time} IST` : ''
+                              }`}
+                        </span>
+                        {slot && istHint(slot.next.start, viewerTz) && (
+                          <span className="schedule-ist">India: {batchInfo.schedule.days} · {slot.ist}</span>
+                        )}
+                      </div>
+                    );
+                  })()}
                 </div>
               )}
+              {batchInfo?.schedule && <DstNotice schedule={batchInfo.schedule} />}
+              {batchInfo?.schedule && <TimeZoneBar />}
 
               {!batchInfo && !(enrollments || []).length && (
                 <div className="sky-empty-panel">

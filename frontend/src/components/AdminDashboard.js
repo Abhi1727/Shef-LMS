@@ -16,6 +16,7 @@ import ChangePasswordPanel from './ChangePasswordPanel';
 import AccountMenu from './AccountMenu';
 import SkyLoadingScreen from './SkyLoadingScreen';
 import ResponsiveShellNav from './ResponsiveShellNav';
+import { TimeZoneCalculator } from './TimeZoneTools';
 import './Dashboard.css';
 import './AdminDashboard.css';
 import './AdminAnalytics.css';
@@ -885,7 +886,9 @@ const AdminDashboard = ({ user, onLogout }) => {
   useEffect(() => {
     loadAllData();
     const token = localStorage.getItem('token');
-    fetch(`${apiUrl}/api/meetings/status`)
+    fetch(`${apiUrl}/api/meetings/status`, {
+      headers: { Authorization: `Bearer ${token}` }
+    })
       .then((r) => r.json())
       .then((data) => {
         if (data?.zoom?.configured) setZoomLiveEnabled(true);
@@ -1720,6 +1723,42 @@ const AdminDashboard = ({ user, onLogout }) => {
       setDataLoading(prev => ({ ...prev, liveClasses: false }));
     }
   }, [getCachedData, setCachedData]);
+
+  const [joiningLiveId, setJoiningLiveId] = useState('');
+  const joinClassAsAdmin = useCallback(async (liveClassId) => {
+    if (!liveClassId) return;
+    // Open the tab inside the click so popup blockers allow it; point it at Zoom once we have the link.
+    const tab = window.open('about:blank', '_blank');
+    setJoiningLiveId(liveClassId);
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch(`${getApiBaseUrl()}/api/meetings/${liveClassId}/join`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ observe: true })
+      });
+      const data = await res.json().catch(() => ({}));
+      const link = data.joinUrl || data.meetLink;
+      if (!res.ok || !link) throw new Error(data.message || 'This class has no join link right now.');
+      if (tab) {
+        tab.opener = null;
+        tab.location.href = link;
+      } else {
+        window.open(link, '_blank', 'noopener,noreferrer');
+      }
+      showToast(
+        data.zoomRoomStatus === 'waiting'
+          ? 'Opened the class. The trainer is not in the Zoom room yet.'
+          : 'Opened the class as admin. You join as a participant; attendance is not affected.',
+        'success'
+      );
+    } catch (err) {
+      if (tab) tab.close();
+      showToast(err.message || 'Could not open the class', 'error');
+    } finally {
+      setJoiningLiveId('');
+    }
+  }, []);
 
   const loadActivity = useCallback(async (forceRefresh = true) => {
     setDataLoading(prev => ({ ...prev, activity: true }));
@@ -3998,6 +4037,17 @@ const AdminDashboard = ({ user, onLogout }) => {
                           </span>
                         </td>
                         <td>
+                          {teacher.inClass && teacher.liveClass?.id && (
+                            <button
+                              type="button"
+                              className="btn-view"
+                              disabled={joiningLiveId === teacher.liveClass.id}
+                              onClick={() => joinClassAsAdmin(teacher.liveClass.id)}
+                              title={`Join ${teacher.liveClass.title || 'class'} as a participant`}
+                            >
+                              {joiningLiveId === teacher.liveClass.id ? 'Opening…' : 'Join class'}
+                            </button>
+                          )}
                           <button onClick={() => openModal('teacher', teacher)} className="btn-edit">✏️</button>
                           <button onClick={() => handleDelete('teachers', teacher.id)} className="btn-delete">🗑️</button>
                         </td>
@@ -4899,12 +4949,59 @@ const AdminDashboard = ({ user, onLogout }) => {
             <div className="admin-section">
               <div className="section-header">
                 <h2>Live classes</h2>
-                <div>
+                <div style={{ display: 'flex', gap: '0.5rem' }}>
+                  <button type="button" onClick={() => loadLiveClasses(true)} className="btn-view">
+                    {dataLoading.liveClasses ? 'Refreshing…' : 'Refresh'}
+                  </button>
                   <button onClick={() => openModal('liveClass')} className="btn-add">
                     Schedule class
                   </button>
                 </div>
               </div>
+
+              {(() => {
+                const liveNow = (liveClasses || []).filter((lc) => lc.status === 'live' && !lc.jointLeadId);
+                return (
+                  <div className="info-box admin-live-now" style={{ marginBottom: '1rem' }}>
+                    <p style={{ marginBottom: liveNow.length ? '0.6rem' : 0 }}>
+                      <strong>Live now ({liveNow.length})</strong>
+                      {liveNow.length === 0
+                        ? ' · No class is running. Use Refresh to check again.'
+                        : ' · Join as admin opens the class in a new tab as a participant. It does not mark attendance or affect the trainer.'}
+                    </p>
+                    {liveNow.map((lc) => (
+                      <div key={lc.id} className="admin-live-now__row">
+                        <span className="status-badge in-class">Live</span>
+                        <span className="admin-live-now__title">
+                          <strong>{lc.title}</strong>
+                          <span style={{ color: '#64748b' }}>
+                            {' '}· {lc.teacherName || 'Trainer'}
+                            {lc.scheduledTime ? ` · started ${lc.scheduledTime} IST` : ''}
+                            {Array.isArray(lc.jointBatchNames) && lc.jointBatchNames.length > 1
+                              ? ` · combined: ${lc.jointBatchNames.join(' + ')}`
+                              : ''}
+                          </span>
+                        </span>
+                        <button
+                          type="button"
+                          className="btn-add"
+                          disabled={joiningLiveId === lc.id}
+                          onClick={() => joinClassAsAdmin(lc.id)}
+                        >
+                          {joiningLiveId === lc.id ? 'Opening…' : 'Join as admin'}
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                );
+              })()}
+
+              <details className="info-box" style={{ marginBottom: '1rem' }}>
+                <summary style={{ cursor: 'pointer', fontWeight: 700 }}>Time zone calculator (IST ↔ US)</summary>
+                <div style={{ marginTop: '0.75rem' }}>
+                  <TimeZoneCalculator defaultFromZone="Asia/Kolkata" />
+                </div>
+              </details>
 
               <div className="info-box" style={{ marginBottom: '1rem' }}>
                 <p>
@@ -5021,13 +5118,29 @@ const AdminDashboard = ({ user, onLogout }) => {
                                 </span>
                               </td>
                               <td>
-                                <span className={`status-badge ${isPast ? 'completed' : isUpcoming ? 'active' : ''}`}>
-                                  {liveClass.status === 'cancelled' ? 'Cancelled' : isPast ? 'Completed' : 'Scheduled'}
+                                <span className={`status-badge ${liveClass.status === 'live' ? 'in-class' : isPast ? 'completed' : isUpcoming ? 'active' : ''}`}>
+                                  {liveClass.status === 'cancelled'
+                                    ? 'Cancelled'
+                                    : liveClass.status === 'live'
+                                      ? 'Live'
+                                      : isPast
+                                        ? 'Completed'
+                                        : 'Scheduled'}
                                 </span>
                               </td>
                               <td>
                                 <div className="action-btns">
-                                  {meetUrl ? (
+                                  {liveClass.status === 'live' ? (
+                                    <button
+                                      type="button"
+                                      className="btn-view"
+                                      disabled={joiningLiveId === liveClass.id}
+                                      onClick={() => joinClassAsAdmin(liveClass.id)}
+                                      title="Join as a participant (no attendance)"
+                                    >
+                                      {joiningLiveId === liveClass.id ? 'Opening…' : 'Join'}
+                                    </button>
+                                  ) : meetUrl ? (
                                     <a
                                       href={meetUrl}
                                       target="_blank"

@@ -13364,6 +13364,21 @@ html {
   color: #5a6d76;
 }
 
+.student-shell .batch-banner-right .schedule-label {
+  display: block;
+}
+
+.student-shell .schedule-time {
+  color: #102a33;
+  font-weight: 700;
+}
+
+.student-shell .schedule-ist {
+  display: block;
+  font-size: 0.75rem;
+  color: #5a6d76;
+}
+
 .student-shell .videos-grid-layout {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));

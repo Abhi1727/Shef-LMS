@@ -3,6 +3,7 @@ const LiveClass = require('../models/LiveClass');
 const Batch = require('../models/Batch');
 const User = require('../models/User');
 const { sendEmail } = require('../services/emailService');
+const { whenLine } = require('../utils/timeZones');
 
 const FRONTEND_URL = () =>
   process.env.FRONTEND_URL || process.env.DEV_FRONTEND_URL || 'https://dev.learnwithus.sbs';
@@ -22,7 +23,7 @@ function formatIst(date, timezone = 'Asia/Kolkata') {
 
 async function getBatchStudentEmails(batchId) {
   const batch = await Batch.findById(batchId).select('students name').lean().exec();
-  if (!batch) return { emails: [], batchName: '' };
+  if (!batch) return { emails: [], recipients: [], batchName: '' };
   const ids = (batch.students || []).map((s) => String(s));
   if (!ids.length) {
     // Also pick students who have batchId set
@@ -30,20 +31,24 @@ async function getBatchStudentEmails(batchId) {
       role: 'student',
       $or: [{ batchId: String(batchId) }, { oneToOneBatchId: String(batchId) }]
     })
-      .select('email')
+      .select('email timezone')
       .lean()
       .exec();
+    const recipients = byField.filter((u) => u.email);
     return {
-      emails: byField.map((u) => u.email).filter(Boolean),
+      emails: recipients.map((u) => u.email),
+      recipients,
       batchName: batch.name || ''
     };
   }
   const users = await User.find({ _id: { $in: ids }, role: 'student' })
-    .select('email')
+    .select('email timezone')
     .lean()
     .exec();
+  const recipients = users.filter((u) => u.email);
   return {
-    emails: users.map((u) => u.email).filter(Boolean),
+    emails: recipients.map((u) => u.email),
+    recipients,
     batchName: batch.name || ''
   };
 }
@@ -78,7 +83,7 @@ async function sendMeetReminders() {
         skipped += 1;
         continue;
       }
-      const { emails, batchName } = await getBatchStudentEmails(cls.batchId);
+      const { emails, recipients, batchName } = await getBatchStudentEmails(cls.batchId);
       if (!emails.length) {
         await LiveClass.updateOne(
           { _id: cls._id },
@@ -88,9 +93,14 @@ async function sendMeetReminders() {
         continue;
       }
 
-      const when = formatIst(cls.scheduledStart, cls.timezone || 'Asia/Kolkata');
+      const byZone = new Map();
+      for (const r of recipients) {
+        const key = r.timezone || '';
+        if (!byZone.has(key)) byZone.set(key, []);
+        byZone.get(key).push(r.email);
+      }
       const subject = `Reminder: ${cls.title} starts soon`;
-      const message = [
+      const buildMessage = (when) => [
         `Hi,`,
         ``,
         `Your live class "${cls.title}" starts soon.`,
@@ -106,12 +116,14 @@ async function sendMeetReminders() {
         `Sky States LMS`
       ].join('\n');
 
-      await sendEmail({
-        subject,
-        message,
-        studentEmails: emails,
-        batchId: cls.batchId
-      });
+      for (const [zone, zoneEmails] of byZone) {
+        await sendEmail({
+          subject,
+          message: buildMessage(whenLine(cls.scheduledStart, zone)),
+          studentEmails: zoneEmails,
+          batchId: cls.batchId
+        });
+      }
 
       await LiveClass.updateOne(
         { _id: cls._id },
