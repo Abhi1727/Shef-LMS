@@ -49,6 +49,8 @@ const createImapConnection = () => {
   });
 };
 
+const smtpFilesSentMail = () => /gmail\.com|googlemail\.com/i.test(process.env.EMAIL_HOST || '');
+
 // Save email to sent folder via IMAP
 const saveToSentFolder = (emailData) => {
   return new Promise((resolve, reject) => {
@@ -183,20 +185,22 @@ const sendEmail = async (options) => {
       // Send individual email
       const info = await transporter.sendMail(mailOptions);
       
-      // Save to sent folder via IMAP
-      try {
-        await saveToSentFolder({
-          from: mailOptions.from,
-          to: mailOptions.to,
-          subject: mailOptions.subject,
-          text: mailOptions.text,
-          html: mailOptions.html,
-          messageId: info.messageId
-        });
-        console.log(`Email saved to sent folder for ${studentEmail}`);
-      } catch (imapError) {
-        console.warn(`Failed to save to sent folder: ${imapError.message}`);
-        // Continue even if IMAP fails - email was still sent
+      // Save to sent folder via IMAP (Gmail files SMTP-sent mail itself; a copy would duplicate it)
+      if (!smtpFilesSentMail()) {
+        try {
+          await saveToSentFolder({
+            from: mailOptions.from,
+            to: mailOptions.to,
+            subject: mailOptions.subject,
+            text: mailOptions.text,
+            html: mailOptions.html,
+            messageId: info.messageId
+          });
+          console.log(`Email saved to sent folder for ${studentEmail}`);
+        } catch (imapError) {
+          console.warn(`Failed to save to sent folder: ${imapError.message}`);
+          // Continue even if IMAP fails - email was still sent
+        }
       }
       
       results.push({

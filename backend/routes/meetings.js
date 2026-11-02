@@ -1568,9 +1568,11 @@ router.post('/:id/join', async (req, res) => {
       return res.status(403).json({ success: false, message: 'Access denied' });
     }
 
-    const wantHost = Boolean(
-      req.body?.host || isTeacherRole(req.user.role) || isAdmin(req.user.role)
-    );
+    // Admins observing a trainer's class join as a plain participant: joining as host would reuse
+    // the trainer's Zoom identity (ZAK / start URL) and can bump the trainer out of the room.
+    const observe = isAdmin(req.user.role) && Boolean(req.body?.observe);
+    const wantHost =
+      !observe && Boolean(req.body?.host || isTeacherRole(req.user.role) || isAdmin(req.user.role));
 
     // Students must wait until the trainer starts class in LMS (prevents “live” without host).
     if (isStudentRole(req.user.role) && doc.status === 'scheduled' && !wantHost) {
@@ -1618,7 +1620,7 @@ router.post('/:id/join', async (req, res) => {
     }
 
     const joinLink = getSessionJoinLink(doc, {
-      host: isTeacherRole(req.user.role) || isAdmin(req.user.role)
+      host: !observe && (isTeacherRole(req.user.role) || isAdmin(req.user.role))
     });
     const provider = getSessionProvider(doc);
 
@@ -1657,7 +1659,7 @@ router.post('/:id/join', async (req, res) => {
       zoomRoomStatus,
       hostReady: zoomRoomStatus === 'started' || wantHost,
       message: joinHint || undefined,
-      meeting: serializeMeeting(doc, { includeMeetLink: !isStudentRole(req.user.role) })
+      meeting: serializeMeeting(doc, { includeMeetLink: !isStudentRole(req.user.role) && !observe })
     });
   } catch (error) {
     console.error('POST /meetings/:id/join error:', error);

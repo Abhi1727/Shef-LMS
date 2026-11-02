@@ -82,6 +82,23 @@ async function closePreviousLiveSessionsForTeacher(
   return closed;
 }
 
+function scheduledEndMs(doc) {
+  if (doc.scheduledEnd) return new Date(doc.scheduledEnd).getTime();
+  if (doc.scheduledStart) return new Date(doc.scheduledStart).getTime() + 60 * 60 * 1000;
+  return 0;
+}
+
+/**
+ * Best guess at when a forgotten live class really ended: its last activity (joins bump updatedAt)
+ * or its scheduled end, whichever is later — never the moment the sweep happened to notice it.
+ */
+function inferEndedAt(doc, now = Date.now()) {
+  const candidates = [doc.updatedAt, doc.actualStartedAt]
+    .map((t) => (t ? new Date(t).getTime() : 0))
+    .concat(scheduledEndMs(doc));
+  return new Date(Math.min(now, Math.max(...candidates)));
+}
+
 /** Close live rows whose scheduled end passed long ago (trainer never hit End). */
 async function cleanupStaleLiveSessions({ teacherId = null } = {}) {
   const query = { status: 'live' };
@@ -99,10 +116,10 @@ async function cleanupStaleLiveSessions({ teacherId = null } = {}) {
         : 0;
     if (!endMs || now <= endMs + STALE_AFTER_END_MS) continue;
 
-    doc.status = 'completed';
     if (!doc.actualEndedAt) {
-      doc.actualEndedAt = new Date();
+      doc.actualEndedAt = inferEndedAt(doc, now);
     }
+    doc.status = 'completed';
     doc.updatedAt = new Date();
     await doc.save();
     closed.push({ id: String(doc._id), title: doc.title || 'Live class', reason: 'stale-live' });
@@ -154,7 +171,7 @@ async function cleanupStaleSessions(options = {}) {
  * If trainer closed Zoom but did not tap End in LMS, mark live rows completed when Zoom
  * reports no in-progress meeting for that PMI / meeting id.
  */
-async function reconcileZoomLiveSessions({ teacherId = null } = {}) {
+async function reconcileZoomLiveSessions({ teacherId = null, onlyPastScheduledEnd = false } = {}) {
   if (!zoomService.isConfigured()) return [];
 
   const query = {
@@ -164,7 +181,15 @@ async function reconcileZoomLiveSessions({ teacherId = null } = {}) {
   };
   if (teacherId) query.teacherId = String(teacherId);
 
-  const docs = await LiveClass.find(query).exec();
+  let docs = await LiveClass.find(query).exec();
+  // The background sweep leaves in-slot classes alone so a trainer's brief Zoom drop never ends them.
+  if (onlyPastScheduledEnd) {
+    const nowMs = Date.now();
+    docs = docs.filter((doc) => {
+      const endMs = scheduledEndMs(doc);
+      return endMs && nowMs > endMs;
+    });
+  }
   if (!docs.length) return [];
 
   const byTeacher = new Map();
@@ -202,6 +227,9 @@ async function reconcileZoomLiveSessions({ teacherId = null } = {}) {
       if (!meetingId) continue;
       if (liveIds.has(meetingId)) continue;
 
+      if (onlyPastScheduledEnd && !doc.actualEndedAt) {
+        doc.actualEndedAt = inferEndedAt(doc, now);
+      }
       doc.status = 'completed';
       doc.updatedAt = new Date();
       await doc.save();
@@ -222,6 +250,7 @@ module.exports = {
   cleanupStaleScheduledSessions,
   cleanupStaleSessions,
   reconcileZoomLiveSessions,
+  inferEndedAt,
   STALE_AFTER_END_MS,
   ZOOM_RECONCILE_AFTER_START_MS
 };

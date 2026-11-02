@@ -846,6 +846,8 @@ async function listAdminLiveClasses(req, res) {
         meetLink: o.meetLink || '',
         zoomLink: o.meetLink || o.zoomLink || '',
         calendarEventId: o.calendarEventId || '',
+        jointLeadId: o.jointLeadId || '',
+        jointBatchNames: o.jointBatchNames || null,
         timezone: tz,
         createdAt: o.createdAt
       };

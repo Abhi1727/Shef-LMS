@@ -274,6 +274,12 @@ connectDataStore()
         logger.error('Failed to start Zoom recording sync job', { error: err.message });
       }
       try {
+        const { startLiveSessionCleanupJob } = require('./jobs/liveSessionCleanup');
+        startLiveSessionCleanupJob();
+      } catch (err) {
+        logger.error('Failed to start live session cleanup job', { error: err.message });
+      }
+      try {
         const { startClassroomIntegrityJob } = require('./jobs/classroomIntegritySweep');
         startClassroomIntegrityJob();
       } catch (err) {
