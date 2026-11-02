@@ -35,6 +35,7 @@ const {
 } = require('../utils/wasteSessionDetection');
 const { sessionStillLive } = require('../utils/teacherPresence');
 const { attachJointBatchSessions, findJointGroupMembers } = require('../utils/jointBatchSessions');
+const { displayEnd } = require('../utils/classDisplayEnd');
 
 async function linkJointBatches(lead, leadBatch) {
   try {
@@ -849,6 +850,7 @@ router.get('/', async (req, res) => {
     }
 
     let studentUser = null;
+    let studentBatchIds = [];
     if (isAdmin(role)) {
       if (batchIdFilter) query.batchId = batchIdFilter;
     } else if (isTeacherRole(role)) {
@@ -872,6 +874,7 @@ router.get('/', async (req, res) => {
       if (unique.length === 0) {
         return res.json({ success: true, meetings: [] });
       }
+      studentBatchIds = unique;
       query.batchId = batchIdFilter && unique.includes(batchIdFilter) ? batchIdFilter : { $in: unique };
       if (batchIdFilter && !unique.includes(batchIdFilter)) {
         return res.status(403).json({ success: false, message: 'Not enrolled in this batch' });
@@ -890,6 +893,15 @@ router.get('/', async (req, res) => {
     const enriched = attachWasteAnalysis(docs);
     const primaryBatchId = studentUser?.batchId ? String(studentUser.batchId) : '';
     const meetings = enriched.map((d) => serializeMeeting(d, { includeMeetLink, primaryBatchId }));
+
+    if (isStudentRole(role)) {
+      const batches = await Batch.find({ _id: { $in: studentBatchIds } }).select('schedule').lean().exec();
+      const scheduleByBatch = new Map(batches.map((b) => [String(b._id), b.schedule]));
+      meetings.forEach((m, i) => {
+        const end = displayEnd(enriched[i], scheduleByBatch.get(String(enriched[i].batchId)));
+        m.displayEnd = end ? end.toISOString() : null;
+      });
+    }
 
     if (isStudentRole(role) && primaryBatchId) {
       meetings.sort((a, b) => {

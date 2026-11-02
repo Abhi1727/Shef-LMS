@@ -19,7 +19,7 @@ function formatTimeRange(m, tz) {
   const start = m.scheduledStart
     ? new Date(m.scheduledStart)
     : instantFromZonedTime(m.scheduledDate, m.scheduledTime, SCHOOL_TIME_ZONE);
-  const end = m.scheduledEnd ? new Date(m.scheduledEnd) : null;
+  const end = m.displayEnd ? new Date(m.displayEnd) : null;
   if (!start || Number.isNaN(start.getTime())) return m.duration || '';
   const validEnd = end && !Number.isNaN(end.getTime()) ? end : null;
   return formatClassWhen(start, validEnd, { tz });

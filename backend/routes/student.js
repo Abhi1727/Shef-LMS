@@ -18,6 +18,7 @@ const { resolveStudentBatchIds } = require('../utils/studentEnrollment');
 const { findUserById } = require('../utils/findUserById');
 const lessonPath = require('../services/lessonPath');
 const { resolveNotesAbsolutePath, streamNotesFile } = require('../utils/notesDownload');
+const { displayEnd } = require('../utils/classDisplayEnd');
 
 const shareUpload = multer({
   dest: path.join(__dirname, '../uploads/tmp-student-shares'),
@@ -569,12 +570,13 @@ router.get('/schedule', async (req, res) => {
         m.status === 'cancelled' ||
         (!isActivelyLive && endedByClock);
       const batch = batchesMeta.find((b) => String(b._id) === String(m.batchId));
+      const shownEnd = displayEnd(m, batch?.schedule);
       return {
         id: `live-${m._id}`,
         type: isPast ? 'live_past' : 'live',
         title: m.title,
         start: start ? start.toISOString() : null,
-        end: end ? end.toISOString() : null,
+        end: shownEnd ? shownEnd.toISOString() : null,
         meetingId: String(m._id),
         batchId: String(m.batchId || ''),
         batchName: batch?.name || '',
