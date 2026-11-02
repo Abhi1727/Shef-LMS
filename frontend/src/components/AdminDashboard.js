@@ -91,6 +91,16 @@ const StudentSearch = memo(({ searchEmail, setSearchEmail, clearSearch, onAddStu
   );
 });
 
+const PROGRAM_NAMES = [
+  'Data Science & AI',
+  'Cyber Security & Ethical Hacking',
+  'Cybersecurity & AI',
+  'DevOps & AI',
+  'DevOps & Cloud',
+  'Agentic AI'
+];
+const PROGRAM_NAMES_WITH_ONE_TO_ONE = [...PROGRAM_NAMES, 'One-to-One'];
+
 // Batch filter component with search and course filter buttons, now supporting teacher filter on course hover
 const BATCH_PROGRAM_OPTIONS = [
   { value: 'all', label: 'All programs' },
@@ -98,7 +108,8 @@ const BATCH_PROGRAM_OPTIONS = [
   { value: 'cyber security', label: 'Cyber Security' },
   { value: 'cybersecurity & ai', label: 'Cybersecurity & AI' },
   { value: 'devops & ai', label: 'DevOps & AI' },
-  { value: 'devops & cloud', label: 'DevOps & Cloud' }
+  { value: 'devops & cloud', label: 'DevOps & Cloud' },
+  { value: 'agentic ai', label: 'Agentic AI' }
 ];
 
 const BatchFilter = memo(({
@@ -676,13 +687,7 @@ const AdminDashboard = ({ user, onLogout }) => {
     }));
   }, []);
 
-  const PROGRAM_OPTIONS = [
-    'Data Science & AI',
-    'Cyber Security & Ethical Hacking',
-    'Cybersecurity & AI',
-    'DevOps & AI',
-    'DevOps & Cloud'
-  ];
+  const PROGRAM_OPTIONS = PROGRAM_NAMES;
 
   const matchesProgramFilter = useCallback((courseName, filterValue) => {
     if (!filterValue || filterValue === 'all') return true;
@@ -875,12 +880,14 @@ const AdminDashboard = ({ user, onLogout }) => {
     ) {
       return teachers;
     }
-    return (teachers || []).filter(teacher => {
+    const matching = (teachers || []).filter(teacher => {
       if (teacher.assignedCourses && teacher.assignedCourses.length > 0) {
         return teacher.assignedCourses.includes(formData.course);
       }
       return teacher.domain === formData.course;
     });
+    // A newly added program has no trainers assigned yet; offer everyone rather than an empty list.
+    return matching.length ? matching : teachers;
   }, [modalType, formData.course, formData.batchType, teachers]);
 
   useEffect(() => {
@@ -2016,7 +2023,7 @@ const AdminDashboard = ({ user, onLogout }) => {
     try {
       const token = localStorage.getItem('token');
       const apiUrl = getApiBaseUrl();
-      const response = await fetch(`${apiUrl}/api/admin/batches/${courseId}`, {
+      const response = await fetch(`${apiUrl}/api/admin/batches/${encodeURIComponent(courseId)}`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       
@@ -5930,14 +5937,7 @@ const AdminDashboard = ({ user, onLogout }) => {
                   <div className="form-group">
                     <label>Course Assignments *</label>
                     <div className="course-checkboxes">
-                      {[
-                        { value: 'Data Science & AI', label: 'Data Science & AI' },
-                        { value: 'Cyber Security & Ethical Hacking', label: 'Cyber Security & Ethical Hacking' },
-                        { value: 'Cybersecurity & AI', label: 'Cybersecurity & AI' },
-                        { value: 'DevOps & AI', label: 'DevOps & AI' },
-                        { value: 'DevOps & Cloud', label: 'DevOps & Cloud' },
-                        { value: 'One-to-One', label: 'One-to-One' }
-                      ].map(course => (
+                      {PROGRAM_NAMES_WITH_ONE_TO_ONE.map((name) => ({ value: name, label: name })).map(course => (
                         <label key={course.value} className="course-checkbox-label">
                           <input
                             type="checkbox"
@@ -6293,12 +6293,9 @@ const AdminDashboard = ({ user, onLogout }) => {
                     required
                   >
                     <option value="">Select Course *</option>
-                    <option value="Data Science & AI">Data Science & AI</option>
-                    <option value="Cyber Security & Ethical Hacking">Cyber Security & Ethical Hacking</option>
-                    <option value="Cybersecurity & AI">Cybersecurity & AI</option>
-                    <option value="DevOps & AI">DevOps & AI</option>
-                    <option value="DevOps & Cloud">DevOps & Cloud</option>
-                    <option value="One-to-One">One-to-One</option>
+                    {PROGRAM_NAMES_WITH_ONE_TO_ONE.map((name) => (
+                      <option key={name} value={name}>{name}</option>
+                    ))}
                   </select>
                   
                   <select
@@ -6710,12 +6707,9 @@ const AdminDashboard = ({ user, onLogout }) => {
                     required
                   >
                     <option value="">Select Domain *</option>
-                    <option value="Data Science & AI">Data Science & AI</option>
-                    <option value="Cyber Security & Ethical Hacking">Cyber Security & Ethical Hacking</option>
-                    <option value="Cybersecurity & AI">Cybersecurity & AI</option>
-                    <option value="DevOps & AI">DevOps & AI</option>
-                    <option value="DevOps & Cloud">DevOps & Cloud</option>
-                    <option value="One-to-One">One-to-One</option>
+                    {PROGRAM_NAMES_WITH_ONE_TO_ONE.map((name) => (
+                      <option key={name} value={name}>{name}</option>
+                    ))}
                   </select>
                   <input
                     type="url"
@@ -6853,12 +6847,9 @@ const AdminDashboard = ({ user, onLogout }) => {
                     style={{ marginBottom: '15px', padding: '8px', border: '1px solid #ddd', borderRadius: '4px' }}
                   >
                     <option value="">Select Course *</option>
-                    <option value="Data Science & AI">Data Science & AI</option>
-                    <option value="Cyber Security & Ethical Hacking">Cyber Security & Ethical Hacking</option>
-                    <option value="Cybersecurity & AI">Cybersecurity & AI</option>
-                    <option value="DevOps & AI">DevOps & AI</option>
-                    <option value="DevOps & Cloud">DevOps & Cloud</option>
-                    <option value="One-to-One">One-to-One</option>
+                    {PROGRAM_NAMES_WITH_ONE_TO_ONE.map((name) => (
+                      <option key={name} value={name}>{name}</option>
+                    ))}
                   </select>
                   <small style={{color: '#888', marginTop: '-10px', display: 'block'}}>
                     Select the course this video is assigned to
@@ -7565,12 +7556,9 @@ const AdminDashboard = ({ user, onLogout }) => {
                                 onChange={(e) => setEditedProfile({...editedProfile, course: e.target.value})}
                               >
                                 <option value="">Select Course</option>
-                                <option value="Data Science & AI">Data Science & AI</option>
-                                <option value="Cyber Security & Ethical Hacking">Cyber Security & Ethical Hacking</option>
-                                <option value="Cybersecurity & AI">Cybersecurity & AI</option>
-                                <option value="DevOps & AI">DevOps & AI</option>
-                                <option value="DevOps & Cloud">DevOps & Cloud</option>
-                                <option value="One-to-One">One-to-One</option>
+                                {PROGRAM_NAMES_WITH_ONE_TO_ONE.map((name) => (
+                                  <option key={name} value={name}>{name}</option>
+                                ))}
                               </select>
                             </div>
                           </div>

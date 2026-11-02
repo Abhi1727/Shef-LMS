@@ -9,7 +9,7 @@ const oneToOneSchema = new mongoose.Schema({
   course: {
     type: String,
     required: true,
-    enum: ['Data Science & AI', 'Cyber Security & Ethical Hacking']
+    enum: ['Data Science & AI', 'Cyber Security & Ethical Hacking', 'Agentic AI']
   },
   teacherId: {
     type: String,

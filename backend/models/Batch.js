@@ -2,7 +2,7 @@ const mongoose = require('mongoose');
 
 const batchSchema = new mongoose.Schema({
     name: { type: String, required: true },
-    course: { type: String, required: true }, // Program: Data Science & AI | Cyber Security & Ethical Hacking | Cybersecurity & AI | DevOps & AI | DevOps & Cloud | custom label
+    course: { type: String, required: true }, // Program: Data Science & AI | Cyber Security & Ethical Hacking | Cybersecurity & AI | DevOps & AI | DevOps & Cloud | Agentic AI | custom label
     courseId: { type: mongoose.Schema.Types.ObjectId, ref: 'Course' }, // Optional reference
     batchType: {
         type: String,

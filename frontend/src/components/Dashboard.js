@@ -926,6 +926,9 @@ const Dashboard = ({ user, onLogout }) => {
     const courseName = user?.currentCourse || '';
     const lowerCourse = courseName.toLowerCase();
     
+    if (lowerCourse.includes('agentic')) {
+      return 'agentic-ai';
+    }
     if (lowerCourse.includes('data science') || lowerCourse.includes('ai') || lowerCourse.includes('machine learning')) {
       return 'data-science';
     }

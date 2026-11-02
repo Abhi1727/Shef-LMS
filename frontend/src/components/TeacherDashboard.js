@@ -249,6 +249,9 @@ const TeacherDashboard = ({ user, onLogout }) => {
         if (courseFilter === 'devops-cloud') {
           return course.includes('devops') && course.includes('cloud');
         }
+        if (courseFilter === 'agentic-ai') {
+          return course.includes('agentic');
+        }
         return true;
       });
     }
@@ -988,6 +991,7 @@ const TeacherDashboard = ({ user, onLogout }) => {
                     { id: 'cyber-security', label: 'Cyber Security' },
                     { id: 'devops-ai', label: 'DevOps & AI' },
                     { id: 'devops-cloud', label: 'DevOps & Cloud' },
+                    { id: 'agentic-ai', label: 'Agentic AI' },
                     { id: 'one-to-one', label: 'One-to-One' },
                     { id: 'project', label: 'Project Class' }
                   ].map((opt) => (
