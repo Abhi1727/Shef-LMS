@@ -862,6 +862,45 @@ async function listAdminLiveClasses(req, res) {
 router.get('/liveClasses', listAdminLiveClasses);
 router.get('/live-classes', listAdminLiveClasses);
 
+// @route   GET /api/admin/live-now
+// @desc    Classes running right now, one card per room (combined-class followers folded into their lead)
+router.get('/live-now', async (req, res) => {
+  try {
+    const rows = await LiveClass.find({ status: 'live' }).lean().exec();
+    const batchIds = [...new Set(rows.map((r) => String(r.batchId || '')).filter(Boolean))];
+    const batches = batchIds.length
+      ? await Batch.find({ _id: { $in: batchIds } }).select('name students').lean().exec()
+      : [];
+    const batchById = new Map(batches.map((b) => [String(b._id), b]));
+    const present = (r) =>
+      (Array.isArray(r.attendance) ? r.attendance : []).filter(
+        (a) => String(a.status || '').toLowerCase() === 'present'
+      ).length;
+
+    const leads = rows.filter((r) => !r.jointLeadId || !rows.some((o) => String(o._id) === String(r.jointLeadId)));
+    const items = leads.map((lead) => {
+      const group = [lead, ...rows.filter((r) => String(r.jointLeadId || '') === String(lead._id))];
+      const groupBatches = group.map((r) => batchById.get(String(r.batchId || ''))).filter(Boolean);
+      return {
+        id: String(lead._id),
+        title: lead.title || 'Live class',
+        teacherName: lead.teacherName || lead.instructor || '',
+        provider: lead.conferenceProvider || (lead.zoomLink ? 'zoom' : 'meet'),
+        batchNames: groupBatches.map((b) => b.name),
+        rosterCount: groupBatches.reduce((sum, b) => sum + (b.students || []).length, 0),
+        joinedCount: group.reduce((sum, r) => sum + present(r), 0),
+        startedAt: lead.actualStartedAt || lead.scheduledStart || null,
+        scheduledEnd: lead.scheduledEnd || null
+      };
+    });
+    items.sort((a, b) => new Date(a.startedAt || 0) - new Date(b.startedAt || 0));
+    res.json({ success: true, liveClasses: items });
+  } catch (err) {
+    console.error('Error listing live-now classes:', err);
+    res.status(500).json({ success: false, message: 'Could not load live classes' });
+  }
+});
+
 // @route   GET /api/admin/activity
 // @desc    Get activity log (logins, video views, etc.) from ActivityLog + User fallback
 const ATTENDANCE_SUMMARY_CACHE_MS = 5 * 60 * 1000;

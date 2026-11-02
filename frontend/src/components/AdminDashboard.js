@@ -17,6 +17,7 @@ import AccountMenu from './AccountMenu';
 import SkyLoadingScreen from './SkyLoadingScreen';
 import ResponsiveShellNav from './ResponsiveShellNav';
 import { TimeZoneCalculator } from './TimeZoneTools';
+import AdminLiveNow from './AdminLiveNow';
 import './Dashboard.css';
 import './AdminDashboard.css';
 import './AdminAnalytics.css';
@@ -33,6 +34,7 @@ const ADMIN_NAV_ITEMS = [
   { id: 'projectClass', label: 'Project Class' },
   { id: 'classroom', label: 'Classroom' },
   { id: 'teachers', label: 'Teachers' },
+  { id: 'liveClasses', label: 'Live classes' },
   { id: 'assessment-studio', label: 'Assessment Studio' },
   { id: 'modules', label: 'Modules' },
   { id: 'projects', label: 'Projects' },
@@ -3638,6 +3640,8 @@ const AdminDashboard = ({ user, onLogout }) => {
           {activeSection === 'overview' && (
             <div className="admin-section">
               <h2>Dashboard Overview</h2>
+
+              <AdminLiveNow onJoin={joinClassAsAdmin} joiningId={joiningLiveId} />
               
               {/* Student Search Section */}
               <StudentSearch 
@@ -4047,7 +4051,7 @@ const AdminDashboard = ({ user, onLogout }) => {
                           {teacher.inClass && teacher.liveClass?.id && (
                             <button
                               type="button"
-                              className="btn-view"
+                              className="admin-join-class-btn"
                               disabled={joiningLiveId === teacher.liveClass.id}
                               onClick={() => joinClassAsAdmin(teacher.liveClass.id)}
                               title={`Join ${teacher.liveClass.title || 'class'} as a participant`}
@@ -4966,42 +4970,7 @@ const AdminDashboard = ({ user, onLogout }) => {
                 </div>
               </div>
 
-              {(() => {
-                const liveNow = (liveClasses || []).filter((lc) => lc.status === 'live' && !lc.jointLeadId);
-                return (
-                  <div className="info-box admin-live-now" style={{ marginBottom: '1rem' }}>
-                    <p style={{ marginBottom: liveNow.length ? '0.6rem' : 0 }}>
-                      <strong>Live now ({liveNow.length})</strong>
-                      {liveNow.length === 0
-                        ? ' · No class is running. Use Refresh to check again.'
-                        : ' · Join as admin opens the class in a new tab as a participant. It does not mark attendance or affect the trainer.'}
-                    </p>
-                    {liveNow.map((lc) => (
-                      <div key={lc.id} className="admin-live-now__row">
-                        <span className="status-badge in-class">Live</span>
-                        <span className="admin-live-now__title">
-                          <strong>{lc.title}</strong>
-                          <span style={{ color: '#64748b' }}>
-                            {' '}· {lc.teacherName || 'Trainer'}
-                            {lc.scheduledTime ? ` · started ${lc.scheduledTime} IST` : ''}
-                            {Array.isArray(lc.jointBatchNames) && lc.jointBatchNames.length > 1
-                              ? ` · combined: ${lc.jointBatchNames.join(' + ')}`
-                              : ''}
-                          </span>
-                        </span>
-                        <button
-                          type="button"
-                          className="btn-add"
-                          disabled={joiningLiveId === lc.id}
-                          onClick={() => joinClassAsAdmin(lc.id)}
-                        >
-                          {joiningLiveId === lc.id ? 'Opening…' : 'Join as admin'}
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                );
-              })()}
+              <AdminLiveNow onJoin={joinClassAsAdmin} joiningId={joiningLiveId} />
 
               <details className="info-box" style={{ marginBottom: '1rem' }}>
                 <summary style={{ cursor: 'pointer', fontWeight: 700 }}>Time zone calculator (IST ↔ US)</summary>
@@ -5140,7 +5109,7 @@ const AdminDashboard = ({ user, onLogout }) => {
                                   {liveClass.status === 'live' ? (
                                     <button
                                       type="button"
-                                      className="btn-view"
+                                      className="admin-join-class-btn"
                                       disabled={joiningLiveId === liveClass.id}
                                       onClick={() => joinClassAsAdmin(liveClass.id)}
                                       title="Join as a participant (no attendance)"
