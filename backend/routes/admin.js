@@ -3137,21 +3137,22 @@ router.get('/analytics', async (req, res) => {
     }
     
     // Get overall statistics
-    const [
-      totalStudents,
-      totalTeachers,
-      totalBatches,
-      totalActivities,
-      activeStudents,
-      activeTeachers
-    ] = await Promise.all([
-      User.countDocuments({ role: 'student' }),
-      User.countDocuments({ role: 'teacher' }),
+    const [people, totalBatches, totalActivities] = await Promise.all([
+      User.find({ role: { $in: ['student', 'teacher'] } }).select('role lastLogin').lean().exec(),
       Batch.countDocuments(),
-      ActivityLog.countDocuments({ timestamp: { $gte: start, $lte: end } }),
-      User.countDocuments({ role: 'student', lastLogin: { $gte: start } }),
-      User.countDocuments({ role: 'teacher', lastLogin: { $gte: start } })
+      ActivityLog.countDocuments({ timestamp: { $gte: start, $lte: end } })
     ]);
+    // lastLogin is stored as { timestamp, ip, … }, which the Firestore facade cannot range-query.
+    const loggedInSince = (u) => {
+      const at = new Date(u.lastLogin?.timestamp || u.lastLogin || 0);
+      return !Number.isNaN(at.getTime()) && at >= start;
+    };
+    const students = people.filter((u) => u.role === 'student');
+    const teachers = people.filter((u) => u.role === 'teacher');
+    const totalStudents = students.length;
+    const totalTeachers = teachers.length;
+    const activeStudents = students.filter(loggedInSince).length;
+    const activeTeachers = teachers.filter(loggedInSince).length;
     
     // Get activity breakdown
     const activityBreakdown = await ActivityLog.aggregate([
@@ -3184,34 +3185,32 @@ router.get('/analytics', async (req, res) => {
       { $sort: { _id: 1 } }
     ]);
     
-    // Get batch performance
-    const batchPerformance = await Batch.aggregate([
-      { $lookup: { from: 'users', localField: 'students', foreignField: '_id', as: 'studentDetails' } },
-      { $addFields: { studentCount: { $size: '$studentDetails' } } },
-      { $project: { name: 1, course: 1, studentCount: 1, status: 1, teacherName: 1 } },
-      { $sort: { studentCount: -1 } }
+    // Batch performance: video views per enrolled student
+    const [videoViews, batches] = await Promise.all([
+      ActivityLog.find({ action: 'video_view', timestamp: { $gte: start, $lte: end } })
+        .select('userId')
+        .lean()
+        .exec(),
+      Batch.find({}).select('name course students').lean().exec()
     ]);
-    
-    // Calculate completion rates
-    const completionRates = await Promise.all(
-      batchPerformance.map(async (batch) => {
-        const batchActivities = await ActivityLog.find({
-          'userId': { $in: batch.students },
-          'action': 'video_view',
-          'timestamp': { $gte: start, $lte: end }
-        }).countDocuments();
-        
-        const totalPossibleVideos = batch.studentCount * 25; // Estimate 25 videos per student
-        const completionRate = totalPossibleVideos > 0 ? Math.min((batchActivities / totalPossibleVideos) * 100, 100) : 0;
-        
-        return {
-          batchName: batch.name,
-          course: batch.course,
-          studentCount: batch.studentCount,
-          completionRate: Math.round(completionRate)
-        };
-      })
-    );
+    const viewsByUser = new Map();
+    for (const v of videoViews) {
+      const uid = String(v.userId || '');
+      if (uid) viewsByUser.set(uid, (viewsByUser.get(uid) || 0) + 1);
+    }
+    const completionRates = batches.map((batch) => {
+      const roster = (batch.students || []).map(String);
+      const studentCount = roster.length;
+      const batchActivities = roster.reduce((sum, sid) => sum + (viewsByUser.get(sid) || 0), 0);
+      const totalPossibleVideos = studentCount * 25; // Estimate 25 videos per student
+      const completionRate = totalPossibleVideos > 0 ? Math.min((batchActivities / totalPossibleVideos) * 100, 100) : 0;
+      return {
+        batchName: batch.name,
+        course: batch.course,
+        studentCount,
+        completionRate: Math.round(completionRate)
+      };
+    }).sort((a, b) => b.studentCount - a.studentCount);
     
     // Get login trends
     const loginTrends = await ActivityLog.aggregate([
