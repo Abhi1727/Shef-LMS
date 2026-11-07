@@ -30,6 +30,7 @@ const {
 const {
   enrollStudentInBatch,
   unenrollStudentFromBatch,
+  moveStudentToBatch,
   activeEnrollments,
   hydrateEnrollments,
   serializeEnrollments
@@ -678,7 +679,24 @@ router.put('/users/:id', async (req, res) => {
       updateData.joiningDate = jd;
     }
 
-    await User.findByIdAndUpdate(id, updateData, { new: true }).exec();
+    // Batch changes go through the roster/enrollment sync, not a bare batchId overwrite.
+    const batchChange = Object.prototype.hasOwnProperty.call(updateData, 'batchId');
+    const nextBatchId = batchChange ? String(updateData.batchId || '').trim() : '';
+    delete updateData.batchId;
+
+    const updated = await User.findByIdAndUpdate(id, updateData, { new: true }).exec();
+    if (batchChange && updated?.role === 'student') {
+      try {
+        await moveStudentToBatch(id, nextBatchId);
+      } catch (err) {
+        if (err.code === 'BATCH_NOT_FOUND') {
+          return res.status(400).json({ message: 'Selected batch no longer exists' });
+        }
+        throw err;
+      }
+    } else if (batchChange && updated) {
+      await User.findByIdAndUpdate(id, { batchId: nextBatchId || null }).exec();
+    }
     res.json({ message: 'User updated successfully' });
   } catch (err) {
     console.error('Error updating user:', err);

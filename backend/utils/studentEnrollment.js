@@ -273,6 +273,81 @@ async function unenrollStudentFromBatch(userOrId, batchId) {
   return user;
 }
 
+/**
+ * Change a student's primary batch (admin edit form): leave the old batch's roster and enrollment,
+ * join the new one, and keep the same SKY ID. Other programs/one-to-one enrollments are untouched.
+ * With toBatchId === current batch it only repairs a missing roster entry.
+ */
+async function moveStudentToBatch(userOrId, toBatchId) {
+  const user =
+    userOrId && typeof userOrId === 'object' && userOrId._id
+      ? userOrId
+      : await User.findById(userOrId).exec();
+  if (!user) {
+    const err = new Error('Student not found');
+    err.code = 'STUDENT_NOT_FOUND';
+    throw err;
+  }
+  const from = asString(user.batchId);
+  const to = asString(toBatchId);
+  const sid = String(user._id);
+
+  let target = null;
+  if (to) {
+    target = await Batch.findById(to).lean().exec();
+    if (!target) {
+      const err = new Error('Batch not found');
+      err.code = 'BATCH_NOT_FOUND';
+      throw err;
+    }
+  }
+
+  if (from !== to) {
+    const list = hydrateEnrollments(user);
+    const previous = list.find((e) => e.batchId === from);
+    const existing = list.find((e) => e.batchId === to);
+    const rest = list.filter((e) => e.batchId !== from && e.batchId !== to);
+    if (to) {
+      const course = asString(target.course) || previous?.course || asString(user.course);
+      rest.unshift({
+        batchId: to,
+        course,
+        enrollmentNumber:
+          existing?.enrollmentNumber || previous?.enrollmentNumber || asString(user.enrollmentNumber),
+        enrolledAt: new Date(),
+        status: 'active'
+      });
+      user.batchId = to;
+      if (course) user.course = course;
+    } else {
+      user.batchId = null;
+    }
+    user.enrollments = rest;
+    user.updatedAt = new Date();
+    await user.save();
+
+    if (from) {
+      const old = await Batch.findById(from).exec();
+      if (old && (old.students || []).some((id) => String(id) === sid)) {
+        old.students = old.students.filter((id) => String(id) !== sid);
+        old.updatedAt = new Date();
+        await old.save();
+      }
+    }
+  }
+
+  if (to) {
+    const batchDoc = await Batch.findById(to).exec();
+    if (batchDoc && !(batchDoc.students || []).some((id) => String(id) === sid)) {
+      batchDoc.students = [...(batchDoc.students || []), user._id];
+      batchDoc.updatedAt = new Date();
+      await batchDoc.save();
+    }
+  }
+
+  return { user, moved: from !== to, from, to };
+}
+
 function serializeEnrollments(user, batchMap = new Map()) {
   return activeEnrollments(user).map((e) => {
     const batch = batchMap.get(e.batchId) || {};
@@ -295,6 +370,7 @@ module.exports = {
   resolveStudentBatchIds,
   enrollStudentInBatch,
   unenrollStudentFromBatch,
+  moveStudentToBatch,
   serializeEnrollments,
   normalizeEnrollment
 };
