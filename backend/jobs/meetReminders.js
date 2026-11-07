@@ -54,11 +54,12 @@ async function getBatchStudentEmails(batchId) {
 }
 
 /**
- * Send T-15 reminders for upcoming Meet classes.
+ * Reminders for classes starting within 20 minutes, plus classes created or started at the last
+ * minute (start up to 10 minutes ago) that never got one. Ticks must be shorter than the window.
  */
 async function sendMeetReminders() {
   const now = Date.now();
-  const windowStart = new Date(now + 15 * 60 * 1000);
+  const windowStart = new Date(now - 10 * 60 * 1000);
   const windowEnd = new Date(now + 20 * 60 * 1000);
 
   const classes = await LiveClass.find({
@@ -99,11 +100,16 @@ async function sendMeetReminders() {
         if (!byZone.has(key)) byZone.set(key, []);
         byZone.get(key).push(r.email);
       }
-      const subject = `Reminder: ${cls.title} starts soon`;
+      const started = new Date(cls.scheduledStart).getTime() <= now;
+      const subject = started
+        ? `${cls.title} has started — join now`
+        : `Reminder: ${cls.title} starts soon`;
       const buildMessage = (when) => [
         `Hi,`,
         ``,
-        `Your live class "${cls.title}" starts soon.`,
+        started
+          ? `Your live class "${cls.title}" has started. Join now.`
+          : `Your live class "${cls.title}" starts soon.`,
         ``,
         `Batch: ${batchName || cls.batchId}`,
         `When: ${when}`,
@@ -140,8 +146,7 @@ async function sendMeetReminders() {
 }
 
 function startMeetReminderJob() {
-  // Every 15 minutes — reminder window is wide enough; cuts LiveClass scans 3×.
-  cron.schedule('*/15 * * * *', async () => {
+  cron.schedule('*/5 * * * *', async () => {
     try {
       const result = await sendMeetReminders();
       if (result.sent || result.skipped) {
@@ -151,7 +156,7 @@ function startMeetReminderJob() {
       console.error('[Meet Reminders] cron error:', err.message || err);
     }
   });
-  console.log('[Meet Reminders] cron scheduled (every 15 minutes)');
+  console.log('[Meet Reminders] cron scheduled (every 5 minutes)');
 }
 
 module.exports = {

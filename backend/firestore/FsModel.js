@@ -30,6 +30,13 @@ function valuesEqual(a, b) {
   return asString(a) === asString(b);
 }
 
+const RANGE_OPS = {
+  $gt: (a, b) => a > b,
+  $gte: (a, b) => a >= b,
+  $lt: (a, b) => a < b,
+  $lte: (a, b) => a <= b
+};
+
 function matchCondition(docValue, cond) {
   if (cond && typeof cond === 'object' && !Array.isArray(cond) && !(cond instanceof Date) && !cond._bsontype) {
     if ('$in' in cond) {
@@ -44,10 +51,9 @@ function matchCondition(docValue, cond) {
       return !list.includes(asString(docValue));
     }
     if ('$ne' in cond) return !valuesEqual(docValue, cond.$ne);
-    if ('$gt' in cond) return docValue > cond.$gt;
-    if ('$gte' in cond) return docValue >= cond.$gte;
-    if ('$lt' in cond) return docValue < cond.$lt;
-    if ('$lte' in cond) return docValue <= cond.$lte;
+    // Bounds combine: { $gte: a, $lte: b } must satisfy both.
+    const rangeOps = Object.keys(RANGE_OPS).filter((op) => op in cond);
+    if (rangeOps.length) return rangeOps.every((op) => RANGE_OPS[op](docValue, cond[op]));
     if ('$exists' in cond) {
       const exists = docValue !== undefined && docValue !== null;
       return cond.$exists ? exists : !exists;
