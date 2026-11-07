@@ -2243,7 +2243,11 @@ const Dashboard = ({ user, onLogout }) => {
                       try {
                         const coursePrefix = getCourseSlug();
                         const lastPlayed = localStorage.getItem(`${coursePrefix}_lastPlayedVideo`);
-                        if (lastPlayed) videoToResume = JSON.parse(lastPlayed);
+                        const lastId = lastPlayed ? String(JSON.parse(lastPlayed)?.id || '') : '';
+                        // Only resume a lesson still in this student's batches (they may have been moved).
+                        videoToResume = lastId
+                          ? classroomVideos.find((v) => String(v.id) === lastId) || null
+                          : null;
                         const source = String(videoToResume?.videoSource || '');
                         const playable =
                           Boolean(
