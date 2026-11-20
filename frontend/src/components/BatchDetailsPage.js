@@ -26,6 +26,7 @@ import {
   US_TIMING_KEYS
 } from '../utils/emailTemplates';
 import SkyLoadingScreen from './SkyLoadingScreen';
+import { formatScheduleForStudentUsZones } from '../utils/timezoneUtils';
 import './BatchDetailsPage.css';
 
 const DAYS_OF_WEEK = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -514,20 +515,26 @@ const BatchDetailsPage = () => {
     showToast('Draft deleted.', 'success');
   };
 
+  // All students loaded from the batch roster API belong to this batch
+  const batchStudents = useMemo(() => {
+    if (!Array.isArray(students)) return [];
+    return students.filter(student => {
+      if (!student) return false;
+      const sBatchId = normId(student.batchId);
+      if (!sBatchId || sBatchId === selectedBatchIdNorm) return true;
+      if (Array.isArray(student.batchIds) && student.batchIds.map(normId).includes(selectedBatchIdNorm)) return true;
+      if (Array.isArray(student.enrollments) && student.enrollments.some(e => normId(e.batchId) === selectedBatchIdNorm)) return true;
+      // Also preserve any student on the batch roster list
+      return Boolean(student.id || student._id || student.email || student.name);
+    });
+  }, [students, selectedBatchIdNorm]);
+
   // Filter students for email section (moved here to avoid conditional hook usage)
   const filteredEmailStudents = useMemo(() => {
     try {
-      // Return empty array if batchStudents is not yet available
-      if (!students || !Array.isArray(students) || !selectedBatch) return [];
+      if (!batchStudents || !batchStudents.length || !selectedBatch) return [];
       
-      let filtered = students.filter(student => {
-        try {
-          return student && normId(student.batchId) === selectedBatchIdNorm;
-        } catch (e) {
-          console.warn('Error filtering student:', e, student);
-          return false;
-        }
-      });
+      let filtered = batchStudents;
       
       // Apply search filter
       if (emailSearchTerm && emailSearchTerm.trim()) {
@@ -535,8 +542,8 @@ const BatchDetailsPage = () => {
         filtered = filtered.filter(student => {
           try {
             return student && 
-              (student.name && student.name.toLowerCase().includes(term)) ||
-              (student.email && student.email.toLowerCase().includes(term));
+              ((student.name && student.name.toLowerCase().includes(term)) ||
+              (student.email && student.email.toLowerCase().includes(term)));
           } catch (e) {
             console.warn('Error searching student:', e, student);
             return false;
@@ -556,7 +563,7 @@ const BatchDetailsPage = () => {
       console.error('Error in filteredEmailStudents:', e);
       return [];
     }
-  }, [students, selectedBatchIdNorm, emailSearchTerm, emailQuickFilter]);
+  }, [batchStudents, selectedBatch, emailSearchTerm, emailQuickFilter]);
 
   // Process activity data for graph
   const { chartData, summary: activitySummary } = useMemo(() => {
@@ -566,9 +573,6 @@ const BatchDetailsPage = () => {
       graphDateRange.end || activityFilter.endDate
     );
   }, [studentActivities, graphDateRange, activityFilter]);
-
-  // Filter students by batchId for consistency with Dashboard
-  const batchStudents = students.filter(student => normId(student.batchId) === selectedBatchIdNorm);
 
   // Lock body scroll when any modal is open (prevents double scrollbar)
   useEffect(() => {
@@ -2297,10 +2301,17 @@ const BatchDetailsPage = () => {
 
         <div className="sky-batch-header-actions">
           {selectedBatch.schedule && (selectedBatch.schedule.days || selectedBatch.schedule.time) && (
-            <div className="sky-batch-timing-chip">
-              {(selectedBatch.schedule.days || '')}{(selectedBatch.schedule.days && selectedBatch.schedule.time) ? ' · ' : ''}
-              {selectedBatch.schedule.time || ''}
-              {selectedBatch.schedule.time ? ' IST' : ''}
+            <div className="sky-batch-timing-chip" title="Schedule in IST & US Zones">
+              <span>
+                {(selectedBatch.schedule.days || '')}{(selectedBatch.schedule.days && selectedBatch.schedule.time) ? ' · ' : ''}
+                {selectedBatch.schedule.time || ''}
+                {selectedBatch.schedule.time ? ' IST' : ''}
+              </span>
+              {selectedBatch.schedule.time && (
+                <span className="timing-chip-us" style={{ marginLeft: '8px', fontSize: '0.85em', opacity: 0.9 }}>
+                  (US: {formatScheduleForStudentUsZones(selectedBatch.schedule.time)})
+                </span>
+              )}
             </div>
           )}
           {isAdmin && (

@@ -1748,20 +1748,31 @@
 }
 
 .data-table th {
-  padding: 8px;
-  text-align: center;
+  padding: 10px 14px;
+  text-align: left;
   font-weight: 600;
-  font-size: 14px;
+  font-size: 13px;
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }
 
 .data-table td {
-  padding: 8px;
+  padding: 10px 14px;
   border-bottom: 1px solid #e2e8f0;
   color: #4a5568;
   font-size: 14px;
   vertical-align: middle;
+  text-align: left;
+}
+
+.data-table th.text-center,
+.data-table td.text-center {
+  text-align: center;
+}
+
+.data-table th.text-right,
+.data-table td.text-right {
+  text-align: right;
 }
 
 /* Extra padding for Actions column */
@@ -1769,7 +1780,7 @@
 .data-table td:last-child {
   padding: 8px 10px;
   text-align: center;
-  min-width: 180px;
+  min-width: 140px;
   white-space: nowrap;
 }
 
@@ -1792,11 +1803,19 @@
   font-weight: 600;
   text-transform: uppercase;
   display: inline-block;
+  background: #edf2f7;
+  color: #2d3748;
 }
 
 .status-badge.active {
   background: #c6f6d5;
   color: #22543d;
+}
+
+.status-badge.completed {
+  background: #e2e8f0;
+  color: #334155 !important;
+  border: 1px solid #cbd5e1;
 }
 
 .status-badge.inactive {
@@ -1812,6 +1831,11 @@
 .status-badge.graduated {
   background: #bee3f8;
   color: #2c5282;
+}
+
+.status-badge.upcoming {
+  background: #e9d8fd;
+  color: #553c9e;
 }
 
 /* Button-style links inside data tables (e.g., student name) */
@@ -2416,6 +2440,36 @@ body.modal-open {
   left: auto !important;
   right: auto !important;
   bottom: auto !important;
+}
+
+.modal.modal--student,
+.modal.modal--large {
+  max-width: 860px;
+  width: 94%;
+}
+
+.sky-enroll-step-box {
+  background: #f8fafc;
+  border: 1px solid #dbeafe;
+  border-radius: 12px;
+  padding: 1.15rem 1.25rem;
+  margin-top: 0.35rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+
+.sky-enroll-step-title {
+  font-size: 0.85rem;
+  font-weight: 750;
+  color: #0b3d4a;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  border-bottom: 1px solid #e2e8f0;
+  padding-bottom: 0.5rem;
 }
 
 @keyframes slideUp {
@@ -4025,6 +4079,12 @@ body.modal-open {
   color: #047857;
 }
 
+.dossier-status.completed {
+  background: #f1f5f9;
+  color: #475569;
+  border: 1px solid #cbd5e1;
+}
+
 .dossier-status.inactive,
 .dossier-status.suspended,
 .dossier-status.unknown {
@@ -5297,9 +5357,11 @@ body.modal-open {
   font-size: 13px;
 }
 
-/* Ensure Last Login column has appropriate width */
-.data-table th:nth-child(5),
-.data-table td:nth-child(5) {
+/* Ensure Last Login column has appropriate width in students table */
+.students-data-table th:nth-child(5),
+.students-data-table td:nth-child(5),
+.students-section .data-table th:nth-child(5),
+.students-section .data-table td:nth-child(5) {
   width: 120px;
   min-width: 120px;
   text-align: center;
@@ -5307,8 +5369,10 @@ body.modal-open {
 
 /* Responsive adjustments for Last Login column */
 @media (max-width: 768px) {
-  .data-table th:nth-child(5),
-  .data-table td:nth-child(5) {
+  .students-data-table th:nth-child(5),
+  .students-data-table td:nth-child(5),
+  .students-section .data-table th:nth-child(5),
+  .students-section .data-table td:nth-child(5) {
     width: 100px;
     min-width: 100px;
     font-size: 12px;
@@ -5316,8 +5380,10 @@ body.modal-open {
 }
 
 @media (max-width: 480px) {
-  .data-table th:nth-child(5),
-  .data-table td:nth-child(5) {
+  .students-data-table th:nth-child(5),
+  .students-data-table td:nth-child(5),
+  .students-section .data-table th:nth-child(5),
+  .students-section .data-table td:nth-child(5) {
     width: 80px;
     min-width: 80px;
     font-size: 11px;

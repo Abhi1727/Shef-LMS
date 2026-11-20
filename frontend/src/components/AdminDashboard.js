@@ -17,6 +17,7 @@ import AccountMenu from './AccountMenu';
 import SkyLoadingScreen from './SkyLoadingScreen';
 import ResponsiveShellNav from './ResponsiveShellNav';
 import { TimeZoneCalculator } from './TimeZoneTools';
+import { convertIstToUsTimezone } from '../utils/timezoneUtils';
 import AdminLiveNow from './AdminLiveNow';
 import './Dashboard.css';
 import './AdminDashboard.css';
@@ -121,6 +122,8 @@ const BatchFilter = memo(({
   setBatchCourseFilter,
   batchTeacherFilter,
   setBatchTeacherFilter,
+  batchStatusFilter = 'all',
+  setBatchStatusFilter,
   teacherOptions = [],
   filteredCount,
   totalCount,
@@ -134,19 +137,22 @@ const BatchFilter = memo(({
     setBatchSearch('');
     setBatchCourseFilter('all');
     if (setBatchTeacherFilter) setBatchTeacherFilter('all');
+    if (setBatchStatusFilter) setBatchStatusFilter('all');
     try {
       localStorage.removeItem('admin_batch_search');
       localStorage.removeItem('admin_batch_course_filter');
       localStorage.removeItem('admin_batch_teacher_filter');
+      localStorage.removeItem('admin_batch_status_filter');
     } catch (error) {
       console.warn('Failed to clear batch filters from localStorage:', error);
     }
-  }, [setBatchSearch, setBatchCourseFilter, setBatchTeacherFilter]);
+  }, [setBatchSearch, setBatchCourseFilter, setBatchTeacherFilter, setBatchStatusFilter]);
 
   const hasActiveFilters =
     batchSearch.trim() ||
     batchCourseFilter !== 'all' ||
-    (batchTeacherFilter && batchTeacherFilter !== 'all');
+    (batchTeacherFilter && batchTeacherFilter !== 'all') ||
+    (batchStatusFilter && batchStatusFilter !== 'all');
 
   return (
     <div className="batch-filter-section">
@@ -177,6 +183,27 @@ const BatchFilter = memo(({
                 type="button"
                 className={`batch-course-btn ${batchCourseFilter === opt.value ? 'active' : ''}`}
                 onClick={() => setBatchCourseFilter(opt.value)}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="batch-filter-row" style={{ marginTop: '10px' }}>
+          <div className="batch-course-filters" style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center' }}>
+            <span style={{ fontSize: '0.8rem', fontWeight: 650, color: '#5a6d76', marginRight: '4px' }}>Status:</span>
+            {[
+              { value: 'all', label: 'All status' },
+              { value: 'active', label: 'Active' },
+              { value: 'completed', label: 'Completed' },
+              { value: 'inactive', label: 'Inactive' }
+            ].map((opt) => (
+              <button
+                key={opt.value}
+                type="button"
+                className={`batch-course-btn ${(!batchStatusFilter || batchStatusFilter === 'all') && opt.value === 'all' || batchStatusFilter === opt.value ? 'active' : ''}`}
+                onClick={() => setBatchStatusFilter && setBatchStatusFilter(opt.value)}
               >
                 {opt.label}
               </button>
@@ -404,6 +431,15 @@ const AdminDashboard = ({ user, onLogout }) => {
       return 'all';
     }
   });
+
+  const [batchStatusFilter, setBatchStatusFilter] = useState(() => {
+    try {
+      return localStorage.getItem('admin_batch_status_filter') || 'all';
+    } catch (error) {
+      console.warn('Failed to read batch status filter from localStorage:', error);
+      return 'all';
+    }
+  });
   const [oneToOneTeacherFilter, setOneToOneTeacherFilter] = useState('all');
   const [oneToOneProgramFilter, setOneToOneProgramFilter] = useState('all');
   const [projectTeacherFilter, setProjectTeacherFilter] = useState('all');
@@ -434,6 +470,15 @@ const AdminDashboard = ({ user, onLogout }) => {
       localStorage.setItem('admin_batch_teacher_filter', value);
     } catch (error) {
       console.warn('Failed to save batch teacher filter to localStorage:', error);
+    }
+  }, []);
+
+  const setBatchStatusFilterWithPersistence = useCallback((value) => {
+    setBatchStatusFilter(value);
+    try {
+      localStorage.setItem('admin_batch_status_filter', value);
+    } catch (error) {
+      console.warn('Failed to save batch status filter to localStorage:', error);
     }
   }, []);
   
@@ -775,6 +820,119 @@ const AdminDashboard = ({ user, onLogout }) => {
     [allCohorts, cohortMatchesFormat, matchesProgramFilter]
   );
 
+  // Helper to get relevant teachers for a selected cohort format and program
+  const getRelevantTeachersForEnrollment = useCallback(
+    (format, program, excludeBatchIds = []) => {
+      if (!program) return [];
+      const batchesForProg = filterCohortsForEnrollment(format || 'regular', program, excludeBatchIds);
+
+      const teacherIdsWithBatches = new Set();
+      const teacherNamesWithBatches = new Set();
+      batchesForProg.forEach((b) => {
+        if (b.teacherId) teacherIdsWithBatches.add(String(b.teacherId));
+        if (b.teacherName) teacherNamesWithBatches.add(String(b.teacherName).trim().toLowerCase());
+      });
+
+      const wantProg = String(program).trim().toLowerCase();
+      const matchedTeachers = (teachers || []).filter((teacher) => {
+        const tId = String(teacher.id || teacher._id || '');
+        const tName = String(teacher.name || '').trim().toLowerCase();
+        if (tId && teacherIdsWithBatches.has(tId)) return true;
+        if (tName && teacherNamesWithBatches.has(tName)) return true;
+
+        const assigned = Array.isArray(teacher.assignedCourses)
+          ? teacher.assignedCourses.map((c) => String(c).toLowerCase())
+          : [];
+        const domain = String(teacher.domain || '').toLowerCase();
+
+        return (
+          domain.includes(wantProg) ||
+          assigned.some((c) => c.includes(wantProg) || wantProg.includes(c))
+        );
+      });
+
+      return matchedTeachers.length > 0 ? matchedTeachers : (teachers || []);
+    },
+    [filterCohortsForEnrollment, teachers]
+  );
+
+  // Helper to filter cohorts by selected teacher
+  const filterCohortsByTeacher = useCallback(
+    (format, program, teacherId, excludeBatchIds = []) => {
+      const cohorts = filterCohortsForEnrollment(format || 'regular', program, excludeBatchIds);
+      if (!teacherId || teacherId === 'all') {
+        return cohorts;
+      }
+      const tid = String(teacherId);
+      const teacherObj = (teachers || []).find((t) => String(t.id || t._id) === tid);
+      const tName = (teacherObj?.name || '').trim().toLowerCase();
+
+      return cohorts.filter((b) => {
+        if (b.teacherId && String(b.teacherId) === tid) return true;
+        if (tName && b.teacherName && String(b.teacherName).trim().toLowerCase() === tName) return true;
+        return false;
+      });
+    },
+    [filterCohortsForEnrollment, teachers]
+  );
+
+  // Derived cohorts & teachers for student enrollment modal
+  const primaryProgramBatches = useMemo(() => {
+    return filterCohortsForEnrollment(
+      formData.enrollmentFormat || 'regular',
+      formData.course
+    );
+  }, [filterCohortsForEnrollment, formData.enrollmentFormat, formData.course]);
+
+  const primaryRelevantTeachers = useMemo(() => {
+    return getRelevantTeachersForEnrollment(
+      formData.enrollmentFormat || 'regular',
+      formData.course
+    );
+  }, [getRelevantTeachersForEnrollment, formData.enrollmentFormat, formData.course]);
+
+  const primaryFilteredBatches = useMemo(() => {
+    return filterCohortsByTeacher(
+      formData.enrollmentFormat || 'regular',
+      formData.course,
+      formData.teacherId
+    );
+  }, [filterCohortsByTeacher, formData.enrollmentFormat, formData.course, formData.teacherId]);
+
+  const additionalExcludedBatchIds = useMemo(() => {
+    if (!editingItem) return [];
+    return [
+      ...(editingItem.batchIds || []),
+      ...((editingItem.enrollments || []).map((x) => x.batchId) || []),
+      editingItem.batchId
+    ];
+  }, [editingItem]);
+
+  const additionalProgramBatches = useMemo(() => {
+    return filterCohortsForEnrollment(
+      formData.additionalFormat || 'regular',
+      formData.additionalProgram,
+      additionalExcludedBatchIds
+    );
+  }, [filterCohortsForEnrollment, formData.additionalFormat, formData.additionalProgram, additionalExcludedBatchIds]);
+
+  const additionalRelevantTeachers = useMemo(() => {
+    return getRelevantTeachersForEnrollment(
+      formData.additionalFormat || 'regular',
+      formData.additionalProgram,
+      additionalExcludedBatchIds
+    );
+  }, [getRelevantTeachersForEnrollment, formData.additionalFormat, formData.additionalProgram, additionalExcludedBatchIds]);
+
+  const additionalFilteredBatches = useMemo(() => {
+    return filterCohortsByTeacher(
+      formData.additionalFormat || 'regular',
+      formData.additionalProgram,
+      formData.additionalTeacherId,
+      additionalExcludedBatchIds
+    );
+  }, [filterCohortsByTeacher, formData.additionalFormat, formData.additionalProgram, formData.additionalTeacherId, additionalExcludedBatchIds]);
+
   const renderCohortFormatPicker = (field, value) => (
     <div className="sky-enroll-format-row" role="group" aria-label="Cohort type">
       {[
@@ -790,8 +948,14 @@ const AdminDashboard = ({ user, onLogout }) => {
             className={`sky-enroll-format-btn${active ? ' is-active' : ''}`}
             onClick={() => {
               handleInputChange(field, opt.value);
-              if (field === 'enrollmentFormat') handleInputChange('batchId', '');
-              if (field === 'additionalFormat') handleInputChange('additionalBatchId', '');
+              if (field === 'enrollmentFormat') {
+                handleInputChange('teacherId', '');
+                handleInputChange('batchId', '');
+              }
+              if (field === 'additionalFormat') {
+                handleInputChange('additionalTeacherId', '');
+                handleInputChange('additionalBatchId', '');
+              }
             }}
           >
             {opt.label}
@@ -809,8 +973,11 @@ const AdminDashboard = ({ user, onLogout }) => {
     const batchId = batch?.id || batch?._id;
     if (!batchId) return [];
     const bid = String(batchId);
+    const rosterStudentIds = new Set((batch.students || []).map(String));
     return (students || []).filter((student) => {
       if (student.role !== 'student') return false;
+      const sId = String(student.id || student._id || '');
+      if (sId && rosterStudentIds.has(sId)) return true;
       if (String(student.batchId || '') === bid) return true;
       if ((student.batchIds || []).map(String).includes(bid)) return true;
       if ((student.enrollments || []).some((e) => String(e.batchId) === bid)) return true;
@@ -840,15 +1007,9 @@ const AdminDashboard = ({ user, onLogout }) => {
 
     const withCounts = (list) =>
       list.map((batch) => {
-        const batchId = String(batch.id || batch._id || '');
-        const studentCount = (students || []).filter((s) => {
-          if (s.role !== 'student') return false;
-          if (String(s.batchId || '') === batchId) return true;
-          if ((s.batchIds || []).map(String).includes(batchId)) return true;
-          if ((s.enrollments || []).some((e) => String(e.batchId) === batchId)) return true;
-          return false;
-        }).length;
-        return { ...batch, studentCount };
+        const matched = getStudentsForBatch(batch).length;
+        const rosterCount = (batch.students || []).length;
+        return { ...batch, studentCount: Math.max(matched, rosterCount) };
       });
 
     const regular = withCounts((batches || []).filter((b) => !isSpecialBatch(b) && matchesTeacher(b)));
@@ -1094,6 +1255,15 @@ const AdminDashboard = ({ user, onLogout }) => {
         return teacherName === selected || String(batch.teacherId || '') === batchTeacherFilter;
       });
     }
+
+    // Apply status filter
+    if (batchStatusFilter && batchStatusFilter !== 'all') {
+      const selectedStatus = batchStatusFilter.trim().toLowerCase();
+      filtered = filtered.filter(batch => {
+        const status = (batch.status || 'active').trim().toLowerCase();
+        return status === selectedStatus;
+      });
+    }
     
     // Apply search filter
     if (batchSearch.trim()) {
@@ -1104,10 +1274,13 @@ const AdminDashboard = ({ user, onLogout }) => {
         const teacherName = (batch.teacherName || '').toLowerCase();
         const status = (batch.status || '').toLowerCase();
         
-        // Get student names and emails for this batch (multi-program aware)
+        // Get student names and emails for this batch (multi-program and roster aware)
         const bid = String(batch.id || batch._id || '');
+        const rosterStudentIds = new Set((batch.students || []).map(String));
         const batchStudents = students.filter((student) => {
           if (student.role !== 'student') return false;
+          const sId = String(student.id || student._id || '');
+          if (sId && rosterStudentIds.has(sId)) return true;
           if (String(student.batchId || '') === bid) return true;
           if ((student.batchIds || []).map(String).includes(bid)) return true;
           if ((student.enrollments || []).some((e) => String(e.batchId) === bid)) return true;
@@ -1128,7 +1301,7 @@ const AdminDashboard = ({ user, onLogout }) => {
     }
     
     return filtered;
-  }, [batches, batchCourseFilter, batchTeacherFilter, batchSearch, students, isSpecialBatch, matchesProgramFilter]);
+  }, [batches, batchCourseFilter, batchTeacherFilter, batchStatusFilter, batchSearch, students, isSpecialBatch, matchesProgramFilter]);
 
   const oneToOneTeacherOptions = useMemo(() => {
     const names = new Map();
@@ -1814,7 +1987,8 @@ const AdminDashboard = ({ user, onLogout }) => {
           await Promise.race([
             Promise.all([
               loadStudents(true),
-              loadBatches(true)
+              loadBatches(true),
+              loadTeachers(true)
             ]),
             timeout(8000)
           ]);
@@ -2072,6 +2246,7 @@ const AdminDashboard = ({ user, onLogout }) => {
       // Load batches if course is selected for new student, classroom, or module
       if (type === 'student') {
         loadBatches();
+        loadTeachers();
       }
       if ((type === 'classroom' || type === 'module') && cleanDefaults.course) {
         loadBatchesByCourse(cleanDefaults.course);
@@ -2129,6 +2304,8 @@ const AdminDashboard = ({ user, onLogout }) => {
       } else {
         const editData = { ...item };
         if (type === 'student') {
+          loadBatches();
+          loadTeachers();
           const rawJoin = item.joiningDate || item.createdAt;
           if (rawJoin) {
             const d = new Date(rawJoin);
@@ -2142,16 +2319,22 @@ const AdminDashboard = ({ user, onLogout }) => {
           if (isProjectBatch(existing)) editData.enrollmentFormat = 'project';
           else if (isOneToOneBatch(existing)) editData.enrollmentFormat = 'one-to-one';
           else editData.enrollmentFormat = 'regular';
+          if (existing && existing.teacherId) {
+            editData.teacherId = existing.teacherId;
+          }
         }
         setFormData({
           ...editData,
+          teacherId: editData.teacherId || '',
           enrollmentFormat: editData.enrollmentFormat || 'regular',
           additionalFormat: 'regular',
           additionalProgram: '',
+          additionalTeacherId: '',
           additionalBatchId: ''
         });
         if (type === 'student') {
           loadBatches();
+          loadTeachers();
         }
       }
     }
@@ -3766,15 +3949,15 @@ const AdminDashboard = ({ user, onLogout }) => {
               />
 
               <div className="data-table-container">
-                <table className="data-table">
+                <table className="data-table students-data-table">
                   <thead>
                     <tr>
                       <th>Name</th>
                       <th>Email</th>
                       <th>Batch</th>
                       <th>Course</th>
-                      <th>Last Login</th>
-                      <th>Actions</th>
+                      <th className="text-center">Last Login</th>
+                      <th className="text-center">Actions</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -3976,8 +4159,8 @@ const AdminDashboard = ({ user, onLogout }) => {
                       <th>Experience</th>
                       <th>Phone</th>
                       <th>Availability</th>
-                      <th>Status</th>
-                      <th>Actions</th>
+                      <th className="text-center">Status</th>
+                      <th className="text-center">Actions</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -4042,12 +4225,12 @@ const AdminDashboard = ({ user, onLogout }) => {
                                   : 'Unavailable')}
                           </span>
                         </td>
-                        <td>
-                          <span className={`status-badge ${teacher.status}`}>
-                            {teacher.status}
+                        <td className="text-center">
+                          <span className={`status-badge ${(teacher.status || 'active').trim().toLowerCase()}`}>
+                            {(teacher.status || 'active').trim().toUpperCase()}
                           </span>
                         </td>
-                        <td>
+                        <td className="text-center">
                           {teacher.inClass && teacher.liveClass?.id && (
                             <button
                               type="button"
@@ -4085,13 +4268,13 @@ const AdminDashboard = ({ user, onLogout }) => {
                 setBatchCourseFilter={setBatchCourseFilterWithPersistence}
                 batchTeacherFilter={batchTeacherFilter}
                 setBatchTeacherFilter={setBatchTeacherFilterWithPersistence}
+                batchStatusFilter={batchStatusFilter}
+                setBatchStatusFilter={setBatchStatusFilterWithPersistence}
                 teacherOptions={regularBatchTeacherOptions}
                 filteredCount={filteredBatches.length}
                 totalCount={regularBatchTotal}
                 openModal={openModal}
                 teachers={teachers}
-                batchTeacherFilter={batchTeacherFilter}
-                setBatchTeacherFilter={setBatchTeacherFilterWithPersistence}
               />
 
               <div className="data-table-container">
@@ -4102,22 +4285,29 @@ const AdminDashboard = ({ user, onLogout }) => {
                       <th>Course</th>
                       <th>Start Date</th>
                       <th>Teacher</th>
-                      <th>Students</th>
-                      <th>Status</th>
-                      <th>Actions</th>
+                      <th className="text-center">Students</th>
+                      <th className="text-center">Status</th>
+                      <th className="text-center">Actions</th>
                     </tr>
                   </thead>
                   <tbody>
                     {filteredBatches.map(batch => {
-                      // Calculate actual student count (multi-program aware)
+                      // Calculate actual student count (multi-program and roster aware)
                       const bid = String(batch.id || batch._id || '');
-                      const actualStudentCount = (students || []).filter((student) => {
+                      const rosterStudentIds = new Set((batch.students || []).map(String));
+                      const rosterCount = (batch.students || []).length;
+                      const matchedCount = (students || []).filter((student) => {
                         if (student.role !== 'student') return false;
+                        const sId = String(student.id || student._id || '');
+                        if (sId && rosterStudentIds.has(sId)) return true;
                         if (String(student.batchId || '') === bid) return true;
                         if ((student.batchIds || []).map(String).includes(bid)) return true;
                         if ((student.enrollments || []).some((e) => String(e.batchId) === bid)) return true;
                         return false;
                       }).length;
+                      const actualStudentCount = Math.max(matchedCount, rosterCount);
+                      const statusVal = (batch.status || 'active').trim();
+                      const statusClass = statusVal.toLowerCase();
                       
                       return (
                         <tr key={batch.id || batch._id}>
@@ -4146,13 +4336,13 @@ const AdminDashboard = ({ user, onLogout }) => {
                               'N/A'
                             )}
                           </td>
-                          <td>{actualStudentCount}</td>
-                          <td>
-                            <span className={`status-badge ${batch.status}`}>
-                              {batch.status}
+                          <td className="text-center">{actualStudentCount}</td>
+                          <td className="text-center">
+                            <span className={`status-badge ${statusClass}`}>
+                              {statusVal}
                             </span>
                           </td>
-                          <td>
+                          <td className="text-center">
                             <button onClick={() => openModal('batch', batch)} className="btn-edit">✏️</button>
                             <button onClick={() => handleDelete('batches', batch.id || batch._id)} className="btn-delete">🗑️</button>
                           </td>
@@ -4520,13 +4710,16 @@ const AdminDashboard = ({ user, onLogout }) => {
                       <th>Batch Name</th>
                       <th>Program</th>
                       <th>Trainer</th>
-                      <th>Students</th>
-                      <th>Status</th>
-                      <th>Actions</th>
+                      <th className="text-center">Students</th>
+                      <th className="text-center">Status</th>
+                      <th className="text-center">Actions</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredOneToOneBatches.map(batch => (
+                    {filteredOneToOneBatches.map(batch => {
+                      const statusVal = (batch.status || 'active').trim();
+                      const statusClass = statusVal.toLowerCase();
+                      return (
                         <tr key={batch.id || batch._id}>
                           <td>
                             <button
@@ -4552,15 +4745,15 @@ const AdminDashboard = ({ user, onLogout }) => {
                               'N/A'
                             )}
                           </td>
-                          <td title={formatBatchStudentNames(batch)}>
+                          <td className="text-center" title={formatBatchStudentNames(batch)}>
                             {formatBatchStudentNames(batch)}
                           </td>
-                          <td>
-                            <span className={`status-badge ${batch.status}`}>
-                              {batch.status}
+                          <td className="text-center">
+                            <span className={`status-badge ${statusClass}`}>
+                              {statusVal}
                             </span>
                           </td>
-                          <td>
+                          <td className="text-center">
                             <button onClick={() => openModal('batch', {
                               ...batch,
                               batchType: 'one-to-one',
@@ -4570,7 +4763,8 @@ const AdminDashboard = ({ user, onLogout }) => {
                             <button onClick={() => handleDelete('batches', batch.id || batch._id)} className="btn-delete">Delete</button>
                           </td>
                         </tr>
-                    ))}
+                      );
+                    })}
                   </tbody>
                 </table>
                 {filteredOneToOneBatches.length === 0 && (
@@ -4663,57 +4857,61 @@ const AdminDashboard = ({ user, onLogout }) => {
                       <th>Class Name</th>
                       <th>Program</th>
                       <th>Trainer</th>
-                      <th>Students</th>
-                      <th>Status</th>
-                      <th>Actions</th>
+                      <th className="text-center">Students</th>
+                      <th className="text-center">Status</th>
+                      <th className="text-center">Actions</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredProjectBatches.map(batch => (
-                      <tr key={batch.id || batch._id}>
-                        <td>
-                          <button
-                            onClick={() => handleBatchClick(batch)}
-                            className="btn-link"
-                            title="View Project Class Details"
-                          >
-                            {batch.name}
-                          </button>
-                        </td>
-                        <td>{batch.programLabel || batch.course}</td>
-                        <td>
-                          {batch.teacherName || batch.teacherId ? (
+                    {filteredProjectBatches.map(batch => {
+                      const statusVal = (batch.status || 'active').trim();
+                      const statusClass = statusVal.toLowerCase();
+                      return (
+                        <tr key={batch.id || batch._id}>
+                          <td>
                             <button
-                              type="button"
-                              onClick={() => openTeacherDetails(batch)}
+                              onClick={() => handleBatchClick(batch)}
                               className="btn-link"
-                              title="View Teacher Details"
+                              title="View Project Class Details"
                             >
-                              {batch.teacherName || 'View teacher'}
+                              {batch.name}
                             </button>
-                          ) : (
-                            'N/A'
-                          )}
-                        </td>
-                        <td title={formatBatchStudentNames(batch)}>
-                          {formatBatchStudentNames(batch)}
-                        </td>
-                        <td>
-                          <span className={`status-badge ${batch.status}`}>
-                            {batch.status}
-                          </span>
-                        </td>
-                        <td>
-                          <button onClick={() => openModal('batch', {
-                            ...batch,
-                            batchType: 'project',
-                            customProgram: !PROGRAM_OPTIONS.includes(batch.course),
-                            programLabel: batch.programLabel || batch.course
-                          })} className="btn-edit">Edit</button>
-                          <button onClick={() => handleDelete('batches', batch.id || batch._id)} className="btn-delete">Delete</button>
-                        </td>
-                      </tr>
-                    ))}
+                          </td>
+                          <td>{batch.programLabel || batch.course}</td>
+                          <td>
+                            {batch.teacherName || batch.teacherId ? (
+                              <button
+                                type="button"
+                                onClick={() => openTeacherDetails(batch)}
+                                className="btn-link"
+                                title="View Teacher Details"
+                              >
+                                {batch.teacherName || 'View teacher'}
+                              </button>
+                            ) : (
+                              'N/A'
+                            )}
+                          </td>
+                          <td className="text-center" title={formatBatchStudentNames(batch)}>
+                            {formatBatchStudentNames(batch)}
+                          </td>
+                          <td className="text-center">
+                            <span className={`status-badge ${statusClass}`}>
+                              {statusVal}
+                            </span>
+                          </td>
+                          <td className="text-center">
+                            <button onClick={() => openModal('batch', {
+                              ...batch,
+                              batchType: 'project',
+                              customProgram: !PROGRAM_OPTIONS.includes(batch.course),
+                              programLabel: batch.programLabel || batch.course
+                            })} className="btn-edit">Edit</button>
+                            <button onClick={() => handleDelete('batches', batch.id || batch._id)} className="btn-delete">Delete</button>
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
                 {filteredProjectBatches.length === 0 && (
@@ -5081,7 +5279,14 @@ const AdminDashboard = ({ user, onLogout }) => {
                               <td>
                                 <strong>{liveClass.scheduledDate}</strong>
                                 <br />
-                                <span style={{fontSize: '0.85em', color: '#666'}}>{liveClass.scheduledTime} IST</span>
+                                <span style={{fontSize: '0.85em', color: '#666'}}>
+                                  {liveClass.scheduledTime ? `${liveClass.scheduledTime} IST` : '—'}
+                                </span>
+                                {liveClass.scheduledTime && (
+                                  <div style={{fontSize: '0.78em', color: '#2563eb', marginTop: '2px'}}>
+                                    US: {convertIstToUsTimezone(liveClass.scheduledTime, 'EST')} EST
+                                  </div>
+                                )}
                               </td>
                               <td><strong>{liveClass.title}</strong></td>
                               <td>
@@ -5336,7 +5541,7 @@ const AdminDashboard = ({ user, onLogout }) => {
       {/* Modal - Rendered using Portal for proper centering */}
       {showModal && createPortal(
         <div className="modal-overlay">
-          <div className="modal" onClick={(e) => e.stopPropagation()} key={`${modalType}-${editingItem ? editingItem.id : 'new'}`}>
+          <div className={`modal ${modalType === 'student' ? 'modal--student modal--large' : ''}`} onClick={(e) => e.stopPropagation()} key={`${modalType}-${editingItem ? editingItem.id : 'new'}`}>
             <div className="modal-header">
               <h2>
                 {modalType === 'student'
@@ -5442,55 +5647,120 @@ const AdminDashboard = ({ user, onLogout }) => {
                       />
                     </label>
 
-                    <label className="sky-enroll-field sky-enroll-field--full">
-                      <span>Class type *</span>
-                      {renderCohortFormatPicker('enrollmentFormat', formData.enrollmentFormat || 'regular')}
-                    </label>
+                    <div className="sky-enroll-field sky-enroll-field--full sky-enroll-step-box">
+                      <div className="sky-enroll-step-title">
+                        <span>Cohort & Batch Enrollment</span>
+                      </div>
 
-                    <label className="sky-enroll-field">
-                      <span>Program *</span>
-                      <select
-                        value={formData.course || ''}
-                        onChange={handleCourseChange}
-                        required
-                      >
-                        <option value="">Select program</option>
-                        {PROGRAM_OPTIONS.map((p) => (
-                          <option key={p} value={p}>{p}</option>
-                        ))}
-                      </select>
-                    </label>
+                      <div className="sky-enroll-grid" style={{ marginBottom: 0 }}>
+                        <div className="sky-enroll-field sky-enroll-field--full">
+                          <span>1. Class type *</span>
+                          {renderCohortFormatPicker('enrollmentFormat', formData.enrollmentFormat || 'regular')}
+                        </div>
 
-                    <label className="sky-enroll-field">
-                      <span>
-                        {(formData.enrollmentFormat || 'regular') === 'project'
-                          ? 'Project class'
-                          : (formData.enrollmentFormat || 'regular') === 'one-to-one'
-                            ? 'One-to-One class'
-                            : 'Batch'}
-                      </span>
-                      <select
-                        value={formData.batchId || ''}
-                        onChange={(e) => handleInputChange('batchId', e.target.value)}
-                      >
-                        <option value="">
-                          {(formData.enrollmentFormat || 'regular') === 'project'
-                            ? 'Select project class (optional)'
-                            : (formData.enrollmentFormat || 'regular') === 'one-to-one'
-                              ? 'Select one-to-one class (optional)'
-                              : 'Select batch (optional)'}
-                        </option>
-                        {filterCohortsForEnrollment(
-                          formData.enrollmentFormat || 'regular',
-                          formData.course
-                        ).map((batch) => (
-                          <option key={batch.id || batch._id} value={batch.id || batch._id}>
-                            {batch.name}
-                            {batch.teacherName ? ` · ${batch.teacherName}` : ''}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
+                        <label className="sky-enroll-field">
+                          <span>2. Program *</span>
+                          <select
+                            value={formData.course || ''}
+                            onChange={(e) => {
+                              handleCourseChange(e);
+                              handleInputChange('teacherId', '');
+                            }}
+                            required
+                          >
+                            <option value="">Select program</option>
+                            {PROGRAM_OPTIONS.map((p) => (
+                              <option key={p} value={p}>{p}</option>
+                            ))}
+                          </select>
+                        </label>
+
+                        <label className="sky-enroll-field">
+                          <span>3. Relevant Teacher</span>
+                          <select
+                            value={formData.teacherId || ''}
+                            onChange={(e) => {
+                              const tVal = e.target.value;
+                              handleInputChange('teacherId', tVal);
+                              handleInputChange('batchId', '');
+                            }}
+                            disabled={!formData.course}
+                          >
+                            {!formData.course ? (
+                              <option value="">Select program first</option>
+                            ) : (
+                              <>
+                                <option value="">Select teacher (or All Teachers)</option>
+                                <option value="all">-- All Teachers ({primaryProgramBatches.length} batches available) --</option>
+                                {primaryRelevantTeachers.map((t) => {
+                                  const tId = String(t.id || t._id || '');
+                                  const tName = String(t.name || '').trim().toLowerCase();
+                                  const tCount = primaryProgramBatches.filter(
+                                    (b) => String(b.teacherId) === tId || (b.teacherName && String(b.teacherName).trim().toLowerCase() === tName)
+                                  ).length;
+                                  return (
+                                    <option key={tId} value={tId}>
+                                      {t.name}{tCount > 0 ? ` (${tCount} ${tCount === 1 ? 'batch' : 'batches'})` : ''}
+                                    </option>
+                                  );
+                                })}
+                              </>
+                            )}
+                          </select>
+                        </label>
+
+                        <label className="sky-enroll-field sky-enroll-field--full">
+                          <span>
+                            4. Relevant{' '}
+                            {(formData.enrollmentFormat || 'regular') === 'project'
+                              ? 'Project class'
+                              : (formData.enrollmentFormat || 'regular') === 'one-to-one'
+                                ? 'One-to-One class'
+                                : 'Batch'}
+                          </span>
+                          <select
+                            value={formData.batchId || ''}
+                            onChange={(e) => {
+                              const bId = e.target.value;
+                              handleInputChange('batchId', bId);
+                              if (bId && (!formData.teacherId || formData.teacherId === 'all')) {
+                                const found = allCohorts.find((b) => String(b.id || b._id) === String(bId));
+                                if (found?.teacherId) {
+                                  handleInputChange('teacherId', found.teacherId);
+                                }
+                              }
+                            }}
+                            disabled={!formData.course}
+                          >
+                            <option value="">
+                              {!formData.course
+                                ? 'Select program first'
+                                : (formData.enrollmentFormat || 'regular') === 'project'
+                                  ? 'Select project class (optional)'
+                                  : (formData.enrollmentFormat || 'regular') === 'one-to-one'
+                                    ? 'Select one-to-one class (optional)'
+                                    : 'Select batch (optional)'}
+                            </option>
+                            {primaryFilteredBatches.map((batch) => (
+                              <option key={batch.id || batch._id} value={batch.id || batch._id}>
+                                {batch.name}
+                                {batch.teacherName ? ` · ${batch.teacherName}` : ''}
+                                {batch.status === 'completed' ? ' [COMPLETED]' : ''}
+                              </option>
+                            ))}
+                          </select>
+                          {formData.course && primaryFilteredBatches.length === 0 && (
+                            <span style={{ fontSize: '0.78rem', color: '#c53030', marginTop: '4px' }}>
+                              No {(formData.enrollmentFormat || 'regular') === 'project'
+                                ? 'project classes'
+                                : (formData.enrollmentFormat || 'regular') === 'one-to-one'
+                                  ? 'one-to-one classes'
+                                  : 'batches'} found for the selected {formData.teacherId && formData.teacherId !== 'all' ? 'teacher and program' : 'program'}.
+                            </span>
+                          )}
+                        </label>
+                      </div>
+                    </div>
 
                     {editingItem && (
                       <div className="sky-enroll-field sky-enroll-field--full">
@@ -5571,151 +5841,197 @@ const AdminDashboard = ({ user, onLogout }) => {
                           Same login can hold multiple programs. First pick whether this extra enrollment is a <strong>batch</strong>, <strong>one-to-one</strong>, or <strong>project</strong>, then the program and class.
                         </p>
                         <div
-                          className="sky-enroll-add-program"
-                          style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 8 }}
+                          className="sky-enroll-add-program sky-enroll-step-box"
+                          style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 8 }}
                         >
-                          {renderCohortFormatPicker('additionalFormat', formData.additionalFormat || 'regular')}
-                          <p className="sky-enroll-form__intro" style={{ margin: 0 }}>
-                            1. Type selected:{' '}
-                            {(formData.additionalFormat || 'regular') === 'project'
-                              ? 'Project'
-                              : (formData.additionalFormat || 'regular') === 'one-to-one'
-                                ? 'One-to-One'
-                                : 'Batch'}
-                          </p>
-                          <select
-                            value={formData.additionalProgram || ''}
-                            onChange={(e) => {
-                              handleInputChange('additionalProgram', e.target.value);
-                              handleInputChange('additionalBatchId', '');
-                            }}
-                          >
-                            <option value="">2. Select program…</option>
-                            {PROGRAM_OPTIONS.map((course) => {
-                              const already = (editingItem.enrollments || []).some(
-                                (en) => String(en.course || '').toLowerCase() === course.toLowerCase()
-                              );
-                              return (
-                                <option key={course} value={course}>
-                                  {course}
-                                  {already ? ' (already has this program)' : ''}
-                                </option>
-                              );
-                            })}
-                          </select>
-                          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                            <select
-                              value={formData.additionalBatchId || ''}
-                              onChange={(e) => handleInputChange('additionalBatchId', e.target.value)}
-                              disabled={!formData.additionalFormat}
-                              style={{ flex: 1, minWidth: 180 }}
-                            >
-                              <option value="">
-                                {(formData.additionalFormat || 'regular') === 'project'
-                                  ? '3. Select project class…'
-                                  : (formData.additionalFormat || 'regular') === 'one-to-one'
-                                    ? '3. Select one-to-one class…'
-                                    : '3. Select batch…'}
-                              </option>
-                              {filterCohortsForEnrollment(
-                                formData.additionalFormat || 'regular',
-                                formData.additionalProgram,
-                                [
-                                  ...(editingItem.batchIds || []),
-                                  ...((editingItem.enrollments || []).map((x) => x.batchId) || []),
-                                  editingItem.batchId
-                                ]
-                              ).map((batch) => (
-                                <option key={batch.id || batch._id} value={batch.id || batch._id}>
-                                  {batch.name}
-                                  {batch.teacherName ? ` · ${batch.teacherName}` : ''}
-                                  {batch.course ? ` · ${batch.course}` : ''}
-                                </option>
-                              ))}
-                            </select>
-                            <button
-                              type="button"
-                              className="btn-create-report"
-                              disabled={!formData.additionalBatchId || saving}
-                              onClick={async () => {
-                                try {
-                                  const selected = (batches || []).find(
-                                    (b) =>
-                                      String(b.id || b._id) === String(formData.additionalBatchId)
-                                  );
-                                  const selectedCourse = selected?.course || formData.additionalProgram || '';
-                                  const sameProgram = (editingItem.enrollments || []).some(
-                                    (en) =>
-                                      String(en.course || '').toLowerCase() ===
-                                      String(selectedCourse).toLowerCase()
-                                  );
-                                  if (sameProgram) {
-                                    const ok = window.confirm(
-                                      `This student is already enrolled in "${selectedCourse}". Multi-program is meant for a different course (e.g. Data Science + Cyber). Continue anyway?`
-                                    );
-                                    if (!ok) return;
-                                  }
-                                  setSaving(true);
-                                  const apiUrl = getApiBaseUrl();
-                                  const token = localStorage.getItem('token');
-                                  const res = await fetch(
-                                    `${apiUrl}/api/admin/users/${editingItem.id}/enrollments`,
-                                    {
-                                      method: 'POST',
-                                      headers: {
-                                        Authorization: `Bearer ${token}`,
-                                        'Content-Type': 'application/json'
-                                      },
-                                      body: JSON.stringify({ batchId: formData.additionalBatchId })
-                                    }
-                                  );
-                                  const data = await res.json().catch(() => ({}));
-                                  if (!res.ok) throw new Error(data.message || 'Failed to enroll');
-                                  showToast(
-                                    data.message ||
-                                      `Enrolled in ${selectedCourse} with ${data.enrollment?.enrollmentNumber || 'new ID'}`,
-                                    'success'
-                                  );
-                                  handleInputChange('additionalBatchId', '');
-                                  handleInputChange('additionalProgram', '');
-                                  handleInputChange('additionalFormat', 'regular');
-                                  await loadStudents(true);
-                                  setEditingItem((prev) =>
-                                    prev
-                                      ? {
-                                          ...prev,
-                                          enrollments: data.enrollments || prev.enrollments,
-                                          batchIds: (data.enrollments || []).map((x) => x.batchId),
-                                          ...data.student
-                                        }
-                                      : prev
-                                  );
-                                } catch (err) {
-                                  showToast(err.message || 'Failed to add program', 'error');
-                                } finally {
-                                  setSaving(false);
-                                }
-                              }}
-                            >
-                              Enroll in program
-                            </button>
+                          <div className="sky-enroll-step-title">
+                            <span>Enroll in an Additional Program</span>
                           </div>
-                          {filterCohortsForEnrollment(
-                            formData.additionalFormat || 'regular',
-                            formData.additionalProgram,
-                            [
-                              ...(editingItem.batchIds || []),
-                              ...((editingItem.enrollments || []).map((x) => x.batchId) || []),
-                              editingItem.batchId
-                            ]
-                          ).length === 0 && (
-                            <p className="sky-enroll-form__intro" style={{ margin: 0 }}>
+
+                          <div className="sky-enroll-field sky-enroll-field--full">
+                            <span>1. Class type *</span>
+                            {renderCohortFormatPicker('additionalFormat', formData.additionalFormat || 'regular')}
+                          </div>
+
+                          <div className="sky-enroll-grid" style={{ marginBottom: 0 }}>
+                            <label className="sky-enroll-field">
+                              <span>2. Select program *</span>
+                              <select
+                                value={formData.additionalProgram || ''}
+                                onChange={(e) => {
+                                  handleInputChange('additionalProgram', e.target.value);
+                                  handleInputChange('additionalTeacherId', '');
+                                  handleInputChange('additionalBatchId', '');
+                                }}
+                              >
+                                <option value="">Select program…</option>
+                                {PROGRAM_OPTIONS.map((course) => {
+                                  const already = (editingItem.enrollments || []).some(
+                                    (en) => String(en.course || '').toLowerCase() === course.toLowerCase()
+                                  );
+                                  return (
+                                    <option key={course} value={course}>
+                                      {course}
+                                      {already ? ' (already has this program)' : ''}
+                                    </option>
+                                  );
+                                })}
+                              </select>
+                            </label>
+
+                            <label className="sky-enroll-field">
+                              <span>3. Relevant Teacher</span>
+                              <select
+                                value={formData.additionalTeacherId || ''}
+                                onChange={(e) => {
+                                  handleInputChange('additionalTeacherId', e.target.value);
+                                  handleInputChange('additionalBatchId', '');
+                                }}
+                                disabled={!formData.additionalProgram}
+                              >
+                                {!formData.additionalProgram ? (
+                                  <option value="">Select program first</option>
+                                ) : (
+                                  <>
+                                    <option value="">Select teacher (or All Teachers)</option>
+                                    <option value="all">-- All Teachers ({additionalProgramBatches.length} batches available) --</option>
+                                    {additionalRelevantTeachers.map((t) => {
+                                      const tId = String(t.id || t._id || '');
+                                      const tName = String(t.name || '').trim().toLowerCase();
+                                      const tCount = additionalProgramBatches.filter(
+                                        (b) => String(b.teacherId) === tId || (b.teacherName && String(b.teacherName).trim().toLowerCase() === tName)
+                                      ).length;
+                                      return (
+                                        <option key={tId} value={tId}>
+                                          {t.name}{tCount > 0 ? ` (${tCount} ${tCount === 1 ? 'batch' : 'batches'})` : ''}
+                                        </option>
+                                      );
+                                    })}
+                                  </>
+                                )}
+                              </select>
+                            </label>
+
+                            <div className="sky-enroll-field sky-enroll-field--full" style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+                              <label style={{ flex: 1, minWidth: 220, display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+                                <span>
+                                  4. Relevant{' '}
+                                  {(formData.additionalFormat || 'regular') === 'project'
+                                    ? 'Project class…'
+                                    : (formData.additionalFormat || 'regular') === 'one-to-one'
+                                      ? 'One-to-One class…'
+                                      : 'Batch…'}
+                                </span>
+                                <select
+                                  value={formData.additionalBatchId || ''}
+                                  onChange={(e) => {
+                                    const bId = e.target.value;
+                                    handleInputChange('additionalBatchId', bId);
+                                    if (bId && (!formData.additionalTeacherId || formData.additionalTeacherId === 'all')) {
+                                      const found = allCohorts.find((b) => String(b.id || b._id) === String(bId));
+                                      if (found?.teacherId) {
+                                        handleInputChange('additionalTeacherId', found.teacherId);
+                                      }
+                                    }
+                                  }}
+                                  disabled={!formData.additionalProgram}
+                                >
+                                  <option value="">
+                                    {!formData.additionalProgram
+                                      ? 'Select program first'
+                                      : (formData.additionalFormat || 'regular') === 'project'
+                                        ? 'Select project class…'
+                                        : (formData.additionalFormat || 'regular') === 'one-to-one'
+                                          ? 'Select one-to-one class…'
+                                          : 'Select batch…'}
+                                  </option>
+                                  {additionalFilteredBatches.map((batch) => (
+                                    <option key={batch.id || batch._id} value={batch.id || batch._id}>
+                                      {batch.name}
+                                      {batch.teacherName ? ` · ${batch.teacherName}` : ''}
+                                      {batch.status === 'completed' ? ' [COMPLETED]' : ''}
+                                    </option>
+                                  ))}
+                                </select>
+                              </label>
+
+                              <button
+                                type="button"
+                                className="btn-create-report"
+                                style={{ minHeight: '40px', padding: '0 18px', fontWeight: 650 }}
+                                disabled={!formData.additionalBatchId || saving}
+                                onClick={async () => {
+                                  try {
+                                    const selected = (batches || []).find(
+                                      (b) =>
+                                        String(b.id || b._id) === String(formData.additionalBatchId)
+                                    );
+                                    const selectedCourse = selected?.course || formData.additionalProgram || '';
+                                    const sameProgram = (editingItem.enrollments || []).some(
+                                      (en) =>
+                                        String(en.course || '').toLowerCase() ===
+                                        String(selectedCourse).toLowerCase()
+                                    );
+                                    if (sameProgram) {
+                                      const ok = window.confirm(
+                                        `This student is already enrolled in "${selectedCourse}". Multi-program is meant for a different course (e.g. Data Science + Cyber). Continue anyway?`
+                                      );
+                                      if (!ok) return;
+                                    }
+                                    setSaving(true);
+                                    const apiUrl = getApiBaseUrl();
+                                    const token = localStorage.getItem('token');
+                                    const res = await fetch(
+                                      `${apiUrl}/api/admin/users/${editingItem.id}/enrollments`,
+                                      {
+                                        method: 'POST',
+                                        headers: {
+                                          Authorization: `Bearer ${token}`,
+                                          'Content-Type': 'application/json'
+                                        },
+                                        body: JSON.stringify({ batchId: formData.additionalBatchId })
+                                      }
+                                    );
+                                    const data = await res.json().catch(() => ({}));
+                                    if (!res.ok) throw new Error(data.message || 'Failed to enroll');
+                                    showToast(
+                                      data.message ||
+                                        `Enrolled in ${selectedCourse} with ${data.enrollment?.enrollmentNumber || 'new ID'}`,
+                                      'success'
+                                    );
+                                    handleInputChange('additionalBatchId', '');
+                                    handleInputChange('additionalProgram', '');
+                                    handleInputChange('additionalTeacherId', '');
+                                    handleInputChange('additionalFormat', 'regular');
+                                    await loadStudents(true);
+                                    setEditingItem((prev) =>
+                                      prev
+                                        ? {
+                                            ...prev,
+                                            enrollments: data.enrollments || prev.enrollments,
+                                            batchIds: (data.enrollments || []).map((x) => x.batchId),
+                                            ...data.student
+                                          }
+                                        : prev
+                                    );
+                                  } catch (err) {
+                                    showToast(err.message || 'Failed to add program', 'error');
+                                  } finally {
+                                    setSaving(false);
+                                  }
+                                }}
+                              >
+                                Enroll in program
+                              </button>
+                            </div>
+                          </div>
+                          {formData.additionalProgram && additionalFilteredBatches.length === 0 && (
+                            <p className="sky-enroll-form__intro" style={{ margin: 0, color: '#9b2c2c', borderColor: '#feb2b2', background: '#fff5f5' }}>
                               No matching {(formData.additionalFormat || 'regular') === 'project'
                                 ? 'project classes'
                                 : (formData.additionalFormat || 'regular') === 'one-to-one'
                                   ? 'one-to-one classes'
-                                  : 'batches'}{' '}
-                              yet. Create one under Batches, One-to-One, or Project Class, then come back.
+                                  : 'batches'} found for the selected {formData.additionalTeacherId && formData.additionalTeacherId !== 'all' ? 'teacher and program' : 'program'}.
                             </p>
                           )}
                         </div>
@@ -7096,8 +7412,8 @@ const AdminDashboard = ({ user, onLogout }) => {
                 </div>
                 <div className="detail-item">
                   <label>Status:</label>
-                  <span className={`status-badge ${selectedBatch?.status}`}>
-                    {selectedBatch?.status}
+                  <span className={`status-badge ${(selectedBatch?.status || 'active').trim().toLowerCase()}`}>
+                    {(selectedBatch?.status || 'active').trim().toUpperCase()}
                   </span>
                 </div>
               </div>
@@ -8288,8 +8604,8 @@ const AdminDashboard = ({ user, onLogout }) => {
                             <tr>
                               <th>Batch</th>
                               <th>Course</th>
-                              <th>Students</th>
-                              <th>Status</th>
+                              <th className="text-center">Students</th>
+                              <th className="text-center">Status</th>
                             </tr>
                           </thead>
                           <tbody>
@@ -8308,9 +8624,9 @@ const AdminDashboard = ({ user, onLogout }) => {
                                   </button>
                                 </td>
                                 <td>{batch.course || '—'}</td>
-                                <td>{batch.studentCount}</td>
-                                <td>
-                                  <span className={`dossier-status ${batch.status || 'active'}`}>
+                                <td className="text-center">{batch.studentCount}</td>
+                                <td className="text-center">
+                                  <span className={`dossier-status ${(batch.status || 'active').trim().toLowerCase()}`}>
                                     {batch.status || '—'}
                                   </span>
                                 </td>
@@ -8333,8 +8649,8 @@ const AdminDashboard = ({ user, onLogout }) => {
                             <tr>
                               <th>Batch</th>
                               <th>Program</th>
-                              <th>Students</th>
-                              <th>Status</th>
+                              <th className="text-center">Students</th>
+                              <th className="text-center">Status</th>
                             </tr>
                           </thead>
                           <tbody>
@@ -8353,9 +8669,9 @@ const AdminDashboard = ({ user, onLogout }) => {
                                   </button>
                                 </td>
                                 <td>{batch.programLabel || batch.course || '—'}</td>
-                                <td>{batch.studentCount}</td>
-                                <td>
-                                  <span className={`dossier-status ${batch.status || 'active'}`}>
+                                <td className="text-center">{batch.studentCount}</td>
+                                <td className="text-center">
+                                  <span className={`dossier-status ${(batch.status || 'active').trim().toLowerCase()}`}>
                                     {batch.status || '—'}
                                   </span>
                                 </td>
@@ -8378,8 +8694,8 @@ const AdminDashboard = ({ user, onLogout }) => {
                             <tr>
                               <th>Class</th>
                               <th>Program</th>
-                              <th>Students</th>
-                              <th>Status</th>
+                              <th className="text-center">Students</th>
+                              <th className="text-center">Status</th>
                             </tr>
                           </thead>
                           <tbody>
@@ -8398,9 +8714,9 @@ const AdminDashboard = ({ user, onLogout }) => {
                                   </button>
                                 </td>
                                 <td>{batch.programLabel || batch.course || '—'}</td>
-                                <td>{batch.studentCount}</td>
-                                <td>
-                                  <span className={`dossier-status ${batch.status || 'active'}`}>
+                                <td className="text-center">{batch.studentCount}</td>
+                                <td className="text-center">
+                                  <span className={`dossier-status ${(batch.status || 'active').trim().toLowerCase()}`}>
                                     {batch.status || '—'}
                                   </span>
                                 </td>

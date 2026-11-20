@@ -4,7 +4,8 @@ import CustomVideoPlayer from './CustomVideoPlayer';
 import StudentProfile from './StudentProfile';
 import StudentAnalyticsDashboard from './StudentAnalyticsDashboard';
 import { YouTubeUtils } from '../utils/youtubeUtils';
-import { describeWeeklySlot } from '../utils/viewerTime';
+import { describeWeeklySlot, zoneAbbreviation, isIstViewer } from '../utils/viewerTime';
+import { formatScheduleForStudentUsZones, convertIstRangeToZone } from '../utils/timezoneUtils';
 import { DstNotice, useSyncDetectedTimeZone, useViewerTimeZone } from './TimeZoneTools';
 import { formatDateForComponent } from '../utils/dateUtils';
 import { ToastContainer, showToast } from './Toast';
@@ -2399,12 +2400,31 @@ const Dashboard = ({ user, onLogout }) => {
                   </div>
                   {batchInfo?.schedule && (() => {
                     const slot = describeWeeklySlot(batchInfo.schedule, { tz: viewerTz });
+                    const isIst = isIstViewer(viewerTz);
+                    const usFormatted = formatScheduleForStudentUsZones(batchInfo.schedule.time || '');
+                    let primaryText = slot ? slot.text : '';
+                    if (!primaryText && batchInfo.schedule.time) {
+                      const targetUsZone = viewerTz === 'America/Chicago' ? 'CST' : viewerTz === 'America/Los_Angeles' ? 'PST' : viewerTz === 'America/Denver' || viewerTz === 'America/Phoenix' ? 'MST' : 'EST';
+                      const converted = isIst ? `${batchInfo.schedule.time} IST` : convertIstRangeToZone(batchInfo.schedule.time, '', targetUsZone);
+                      primaryText = `${batchInfo.schedule.days || 'Class'} · ${converted || batchInfo.schedule.time}`;
+                    }
+                    if (!primaryText) primaryText = batchInfo.schedule.days || 'N/A';
+
                     return (
                       <div className="batch-banner-right">
-                        <span className="schedule-label">Schedule</span>
-                        <span className="schedule-time">
-                          {slot ? slot.text : batchInfo.schedule?.days || 'N/A'}
-                        </span>
+                        <span className="schedule-label">Schedule ({zoneAbbreviation(viewerTz)})</span>
+                        <span className="schedule-time">{primaryText}</span>
+                        {!isIst && usFormatted && (
+                          <span className="schedule-time-alt" style={{ fontSize: '0.8rem', opacity: 0.82, marginTop: '2px', display: 'block' }}>
+                            US: {usFormatted}
+                            {batchInfo.schedule?.time ? ` · India: ${batchInfo.schedule.time.replace(/\bIST\b/gi, '').trim()} IST` : ''}
+                          </span>
+                        )}
+                        {isIst && usFormatted && (
+                          <span className="schedule-time-alt" style={{ fontSize: '0.8rem', opacity: 0.82, marginTop: '2px', display: 'block' }}>
+                            US Students: {usFormatted}
+                          </span>
+                        )}
                       </div>
                     );
                   })()}

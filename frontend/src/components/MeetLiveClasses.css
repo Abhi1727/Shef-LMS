@@ -885,6 +885,60 @@
 }
 
 /* Cohort calendar enhancements */
+.live-cal-tz-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  background: #f8fafc;
+  border: 1px solid var(--ll-line, #e2e8f0);
+  padding: 0.5rem 0.85rem;
+  border-radius: 12px;
+  margin: 0 0 0.85rem;
+  font-size: 0.85rem;
+}
+
+.live-cal-tz-bar__info {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  color: var(--ll-ink, #0f172a);
+}
+
+.live-cal-tz-bar__label {
+  color: var(--ll-muted, #64748b);
+  font-weight: 500;
+}
+
+.live-cal-tz-select {
+  padding: 0.35rem 0.6rem;
+  border-radius: 8px;
+  border: 1px solid var(--ll-line, #cbd5e1);
+  background: #fff;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--ll-ink, #0f172a);
+  cursor: pointer;
+  outline: none;
+}
+
+.live-cal-tz-select:focus {
+  border-color: #2563eb;
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.15);
+}
+
+.live-cal-cohort__tz-tag {
+  background: rgba(37, 99, 235, 0.1);
+  color: #2563eb;
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 0.1rem 0.4rem;
+  border-radius: 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
 .live-cal-cohort {
   display: flex;
   flex-wrap: wrap;

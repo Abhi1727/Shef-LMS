@@ -10,6 +10,7 @@ import SkyLoadingScreen from './SkyLoadingScreen';
 import MeetLiveClassesPanel from './MeetLiveClassesPanel';
 import TeacherMaterialsPanel from './TeacherMaterialsPanel';
 import DirectChatPanel from './DirectChatPanel';
+import { formatScheduleForStudentUsZones } from '../utils/timezoneUtils';
 import './BatchDetailsPage.css';
 import './MeetLiveClasses.css';
 
@@ -580,11 +581,18 @@ const TeacherBatchDetailsPage = () => {
         </div>
         <div className="sky-batch-header-actions">
           {selectedBatch.schedule && (selectedBatch.schedule.days || selectedBatch.schedule.time) && (
-            <div className="sky-batch-timing-chip">
-              {(selectedBatch.schedule.days || '')}
-              {selectedBatch.schedule.days && selectedBatch.schedule.time ? ' · ' : ''}
-              {selectedBatch.schedule.time || ''}
-              {selectedBatch.schedule.time ? ' IST' : ''}
+            <div className="sky-batch-timing-chip" title="Batch timing in IST and US zones">
+              <span>
+                {(selectedBatch.schedule.days || '')}
+                {selectedBatch.schedule.days && selectedBatch.schedule.time ? ' · ' : ''}
+                {selectedBatch.schedule.time || ''}
+                {selectedBatch.schedule.time ? ' IST' : ''}
+              </span>
+              {selectedBatch.schedule.time && (
+                <span className="timing-chip-us" style={{ marginLeft: '6px', opacity: 0.88, fontSize: '0.85em' }}>
+                  (US: {formatScheduleForStudentUsZones(selectedBatch.schedule.time)})
+                </span>
+              )}
             </div>
           )}
           <button

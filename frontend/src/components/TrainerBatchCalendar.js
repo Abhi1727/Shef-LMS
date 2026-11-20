@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from 'react';
+import { formatScheduleForStudentUsZones } from '../utils/timezoneUtils';
 
 const IST = 'Asia/Kolkata';
 
@@ -47,9 +48,10 @@ export default function TrainerBatchCalendar({ meetings = [], schedule = null, b
   }, [meetings]);
 
   const todayKey = ymd(new Date());
+  const usTiming = schedule?.time ? formatScheduleForStudentUsZones(schedule.time) : '';
   const scheduleLabel =
     schedule?.days && schedule?.time
-      ? `${schedule.days} · ${schedule.time} IST`
+      ? `${schedule.days} · ${schedule.time} IST${usTiming ? ` · US: ${usTiming}` : ''}`
       : schedule?.time || schedule?.days || '';
 
   const shiftMonth = (delta) => {

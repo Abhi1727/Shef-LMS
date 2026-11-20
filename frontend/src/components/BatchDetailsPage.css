@@ -465,6 +465,11 @@
   color: white;
 }
 
+.status-badge-compact.completed {
+  background: linear-gradient(135deg, #6c757d 0%, #495057 100%);
+  color: white;
+}
+
 .status-badge-compact.inactive {
   background: linear-gradient(135deg, #dc3545 0%, #c82333 100%);
   color: white;
@@ -756,6 +761,11 @@
 
 .status-badge.active {
   background: #28a745;
+  color: white;
+}
+
+.status-badge.completed {
+  background: #6c757d;
   color: white;
 }
 
@@ -4604,6 +4614,11 @@ body.modal-open {
 
 .status-badge-compact.active {
   background: linear-gradient(135deg, #28a745 0%, #218838 100%);
+  color: white;
+}
+
+.status-badge-compact.completed {
+  background: linear-gradient(135deg, #6c757d 0%, #495057 100%);
   color: white;
 }
 

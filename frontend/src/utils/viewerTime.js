@@ -55,8 +55,37 @@ function storedUser() {
 
 /** This device's zone > last saved profile zone > IST. */
 export function getViewerTimeZone() {
-  const candidates = [detectBrowserTimeZone(), storedUser().timezone];
-  return candidates.find(isValidTimeZone) || SCHOOL_TIME_ZONE;
+  try {
+    const manual = typeof localStorage !== 'undefined' ? localStorage.getItem('manual_timezone') : null;
+    const candidates = [manual, detectBrowserTimeZone(), storedUser().timezone];
+    return candidates.find(isValidTimeZone) || SCHOOL_TIME_ZONE;
+  } catch {
+    return SCHOOL_TIME_ZONE;
+  }
+}
+
+export function setViewerTimeZone(tz) {
+  try {
+    if (typeof localStorage === 'undefined') return;
+    if (!tz || tz === 'auto') {
+      localStorage.removeItem('manual_timezone');
+    } else if (isValidTimeZone(tz)) {
+      localStorage.setItem('manual_timezone', tz);
+    }
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new Event('lms_tz_changed'));
+    }
+  } catch (e) {
+    console.warn('Could not set viewer timezone:', e);
+  }
+}
+
+export function isManualTimeZoneSet() {
+  try {
+    return Boolean(typeof localStorage !== 'undefined' && localStorage.getItem('manual_timezone'));
+  } catch {
+    return false;
+  }
 }
 
 export function isIstViewer(tz = getViewerTimeZone()) {
@@ -118,17 +147,24 @@ export function formatDayIn(date, tz = getViewerTimeZone(), { withDate = true } 
   );
 }
 
-/** "Sat, Nov 7 · 7:00 – 9:00 AM" in the viewer's own zone. */
-export function formatClassWhen(start, end, { tz = getViewerTimeZone(), withDate = true } = {}) {
+/** "Sat, Nov 7 · 7:00 – 9:00 AM EST" in the viewer's own zone. */
+export function formatClassWhen(start, end, { tz = getViewerTimeZone(), withDate = true, includeZone = true } = {}) {
   if (!start) return '';
   const s = new Date(start);
   const day = formatDayIn(s, tz, { withDate });
-  if (!end) return `${day} · ${formatTimeIn(s, tz)}`;
-  return `${day} · ${formatTimeIn(s, tz)} – ${formatTimeIn(end, tz)}`;
+  const abbr = includeZone ? ` ${zoneAbbreviation(tz, s)}` : '';
+  if (!end) return `${day} · ${formatTimeIn(s, tz)}${abbr}`;
+  return `${day} · ${formatTimeIn(s, tz)} – ${formatTimeIn(end, tz)}${abbr}`;
 }
 
 function parseClock(text) {
-  const m = String(text || '').trim().match(/^(\d{1,2})(?::(\d{2}))?\s*(am|pm)?$/i);
+  if (!text) return null;
+  const cleaned = String(text)
+    .trim()
+    .replace(/[()]/g, '')
+    .replace(/\b(IST|EST|EDT|CST|CDT|PST|PDT|MST|MDT|UTC|GMT)\b/gi, '')
+    .trim();
+  const m = cleaned.match(/^(\d{1,2})(?::(\d{2}))?\s*(am|pm)?$/i);
   if (!m) return null;
   let h = Number(m[1]);
   const min = Number(m[2] || 0);
@@ -142,12 +178,25 @@ function parseClock(text) {
 /** IST weekly slot → { days: ['sat','sun'], start: minutes, end: minutes } (end may pass midnight). */
 export function parseIstSlot(schedule) {
   if (!schedule) return null;
-  const days = String(schedule.days || '')
+  let rawDays = String(schedule.days || '').trim();
+  if (/weekend/i.test(rawDays)) {
+    rawDays = 'sat, sun';
+  } else if (/weekday/i.test(rawDays)) {
+    rawDays = 'mon, tue, wed, thu, fri';
+  } else if (/mon\s*-\s*fri/i.test(rawDays) || /monday\s*to\s*friday/i.test(rawDays)) {
+    rawDays = 'mon, tue, wed, thu, fri';
+  } else if (/mon\s*-\s*thu/i.test(rawDays) || /monday\s*to\s*thursday/i.test(rawDays)) {
+    rawDays = 'mon, tue, wed, thu';
+  } else if (/mon\s*-\s*sat/i.test(rawDays) || /monday\s*to\s*saturday/i.test(rawDays)) {
+    rawDays = 'mon, tue, wed, thu, fri, sat';
+  }
+  const days = rawDays
     .toLowerCase()
     .split(/[^a-z]+/)
     .map((d) => d.slice(0, 3))
     .filter((d) => DAY_KEYS.includes(d));
   const [from, to] = String(schedule.time || '')
+    .replace(/[()]/g, '')
     .replace(/\b(IST)\b/gi, '')
     .split(/\s*[-–—]\s*|\s+to\s+/i);
   const start = parseClock(from);
@@ -205,11 +254,12 @@ export function describeWeeklySlot(schedule, { tz = getViewerTimeZone(), from = 
   if (days.includes('Sun') && days.includes('Mon') && !days.includes('Sat')) {
     days.unshift(days.splice(days.indexOf('Sun'), 1)[0]);
   }
+  const abbr = zoneAbbreviation(tz, first.start);
   return {
     days: days.join(', '),
-    time: `${formatTimeIn(first.start, tz)} – ${formatTimeIn(first.end, tz)}`,
+    time: `${formatTimeIn(first.start, tz)} – ${formatTimeIn(first.end, tz)} ${abbr}`,
     next: first,
-    text: `${days.join(', ')} · ${formatTimeIn(first.start, tz)} – ${formatTimeIn(first.end, tz)}`
+    text: `${days.join(', ')} · ${formatTimeIn(first.start, tz)} – ${formatTimeIn(first.end, tz)} ${abbr}`
   };
 }
 

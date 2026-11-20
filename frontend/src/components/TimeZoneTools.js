@@ -6,6 +6,8 @@ import {
   formatDayIn,
   formatTimeIn,
   getViewerTimeZone,
+  setViewerTimeZone,
+  isManualTimeZoneSet,
   instantFromZonedTime,
   upcomingLocalTimeShift,
   zoneAbbreviation,
@@ -13,9 +15,19 @@ import {
 } from '../utils/viewerTime';
 import './TimeZoneTools.css';
 
-/** The viewer's zone, detected from their device. */
+export { setViewerTimeZone, isManualTimeZoneSet };
+
+/** The viewer's zone, detected from device or overridden by user. Listens for live changes. */
 export function useViewerTimeZone() {
-  return useMemo(getViewerTimeZone, []);
+  const [tz, setTz] = useState(getViewerTimeZone);
+
+  useEffect(() => {
+    const onTzChange = () => setTz(getViewerTimeZone());
+    window.addEventListener('lms_tz_changed', onTzChange);
+    return () => window.removeEventListener('lms_tz_changed', onTzChange);
+  }, []);
+
+  return tz;
 }
 
 let syncedThisSession = false;

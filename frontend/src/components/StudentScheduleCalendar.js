@@ -7,8 +7,16 @@ import {
   describeWeeklySlot,
   formatClassWhen,
   formatTimeIn,
-  upcomingSlotOccurrences
+  upcomingSlotOccurrences,
+  getViewerTimeZone,
+  setViewerTimeZone,
+  isManualTimeZoneSet,
+  zoneAbbreviation,
+  zoneLabel,
+  detectBrowserTimeZone,
+  isIstViewer
 } from '../utils/viewerTime';
+import { convertIstRangeToZone } from '../utils/timezoneUtils';
 import './MeetLiveClasses.css';
 
 function startOfWeek(d) {
@@ -58,8 +66,9 @@ function toGCalStamp(iso) {
 }
 
 /** Google Calendar “create event” template URL for a live class */
-export function googleCalendarUrl(ev, tz = 'Asia/Kolkata') {
+export function googleCalendarUrl(ev, tz) {
   if (!ev?.start) return '';
+  const effectiveTz = tz || getViewerTimeZone();
   const start = toGCalStamp(ev.start);
   const end = toGCalStamp(
     ev.end || new Date(new Date(ev.start).getTime() + 60 * 60 * 1000).toISOString()
@@ -77,7 +86,7 @@ export function googleCalendarUrl(ev, tz = 'Asia/Kolkata') {
       .filter(Boolean)
       .join('\n'),
     location: 'Google Meet (via Sky States LMS)',
-    ctz: tz
+    ctz: effectiveTz
   });
   return `https://calendar.google.com/calendar/render?${params.toString()}`;
 }
@@ -289,16 +298,55 @@ export default function StudentScheduleCalendar({
       )}
 
 
+      <div className="live-cal-tz-bar">
+        <div className="live-cal-tz-bar__info">
+          <span className="live-cal-tz-bar__icon" aria-hidden="true">🌐</span>
+          <span className="live-cal-tz-bar__label">Display time zone:</span>
+          <strong>{zoneLabel(tz)} ({zoneAbbreviation(tz)})</strong>
+        </div>
+        <div className="live-cal-tz-bar__switcher">
+          <select
+            value={isManualTimeZoneSet() ? tz : 'auto'}
+            onChange={(e) => setViewerTimeZone(e.target.value)}
+            className="live-cal-tz-select"
+            title="Change schedule & calendar display timezone"
+          >
+            <option value="auto">Auto-detect ({detectBrowserTimeZone() ? zoneAbbreviation(detectBrowserTimeZone()) : 'Local'})</option>
+            <option value="America/New_York">US Eastern (EST / EDT)</option>
+            <option value="America/Chicago">US Central (CST / CDT)</option>
+            <option value="America/Denver">US Mountain (MST / MDT)</option>
+            <option value="America/Los_Angeles">US Pacific (PST / PDT)</option>
+            <option value="America/Phoenix">Arizona (MST)</option>
+            <option value="Asia/Kolkata">India (IST · Trainer time)</option>
+          </select>
+        </div>
+      </div>
+
       {cohort.length > 0 && (
         <div className="live-cal-cohort">
           {cohort.map((c) => {
             const slot = describeWeeklySlot(c.schedule, { tz });
+            const isIst = isIstViewer(tz);
+            let displayTime = slot ? slot.text : '';
+            if (!displayTime && c.schedule?.time) {
+              const targetUsZone = tz === 'America/Chicago' ? 'CST' : tz === 'America/Los_Angeles' ? 'PST' : tz === 'America/Denver' || tz === 'America/Phoenix' ? 'MST' : 'EST';
+              const converted = isIst ? `${c.schedule.time} IST` : convertIstRangeToZone(c.schedule.time, '', targetUsZone);
+              displayTime = `${c.schedule.days || 'Class'} · ${converted || c.schedule.time}`;
+            }
+            if (!displayTime) displayTime = c.schedule?.days || 'Schedule TBA';
+
             return (
               <div key={c.batchId} className="live-cal-cohort__chip">
-                <strong>{c.batchName || 'Batch'}</strong>
-                <span>
-                  {slot ? slot.text : c.schedule?.days || 'Schedule TBA'}
-                </span>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem' }}>
+                  <strong>{c.batchName || 'Batch'}</strong>
+                  <span className="live-cal-cohort__tz-tag">{zoneAbbreviation(tz)}</span>
+                </div>
+                <span>{displayTime}</span>
+                {!isIst && c.schedule?.time && (
+                  <span style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '1px', display: 'block' }}>
+                    Trainer: {c.schedule.time.replace(/\bIST\b/gi, '').trim()} IST
+                  </span>
+                )}
               </div>
             );
           })}

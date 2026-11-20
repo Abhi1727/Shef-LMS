@@ -4,8 +4,16 @@ import { liveJoinUrl, livePlatformLabel, trainerLivePlatform } from '../utils/li
 import { openLiveClassSession } from '../utils/openLiveClassSession';
 import { formatLiveClassCountdown, getLiveClassSessionPhase } from '../utils/liveClassSessionPhase';
 import LiveClassPlatformPicker from './LiveClassPlatformPicker';
+import { convertIstToUsTimezone } from '../utils/timezoneUtils';
 import './LiveClassStudio.css';
 import './MeetLiveClasses.css';
+
+function formatMeetingTiming(date, time) {
+  if (!time) return date || '';
+  const usTime = convertIstToUsTimezone(time, 'EST');
+  const usPart = usTime ? ` (US: ${usTime} EST)` : '';
+  return `${date ? `${date} · ` : ''}${time} IST${usPart}`;
+}
 
 function sessionPhase(meeting, now = Date.now()) {
   return getLiveClassSessionPhase(meeting, now, { forTrainer: true });
@@ -832,7 +840,7 @@ export default function MeetLiveClassesPanel({
             <span className="live-studio-badge live-studio-badge--live">Live</span>
             <h3>{activeLive.title}</h3>
             <p className="live-studio-session__meta">
-              {activeLive.scheduledDate} · {activeLive.scheduledTime} IST
+              {formatMeetingTiming(activeLive.scheduledDate, activeLive.scheduledTime)}
             </p>
             <p className="live-studio-live-bar__hint">
               Marked live in LMS — open Zoom when you are ready to teach.
@@ -879,7 +887,7 @@ export default function MeetLiveClassesPanel({
                 )}
               </div>
               <p className="live-studio-session__meta">
-                {nextSession.scheduledDate} · {nextSession.scheduledTime} IST
+                {formatMeetingTiming(nextSession.scheduledDate, nextSession.scheduledTime)}
                 {nextSession.status === 'completed' && nextSession.duration
                   ? ` · ${nextSession.duration}`
                   : ''}
@@ -919,7 +927,7 @@ export default function MeetLiveClassesPanel({
                     <div>
                       <h4 className="live-session__title">{m.title}</h4>
                       <p className="live-session__meta">
-                        {m.scheduledDate} · {m.scheduledTime} IST
+                        {formatMeetingTiming(m.scheduledDate, m.scheduledTime)}
                       </p>
                       <p className="live-session__countdown">{formatCountdown(minsUntil, phase)}</p>
                     </div>
@@ -953,7 +961,7 @@ export default function MeetLiveClassesPanel({
                 )}
               </div>
               <p className="live-studio-session__meta">
-                {nextSession.scheduledDate} · {nextSession.scheduledTime} IST
+                {formatMeetingTiming(nextSession.scheduledDate, nextSession.scheduledTime)}
                 {nextSession.status === 'completed' && nextSession.duration
                   ? ` · ${nextSession.duration}`
                   : ''}
@@ -1142,7 +1150,7 @@ export default function MeetLiveClassesPanel({
                   <div>
                     <h4 className="live-session__title">{m.title}</h4>
                     <p className="live-session__meta">
-                      Ended · {m.scheduledDate} {m.scheduledTime} IST · {m.attendanceCount || 0} joined
+                      Ended · {formatMeetingTiming(m.scheduledDate, m.scheduledTime)} · {m.attendanceCount || 0} joined
                     </p>
                   </div>
                   <span className="live-session__badge live-session__badge--soon">Recording due</span>
@@ -1264,7 +1272,7 @@ export default function MeetLiveClassesPanel({
                         <div>
                           <h4 className="live-session__title">{m.title}</h4>
                           <p className="live-session__meta">
-                            {m.scheduledDate} · {m.scheduledTime} IST
+                            {formatMeetingTiming(m.scheduledDate, m.scheduledTime)}
                             {m.duration && m.status === 'completed' ? ` · ${m.duration}` : ''}
                             {!m.batchId
                               ? ' · No batch · recording not uploaded'
