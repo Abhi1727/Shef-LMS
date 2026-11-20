@@ -4582,22 +4582,26 @@ body.modal-open {
 }
 
 /* Clickable batch name button */
+.admin-dashboard .btn-link,
+.admin-dashboard .data-table .btn-link,
 .btn-link {
   background: none;
   border: none;
-  color: var(--primary-color);
+  color: var(--primary-color, #667eea) !important;
   font-weight: 600;
   cursor: pointer;
   text-decoration: underline;
   padding: 4px 8px;
   border-radius: 4px;
-  transition: all var(--transition-fast);
+  transition: all var(--transition-fast, 0.2s ease);
   font-size: 0.95rem;
 }
 
+.admin-dashboard .btn-link:hover,
+.admin-dashboard .data-table .btn-link:hover,
 .btn-link:hover {
-  background: var(--background-light);
-  color: var(--secondary-color);
+  background: var(--background-light, #f8fafc);
+  color: var(--secondary-color, #764ba2) !important;
   text-decoration: none;
   transform: translateY(-1px);
 }

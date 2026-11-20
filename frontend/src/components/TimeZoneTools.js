@@ -44,7 +44,7 @@ export function useSyncDetectedTimeZone() {
       method: 'PUT',
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({ timezone: detected, manual: false })
-    }).catch(() => {});
+    }).catch(() => { });
   }, []);
 }
 

@@ -975,7 +975,7 @@
 }
 
 /* Student Name Link Styles */
-.btn-link {
+.teacher-batch-details-page .btn-link {
   background: none;
   border: none;
   color: #2c3e50;
@@ -1520,7 +1520,7 @@
 }
 
 /* Delete Button Styles */
-.btn-delete {
+.teacher-batch-details-page .btn-delete {
   background: #ef4444;
   color: white;
   border: none;
@@ -2039,7 +2039,7 @@ body.modal-open {
   }
 }
 
-.btn-cancel {
+.teacher-batch-details-page .btn-cancel {
   background: #6c757d;
   color: white;
   border: none;
@@ -2049,11 +2049,11 @@ body.modal-open {
   font-weight: 500;
 }
 
-.btn-cancel:hover {
+.teacher-batch-details-page .btn-cancel:hover {
   background: #5a6268;
 }
 
-.btn-save {
+.teacher-batch-details-page .btn-save {
   background: #007bff;
   color: white;
   border: none;
@@ -2063,7 +2063,7 @@ body.modal-open {
   font-weight: 500;
 }
 
-.btn-save:hover {
+.teacher-batch-details-page .btn-save:hover {
   background: #0056b3;
 }
 
@@ -2082,7 +2082,7 @@ body.modal-open {
   background: #0056b3;
 }
 
-.btn-secondary {
+.teacher-batch-details-page .btn-secondary {
   background: #6c757d;
   color: white;
   border: none;
@@ -2092,11 +2092,11 @@ body.modal-open {
   font-weight: 500;
 }
 
-.btn-secondary:hover {
+.teacher-batch-details-page .btn-secondary:hover {
   background: #5a6268;
 }
 
-.btn-watch {
+.teacher-batch-details-page .btn-watch {
   display: inline-block;
   background: #007bff;
   color: white;
@@ -2108,7 +2108,7 @@ body.modal-open {
   margin-top: 10px;
 }
 
-.btn-watch:hover {
+.teacher-batch-details-page .btn-watch:hover {
   background: #0056b3;
   transform: translateY(-2px);
   box-shadow: 0 4px 12px rgba(0, 123, 255, 0.3);
@@ -2339,7 +2339,7 @@ body.modal-open {
     padding: 6px 8px;
   }
   
-  .btn-link {
+  .teacher-batch-details-page .btn-link {
     font-size: 13px;
   }
   
