@@ -34,7 +34,7 @@ export const EMAIL_PLACEHOLDERS = [
 export const EMAIL_EDITABLE_FIELDS = [
   { key: 'course', label: 'Course / program' },
   { key: 'batchName', label: 'Batch name' },
-  { key: 'classDates', label: 'Class dates', placeholder: 'e.g. Saturday & Sunday, 8 & 9 August 2026' },
+  { key: 'classDates', label: 'Class dates', placeholder: 'e.g. Saturday, Sept 19 & Sunday, Sept 20, 2026' },
   { key: 'scheduleDays', label: 'Weekly days' }
 ];
 
@@ -61,19 +61,19 @@ Your {{course}} live class is scheduled for {{classDates}}.
 
 Please join through the Sky States LMS so your attendance is recorded automatically.
 
-How to join (Zoom via LMS):
-1. Sign in at {{lmsUrl}}
-2. On your dashboard, open the Live class section when the session is about to start
-3. Click Enter classroom to join inside the LMS (Zoom)
-4. Join at least 5 minutes before the scheduled time
+Sign in at {{lmsUrl}}
+On your dashboard, open the Live class section when the session is about to start
+Click Enter classroom to join inside the LMS (Zoom)
+Join at least 5 minutes before the scheduled time
 
 Class timings:
+📅 {{classDates}}
 
-IST: {{istTimeRange}}
 EST: {{estTime}}
 CST: {{cstTime}}
 MST: {{mstTime}}
 PST: {{pstTime}}
+IST: {{istTimeRange}}
 
 Important: Always join through the LMS first. Do not use an external Zoom link unless your trainer asks you to for technical support.
 
@@ -92,19 +92,25 @@ support@skystates.us
 
 This is to inform you that the {{course}} regular class will be held on {{classDates}}.
 
-Platform: {{platform}} (join through {{lmsUrl}})
+Please join through the Sky States LMS so your attendance is recorded automatically.
+
+Sign in at {{lmsUrl}}
+On your dashboard, open the Live class section when the session is about to start
+Click Enter classroom to join inside the LMS (Zoom)
+Join at least 5 minutes before the scheduled time
 
 Class timings:
+📅 {{classDates}}
 
-IST: {{istTimeRange}}
 EST: {{estTime}}
 CST: {{cstTime}}
 MST: {{mstTime}}
 PST: {{pstTime}}
+IST: {{istTimeRange}}
 
-Please join the session 5 minutes before the scheduled time through your LMS dashboard.
+Important: Always join through the LMS first. Do not use an external Zoom link unless your trainer asks you to for technical support.
 
-Looking forward to seeing you in class.
+We look forward to seeing you in class.
 
 Warm regards,
 Sky States Team
@@ -119,21 +125,30 @@ support@skystates.us
 
 Quick reminder for {{batchName}}: class on {{classDates}}.
 
-Join through the LMS: {{lmsUrl}}
-Platform: {{platform}}
+Please join through the Sky States LMS so your attendance is recorded automatically.
+
+Sign in at {{lmsUrl}}
+On your dashboard, open the Live class section when the session is about to start
+Click Enter classroom to join inside the LMS (Zoom)
+Join at least 5 minutes before the scheduled time
 
 Class timings:
+📅 {{classDates}}
 
-IST: {{istTimeRange}}
 EST: {{estTime}}
 CST: {{cstTime}}
 MST: {{mstTime}}
 PST: {{pstTime}}
+IST: {{istTimeRange}}
 
-Please join 5 minutes early from your dashboard.
+Important: Always join through the LMS first. Do not use an external Zoom link unless your trainer asks you to for technical support.
 
+We look forward to seeing you in class.
+
+Warm regards,
 Sky States Team
-support@skystates.us`
+support@skystates.us
+(888) 810-2434`
   },
   {
     id: 'blank',
@@ -221,8 +236,30 @@ export function applyEmailTemplate(text, variables = {}) {
   if (!text) return '';
   let out = String(text);
   EMAIL_PLACEHOLDERS.forEach(({ key }) => {
-    const value = variables[key] != null ? String(variables[key]) : '';
-    out = out.replace(new RegExp(`\\{\\{\\s*${key}\\s*\\}\\}`, 'gi'), value);
+    const rawVal = variables[key] != null ? String(variables[key]) : '';
+    if (key === 'classDates' && rawVal.trim()) {
+      const trimmed = rawVal.trim();
+      if (trimmed.includes('\n')) {
+        const dateLines = trimmed
+          .split(/\r?\n/)
+          .map((l) => l.trim())
+          .filter(Boolean);
+        const formattedBlock = dateLines
+          .map((l) => (l.startsWith('📅') ? l : `📅 ${l}`))
+          .join('\n\n');
+        const inlineText = dateLines
+          .map((l) => l.replace(/^📅\s*/, ''))
+          .join(' & ');
+        out = out.replace(/📅\s*\{\{\s*classDates\s*}}/gi, formattedBlock);
+        out = out.replace(new RegExp(`\\{\\{\\s*classDates\\s*}}`, 'gi'), inlineText);
+        return;
+      } else if (trimmed.startsWith('📅')) {
+        out = out.replace(/📅\s*\{\{\s*classDates\s*}}/gi, trimmed);
+        out = out.replace(new RegExp(`\\{\\{\\s*classDates\\s*}}`, 'gi'), trimmed.replace(/^📅\s*/, ''));
+        return;
+      }
+    }
+    out = out.replace(new RegExp(`\\{\\{\\s*${key}\\s*}}`, 'gi'), rawVal);
   });
   return out;
 }

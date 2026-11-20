@@ -27,10 +27,13 @@ function formatInline(text) {
 function isTimingBlock(paragraph) {
   const p = paragraph.toLowerCase();
   return (
+    p.startsWith('📅') ||
     p.includes('est:') ||
+    p.includes('est\t') ||
+    /\b(est|cst|mst|pst)\b/i.test(p) ||
     p.includes('class timings') ||
     p.includes('us timings') ||
-    (p.includes('ist:') && p.includes('est'))
+    (p.includes('ist:') && (p.includes('est') || p.includes('am') || p.includes('pm')))
   );
 }
 
@@ -39,14 +42,29 @@ function renderTimingBlock(paragraph) {
   const rows = lines
     .map((line) => {
       const cleaned = line.replace(/^🕒\s*/, '');
-      if (!cleaned.includes(':')) {
-        return `<p style="margin:0 0 8px;font-size:13px;font-weight:700;color:#0b3d4a;">${formatInline(cleaned)}</p>`;
+      const zoneMatch =
+        cleaned.match(/^([A-Za-z]{2,5})\s*[:\t]\s*(.*)$/) ||
+        cleaned.match(/^([A-Za-z]{2,5})\s{2,}(.*)$/);
+      if (zoneMatch && !/^Class/i.test(zoneMatch[1])) {
+        const label = zoneMatch[1].trim();
+        const value = zoneMatch[2].trim();
+        return `
+        <tr>
+          <td style="padding:6px 14px 6px 0;font-size:13px;font-weight:700;color:#486581;white-space:nowrap;vertical-align:top;">${escapeHtml(label)}</td>
+          <td style="padding:6px 0;font-size:13px;color:#102a33;vertical-align:top;">${escapeHtml(value)}</td>
+        </tr>`;
+      }
+      if (!cleaned.includes(':') || /^Class\s+timings/i.test(cleaned)) {
+        return `
+        <tr>
+          <td colspan="2" style="padding:6px 0;font-size:13px;font-weight:700;color:#0b3d4a;vertical-align:top;">${formatInline(cleaned)}</td>
+        </tr>`;
       }
       const [label, ...rest] = cleaned.split(':');
       const value = rest.join(':').trim();
       return `
         <tr>
-          <td style="padding:6px 12px 6px 0;font-size:13px;font-weight:700;color:#486581;white-space:nowrap;vertical-align:top;">${escapeHtml(label.trim())}</td>
+          <td style="padding:6px 14px 6px 0;font-size:13px;font-weight:700;color:#486581;white-space:nowrap;vertical-align:top;">${escapeHtml(label.trim())}</td>
           <td style="padding:6px 0;font-size:13px;color:#102a33;vertical-align:top;">${escapeHtml(value)}</td>
         </tr>`;
     })
@@ -94,11 +112,27 @@ function shouldShowLmsCta(message, subject) {
 }
 
 function buildBodyHtml(message) {
-  const paragraphs = String(message || '')
+  const rawParagraphs = String(message || '')
     .replace(/\r\n/g, '\n')
     .split(/\n\n+/)
     .map((p) => p.trim())
     .filter(Boolean);
+
+  // Group consecutive timing/date paragraphs into a single unified block
+  const paragraphs = [];
+  for (let i = 0; i < rawParagraphs.length; i++) {
+    const current = rawParagraphs[i];
+    if (isTimingBlock(current)) {
+      let combined = current;
+      while (i + 1 < rawParagraphs.length && isTimingBlock(rawParagraphs[i + 1])) {
+        i++;
+        combined += '\n' + rawParagraphs[i];
+      }
+      paragraphs.push(combined);
+    } else {
+      paragraphs.push(current);
+    }
+  }
 
   return paragraphs
     .map((para) => {
